@@ -2,6 +2,7 @@
 
 import { cn } from "./cn";
 import * as React from "react";
+import { createPortal } from "react-dom";
 import {
   DYNAMIC_DROP_INTENT_CONFIG,
   buildGroupTabStripMergeIntent,
@@ -818,6 +819,54 @@ function DragSourceSlotReservation({
 }
 
 /**
+ * Resolves the stacking-context-free anchor (`document.body`) for the
+ * `position: fixed` drag overlays. ALL of the drag overlays (ghost, custom
+ * cursor, cancel fly-back) place themselves with WINDOW-relative client
+ * coordinates derived from `getBoundingClientRect()` (the seat is measured the
+ * same way). `position: fixed` only resolves against the window when NO ancestor
+ * establishes a containing block for fixed descendants — and `transform` /
+ * `filter` / `backdrop-filter` / `perspective` / `will-change` of those /
+ * `contain: paint|layout|strict|content` all silently do. Because this renderer
+ * is a published library mounted inside arbitrary host chrome (and the showcase
+ * shell + pane shells + tab strip already use `backdrop-blur`), pinning the
+ * overlays' fixed coordinates to the document root via a portal makes them
+ * immune to ANY ancestor reference frame: a future chrome rework that adds a
+ * containing-block property to any ancestor can never reintroduce the
+ * ghost↔seat constant-offset drift.
+ *
+ * SSR-safe: the lazy `useState` initializer reads `document.body` only on the
+ * client (guarded by `typeof document`), so server render yields `null` and
+ * mounts nothing. The overlays only ever render during an active (user-driven,
+ * post-hydration) drag, by which point the container is `document.body` on the
+ * first render — no extra commit, no pickup-frame flicker.
+ */
+function useOverlayPortalContainer(): HTMLElement | null {
+  const [container] = React.useState<HTMLElement | null>(
+    (): HTMLElement | null => (typeof document === "undefined" ? null : document.body),
+  );
+  return container;
+}
+
+/**
+ * Renders the fixed-coordinate drag overlays through a portal to
+ * `document.body` so their `position: fixed` placement is always window-relative
+ * (see `useOverlayPortalContainer`). The portal preserves the React subtree
+ * (state, refs, layout effects, context) of the overlay component — only the
+ * DOM node is relocated — so the ghost's FLIP refs / `getBoundingClientRect`
+ * reads and the reactive `dragVisualState` updates are unchanged; they now just
+ * resolve against the document root instead of the (potentially transformed)
+ * viewport ancestor. Returns `null` when there is no container (SSR only), at
+ * which point the overlays are inactive anyway.
+ */
+function OverlayPortal({ children }: { children: React.ReactNode }): React.ReactElement | null {
+  const container: HTMLElement | null = useOverlayPortalContainer();
+  if (container == null) {
+    return null;
+  }
+  return createPortal(children, container);
+}
+
+/**
  * The SINGLE painted instance of the dragged pane. It free-follows the cursor
  * (instant, no lag) when no slot is resolved, and HOPS INTO and FILLS the
  * resolved slot when `seatFootprint` is set: the same node's base rect becomes
@@ -1038,31 +1087,33 @@ function DragPaneOverlay({
   // under reduced motion (no transition, settled look).
   const lifted: boolean = !seated && !prefersReducedMotion;
   return (
-    <div
-      ref={nodeRef}
-      className="pointer-events-none fixed left-0 top-0"
-      style={{
-        left: baseRect.left,
-        top: baseRect.top,
-        width: baseRect.width,
-        height: baseRect.height,
-        zIndex: DRAG_PANE_OVERLAY_Z_INDEX,
-      }}
-      data-drag-ghost
-      aria-hidden
-    >
+    <OverlayPortal>
       <div
-        className={cn(
-          "h-full w-full scale-[1.01]",
-          lifted
-            ? "opacity-90 shadow-[0_30px_60px_rgba(2,6,23,0.72)]"
-            : "opacity-95 shadow-[0_22px_44px_rgba(2,6,23,0.62)]",
-          prefersReducedMotion ? "" : "transition-[opacity,box-shadow] duration-150",
-        )}
+        ref={nodeRef}
+        className="pointer-events-none fixed left-0 top-0"
+        style={{
+          left: baseRect.left,
+          top: baseRect.top,
+          width: baseRect.width,
+          height: baseRect.height,
+          zIndex: DRAG_PANE_OVERLAY_Z_INDEX,
+        }}
+        data-drag-ghost
+        aria-hidden
       >
-        {renderDragPaneShell(dragVisualState.snapshot)}
+        <div
+          className={cn(
+            "h-full w-full scale-[1.01]",
+            lifted
+              ? "opacity-90 shadow-[0_30px_60px_rgba(2,6,23,0.72)]"
+              : "opacity-95 shadow-[0_22px_44px_rgba(2,6,23,0.62)]",
+            prefersReducedMotion ? "" : "transition-[opacity,box-shadow] duration-150",
+          )}
+        >
+          {renderDragPaneShell(dragVisualState.snapshot)}
+        </div>
       </div>
-    </div>
+    </OverlayPortal>
   );
 }
 
@@ -1228,32 +1279,34 @@ function DragCursorOverlay({
     : `transform ${dragHopDurationMs}ms ${hopEasing}, opacity ${dragHopDurationMs}ms ${hopEasing}`;
 
   return (
-    <div
-      className="pointer-events-none fixed left-0 top-0"
-      style={{
-        transform: `translate3d(${point.x}px, ${point.y}px, 0)`,
-        zIndex: DRAG_CURSOR_OVERLAY_Z_INDEX,
-      }}
-      data-drag-cursor
-      data-drag-cursor-kind={presentation.kind}
-      aria-hidden
-    >
+    <OverlayPortal>
       <div
-        className={cn(
-          "flex items-center justify-center rounded-full border backdrop-blur-[1px]",
-          dragCursorToneClassName(presentation.tone),
-        )}
+        className="pointer-events-none fixed left-0 top-0"
         style={{
-          width: DRAG_CURSOR_BADGE_SIZE_PX,
-          height: DRAG_CURSOR_BADGE_SIZE_PX,
-          transform: `translate(-50%, -50%) scale(${badgeScale})`,
-          opacity: badgeOpacity,
-          transition: badgeTransition,
+          transform: `translate3d(${point.x}px, ${point.y}px, 0)`,
+          zIndex: DRAG_CURSOR_OVERLAY_Z_INDEX,
         }}
+        data-drag-cursor
+        data-drag-cursor-kind={presentation.kind}
+        aria-hidden
       >
-        <DragCursorGlyph kind={presentation.kind} />
+        <div
+          className={cn(
+            "flex items-center justify-center rounded-full border backdrop-blur-[1px]",
+            dragCursorToneClassName(presentation.tone),
+          )}
+          style={{
+            width: DRAG_CURSOR_BADGE_SIZE_PX,
+            height: DRAG_CURSOR_BADGE_SIZE_PX,
+            transform: `translate(-50%, -50%) scale(${badgeScale})`,
+            opacity: badgeOpacity,
+            transition: badgeTransition,
+          }}
+        >
+          <DragCursorGlyph kind={presentation.kind} />
+        </div>
       </div>
-    </div>
+    </OverlayPortal>
   );
 }
 
@@ -1280,25 +1333,27 @@ function DragCancelOverlay({ cancelVisualState }: { cancelVisualState: DynamicDr
   }
 
   return (
-    <div
-      className="pointer-events-none fixed left-0 top-0"
-      style={{
-        left: isAnimating ? cancelVisualState.toFootprint.left : cancelVisualState.fromFootprint.left,
-        top: isAnimating ? cancelVisualState.toFootprint.top : cancelVisualState.fromFootprint.top,
-        width: isAnimating ? cancelVisualState.toFootprint.width : cancelVisualState.fromFootprint.width,
-        height: isAnimating ? cancelVisualState.toFootprint.height : cancelVisualState.fromFootprint.height,
-        opacity: isAnimating ? 0.16 : 0.7,
-        transitionProperty: "left, top, width, height, opacity",
-        transitionDuration: `${DRAG_CANCEL_ANIMATION_MS}ms`,
-        transitionTimingFunction: "cubic-bezier(0.16, 1, 0.3, 1)",
-        zIndex: DRAG_CANCEL_OVERLAY_Z_INDEX,
-      }}
-      aria-hidden
-    >
-      <div className="h-full w-full shadow-[0_18px_34px_rgba(2,6,23,0.5)]">
-        {renderDragPaneShell(cancelVisualState.snapshot)}
+    <OverlayPortal>
+      <div
+        className="pointer-events-none fixed left-0 top-0"
+        style={{
+          left: isAnimating ? cancelVisualState.toFootprint.left : cancelVisualState.fromFootprint.left,
+          top: isAnimating ? cancelVisualState.toFootprint.top : cancelVisualState.fromFootprint.top,
+          width: isAnimating ? cancelVisualState.toFootprint.width : cancelVisualState.fromFootprint.width,
+          height: isAnimating ? cancelVisualState.toFootprint.height : cancelVisualState.fromFootprint.height,
+          opacity: isAnimating ? 0.16 : 0.7,
+          transitionProperty: "left, top, width, height, opacity",
+          transitionDuration: `${DRAG_CANCEL_ANIMATION_MS}ms`,
+          transitionTimingFunction: "cubic-bezier(0.16, 1, 0.3, 1)",
+          zIndex: DRAG_CANCEL_OVERLAY_Z_INDEX,
+        }}
+        aria-hidden
+      >
+        <div className="h-full w-full shadow-[0_18px_34px_rgba(2,6,23,0.5)]">
+          {renderDragPaneShell(cancelVisualState.snapshot)}
+        </div>
       </div>
-    </div>
+    </OverlayPortal>
   );
 }
 
@@ -1400,6 +1455,7 @@ function PaneHitZoneOverlay({
 interface TitleBarSizingButton {
   mode: TilingTitleBarSizingMode;
   label: string;
+  compactLabel: string;
   title: string;
 }
 
@@ -1409,10 +1465,10 @@ interface TitleBarSizingButton {
  * pin. The pane the control lives in IS the target (no target-pane selector).
  */
 const TITLE_BAR_SIZING_BUTTONS: ReadonlyArray<TitleBarSizingButton> = [
-  { mode: "flexible", label: "flex", title: "Flexible — ratio-distributed in both dimensions (clears any frozen size)" },
-  { mode: "static-height", label: "h", title: "Static height — freeze this pane's height to its current measured pixels" },
-  { mode: "static-width", label: "w", title: "Static width — freeze this pane's width to its current measured pixels" },
-  { mode: "static-both", label: "both", title: "Static both — freeze this pane's width and height to its current measured pixels" },
+  { mode: "flexible", label: "flex", compactLabel: "f", title: "Flexible — ratio-distributed in both dimensions (clears any frozen size)" },
+  { mode: "static-height", label: "h", compactLabel: "h", title: "Static height — freeze this pane's height to its current measured pixels" },
+  { mode: "static-width", label: "w", compactLabel: "w", title: "Static width — freeze this pane's width to its current measured pixels" },
+  { mode: "static-both", label: "both", compactLabel: "b", title: "Static both — freeze this pane's width and height to its current measured pixels" },
 ];
 
 interface TitleBarAcquireButton {
@@ -1439,6 +1495,7 @@ function PaneTitleBarControls({
   isSizingEnabled,
   isAcquireSpaceEnabled,
   activeSizingMode,
+  compact,
   onSetSizingMode,
   onAcquireSpace,
 }: {
@@ -1446,6 +1503,7 @@ function PaneTitleBarControls({
   isSizingEnabled: boolean;
   isAcquireSpaceEnabled: boolean;
   activeSizingMode: TilingTitleBarSizingMode;
+  compact: boolean;
   onSetSizingMode: (mode: TilingTitleBarSizingMode) => void;
   onAcquireSpace: (direction: DynamicFocusDirection) => void;
 }): React.ReactElement | null {
@@ -1457,7 +1515,9 @@ function PaneTitleBarControls({
       {isSizingEnabled
         ? (
           <div
-            className="flex items-center gap-0.5 rounded border border-white/10 bg-white/[0.03] p-0.5"
+            className={cn(
+              "flex shrink-0 items-center gap-0.5 rounded-md border border-white/15 bg-slate-900/70 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur",
+            )}
             role="group"
             aria-label={`pane ${leafId} sizing`}
           >
@@ -1479,13 +1539,14 @@ function PaneTitleBarControls({
                     onSetSizingMode(button.mode);
                   }}
                   className={cn(
-                    "flex h-5 min-w-5 items-center justify-center rounded px-1 font-mono text-[9px] uppercase leading-none tracking-[0.08em] transition-colors",
+                    "flex min-w-5 items-center justify-center rounded px-1.5 font-mono text-[9px] uppercase leading-none tracking-[0.08em] transition-colors",
+                    compact ? "h-4" : "h-5",
                     isActive
-                      ? "bg-cyan-500/25 text-cyan-100"
-                      : "text-slate-400 hover:bg-white/10 hover:text-white",
+                      ? "border border-cyan-200/55 bg-cyan-400/18 text-cyan-50 shadow-[0_0_12px_rgba(34,211,238,0.28)]"
+                      : "text-slate-300 hover:bg-white/10 hover:text-white",
                   )}
                 >
-                  {button.label}
+                  {compact ? button.compactLabel : button.label}
                 </button>
               );
             })}
@@ -1495,7 +1556,9 @@ function PaneTitleBarControls({
       {isAcquireSpaceEnabled
         ? (
           <div
-            className="flex items-center gap-0.5 rounded border border-white/10 bg-white/[0.03] p-0.5"
+            className={cn(
+              "flex shrink-0 items-center gap-0.5 rounded-md border border-white/15 bg-slate-900/70 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur",
+            )}
             role="group"
             aria-label={`pane ${leafId} acquire space`}
           >
@@ -1513,7 +1576,10 @@ function PaneTitleBarControls({
                   event.stopPropagation();
                   onAcquireSpace(button.direction);
                 }}
-                className="flex h-5 w-5 items-center justify-center rounded font-mono text-[11px] leading-none text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+                className={cn(
+                  "flex items-center justify-center rounded border border-transparent font-mono leading-none text-slate-300 transition-colors hover:border-cyan-200/40 hover:bg-cyan-400/15 hover:text-cyan-50",
+                  compact ? "h-4 w-4 text-[10px]" : "h-5 w-5 text-[11px]",
+                )}
               >
                 <span aria-hidden>{button.glyph}</span>
               </button>
@@ -1528,6 +1594,9 @@ function PaneTitleBarControls({
 function DefaultDynamicTile({
   leafId,
   tile,
+  paneOrdinal,
+  paneWidthPx,
+  isPaneContentVisible,
   isDragSource,
   isDropTarget,
   isFocused,
@@ -1562,6 +1631,8 @@ function DefaultDynamicTile({
   onPointerMove,
   onPointerLeave,
 }: DynamicRenderTileArgs): React.ReactElement {
+  const isNarrowHeader: boolean = paneWidthPx < 430;
+  const hideSubtitle: boolean = paneWidthPx < 340;
   const shouldRenderDropLayer: boolean = isDropTarget || preview != null || isInvalidDrop;
   const dragSourceBorderStyle: React.CSSProperties =
     isDragSource && observabilityColorEnables.dragSourceBorderEnabled
@@ -1579,7 +1650,7 @@ function DefaultDynamicTile({
   return (
     <article
       className={cn(
-        "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border bg-slate-950/90 shadow-xl backdrop-blur",
+        "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl border bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,23,0.96))] shadow-[0_14px_34px_rgba(2,6,23,0.62),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur",
         accentClassName(tile.accent),
         isDropEligible ? "ring-1 ring-dashed ring-cyan-300/30" : "",
         isHoveringDropCandidate ? "ring-2 ring-cyan-200/45" : "",
@@ -1685,44 +1756,33 @@ function DefaultDynamicTile({
         onPointerDown={onHandlePointerDown}
         style={isRearrangeEnabled ? { touchAction: "none" } : undefined}
         className={cn(
-          "flex shrink-0 items-center justify-between border-b border-white/10 bg-white/[0.04] px-3 py-2",
+          "flex min-h-[44px] shrink-0 items-center justify-between border-b border-cyan-300/15 bg-slate-900/62 px-3 py-2 shadow-[inset_0_-1px_0_rgba(34,211,238,0.09)]",
           isRearrangeEnabled ? "cursor-grab active:cursor-grabbing" : "cursor-default",
-          isFocused ? "border-b-white/30 bg-white/[0.08]" : "",
+          isFocused ? "border-b-cyan-200/35 bg-cyan-500/[0.08] shadow-[inset_0_-1px_0_rgba(56,189,248,0.2)]" : "",
         )}
       >
-        <div className="min-w-0">
+        <div className="min-w-0 text-left">
           <div
             className={cn(
-              "truncate font-mono text-[11px] font-semibold uppercase tracking-[0.2em]",
+              "truncate font-mono text-[11px] font-semibold uppercase tracking-[0.16em]",
               accentTextClassName(tile.accent),
             )}
+            title={tile.title}
           >
             {tile.title}
           </div>
-          <div className="truncate font-mono text-[9px] uppercase tracking-[0.16em] text-slate-500">
-            {tile.description ?? "drag header to swap"}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <PaneTitleBarControls
-            leafId={leafId}
-            isSizingEnabled={isTitleBarSizingEnabled}
-            isAcquireSpaceEnabled={isTitleBarAcquireSpaceEnabled}
-            activeSizingMode={titleBarSizingModeId(widthSizingMode, heightSizingMode)}
-            onSetSizingMode={onSetSizingMode}
-            onAcquireSpace={onAcquireSpace}
-          />
-          {isFocused
+          {!hideSubtitle
             ? (
-              <div className="rounded-full border border-white/40 bg-white/15 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-white">
-                focused
+              <div
+                className="truncate font-mono text-[9px] uppercase tracking-[0.13em] text-slate-400"
+                title={tile.description ?? "drag header to swap"}
+              >
+                {tile.description ?? "drag header to swap"}
               </div>
             )
-            : (
-              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-400">
-                tile
-              </div>
-            )}
+            : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
           {isMaximizeEnabled
             ? (
               <button
@@ -1739,27 +1799,50 @@ function DefaultDynamicTile({
                   onToggleMaximize();
                 }}
                 className={cn(
-                  "flex h-5 w-5 shrink-0 items-center justify-center rounded border font-mono text-[11px] leading-none transition-colors",
+                  "flex shrink-0 items-center justify-center rounded-md border font-mono leading-none transition-colors",
+                  isNarrowHeader ? "h-4 w-4 text-[10px]" : "h-5 w-5 text-[11px]",
                   isMaximized
-                    ? "border-white/40 bg-white/15 text-white"
-                    : "border-white/15 bg-white/[0.04] text-slate-300 hover:border-white/35 hover:text-white",
+                    ? "border-cyan-100/70 bg-cyan-400/20 text-cyan-50 shadow-[0_0_12px_rgba(34,211,238,0.32)]"
+                    : "border-white/20 bg-slate-950/70 text-slate-300 hover:border-cyan-200/45 hover:bg-cyan-400/12 hover:text-cyan-50",
                 )}
               >
                 <span aria-hidden>{isMaximized ? "\u2715" : "\u2922"}</span>
               </button>
             )
             : null}
+          <PaneTitleBarControls
+            leafId={leafId}
+            isSizingEnabled={isTitleBarSizingEnabled}
+            isAcquireSpaceEnabled={isTitleBarAcquireSpaceEnabled}
+            activeSizingMode={titleBarSizingModeId(widthSizingMode, heightSizingMode)}
+            compact={isNarrowHeader}
+            onSetSizingMode={onSetSizingMode}
+            onAcquireSpace={onAcquireSpace}
+          />
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 font-mono text-[11px] leading-5 text-slate-300">
-        {tile.content != null
-          ? tile.content
-          : (tile.rows ?? []).map((row: string, rowIndex: number): React.ReactElement => (
-            <div key={`${tile.id}-row-${rowIndex}`} className="whitespace-pre-wrap break-words">
-              {row}
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 font-mono text-[11px] leading-5 text-slate-200">
+        {isPaneContentVisible
+          ? (
+            tile.content != null
+              ? tile.content
+              : (tile.rows ?? []).map((row: string, rowIndex: number): React.ReactElement => (
+                <div key={`${tile.id}-row-${rowIndex}`} className="whitespace-pre-wrap break-words">
+                  {row}
+                </div>
+              ))
+          )
+          : (
+            <div className="flex h-full min-h-0 flex-col items-center justify-center rounded-lg border border-slate-700/55 bg-slate-950/45 text-center font-mono uppercase">
+              <div className="text-[11px] font-semibold tracking-[0.14em] text-slate-300">
+                Pane {paneOrdinal}
+              </div>
+              <div className="mt-1 text-[9px] tracking-[0.12em] text-slate-500">
+                content hidden
+              </div>
             </div>
-          ))}
+          )}
       </div>
     </article>
   );
@@ -1980,6 +2063,326 @@ interface PaneTabDescriptor {
   accent: DynamicTile["accent"];
 }
 
+interface PaneShortcutChipDescriptor {
+  id: string;
+  combo: string;
+  tooltip: string;
+  command: TilingCommand;
+}
+
+interface PaneShortcutContext {
+  keymap: ResolvedTilingKeymap;
+  commandGates: TilingCommandGates;
+  layout: DynamicLayoutNode;
+  leafIds: ReadonlyArray<string>;
+  activeFocusedLeafId: string | null;
+  activeMaximizedLeafId: string | null;
+  focusHistory: FocusHistory;
+  isLeafRearrangeEligible: (leafId: string) => boolean;
+}
+
+function keyChordModifierPrefix(modifiers: {
+  ctrl: boolean;
+  alt: boolean;
+  shift: boolean;
+  meta: boolean;
+}): string {
+  const parts: ReadonlyArray<string> = [
+    modifiers.ctrl ? "Ctrl" : null,
+    modifiers.alt ? "Alt" : null,
+    modifiers.shift ? "Shift" : null,
+    modifiers.meta ? "Meta" : null,
+  ].filter((part: string | null): part is string => part != null);
+  return parts.join("+");
+}
+
+function formatKeyCodeLabel(code: string): string {
+  if (code === "BracketLeft") {
+    return "[";
+  }
+  if (code === "BracketRight") {
+    return "]";
+  }
+  if (code === "Escape") {
+    return "Esc";
+  }
+  if (code === "Enter") {
+    return "Enter";
+  }
+  if (code === "ArrowLeft") {
+    return "Left";
+  }
+  if (code === "ArrowRight") {
+    return "Right";
+  }
+  if (code === "ArrowUp") {
+    return "Up";
+  }
+  if (code === "ArrowDown") {
+    return "Down";
+  }
+  if (code === "Backquote") {
+    return "`";
+  }
+  if (code === "Equal") {
+    return "=";
+  }
+  if (code === "Minus") {
+    return "-";
+  }
+  if (code === "Period") {
+    return ".";
+  }
+  if (code === "Comma") {
+    return ",";
+  }
+  const keyMatch: RegExpExecArray | null = /^Key([A-Z])$/.exec(code);
+  if (keyMatch != null) {
+    return keyMatch[1];
+  }
+  const digitMatch: RegExpExecArray | null = /^Digit([0-9])$/.exec(code);
+  if (digitMatch != null) {
+    return digitMatch[1];
+  }
+  return code;
+}
+
+function formatKeyChordLabel(chord: {
+  code: string;
+  ctrl: boolean;
+  alt: boolean;
+  shift: boolean;
+  meta: boolean;
+}): string {
+  const prefix: string = keyChordModifierPrefix(chord);
+  const keyLabel: string = formatKeyCodeLabel(chord.code);
+  return prefix.length === 0 ? keyLabel : `${prefix}+${keyLabel}`;
+}
+
+function resolvePaneShortcutChips(context: PaneShortcutContext): ReadonlyArray<PaneShortcutChipDescriptor> {
+  const activeFocusedLeafId: string | null = context.activeFocusedLeafId;
+  const hasFocusedLeaf: boolean = activeFocusedLeafId != null;
+  const focusedLeafId: string = activeFocusedLeafId ?? "";
+  const focusedGroup: DynamicGroupNode | null = hasFocusedLeaf
+    ? findGroupContainingLeaf(context.layout, focusedLeafId)
+    : null;
+  const isFocusedLeafGrouped: boolean = focusedGroup != null;
+  const focusedGroupMemberCount: number = focusedGroup?.members.length ?? 0;
+  const cyclePreviousTarget: string | null = resolveCycledPaneId(context.leafIds, activeFocusedLeafId, "previous");
+  const cycleNextTarget: string | null = resolveCycledPaneId(context.leafIds, activeFocusedLeafId, "next");
+  const focusCurrentOrLastTarget: string | null = resolveFocusCurrentOrLast(
+    context.focusHistory,
+    context.activeFocusedLeafId,
+  );
+  const canToggleGroupFromUngroupedFocus: boolean = (() => {
+    if (!hasFocusedLeaf) {
+      return false;
+    }
+    if (isFocusedLeafGrouped) {
+      return true;
+    }
+    const focusIndex: number = context.leafIds.indexOf(focusedLeafId);
+    return focusIndex !== -1 && context.leafIds.length >= 2;
+  })();
+
+  const visibilityChecks = {
+    toggleMaximize: (): boolean => hasFocusedLeaf,
+    restore: (): boolean => context.activeMaximizedLeafId != null,
+    focusPrevious: (): boolean => cyclePreviousTarget != null && cyclePreviousTarget !== activeFocusedLeafId,
+    focusNext: (): boolean => cycleNextTarget != null && cycleNextTarget !== activeFocusedLeafId,
+    focusLeft: (): boolean => hasFocusedLeaf && findLeafByDirection(context.layout, focusedLeafId, "left") != null,
+    focusRight: (): boolean => hasFocusedLeaf && findLeafByDirection(context.layout, focusedLeafId, "right") != null,
+    focusUp: (): boolean => hasFocusedLeaf && findLeafByDirection(context.layout, focusedLeafId, "up") != null,
+    focusDown: (): boolean => hasFocusedLeaf && findLeafByDirection(context.layout, focusedLeafId, "down") != null,
+    focusCurrentOrLast: (): boolean => (
+      focusCurrentOrLastTarget != null && findLeafById(context.layout, focusCurrentOrLastTarget) != null
+    ),
+    enterMoveMode: (): boolean => hasFocusedLeaf && context.isLeafRearrangeEligible(focusedLeafId),
+    cycleLayoutMode: (): boolean => context.layout.kind === "split",
+    cycleMasterOrientation: (): boolean => context.layout.kind === "split",
+    incrementMasterCount: (): boolean => context.layout.kind === "split",
+    decrementMasterCount: (): boolean => context.layout.kind === "split",
+    incrementMasterRatio: (): boolean => context.layout.kind === "split",
+    decrementMasterRatio: (): boolean => context.layout.kind === "split",
+    toggleGroup: (): boolean => canToggleGroupFromUngroupedFocus,
+    groupTabNext: (): boolean => focusedGroupMemberCount > 1,
+    groupTabPrevious: (): boolean => focusedGroupMemberCount > 1,
+  };
+
+  const shortcutInventory: Array<PaneShortcutChipDescriptor & { isVisible: boolean }> = [
+    {
+      id: "toggle-maximize",
+      combo: formatKeyChordLabel(context.keymap.toggleMaximize),
+      tooltip: context.activeMaximizedLeafId == null
+        ? "Maximize the focused pane"
+        : "Toggle maximize on the focused pane",
+      command: { kind: "toggle-maximize" },
+      isVisible: isCommandEnabled({ kind: "toggle-maximize" }, context.commandGates) && visibilityChecks.toggleMaximize(),
+    },
+    {
+      id: "restore",
+      combo: formatKeyChordLabel(context.keymap.restore),
+      tooltip: "Restore from maximized pane view",
+      command: { kind: "restore" },
+      isVisible: isCommandEnabled({ kind: "restore" }, context.commandGates) && visibilityChecks.restore(),
+    },
+    {
+      id: "focus-cycle-previous",
+      combo: formatKeyChordLabel(context.keymap.previousPane),
+      tooltip: "Focus previous pane",
+      command: { kind: "focus-cycle", direction: "previous" },
+      isVisible: isCommandEnabled({ kind: "focus-cycle", direction: "previous" }, context.commandGates)
+        && visibilityChecks.focusPrevious(),
+    },
+    {
+      id: "focus-cycle-next",
+      combo: formatKeyChordLabel(context.keymap.nextPane),
+      tooltip: "Focus next pane",
+      command: { kind: "focus-cycle", direction: "next" },
+      isVisible: isCommandEnabled({ kind: "focus-cycle", direction: "next" }, context.commandGates)
+        && visibilityChecks.focusNext(),
+    },
+    {
+      id: "focus-left",
+      combo: formatKeyChordLabel(context.keymap.focusLeft),
+      tooltip: "Focus pane on the left",
+      command: { kind: "focus-direction", direction: "left" },
+      isVisible: isCommandEnabled({ kind: "focus-direction", direction: "left" }, context.commandGates)
+        && visibilityChecks.focusLeft(),
+    },
+    {
+      id: "focus-right",
+      combo: formatKeyChordLabel(context.keymap.focusRight),
+      tooltip: "Focus pane on the right",
+      command: { kind: "focus-direction", direction: "right" },
+      isVisible: isCommandEnabled({ kind: "focus-direction", direction: "right" }, context.commandGates)
+        && visibilityChecks.focusRight(),
+    },
+    {
+      id: "focus-up",
+      combo: formatKeyChordLabel(context.keymap.focusUp),
+      tooltip: "Focus pane above",
+      command: { kind: "focus-direction", direction: "up" },
+      isVisible: isCommandEnabled({ kind: "focus-direction", direction: "up" }, context.commandGates)
+        && visibilityChecks.focusUp(),
+    },
+    {
+      id: "focus-down",
+      combo: formatKeyChordLabel(context.keymap.focusDown),
+      tooltip: "Focus pane below",
+      command: { kind: "focus-direction", direction: "down" },
+      isVisible: isCommandEnabled({ kind: "focus-direction", direction: "down" }, context.commandGates)
+        && visibilityChecks.focusDown(),
+    },
+    {
+      id: "focus-current-or-last",
+      combo: formatKeyChordLabel(context.keymap.focusCurrentOrLast),
+      tooltip: "Toggle focus between current and last pane",
+      command: { kind: "focus-current-or-last" },
+      isVisible: isCommandEnabled({ kind: "focus-current-or-last" }, context.commandGates)
+        && visibilityChecks.focusCurrentOrLast(),
+    },
+    {
+      id: "enter-move-mode",
+      combo: formatKeyChordLabel(context.keymap.enterMoveMode),
+      tooltip: "Enter keyboard move mode",
+      command: { kind: "enter-move-mode" },
+      isVisible: isCommandEnabled({ kind: "enter-move-mode" }, context.commandGates)
+        && visibilityChecks.enterMoveMode(),
+    },
+    {
+      id: "cycle-layout-mode",
+      combo: formatKeyChordLabel(context.keymap.cycleLayoutMode),
+      tooltip: "Cycle layout mode (dwindle/master)",
+      command: { kind: "cycle-layout-mode" },
+      isVisible: isCommandEnabled({ kind: "cycle-layout-mode" }, context.commandGates)
+        && visibilityChecks.cycleLayoutMode(),
+    },
+    {
+      id: "cycle-master-orientation",
+      combo: formatKeyChordLabel(context.keymap.cycleMasterOrientation),
+      tooltip: "Cycle master orientation",
+      command: { kind: "cycle-master-orientation" },
+      isVisible: isCommandEnabled({ kind: "cycle-master-orientation" }, context.commandGates)
+        && visibilityChecks.cycleMasterOrientation(),
+    },
+    {
+      id: "increment-master-count",
+      combo: formatKeyChordLabel(context.keymap.incrementMasterCount),
+      tooltip: "Increase master count",
+      command: { kind: "adjust-master-count", delta: 1 },
+      isVisible: isCommandEnabled({ kind: "adjust-master-count", delta: 1 }, context.commandGates)
+        && visibilityChecks.incrementMasterCount(),
+    },
+    {
+      id: "decrement-master-count",
+      combo: formatKeyChordLabel(context.keymap.decrementMasterCount),
+      tooltip: "Decrease master count",
+      command: { kind: "adjust-master-count", delta: -1 },
+      isVisible: isCommandEnabled({ kind: "adjust-master-count", delta: -1 }, context.commandGates)
+        && visibilityChecks.decrementMasterCount(),
+    },
+    {
+      id: "increment-master-ratio",
+      combo: formatKeyChordLabel(context.keymap.incrementMasterRatio),
+      tooltip: "Increase master area ratio",
+      command: { kind: "adjust-master-ratio", delta: 0.05 },
+      isVisible: isCommandEnabled({ kind: "adjust-master-ratio", delta: 0.05 }, context.commandGates)
+        && visibilityChecks.incrementMasterRatio(),
+    },
+    {
+      id: "decrement-master-ratio",
+      combo: formatKeyChordLabel(context.keymap.decrementMasterRatio),
+      tooltip: "Decrease master area ratio",
+      command: { kind: "adjust-master-ratio", delta: -0.05 },
+      isVisible: isCommandEnabled({ kind: "adjust-master-ratio", delta: -0.05 }, context.commandGates)
+        && visibilityChecks.decrementMasterRatio(),
+    },
+    {
+      id: "toggle-group",
+      combo: formatKeyChordLabel(context.keymap.toggleGroup),
+      tooltip: isFocusedLeafGrouped ? "Ungroup the focused pane" : "Group the focused pane with a neighbor",
+      command: { kind: "toggle-group" },
+      isVisible: isCommandEnabled({ kind: "toggle-group" }, context.commandGates) && visibilityChecks.toggleGroup(),
+    },
+    {
+      id: "group-tab-next",
+      combo: formatKeyChordLabel(context.keymap.groupTabNext),
+      tooltip: "Activate next tab in focused group",
+      command: { kind: "group-tab-cycle", direction: "next" },
+      isVisible: isCommandEnabled({ kind: "group-tab-cycle", direction: "next" }, context.commandGates)
+        && visibilityChecks.groupTabNext(),
+    },
+    {
+      id: "group-tab-previous",
+      combo: formatKeyChordLabel(context.keymap.groupTabPrevious),
+      tooltip: "Activate previous tab in focused group",
+      command: { kind: "group-tab-cycle", direction: "previous" },
+      isVisible: isCommandEnabled({ kind: "group-tab-cycle", direction: "previous" }, context.commandGates)
+        && visibilityChecks.groupTabPrevious(),
+    },
+  ];
+
+  for (let paneNumber: number = 1; paneNumber <= 9; paneNumber += 1) {
+    const jumpTarget: string | null = resolveJumpedPaneId(context.leafIds, paneNumber);
+    const jumpCommand: TilingCommand = { kind: "focus-jump", paneNumber };
+    const jumpModifierPrefix: string = keyChordModifierPrefix(context.keymap.jumpToPane);
+    shortcutInventory.push({
+      id: `focus-jump-${paneNumber}`,
+      combo: jumpModifierPrefix.length === 0 ? `${paneNumber}` : `${jumpModifierPrefix}+${paneNumber}`,
+      tooltip: `Focus pane ${paneNumber}`,
+      command: jumpCommand,
+      isVisible: isCommandEnabled(jumpCommand, context.commandGates)
+        && jumpTarget != null
+        && jumpTarget !== activeFocusedLeafId,
+    });
+  }
+
+  return shortcutInventory
+    .filter((chip: PaneShortcutChipDescriptor & { isVisible: boolean }): boolean => chip.isVisible)
+    .map(({ id, combo, tooltip, command }): PaneShortcutChipDescriptor => ({ id, combo, tooltip, command }));
+}
+
 function tabAccentActiveClassName(accent: DynamicTile["accent"]): string {
   if (accent === "violet") {
     return "border-violet-300/70 bg-violet-500/20 text-violet-100";
@@ -1997,49 +2400,78 @@ function PaneTabStrip({
   tabs,
   activeFocusedLeafId,
   activeMaximizedLeafId,
+  isPaneContentVisible,
   onSelect,
+  onPaneContentVisibilityChange,
 }: {
   tabs: ReadonlyArray<PaneTabDescriptor>;
   activeFocusedLeafId: string | null;
   activeMaximizedLeafId: string | null;
+  isPaneContentVisible: boolean;
   onSelect: (leafId: string) => void;
+  onPaneContentVisibilityChange: (nextVisible: boolean) => void;
 }): React.ReactElement {
   return (
     <div
-      role="tablist"
-      aria-label="tiling panes"
-      className="flex shrink-0 items-center gap-1 overflow-x-auto rounded-lg border border-white/10 bg-black/30 px-1.5 py-1"
+      className="flex shrink-0 items-center gap-1 rounded-xl border border-cyan-100/20 bg-slate-900/65 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_20px_rgba(34,211,238,0.14)] backdrop-blur"
     >
-      {tabs.map((tab: PaneTabDescriptor, tabIndex: number): React.ReactElement => {
-        const isActive: boolean = tab.leafId === activeFocusedLeafId;
-        const isMaximized: boolean = tab.leafId === activeMaximizedLeafId;
-        return (
-          <button
-            key={`pane-tab-${tab.leafId}`}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            title={`focus pane ${tab.leafId} (Alt+${tabIndex + 1})`}
-            onClick={(): void => onSelect(tab.leafId)}
-            className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
-              isActive
-                ? tabAccentActiveClassName(tab.accent)
-                : "border-white/10 bg-slate-950/70 text-slate-400 hover:border-white/25 hover:text-slate-200",
-            )}
-          >
-            <span className="font-semibold opacity-70">{tabIndex + 1}</span>
-            <span className="max-w-[12ch] truncate">{tab.title}</span>
-            {isMaximized
-              ? (
-                <span className="rounded-sm border border-current/40 px-1 text-[8px] leading-none" aria-hidden>
-                  max
-                </span>
-              )
-              : null}
-          </button>
-        );
-      })}
+      <div
+        aria-label="hypr tiling title"
+        className="flex shrink-0 items-center px-1 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-100/90"
+      >
+        HYPR TILING
+      </div>
+      <label
+        className="flex shrink-0 cursor-pointer select-none items-center gap-1 px-1 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-slate-300 hover:text-cyan-50"
+        title={isPaneContentVisible ? "Hide pane content" : "Show pane content"}
+      >
+        <input
+          type="checkbox"
+          className="h-3 w-3 accent-cyan-400"
+          checked={isPaneContentVisible}
+          onChange={(event: React.ChangeEvent<HTMLInputElement>): void => {
+            onPaneContentVisibilityChange(event.currentTarget.checked);
+          }}
+          aria-label={isPaneContentVisible ? "hide pane content" : "show pane content"}
+        />
+        content
+      </label>
+      <div
+        role="tablist"
+        aria-label="tiling panes"
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+      >
+        {tabs.map((tab: PaneTabDescriptor, tabIndex: number): React.ReactElement => {
+          const isActive: boolean = tab.leafId === activeFocusedLeafId;
+          const isMaximized: boolean = tab.leafId === activeMaximizedLeafId;
+          return (
+            <button
+              key={`pane-tab-${tab.leafId}`}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              title={`focus pane ${tab.leafId} (Alt+${tabIndex + 1})`}
+              onClick={(): void => onSelect(tab.leafId)}
+              className={cn(
+                "flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
+                isActive
+                  ? tabAccentActiveClassName(tab.accent)
+                  : "border-white/15 bg-slate-950/80 text-slate-300 hover:border-cyan-200/35 hover:text-slate-100",
+              )}
+            >
+              <span className="font-semibold opacity-70">{tabIndex + 1}</span>
+              <span className="max-w-[13ch] truncate">{tab.title}</span>
+              {isMaximized
+                ? (
+                  <span className="rounded-sm border border-current/40 px-1 text-[8px] leading-none" aria-hidden>
+                    max
+                  </span>
+                )
+                : null}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -2260,6 +2692,7 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   const isTitleBarAcquireSpaceEnabled: boolean = interactionCapabilities.paneTitleBarControls.acquireSpace;
   const isPaneSwitchingEnabled: boolean = interactionCapabilities.paneSwitching.enable;
   const showTabStrip: boolean = isPaneSwitchingEnabled && interactionCapabilities.paneSwitching.showTabStrip;
+  const [isPaneContentVisible, setIsPaneContentVisible] = React.useState<boolean>(false);
   const isMasterLayoutEnabled: boolean = interactionCapabilities.masterLayout;
   const isGroupingEnabled: boolean = interactionCapabilities.grouping;
   const showSwitcherOverlay: boolean = isPaneSwitchingEnabled
@@ -2517,6 +2950,27 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       };
     }),
     [layout, leafIds, tiles],
+  );
+  const paneShortcutChips: ReadonlyArray<PaneShortcutChipDescriptor> = React.useMemo(
+    (): ReadonlyArray<PaneShortcutChipDescriptor> => resolvePaneShortcutChips({
+      keymap,
+      commandGates,
+      layout,
+      leafIds,
+      activeFocusedLeafId,
+      activeMaximizedLeafId,
+      focusHistory: focusHistoryRef.current,
+      isLeafRearrangeEligible,
+    }),
+    [
+      keymap,
+      commandGates,
+      layout,
+      leafIds,
+      activeFocusedLeafId,
+      activeMaximizedLeafId,
+      isLeafRearrangeEligible,
+    ],
   );
   const projectedDropLayout: DynamicLayoutNode | null = React.useMemo(
     (): DynamicLayoutNode | null => resolveProjectedDropLayout(layout, dragSourceLeafId, dropState),
@@ -4673,6 +5127,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         const tileArgs: DynamicRenderTileArgs = {
           leafId: node.id,
           tile: tileForDisplay,
+          paneOrdinal: Math.max(1, leafIds.indexOf(node.id) + 1),
+          paneWidthPx: containerWidthPx,
+          isPaneContentVisible,
           // Live mode: "drag source slot" = the ghost-seat slot (the slot holding
           // the dragged content in the candidate — TARGET leaf for swap, source
           // leaf for edge-insert). This is the slot painted as a content-less
@@ -5214,6 +5671,7 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       isGroupingEnabled,
       layout,
       setGroupTabStripRef,
+      isPaneContentVisible,
     ],
   );
 
@@ -5234,7 +5692,7 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       ref={rootRef}
       tabIndex={-1}
       className={cn(
-        "flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden outline-none",
+        "flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl bg-[linear-gradient(180deg,rgba(15,23,42,0.42),rgba(2,6,23,0.7))] p-1.5 outline-none",
         // Suppress native text selection across panes for the whole drag
         // gesture (`select-none` emits both `-webkit-user-select` and
         // `user-select: none`); the rule cascades to every pane body. Dropped
@@ -5259,14 +5717,16 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
               tabs={paneTabs}
               activeFocusedLeafId={activeFocusedLeafId}
               activeMaximizedLeafId={activeMaximizedLeafId}
+              isPaneContentVisible={isPaneContentVisible}
               onSelect={activateLeaf}
+              onPaneContentVisibilityChange={setIsPaneContentVisible}
             />
           </div>
         )
         : null}
       <div
         ref={viewportRef}
-        className="relative isolate min-h-0 min-w-0 flex-1 overflow-hidden"
+        className="relative isolate min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg bg-slate-950/50"
         // While dragging, the reflowing candidate-tree layer is made inert so
         // native hit-testing / `elementFromPoint` can NEVER re-target to a pane
         // that just slid under the cursor (belt-and-suspenders with the root's

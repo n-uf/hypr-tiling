@@ -40,59 +40,39 @@ interface AlertTableRow {
 }
 
 const OVERVIEW_METRICS: ReadonlyArray<MetricDatum> = [
-  { label: "queue depth", value: "21", delta: "+3", deltaTone: "up" },
-  { label: "issued today", value: "73", delta: "+12%", deltaTone: "up" },
-  { label: "quota headroom", value: "42%", delta: "-4%", deltaTone: "down" },
-  { label: "auth p95", value: "184ms", delta: "stable", deltaTone: "flat" },
+  { label: "active teams", value: "12", delta: "+1", deltaTone: "up" },
+  { label: "open tasks", value: "4", delta: "flat", deltaTone: "flat" },
+  { label: "headroom", value: "68%", delta: "-2%", deltaTone: "down" },
 ];
 
 const EVENT_FEED: ReadonlyArray<EventFeedItem> = [
-  { time: "19:56:10", message: "card created for team alpha", severity: "ok" },
-  { time: "19:56:11", message: "webhook retry succeeded", severity: "ok" },
-  { time: "19:56:13", message: "settlement batch acknowledged", severity: "info" },
-  { time: "19:56:16", message: "push dispatch queued for finance-admins", severity: "info" },
-  { time: "19:56:20", message: "policy eval: merchant_country_allowlist allow", severity: "ok" },
-  { time: "19:56:22", message: "spend ledger write amplification warning", severity: "warn" },
-  { time: "19:56:27", message: "async snapshot persisted to tenant-ops bucket", severity: "info" },
-  { time: "19:56:31", message: "delayed webhook replay drained 44 events", severity: "ok" },
-  { time: "19:56:33", message: "notification fanout completed retries=0", severity: "ok" },
-  { time: "19:56:36", message: "throttle probe: no active circuit breakers", severity: "info" },
+  { time: "19:56:10", message: "task queued", severity: "info" },
+  { time: "19:56:14", message: "sync complete", severity: "ok" },
+  { time: "19:56:19", message: "threshold warning", severity: "warn" },
+  { time: "19:56:24", message: "retry resolved", severity: "ok" },
 ];
 
 const SPEND_BARS: ReadonlyArray<SpendBarPoint> = [
-  { hour: "00", amountK: 14.2 },
-  { hour: "03", amountK: 11.8 },
-  { hour: "06", amountK: 20.1 },
-  { hour: "09", amountK: 28.4 },
-  { hour: "12", amountK: 34.8 },
-  { hour: "15", amountK: 31.2 },
-  { hour: "18", amountK: 47.5 },
-  { hour: "21", amountK: 41.0 },
-  { hour: "24", amountK: 52.3 },
+  { hour: "00", amountK: 9.4 },
+  { hour: "06", amountK: 14.7 },
+  { hour: "12", amountK: 19.3 },
+  { hour: "18", amountK: 16.5 },
+  { hour: "24", amountK: 22.1 },
 ];
 
-const SPEND_TOTAL_LABEL: string = "52.3k";
+const SPEND_TOTAL_LABEL: string = "22.1k";
 
 const ALERT_ROWS: ReadonlyArray<AlertTableRow> = [
-  { id: "AL-441", tenant: "northern_ops", rule: "burst_rate_threshold", severity: "warn", age: "2m" },
-  { id: "AL-442", tenant: "platform", rule: "webhook_replay_drained", severity: "info", age: "4m" },
-  { id: "AL-443", tenant: "storage", rule: "compaction_backlog", severity: "warn", age: "11m" },
-  { id: "AL-444", tenant: "workers", rule: "pod_health_check", severity: "info", age: "14m" },
-  { id: "AL-445", tenant: "forecast", rule: "confidence_floor", severity: "warn", age: "18m" },
-  { id: "AL-446", tenant: "issuer_api", rule: "upstream_429", severity: "crit", age: "22m" },
-  { id: "AL-447", tenant: "ingest", rule: "queue_soft_watermark", severity: "warn", age: "31m" },
-  { id: "AL-448", tenant: "reconcile", rule: "long_running_delta", severity: "warn", age: "47m" },
+  { id: "AL-101", tenant: "core", rule: "latency", severity: "warn", age: "2m" },
+  { id: "AL-102", tenant: "billing", rule: "webhook", severity: "info", age: "6m" },
+  { id: "AL-103", tenant: "issuer", rule: "upstream", severity: "crit", age: "12m" },
 ];
 
 const DEBUG_TRACE_LINES: ReadonlyArray<string> = [
-  '{"op":"split.resize","id":"root","ratio":0.57}',
-  '{"op":"tile.swap","from":"north-east","to":"south"}',
-  '{"op":"bounds.check","status":"ok"}',
-  '{"op":"resolver.edge-eval","zone":"left","valid":true,"distancePx":42.7}',
-  '{"op":"layout.snapshot","leafCount":5,"splitCount":4}',
-  '{"op":"pointer.move","mode":"drag","target":"south-east"}',
-  '{"op":"drop.preview","projectedRatio":0.500}',
-  '{"op":"focus.navigate","direction":"left","to":"south-west"}',
+  '{"op":"layout","status":"ok"}',
+  '{"op":"focus","target":"overview"}',
+  '{"op":"drag","mode":"preview"}',
+  '{"op":"commit","result":"applied"}',
 ];
 
 const ALERT_TABLE_HEADERS: ReadonlyArray<string> = ["id", "tenant", "rule", "sev", "age"];
@@ -259,26 +239,6 @@ function PaneContentStyles(): React.ReactElement {
   );
 }
 
-/** Custom chevron for the appearance-reset selects (the native arrow is gone). */
-function SelectChevron(): React.ReactElement {
-  return (
-    <svg
-      className="hpt-select-chevron"
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Content primitives
 // ---------------------------------------------------------------------------
@@ -406,55 +366,17 @@ function MetricCard({ metric }: MetricCardProps): React.ReactElement {
 function OverviewPaneContent(): React.ReactElement {
   return (
     <PaneContent>
-      <ContentSection title="capacity snapshot" meta="rolling 15m">
+      <ContentSection title="snapshot" meta="live">
         <div className="hpt-metric-grid">
           {OVERVIEW_METRICS.map((metric: MetricDatum): React.ReactElement => (
             <MetricCard key={metric.label} metric={metric} />
           ))}
         </div>
       </ContentSection>
-
-      <ContentSection title="quota adjustment" meta="draft mode">
-        <form
-          className="hpt-form-grid"
-          onSubmit={(event: React.FormEvent<HTMLFormElement>): void => {
-            event.preventDefault();
-          }}
-        >
-          <label className="flex min-w-0 flex-col gap-1">
-            <span className={TOKENS.type.label}>team</span>
-            <div className="hpt-select-wrap">
-              <select className="hpt-field hpt-select truncate" defaultValue="alpha">
-                <option value="alpha">team alpha</option>
-                <option value="beta">team beta</option>
-                <option value="ops">ops nightly</option>
-              </select>
-              <SelectChevron />
-            </div>
-          </label>
-          <label className="flex min-w-0 flex-col gap-1">
-            <span className={TOKENS.type.label}>limit tier</span>
-            <div className="hpt-select-wrap">
-              <select className="hpt-field hpt-select truncate" defaultValue="elevated">
-                <option value="default">default 2,500</option>
-                <option value="elevated">elevated 12,000</option>
-                <option value="emergency">emergency 25,000</option>
-              </select>
-              <SelectChevron />
-            </div>
-          </label>
-          <label className="hpt-form-span flex min-w-0 flex-col gap-1">
-            <span className={TOKENS.type.label}>note</span>
-            <input
-              type="text"
-              placeholder="reason for limit change"
-              className="hpt-field truncate"
-            />
-          </label>
-          <button type="submit" className="hpt-apply hpt-form-span">
-            apply draft
-          </button>
-        </form>
+      <ContentSection title="status">
+        <div className={cn(TOKENS.surface.well, "px-2 py-1.5")}>
+          <p className={TOKENS.type.value}>Drag panes, resize splits, and switch tabs.</p>
+        </div>
       </ContentSection>
     </PaneContent>
   );
@@ -487,9 +409,9 @@ function GraphPaneContent(): React.ReactElement {
   return (
     <PaneContent>
       <ContentSection>
-        <div className={cn("px-0.5", TOKENS.type.sectionMeta)}>usd k</div>
+        <div className={cn("px-0.5", TOKENS.type.sectionMeta)}>usd (k)</div>
         <div className="flex items-baseline justify-between gap-2 px-0.5">
-          <span className={cn("min-w-0 truncate", TOKENS.type.label)}>24h total</span>
+          <span className={cn("min-w-0 truncate", TOKENS.type.label)}>total</span>
           <span className="shrink-0 text-base font-semibold tabular-nums text-sky-300">{SPEND_TOTAL_LABEL}</span>
         </div>
 
@@ -511,31 +433,9 @@ function GraphPaneContent(): React.ReactElement {
           })}
         </div>
 
-        <svg
-          viewBox="0 0 240 48"
-          className={cn(TOKENS.surface.well, "h-12 w-full shrink-0 p-1 text-sky-400/70")}
-          aria-hidden
-        >
-          <defs>
-            <linearGradient id="showcaseSparkFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgb(56 189 248 / 0.30)" />
-              <stop offset="100%" stopColor="rgb(56 189 248 / 0)" />
-            </linearGradient>
-          </defs>
-          <polyline
-            fill="url(#showcaseSparkFill)"
-            stroke="none"
-            points="0,40 30,36 60,32 90,24 120,18 150,22 180,10 210,14 240,6 240,48 0,48"
-          />
-          <polyline
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            points="0,40 30,36 60,32 90,24 120,18 150,22 180,10 210,14 240,6"
-          />
-        </svg>
+        <div className={cn(TOKENS.surface.well, "px-2 py-1 font-mono text-[10px] text-slate-400")}>
+          lightweight demo trend
+        </div>
       </ContentSection>
     </PaneContent>
   );
@@ -582,17 +482,6 @@ function DebugPaneContent(): React.ReactElement {
     <PaneContent>
       <ContentSection fill>
         <div className={cn("px-0.5", TOKENS.type.sectionMeta)}>{DEBUG_TRACE_LINES.length} lines buffered</div>
-        <DataRow
-          leading={
-            <div className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-rose-400/70" />
-              <span className="h-2 w-2 rounded-full bg-amber-400/70" />
-              <span className="h-2 w-2 rounded-full bg-emerald-400/70" />
-            </div>
-          }
-          body={<span className={TOKENS.type.label}>stream status</span>}
-          trailing={<StatusBadge tone="info" withDot>live</StatusBadge>}
-        />
         <pre className={cn(TOKENS.surface.well, "min-h-0 flex-1 overflow-auto p-2", TOKENS.type.console)}>
           {DEBUG_TRACE_LINES.map((line: string, index: number): React.ReactElement => (
             <div key={`trace-${index}`} className="whitespace-pre-wrap break-all">

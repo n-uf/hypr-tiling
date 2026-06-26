@@ -1626,7 +1626,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
 
   return (
     <aside
-      className="hypr-range-scope h-full min-h-0 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/40 p-3"
+      className="hypr-range-scope h-full min-h-0 shrink-0 overflow-hidden rounded-xl border border-cyan-100/20 bg-[linear-gradient(180deg,rgba(15,23,42,0.84),rgba(2,6,23,0.94))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_22px_rgba(34,211,238,0.12)] backdrop-blur"
       style={{
         width: CONTROL_PANE_WIDTH_PX,
         minWidth: CONTROL_PANE_WIDTH_PX,
@@ -1635,7 +1635,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
     >
       <style>{RANGE_SLIDER_STYLE}</style>
       <div className="flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden">
-        <section className="shrink-0 min-w-0 max-w-full overflow-hidden rounded border border-white/10 bg-slate-900/90 p-1.5">
+        <section className="shrink-0 min-w-0 max-w-full overflow-hidden rounded-lg border border-cyan-100/20 bg-slate-900/80 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
           <div className="flex items-center justify-between gap-2">
             <div
               className="min-w-0 flex-1 truncate font-mono text-[10px] uppercase tracking-[0.13em] text-slate-400"
@@ -1691,12 +1691,12 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
 
           {props.animationControlsSticky ? null : animationGroup}
 
-          <section className="min-w-0 max-w-full space-y-3 overflow-hidden rounded border border-white/10 bg-slate-900/70 p-2">
+          <section className="min-w-0 max-w-full space-y-3 overflow-hidden rounded-lg border border-cyan-100/15 bg-slate-900/65 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-cyan-200">
               primary controls
             </div>
 
-            <div className="min-w-0 max-w-full overflow-hidden rounded border border-cyan-300/25 bg-slate-950/60 p-2">
+            <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-cyan-200/25 bg-slate-950/65 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.13em] text-slate-500">
                 interaction capabilities
               </div>

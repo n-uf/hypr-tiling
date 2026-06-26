@@ -897,6 +897,15 @@ export interface DynamicLayoutConfig {
 export interface DynamicRenderTileArgs {
   leafId: string;
   tile: DynamicTile;
+  /** 1-based pane ordinal in current tab order (for generic pane labels). */
+  paneOrdinal: number;
+  /** Current pane viewport width in pixels (for responsive header/control density). */
+  paneWidthPx: number;
+  /**
+   * Global pane-content visibility toggle from the tab strip checkbox.
+   * `false` hides pane body content by default.
+   */
+  isPaneContentVisible: boolean;
   isDragSource: boolean;
   isDropTarget: boolean;
   isDropEligible: boolean;
