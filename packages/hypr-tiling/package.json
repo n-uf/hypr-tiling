@@ -1,6 +1,6 @@
 {
   "name": "@n-uf/hypr-tiling",
-  "version": "26.6.1",
+  "version": "26.6.2",
   "private": false,
   "description": "Recursive split-tree tiling renderer for React.",
   "license": "PolyForm-Perimeter-1.0.0",
@@ -30,8 +30,10 @@
     "build": "tsup index.ts --format esm,cjs --dts --clean --external react --external react-dom",
     "check": "pnpm typecheck && pnpm test",
     "prepublishOnly": "pnpm build",
+    "release": "if [ \"$npm_config_nobump\" = \"true\" ]; then npm publish --access public; else node ./scripts/calendar-version-bump.mjs --apply && npm publish --access public; fi",
     "typecheck": "tsc --project tsconfig.json",
-    "test": "jest"
+    "test": "jest",
+    "release:next-version": "node ./scripts/calendar-version-bump.mjs --dry-run"
   },
   "dependencies": {
     "clsx": "^2.1.1",

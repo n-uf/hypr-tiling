@@ -58,8 +58,6 @@ export function Example(): JSX.Element {
 
 ## Versioning policy
 
-Active version: `26.6.1`.
-
 Clause mapping:
 
 - First clause (`26`) exposes the release year (`2026`)
@@ -71,7 +69,19 @@ Semver caveat:
 - Semver numeric identifiers cannot use leading zeroes (`26.06.1` is invalid)
 - This workspace therefore uses `YY.M.R` (e.g. `26.6.1`) instead of `YY.MM.R`
 
-See `_agent/versioning-policy.md` for deeper guidance, including optional fourth-segment patterns.
+Release commands (package `packages/hypr-tiling`):
+
+- `npm run release`:
+  - Auto-aligns `YY.M` to the current calendar year/month
+  - If the current version already matches the current month, bumps patch (`26.6.2` -> `26.6.3`)
+  - If the month changed, resets to `.0` for the new month (`26.6.2` in July 2026 -> `26.7.0`)
+  - Publishes with `npm publish --access public`
+- `npm run release --nobump=true`:
+  - Publishes without changing the current version
+- `npm run release:next-version`:
+  - Prints the computed next calendar-aligned version without publishing
+
+See `_agent/versioning-policy.md` for deeper guidance.
 
 ## License policy
 
