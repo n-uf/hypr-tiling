@@ -1,0 +1,39 @@
+{
+  "name": "hypr-tiling-showcase",
+  "version": "26.6.1",
+  "private": false,
+  "description": "Showcase package for hypr-tiling.",
+  "license": "PolyForm-Perimeter-1.0.0",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean --external react --external react-dom --external hypr-tiling",
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "hypr-tiling": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3"
+  }
+}

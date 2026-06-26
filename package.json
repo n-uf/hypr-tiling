@@ -1,0 +1,14 @@
+{
+  "name": "hypr-tiling-workspace",
+  "version": "26.6.1",
+  "private": true,
+  "description": "Workspace for hypr-tiling packages and homepage app.",
+  "license": "PolyForm-Perimeter-1.0.0",
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {
+    "build": "pnpm -r --filter './packages/*' build && pnpm --filter hypr-tiling-web build",
+    "typecheck": "pnpm -r --filter './packages/*' typecheck && pnpm --filter hypr-tiling-web typecheck",
+    "test": "pnpm --filter hypr-tiling test",
+    "check": "pnpm typecheck && pnpm test"
+  }
+}
