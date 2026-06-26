@@ -302,7 +302,7 @@ function PaneContent({ children }: PaneContentProps): React.ReactElement {
 }
 
 interface ContentSectionProps {
-  title: string;
+  title?: string;
   meta?: string;
   fill?: boolean;
   children: React.ReactNode;
@@ -310,6 +310,7 @@ interface ContentSectionProps {
 
 /** The one framed surface (Tier-1). Header rule + body; `fill` makes it own the scroll. */
 function ContentSection({ title, meta, fill, children }: ContentSectionProps): React.ReactElement {
+  const hasHeader: boolean = title != null || meta != null;
   return (
     <section
       className={cn(
@@ -318,10 +319,12 @@ function ContentSection({ title, meta, fill, children }: ContentSectionProps): R
         fill === true ? "min-h-0 flex-1" : "",
       )}
     >
-      <div className={cn(TOKENS.rule, "flex items-center justify-between gap-2 pb-1.5")}>
-        <h3 className={TOKENS.type.sectionTitle}>{title}</h3>
-        {meta == null ? null : <span className={cn("truncate", TOKENS.type.sectionMeta)}>{meta}</span>}
-      </div>
+      {hasHeader ? (
+        <div className={cn(TOKENS.rule, "flex items-center justify-between gap-2 pb-1.5")}>
+          {title == null ? <span className="sr-only">section heading</span> : <h3 className={TOKENS.type.sectionTitle}>{title}</h3>}
+          {meta == null ? null : <span className={cn("truncate", TOKENS.type.sectionMeta)}>{meta}</span>}
+        </div>
+      ) : null}
       {children}
     </section>
   );
@@ -460,7 +463,8 @@ function OverviewPaneContent(): React.ReactElement {
 function EventsPaneContent(): React.ReactElement {
   return (
     <PaneContent>
-      <ContentSection title="event stream" meta={`${EVENT_FEED.length} entries`} fill>
+      <ContentSection fill>
+        <div className={cn("px-0.5", TOKENS.type.sectionMeta)}>{EVENT_FEED.length} entries</div>
         <ul className={cn("flex min-h-0 flex-1 flex-col overflow-y-auto pr-0.5", TOKENS.hairline)}>
           {EVENT_FEED.map((item: EventFeedItem, index: number): React.ReactElement => (
             <li key={`${item.time}-${index}`} className="min-w-0">
@@ -482,7 +486,8 @@ function GraphPaneContent(): React.ReactElement {
 
   return (
     <PaneContent>
-      <ContentSection title="hourly spend" meta="usd k">
+      <ContentSection>
+        <div className={cn("px-0.5", TOKENS.type.sectionMeta)}>usd k</div>
         <div className="flex items-baseline justify-between gap-2 px-0.5">
           <span className={cn("min-w-0 truncate", TOKENS.type.label)}>24h total</span>
           <span className="shrink-0 text-base font-semibold tabular-nums text-sky-300">{SPEND_TOTAL_LABEL}</span>
@@ -539,7 +544,8 @@ function GraphPaneContent(): React.ReactElement {
 function AlertsPaneContent(): React.ReactElement {
   return (
     <PaneContent>
-      <ContentSection title="active alerts" meta={`${ALERT_ROWS.length} rows`} fill>
+      <ContentSection fill>
+        <div className={cn("px-0.5", TOKENS.type.sectionMeta)}>{ALERT_ROWS.length} rows</div>
         <div className={cn(TOKENS.surface.well, "min-h-0 min-w-0 flex-1 overflow-auto")}>
           <table className="w-full min-w-[280px] border-collapse text-left">
             <thead>
@@ -574,7 +580,8 @@ function AlertsPaneContent(): React.ReactElement {
 function DebugPaneContent(): React.ReactElement {
   return (
     <PaneContent>
-      <ContentSection title="trace console" meta="structured feed" fill>
+      <ContentSection fill>
+        <div className={cn("px-0.5", TOKENS.type.sectionMeta)}>{DEBUG_TRACE_LINES.length} lines buffered</div>
         <DataRow
           leading={
             <div className="flex items-center gap-1.5">
@@ -583,7 +590,7 @@ function DebugPaneContent(): React.ReactElement {
               <span className="h-2 w-2 rounded-full bg-emerald-400/70" />
             </div>
           }
-          body={<span className={TOKENS.type.label}>runtime log stream</span>}
+          body={<span className={TOKENS.type.label}>stream status</span>}
           trailing={<StatusBadge tone="info" withDot>live</StatusBadge>}
         />
         <pre className={cn(TOKENS.surface.well, "min-h-0 flex-1 overflow-auto p-2", TOKENS.type.console)}>

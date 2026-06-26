@@ -1,5 +1,5 @@
 {
-  "name": "hypr-tiling",
+  "name": "@n-uf/hypr-tiling",
   "version": "26.6.1",
   "private": false,
   "description": "Recursive split-tree tiling renderer for React.",

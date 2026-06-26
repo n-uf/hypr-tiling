@@ -1,6 +1,13 @@
-# hypr-tiling workspace
+# hypr-tiling project
 
-Monorepo with a publishable core tiling package, a publishable showcase package, and a flat homepage app.
+`hypr-tiling` is a React dynamic-tiling layout toolkit for building IDE-like products, trading/operator consoles, and analytics dashboards with resizable panes and programmable split trees.
+
+Use it when you need users to rearrange dense, multi-panel screens at runtime while your app keeps strict control over layout state and rendering behavior.
+
+## Attribution
+
+This project is inspired by [Hyprland](https://hypr.land) and its tiling-first UX philosophy.  
+Kudos to the Hyprland maintainers and contributors for advancing modern Linux compositor and tiling workflow design.
 
 ## Workspace layout
 
