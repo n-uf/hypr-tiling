@@ -167,6 +167,7 @@ import {
   deriveSurvivorFlipTransform,
   resolveSurvivorFlipFirst,
   shouldAnimateSurvivorReflow,
+  shouldSnapSurvivorReflowOnSettleCommit,
   type SurvivorRect,
 } from "./survivor-reflow";
 import type {
@@ -3429,6 +3430,8 @@ export const DynamicTilingRenderer = React.forwardRef<
   const previousLeafRectsRef = React.useRef<Map<string, SurvivorRect>>(
     new Map(),
   );
+  /** TRUE once a survivor-reflow layout effect has run with `phase === "dragging"`. */
+  const didPaintDraggingFrameRef = React.useRef<boolean>(false);
   const survivorFlipRafRef = React.useRef<number | null>(null);
   // In-flight coherent-transit (swap) survivor dip animations (Web Animations),
   // tracked so a re-derived reflow batch can cancel them before re-measuring.
@@ -3929,9 +3932,22 @@ export const DynamicTilingRenderer = React.forwardRef<
     const leafElements: ReadonlyArray<HTMLElement> = Array.from(
       viewport.querySelectorAll<HTMLElement>("[data-leaf-id]"),
     );
+    if (dragState.phase === "dragging") {
+      didPaintDraggingFrameRef.current = true;
+    }
     const playReflow: boolean =
       liveDragModeEnabled &&
       (dragState.phase === "dragging" || dragState.phase === "settling");
+    const snapSettleCommit: boolean = shouldSnapSurvivorReflowOnSettleCommit({
+      liveDragModeEnabled,
+      dragPhase: dragState.phase,
+      settleOutcome:
+        dragState.phase === "settling" ? dragState.outcome : null,
+      didPaintDraggingFrame: didPaintDraggingFrameRef.current,
+    });
+    if (!playReflow) {
+      didPaintDraggingFrameRef.current = false;
+    }
     // Clamp boundary = the host container's visible region intersected with the
     // window, so a survivor scrolled out of the host (or off the window) is
     // snapped, never tweened across a large off-screen offset (§10).
@@ -3973,14 +3989,16 @@ export const DynamicTilingRenderer = React.forwardRef<
       if (leafId == null) {
         continue;
       }
-      if (!playReflow) {
-        // Not animating (no drag in flight / drag fully over): force-strip any
-        // leftover inline transform/transition so a leaf can NEVER be left
-        // floating — e.g. a coherent-dip WAAPI cancelled mid-flight reverts the
-        // node to its pre-animate inverted transform (`fill: none`), which would
-        // otherwise persist as a hanging, offset pane. Stripping first also makes
-        // the recorded resting rect the true committed box (a clean next-pickup
-        // First baseline).
+      if (!playReflow || snapSettleCommit) {
+        // Not animating (no drag in flight / drag fully over / fast-flick
+        // settle-commit snap): force-strip any leftover inline
+        // transform/transition so a leaf can NEVER be left floating — e.g. a
+        // coherent-dip WAAPI cancelled mid-flight reverts the node to its
+        // pre-animate inverted transform (`fill: none`), which would otherwise
+        // persist as a hanging, offset pane. Stripping first also makes the
+        // recorded resting rect the true committed box (a clean next-pickup
+        // First baseline). The fast-flick snap path uses this branch so a
+        // same-task release never arms a source-origin FLIP tween.
         element.style.transition = "none";
         element.style.transform = "none";
         const restingRect: DOMRect = element.getBoundingClientRect();
@@ -6073,6 +6091,7 @@ export const DynamicTilingRenderer = React.forwardRef<
     seatAnchorRef.current = null;
     setSeatFootprint(null);
     onLiveHitLogChange?.(null);
+    didPaintDraggingFrameRef.current = false;
     dispatchDrag({ type: "SETTLE_DONE" });
   }, [
     beginCancelFlyBackAnimation,

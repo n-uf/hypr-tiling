@@ -1,3 +1,5 @@
+import type { DragSettleOutcome } from "./drag-machine";
+
 /**
  * Survivor-reflow FLIP — the pure (DOM-less) half of the live-drag survivor
  * easing.
@@ -147,4 +149,67 @@ export function resolveSurvivorFlipFirst(params: {
     return params.liveVisualRect;
   }
   return params.recordedPreReflowRect;
+}
+
+/** Drag phases the survivor-reflow layout effect observes. */
+export type SurvivorReflowDragPhase = "idle" | "armed" | "dragging" | "settling";
+
+export interface SurvivorReflowPlaybackInput {
+  readonly liveDragModeEnabled: boolean;
+  readonly dragPhase: SurvivorReflowDragPhase;
+  /** Present only while `dragPhase === "settling"`. */
+  readonly settleOutcome: DragSettleOutcome | null;
+  /** TRUE once a layout effect has run with `dragPhase === "dragging"`. */
+  readonly didPaintDraggingFrame: boolean;
+}
+
+/**
+ * Fast-flick settle-commit snap gate. When a release batches `armed →
+ * settling(commit)` in one task without a painted `dragging` frame, the
+ * survivor-reflow effect records rects and strips inline styles instead of
+ * arming a ~170ms FLIP from the source pane's origin — the data commit is
+ * already correct; only the visual tween is skipped.
+ */
+export function shouldSnapSurvivorReflowOnSettleCommit(
+  input: SurvivorReflowPlaybackInput,
+): boolean {
+  return (
+    input.liveDragModeEnabled
+    && input.dragPhase === "settling"
+    && input.settleOutcome === "commit"
+    && !input.didPaintDraggingFrame
+  );
+}
+
+/**
+ * Whether the survivor-reflow batch should arm FLIP transitions (vs the
+ * record-only snap path). Mirrors `playReflow && !snapSettleCommit` in the
+ * renderer's layout effect.
+ */
+export function shouldPlaySurvivorReflowFlip(input: SurvivorReflowPlaybackInput): boolean {
+  if (!input.liveDragModeEnabled) {
+    return false;
+  }
+  if (input.dragPhase === "dragging") {
+    return true;
+  }
+  if (input.dragPhase === "settling") {
+    return !shouldSnapSurvivorReflowOnSettleCommit(input);
+  }
+  return false;
+}
+
+/** Minimal style surface the snap path mutates on a `[data-leaf-id]` element. */
+export interface SurvivorReflowLeafStyleTarget {
+  readonly style: {
+    transition: string;
+    transform: string;
+    transformOrigin?: string;
+  };
+}
+
+/** Record-only snap path: force identity styles so no FLIP transition arms. */
+export function applySurvivorReflowSnapLeafStyles(element: SurvivorReflowLeafStyleTarget): void {
+  element.style.transition = "none";
+  element.style.transform = "none";
 }
