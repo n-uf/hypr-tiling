@@ -3,6 +3,7 @@
 import {
   ANIMATION_CONTROL_DEFAULTS,
   DEFAULT_DRAG_HOP_EASING,
+  DEFAULT_TILING_LAYOUT_CONFIG,
   DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
   DynamicTilingRenderer,
   TilingObservabilityPanel,
@@ -84,9 +85,9 @@ const SHOWCASE_TILES: ReadonlyArray<DynamicTile> =
     }),
   );
 
-const SHOWCASE_DEFAULT_GAP_PX: number = 6;
-const SHOWCASE_DEFAULT_MIN_PANE_SIZE_PX: number = 96;
-const SHOWCASE_DEFAULT_HANDLE_SIZE_PX: number = 4;
+// Inter-pane spacing scale inherited from the library default so the showcase
+// reads with the same tasteful gutter any consumer gets out of the box.
+const SHOWCASE_DEFAULT_GAP_PX: number = DEFAULT_TILING_LAYOUT_CONFIG.gapPx;
 
 interface ShowcaseControlShortcut {
   id: string;
@@ -397,11 +398,7 @@ const INITIAL_LAYOUT: DynamicLayoutNode = {
   },
 };
 
-const INITIAL_CONFIG: DynamicLayoutConfig = {
-  gapPx: SHOWCASE_DEFAULT_GAP_PX,
-  minPaneSizePx: SHOWCASE_DEFAULT_MIN_PANE_SIZE_PX,
-  handleSizePx: SHOWCASE_DEFAULT_HANDLE_SIZE_PX,
-};
+const INITIAL_CONFIG: DynamicLayoutConfig = { ...DEFAULT_TILING_LAYOUT_CONFIG };
 const DEFAULT_SHOW_DROP_PREVIEW_LANDING_SHADOWS: boolean = true;
 const LIVE_LEDGER_RETENTION_LIMIT: number = 60;
 /** How long the "preview all hit zones on adjustment" overlay stays up after the last geometry slider input. */

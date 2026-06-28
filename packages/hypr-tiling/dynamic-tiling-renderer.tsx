@@ -267,6 +267,22 @@ export const DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS: DynamicObservabilityCo
     projectedSuccessorFillEnabled: true,
   };
 
+/**
+ * Recommended baseline layout config — the generic gap / min-pane / handle
+ * scale. `config` stays a required renderer prop (spacing is explicit at the
+ * call site), but consumers that don't tune spacing can spread this for a
+ * tasteful, well-readable inter-pane gutter out of the box instead of inventing
+ * their own magic numbers. `gapPx` + `handleSizePx` together form the visible
+ * inter-pane gap (the divider element occupies `handleSizePx` flanked by
+ * `gapPx / 2` margins; each child subtracts `(gapPx + handleSizePx) / 2` of
+ * basis — see `splitGapOffsetPx` in the split renderer for the balancing math).
+ */
+export const DEFAULT_TILING_LAYOUT_CONFIG: DynamicLayoutConfig = {
+  gapPx: 6,
+  minPaneSizePx: 96,
+  handleSizePx: 4,
+};
+
 /** Baseline ghost-hop / survivor-reflow duration at `DEFAULT_DRAG_ANIMATION_SPEED_PERCENT`. */
 export const BASELINE_DRAG_HOP_DURATION_MS: number = 170;
 export const DEFAULT_DRAG_ANIMATION_SPEED_PERCENT: number = 100;
@@ -2943,20 +2959,20 @@ function PaneTabStrip({
   onPaneContentVisibilityChange: (nextVisible: boolean) => void;
 }): React.ReactElement {
   return (
-    <div className="flex shrink-0 items-center gap-1 rounded-xl bg-slate-900/65 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_20px_rgba(34,211,238,0.14)] backdrop-blur">
+    <div className="flex shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-zinc-900/70 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_22px_rgba(0,0,0,0.42)] backdrop-blur">
       <div
         aria-label="hypr tiling title"
-        className="flex shrink-0 items-center px-1 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-100/90"
+        className="flex shrink-0 items-center px-1 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-300"
       >
         HYPR TILING
       </div>
       <label
-        className="flex shrink-0 cursor-pointer select-none items-center gap-1 px-1 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-slate-300 hover:text-cyan-50"
+        className="flex shrink-0 cursor-pointer select-none items-center gap-1 px-1 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-slate-400 hover:text-slate-100"
         title={isPaneContentVisible ? "Hide pane content" : "Show pane content"}
       >
         <input
           type="checkbox"
-          className="h-3 w-3 accent-cyan-400"
+          className="h-3 w-3 accent-slate-400"
           checked={isPaneContentVisible}
           onChange={(event: React.ChangeEvent<HTMLInputElement>): void => {
             onPaneContentVisibilityChange(event.currentTarget.checked);
@@ -2988,7 +3004,7 @@ function PaneTabStrip({
                   "flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
                   isActive
                     ? tabAccentActiveClassName(tab.accent)
-                    : "border-white/15 bg-slate-950/80 text-slate-300 hover:border-cyan-200/35 hover:text-slate-100",
+                    : "border-white/15 bg-zinc-950/80 text-slate-300 hover:border-white/30 hover:text-slate-100",
                 )}
               >
                 <span className="font-semibold opacity-70">{tabIndex + 1}</span>
