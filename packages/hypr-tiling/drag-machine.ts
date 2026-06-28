@@ -414,6 +414,31 @@ export function shouldReresolveSeatedTarget(params: {
 }
 
 /**
+ * Release-time slot preservation (Hyprland-style). When the ghost is seated on a
+ * committable target, do not clobber it if release coords resolve null or a
+ * non-committable target — a quick flick off the slot still commits the seated
+ * drop. During move samples this returns false so the slot-commitment policy
+ * governs re-aim.
+ */
+export function shouldPreserveSeatedTargetOnRelease(
+  seatedTarget: DragResolvedTarget | null,
+  freshTarget: DragResolvedTarget | null,
+  sourceLeafId: string,
+  isReleaseSample: boolean,
+): boolean {
+  if (!isReleaseSample || seatedTarget == null) {
+    return false;
+  }
+  if (!isCommittableTarget(seatedTarget, sourceLeafId)) {
+    return false;
+  }
+  if (freshTarget == null) {
+    return true;
+  }
+  return !isCommittableTarget(freshTarget, sourceLeafId);
+}
+
+/**
  * The hysteresis seed (`previousZone`) for re-resolving intent over a target —
  * the prior resolved zone IFF the prior target is the same leaf, else `null`.
  * Subsumes the old `stableDropStateRef`: the FSM's `resolvedTarget` IS the stable

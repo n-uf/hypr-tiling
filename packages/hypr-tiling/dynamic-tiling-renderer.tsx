@@ -37,6 +37,7 @@ import {
   resolveDragGhostSeatLeafId,
   resolveTouchArmedMove,
   shouldReresolveSeatedTarget,
+  shouldPreserveSeatedTargetOnRelease,
   type DragMachinePoint,
   type DragMachineState,
   type DragPointerType,
@@ -5754,7 +5755,10 @@ export const DynamicTilingRenderer = React.forwardRef<
     // coalescer flushes, so without a synchronous release-time resolve the FSM
     // would still be `armed` (or hold a stale target) and POINTER_UP would
     // settle as a click/cancel, reverting the pane to its origin.
-    const processPointerSample = (client: DragMachinePoint): void => {
+    const processPointerSample = (
+      client: DragMachinePoint,
+      isReleaseSample: boolean = false,
+    ): void => {
       {
           const current: DragMachineState = dragStateRef.current;
           if (current.phase === "armed") {
@@ -5844,6 +5848,15 @@ export const DynamicTilingRenderer = React.forwardRef<
             // hysteresis, so the two dampers never double-count.
             let nextTarget: DynamicDropState | null = freshTarget;
             if (
+              shouldPreserveSeatedTargetOnRelease(
+                seatedTarget,
+                freshTarget,
+                current.sourceLeafId,
+                isReleaseSample,
+              )
+            ) {
+              nextTarget = seatedTarget;
+            } else if (
               seatedTarget != null &&
               isCommittableTarget(seatedTarget, current.sourceLeafId)
             ) {
@@ -5982,7 +5995,10 @@ export const DynamicTilingRenderer = React.forwardRef<
         releaseState.touchDrag;
       if (!releaseIsTouch) {
         coalescer.cancel();
-        processPointerSample({ x: event.clientX, y: event.clientY });
+        processPointerSample(
+          { x: event.clientX, y: event.clientY },
+          true,
+        );
       }
       dispatchDrag({ type: "POINTER_UP", pointerId: owningPointerId });
     };

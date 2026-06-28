@@ -23,6 +23,7 @@ import {
   resolveTouchArmedMove,
   shouldReserveDragSourceSlot,
   shouldReresolveSeatedTarget,
+  shouldPreserveSeatedTargetOnRelease,
 } from "../drag-machine";
 import { collectGroups, findGroupContainingLeaf, findLeafById, groupLeaves, insertLeafAdjacent, readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../state";
 import type {
@@ -829,5 +830,96 @@ describe("drag-machine — fast drag-release commits at the release position (co
       state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
     }
     expect(state).toEqual({ phase: "idle" });
+  });
+});
+
+describe("drag-machine — release-time seated target preservation (gap release regression)", (): void => {
+  const seatedSwap: DragResolvedTarget = makeTarget("C", "center", "swap");
+
+  it("preserves a committable seated target on release when fresh resolve is null", (): void => {
+    expect(
+      shouldPreserveSeatedTargetOnRelease(seatedSwap, null, "A", true),
+    ).toBe(true);
+    expect(
+      shouldPreserveSeatedTargetOnRelease(seatedSwap, null, "A", false),
+    ).toBe(false);
+  });
+
+  it("preserves a committable seated target on release when fresh resolve is non-committable", (): void => {
+    expect(
+      shouldPreserveSeatedTargetOnRelease(
+        seatedSwap,
+        makeTarget("C", "center", "none"),
+        "A",
+        true,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not preserve when release resolves a different committable target", (): void => {
+    expect(
+      shouldPreserveSeatedTargetOnRelease(
+        seatedSwap,
+        makeTarget("B", "center", "swap"),
+        "A",
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it("dragging with committable seated target: release-time null resolve still commits when target is preserved", (): void => {
+    let state: DragMachineState = dragMachineReducer(
+      DRAG_MACHINE_INITIAL_STATE,
+      pointerDown(),
+    );
+    state = dragMachineReducer(state, {
+      type: "POINTER_MOVE",
+      pointerId: 1,
+      client: { x: 200, y: 200 },
+    });
+    state = dragMachineReducer(state, {
+      type: "TARGET_RESOLVED",
+      pointerId: 1,
+      resolvedTarget: seatedSwap,
+    });
+    // Release sample over a gap would resolve null; renderer preserves seated.
+    state = dragMachineReducer(state, {
+      type: "TARGET_RESOLVED",
+      pointerId: 1,
+      resolvedTarget: seatedSwap,
+    });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase).toBe("settling");
+    if (state.phase === "settling") {
+      expect(state.outcome).toBe("commit");
+      expect(state.resolvedTarget?.leafId).toBe("C");
+    }
+  });
+
+  it("mid-drag null target without release preservation settles as cancel", (): void => {
+    let state: DragMachineState = dragMachineReducer(
+      DRAG_MACHINE_INITIAL_STATE,
+      pointerDown(),
+    );
+    state = dragMachineReducer(state, {
+      type: "POINTER_MOVE",
+      pointerId: 1,
+      client: { x: 200, y: 200 },
+    });
+    state = dragMachineReducer(state, {
+      type: "TARGET_RESOLVED",
+      pointerId: 1,
+      resolvedTarget: seatedSwap,
+    });
+    state = dragMachineReducer(state, {
+      type: "TARGET_RESOLVED",
+      pointerId: 1,
+      resolvedTarget: null,
+    });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase).toBe("settling");
+    if (state.phase === "settling") {
+      expect(state.outcome).toBe("cancel");
+    }
   });
 });
