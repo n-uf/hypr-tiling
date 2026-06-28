@@ -86,10 +86,6 @@ const SHOWCASE_TILES: ReadonlyArray<DynamicTile> =
     }),
   );
 
-// Inter-pane spacing scale inherited from the library default so the showcase
-// reads with the same tasteful gutter any consumer gets out of the box.
-const SHOWCASE_DEFAULT_GAP_PX: number = DEFAULT_TILING_LAYOUT_CONFIG.gapPx;
-
 interface ShowcaseControlShortcut {
   id: string;
   combo: string;
@@ -353,7 +349,11 @@ const INITIAL_LAYOUT: DynamicLayoutNode = {
   id: "root",
   axis: "horizontal",
   ratio: 0.58,
-  gapPx: SHOWCASE_DEFAULT_GAP_PX,
+  // No per-node `gapPx` override: every split boundary inherits the live
+  // `config.gapPx` so the top-bar gap control tunes ALL gutters uniformly. A
+  // per-node `gapPx` is a legitimate library capability (`node.gapPx ??
+  // config.gapPx`), but pinning the root here made the root gutter ignore the
+  // control while nested boundaries widened — the gap-inconsistency bug.
   first: {
     kind: "split",
     id: "left-stack",
