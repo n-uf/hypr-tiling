@@ -31,6 +31,7 @@ import {
   type TilingCommand,
   type TilingCommandHandle,
   type TilingObservabilityLedgerEntry,
+  type TilingThemeId,
 } from "hypr-tiling";
 import * as React from "react";
 import {
@@ -456,6 +457,7 @@ export function DynamicTilingShowcase(): React.ReactElement {
   const [config, setConfig] =
     React.useState<DynamicLayoutConfig>(INITIAL_CONFIG);
   const [focusedLeafId, setFocusedLeafId] = React.useState<string | null>(null);
+  const [themeId, setThemeId] = React.useState<TilingThemeId>("neon-terminal");
   const [isControlPaneCollapsed, setIsControlPaneCollapsed] =
     React.useState<boolean>(true);
   const rendererCommandHandleRef = React.useRef<TilingCommandHandle | null>(
@@ -860,6 +862,8 @@ export function DynamicTilingShowcase(): React.ReactElement {
               focusedLeafId={focusedLeafId}
               onFocusedLeafChange={setFocusedLeafId}
               onTileAccentChange={handleTileAccentChange}
+              themeId={themeId}
+              onThemeChange={setThemeId}
               showDropPreviewOverlays={
                 previewOverlaysEnabled && showDropPreviewOverlays
               }

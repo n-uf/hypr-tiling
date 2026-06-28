@@ -5,10 +5,12 @@ import { createPortal } from "react-dom";
 import { cn } from "./cn";
 import {
   DYNAMIC_TILE_ACCENT_SWATCHES,
+  TILING_THEMES,
   TilingThemeProvider,
   resolveTilingTheme,
   useTilingTheme,
   type TilingTheme,
+  type TilingThemeId,
 } from "./theme";
 import {
   isCommandEnabled,
@@ -2934,12 +2936,23 @@ interface PaneTabStripAccentPicker {
   onSelect: (accent: DynamicTileAccent) => void;
 }
 
+/**
+ * Theme-switcher config handed to the top-bar tab strip. Present only when the
+ * consumer wires `onThemeChange`; carries the active theme id (for the
+ * active-chip highlight) and a commit callback. Mirrors the accent picker.
+ */
+interface PaneTabStripThemePicker {
+  activeThemeId: TilingThemeId;
+  onSelect: (themeId: TilingThemeId) => void;
+}
+
 function PaneTabStrip({
   tabs,
   activeFocusedLeafId,
   activeMaximizedLeafId,
   isPaneContentVisible,
   accentPicker,
+  themePicker,
   onSelect,
   onPaneContentVisibilityChange,
 }: {
@@ -2948,6 +2961,7 @@ function PaneTabStrip({
   activeMaximizedLeafId: string | null;
   isPaneContentVisible: boolean;
   accentPicker: PaneTabStripAccentPicker | null;
+  themePicker: PaneTabStripThemePicker | null;
   onSelect: (leafId: string) => void;
   onPaneContentVisibilityChange: (nextVisible: boolean) => void;
 }): React.ReactElement {
@@ -2957,6 +2971,36 @@ function PaneTabStrip({
       <div aria-label="hypr tiling title" className={theme.topBar.titleText}>
         HYPR TILING
       </div>
+      {themePicker != null ? (
+        <div
+          role="group"
+          aria-label="renderer theme"
+          className={theme.topBar.controlGroup}
+        >
+          {TILING_THEMES.map((entry: TilingTheme): React.ReactElement => {
+            const isActiveTheme: boolean =
+              entry.id === themePicker.activeThemeId;
+            return (
+              <button
+                key={`theme-${entry.id}`}
+                type="button"
+                aria-label={`set renderer theme to ${entry.label}`}
+                aria-pressed={isActiveTheme}
+                title={entry.label}
+                onClick={(): void => themePicker.onSelect(entry.id)}
+                className={cn(
+                  "rounded px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.12em] transition-colors",
+                  isActiveTheme
+                    ? "bg-white/15 text-white"
+                    : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
+                )}
+              >
+                {entry.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       {accentPicker != null ? (
         <div
           role="group"
@@ -3184,6 +3228,7 @@ export const DynamicTilingRenderer = React.forwardRef<
     onFocusedLeafChange,
     onTileAccentChange,
     themeId,
+    onThemeChange,
     maximizedLeafId,
     onMaximizedLeafChange,
     onProjectedOverlayCountChange,
@@ -3645,6 +3690,19 @@ export const DynamicTilingRenderer = React.forwardRef<
           onTileAccentChange(targetTileId, accent),
       };
     }, [focusedTileAccentTarget, onTileAccentChange]);
+  // Theme switcher config for the top bar — present only when the consumer wires
+  // `onThemeChange` (controlled `themeId`). Mirrors the accent-picker pattern:
+  // the active theme id (for the active-chip highlight) + a commit callback.
+  const tabStripThemePicker: PaneTabStripThemePicker | null =
+    React.useMemo(() => {
+      if (onThemeChange == null) {
+        return null;
+      }
+      return {
+        activeThemeId: theme.id,
+        onSelect: onThemeChange,
+      };
+    }, [onThemeChange, theme.id]);
   const paneShortcutChips: ReadonlyArray<PaneShortcutChipDescriptor> =
     React.useMemo(
       (): ReadonlyArray<PaneShortcutChipDescriptor> =>
@@ -6995,6 +7053,7 @@ export const DynamicTilingRenderer = React.forwardRef<
             activeMaximizedLeafId={activeMaximizedLeafId}
             isPaneContentVisible={isPaneContentVisible}
             accentPicker={tabStripAccentPicker}
+            themePicker={tabStripThemePicker}
             onSelect={activateLeaf}
             onPaneContentVisibilityChange={setIsPaneContentVisible}
           />
