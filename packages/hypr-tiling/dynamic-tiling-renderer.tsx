@@ -717,8 +717,13 @@ export function resolvePaneBodyRenderMode(
   input: DynamicPaneBodyRenderPolicyInput,
 ): DynamicPaneBodyRenderMode {
   const isDragGestureActive: boolean = input.dragPhase !== "idle";
+  // Empty mode (`!isPaneContentVisible`): at rest panes show placeholders; during
+  // a live drag the hop-in slot reveals content (aligned with preview-mode drag
+  // reveal) so the user sees what lands. Content-visible mode keeps the
+  // content-less reservation so the single ghost fills the slot (no double-paint).
   const shouldRenderReservation: boolean =
     input.liveDragModeEnabled &&
+    input.isPaneContentVisible &&
     isDragGestureActive &&
     input.isDragSource &&
     input.isReservedSlot;
@@ -2208,7 +2213,12 @@ function DefaultDynamicTile({
         </div>
       </header>
 
-      <div className={theme.paneShell.bodyText}>
+      <div
+        className={theme.paneShell.bodyText}
+        {...(isDragSource && shouldRenderPaneContent
+          ? { "data-drag-source-reservation": true }
+          : {})}
+      >
         {shouldRenderPaneContent ? (
           <React.Fragment key="pane-content-visible">
             {tile.content != null

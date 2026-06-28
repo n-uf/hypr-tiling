@@ -41,10 +41,22 @@ describe("pane body render policy", (): void => {
     ).toBe("render-content");
   });
 
-  it("renders reservation for live drag source slot while dragging", (): void => {
+  it("reveals hop-in slot content in live drag when empty mode is on", (): void => {
     expect(
       resolvePaneBodyRenderMode({
         isPaneContentVisible: false,
+        liveDragModeEnabled: true,
+        dragPhase: "dragging",
+        isDragSource: true,
+        isReservedSlot: true,
+      }),
+    ).toBe("render-content");
+  });
+
+  it("renders reservation for live drag source slot while dragging when content is visible", (): void => {
+    expect(
+      resolvePaneBodyRenderMode({
+        isPaneContentVisible: true,
         liveDragModeEnabled: true,
         dragPhase: "dragging",
         isDragSource: true,
