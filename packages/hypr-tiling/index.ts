@@ -172,6 +172,7 @@ export type {
   DynamicObservabilityColorConfig,
   DynamicObservabilityColorEnableConfig,
   DynamicPaneFootprint,
+  DynamicPaneBodyRenderMode,
   DynamicProjectedLandingOverlay,
   DynamicProjectedLandingSubject,
   DynamicRenderTileArgs,

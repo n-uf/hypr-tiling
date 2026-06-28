@@ -667,6 +667,13 @@ export interface TilingInteractionCapabilities {
   /** Divider resize capability. Default `"both"` (every divider resizable). */
   resize?: TilingResizeCapability;
   /**
+   * Whether split-divider resize handles are visibly rendered. `false` hides
+   * handle chrome (separator paint / hover affordance) while preserving the
+   * divider hit-target and resize capability gating from `resize`.
+   * Default `false`.
+   */
+  resizeHandlesVisible?: boolean;
+  /**
    * Drag-to-rearrange (move / swap / edge-insert) capability. When `false`,
    * panes are not draggable and no drop overlays / hit-zones activate.
    * Default `true`.
@@ -781,6 +788,7 @@ export interface TilingInteractionCapabilities {
  */
 export interface ResolvedTilingInteractionCapabilities {
   resize: TilingResizeCapability;
+  resizeHandlesVisible: boolean;
   rearrange: boolean;
   dragMode: TilingDragMode;
   slotCommitment: ResolvedTilingSlotCommitmentCapability;
@@ -906,6 +914,11 @@ export interface DynamicRenderTileArgs {
    * `false` hides pane body content by default.
    */
   isPaneContentVisible: boolean;
+  /**
+   * Canonical pane-body visibility decision resolved by the renderer policy.
+   * Keeps custom tile renderers aligned with the default drag/hidden semantics.
+   */
+  paneBodyRenderMode: DynamicPaneBodyRenderMode;
   isDragSource: boolean;
   isDropTarget: boolean;
   isDropEligible: boolean;
@@ -993,6 +1006,10 @@ export interface DynamicRenderTileArgs {
 }
 
 export type DynamicLeafDropZone = "center" | "left" | "right" | "top" | "bottom";
+export type DynamicPaneBodyRenderMode =
+  | "render-content"
+  | "render-placeholder"
+  | "render-reservation";
 export type DynamicMovePlacement = "left" | "right" | "top" | "bottom";
 export type DynamicFocusDirection = "left" | "right" | "up" | "down";
 export type DynamicLeafPreviewRole = "drag-source-landing-shadow" | "drop-target-result-shadow";

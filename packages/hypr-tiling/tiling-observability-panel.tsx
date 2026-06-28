@@ -1738,6 +1738,22 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
 
                 <label
                   className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-300"
+                  title="Render split-divider handle chrome between panes. Off hides separator paint/hover affordance but keeps divider hit-targets and resize capability behavior."
+                >
+                  <StyledCheckbox
+                    checked={props.interactionCapabilities.resizeHandlesVisible}
+                    onChange={(checked: boolean): void => props.setInteractionCapabilities(
+                      (previous: ResolvedTilingInteractionCapabilities): ResolvedTilingInteractionCapabilities => ({
+                        ...previous,
+                        resizeHandlesVisible: checked,
+                      }),
+                    )}
+                  />
+                  show resize handles
+                </label>
+
+                <label
+                  className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-300"
                   title="Drag-to-rearrange (move / swap / edge-insert). When off, panes are not draggable and no drop overlays activate."
                 >
                   <StyledCheckbox

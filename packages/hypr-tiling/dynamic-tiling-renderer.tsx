@@ -1,8 +1,45 @@
 "use client";
 
-import { cn } from "./cn";
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { cn } from "./cn";
+import {
+  isCommandEnabled,
+  keyboardActionToCommand,
+  type TilingCommandGates,
+} from "./commands";
+import {
+  clampCursorPointToViewport,
+  resolveDragCursorPresentation,
+  type DragCursorPoint,
+  type DragCursorPresentation,
+} from "./drag-cursor";
+import { DEFAULT_DRAG_HOP_EASING, resolveDragEasing } from "./drag-easing";
+import {
+  DRAG_MACHINE_INITIAL_STATE,
+  activeDragSourceLeafId,
+  activeResolvedTarget,
+  createFrameCoalescer,
+  deriveCandidateTree,
+  dragMachineReducer,
+  hasCrossedPickupThreshold,
+  isCommittableTarget,
+  previousZoneSeed,
+  resolveDragGhostSeatLeafId,
+  resolveTouchArmedMove,
+  shouldReresolveSeatedTarget,
+  type DragMachinePoint,
+  type DragMachineState,
+  type DragPointerType,
+  type FrameCoalescer,
+  type TouchArmedMoveResolution,
+} from "./drag-machine";
+import type {
+  DynamicDropIntentHitZoneDiagnostics,
+  DynamicDropIntentState as DynamicDropState,
+  DynamicEdgeZone,
+  DynamicZoneGeometryConfig,
+} from "./drop-intent-resolver";
 import {
   DYNAMIC_DROP_INTENT_CONFIG,
   buildGroupTabStripMergeIntent,
@@ -13,6 +50,80 @@ import {
   resolveGroupTabStripHit,
   toPaneLocalPoint,
 } from "./drop-intent-resolver";
+import {
+  collectStaticGatedLeafIds,
+  evaluateZoneCandidate,
+} from "./drop-validity";
+import {
+  EMPTY_FOCUS_HISTORY,
+  pruneFocusHistory,
+  pushFocusHistory,
+  resolveFocusCurrentOrLast,
+  type FocusHistory,
+} from "./focus-history";
+import {
+  DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT,
+  buildBounceEasingCss,
+  buildLinearEasingCss,
+  clampSwapBounceMagnitudePercent,
+  coherentDipScaleAt,
+  deriveGhostMorphTransform,
+  deriveGhostPickupBox,
+  ghostPickupScaleFactor,
+  isDegenerateGhostRect,
+  magneticEaseProgress,
+  resolveGhostHopFirstRect,
+  shouldApplyCoherentTransitDip,
+  type GhostMorphTransform,
+  type GhostPoint,
+  type GhostRect,
+} from "./ghost-transit";
+import {
+  isResizeAxisEnabled,
+  resolveInteractionCapabilities,
+} from "./interaction-capabilities";
+import { matchKeyBinding } from "./keybindings";
+import {
+  collectLeafFootprints,
+  collectMasterSlots,
+  footprintsByLeafId,
+  resolveMasterParams,
+  resolveMasterStackFootprints,
+  slotRepresentativeLeafId,
+} from "./leaf-geometry";
+import {
+  clampByMinSize,
+  isStaticAlongSplitAxis,
+  isStaticInDimension,
+  isStaticOnCrossAxis,
+  measuredStaticSizing,
+  resolveBinarySplitDistribution,
+  resolveSizingMode,
+  titleBarSizingModeId,
+  type SplitChildMainSizing,
+} from "./pane-sizing";
+import {
+  advancePaneSwitcher,
+  chordHasModifier,
+  commitPaneSwitcher,
+  directionToPlacement,
+  isSwitcherHoldReleased,
+  jumpPaneSwitcher,
+  matchKeymapAction,
+  openPaneSwitcher,
+  resolveCycledPaneId,
+  resolveJumpedPaneId,
+  resolveMaximizeToggle,
+} from "./pane-switching";
+import type {
+  DynamicProjectedLandingOverlay,
+  DynamicProjectedLandingSubject,
+} from "./projected-layout";
+import {
+  resolveProjectedDropLayout,
+  resolveProjectedLandingOverlays,
+} from "./projected-layout";
+import type { TilingGrowConstraints } from "./state";
 import {
   addLeafToGroup,
   adjustSplitMasterCount,
@@ -43,154 +154,50 @@ import {
   ungroupNode,
   updateSplitRatio,
 } from "./state";
-import type { TilingGrowConstraints } from "./state";
-import { isCommandEnabled, keyboardActionToCommand, type TilingCommandGates } from "./commands";
-import { matchKeyBinding } from "./keybindings";
-import {
-  EMPTY_FOCUS_HISTORY,
-  pruneFocusHistory,
-  pushFocusHistory,
-  resolveFocusCurrentOrLast,
-  type FocusHistory,
-} from "./focus-history";
-import { DEFAULT_DRAG_HOP_EASING, resolveDragEasing } from "./drag-easing";
-import {
-  clampByMinSize,
-  isStaticAlongSplitAxis,
-  isStaticInDimension,
-  isStaticOnCrossAxis,
-  measuredStaticSizing,
-  resolveBinarySplitDistribution,
-  resolveSizingMode,
-  titleBarSizingModeId,
-  type SplitChildMainSizing,
-} from "./pane-sizing";
-import { isResizeAxisEnabled, resolveInteractionCapabilities } from "./interaction-capabilities";
-import {
-  clampCursorPointToViewport,
-  resolveDragCursorPresentation,
-  type DragCursorPoint,
-  type DragCursorPresentation,
-} from "./drag-cursor";
 import {
   deriveSurvivorFlipTransform,
   resolveSurvivorFlipFirst,
   shouldAnimateSurvivorReflow,
   type SurvivorRect,
 } from "./survivor-reflow";
-import {
-  DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT,
-  buildBounceEasingCss,
-  buildLinearEasingCss,
-  clampSwapBounceMagnitudePercent,
-  coherentDipScaleAt,
-  deriveGhostMorphTransform,
-  deriveGhostPickupBox,
-  ghostPickupScaleFactor,
-  isDegenerateGhostRect,
-  magneticEaseProgress,
-  resolveGhostHopFirstRect,
-  shouldApplyCoherentTransitDip,
-  type GhostMorphTransform,
-  type GhostPoint,
-  type GhostRect,
-} from "./ghost-transit";
-import {
-  DRAG_MACHINE_INITIAL_STATE,
-  activeDragSourceLeafId,
-  activeResolvedTarget,
-  createFrameCoalescer,
-  deriveCandidateTree,
-  dragMachineReducer,
-  hasCrossedPickupThreshold,
-  isCommittableTarget,
-  previousZoneSeed,
-  resolveDragGhostSeatLeafId,
-  resolveTouchArmedMove,
-  shouldReserveDragSourceSlot,
-  shouldReresolveSeatedTarget,
-  type DragMachinePoint,
-  type DragMachineState,
-  type DragPointerType,
-  type FrameCoalescer,
-  type TouchArmedMoveResolution,
-} from "./drag-machine";
-import {
-  advancePaneSwitcher,
-  chordHasModifier,
-  commitPaneSwitcher,
-  directionToPlacement,
-  isSwitcherHoldReleased,
-  jumpPaneSwitcher,
-  matchKeymapAction,
-  modifiersHaveModifier,
-  openPaneSwitcher,
-  resolveCycledPaneId,
-  resolveJumpedPaneId,
-  resolveMaximizeToggle,
-} from "./pane-switching";
-import {
-  resolveProjectedDropLayout,
-  resolveProjectedLandingOverlays,
-} from "./projected-layout";
-import {
-  collectLeafFootprints,
-  collectMasterSlots,
-  footprintsByLeafId,
-  resolveMasterParams,
-  resolveMasterStackFootprints,
-  slotRepresentativeLeafId,
-} from "./leaf-geometry";
-import { collectStaticGatedLeafIds, evaluateZoneCandidate } from "./drop-validity";
 import type {
-  DynamicProjectedLandingOverlay,
-  DynamicProjectedLandingSubject,
-} from "./projected-layout";
-import type {
-  DynamicDropIntentDebugState,
-  DynamicDropIntentTuningState,
   DynamicDragCancelVisualState,
   DynamicDragPaneSnapshot,
   DynamicDragVisualState,
+  DynamicDropIntentDebugState,
   DynamicFocusDirection,
   DynamicGroupNode,
-  DynamicLiveHitLogState,
-  DynamicLeafDropPreview,
-  DynamicLeafDropZone,
   DynamicLayoutConfig,
   DynamicLayoutNode,
+  DynamicLeafDropPreview,
+  DynamicLeafDropZone,
   DynamicLeafNode,
+  DynamicLiveHitLogState,
   DynamicMovePlacement,
   DynamicObservabilityColorConfig,
   DynamicObservabilityColorEnableConfig,
+  DynamicPaneBodyRenderMode,
+  DynamicPaneFootprint,
   DynamicPaneHitZoneCandidateDebugState,
   DynamicPaneHitZoneOverlayDebugState,
-  DynamicPaneFootprint,
   DynamicRenderTileArgs,
-  DynamicSplitNode,
   DynamicSplitAxis,
+  DynamicSplitNode,
   DynamicSplitResizeState,
   DynamicTile,
   DynamicTilingRendererProps,
   ResolvedTilingDropHitZoneGeometryCapability,
   ResolvedTilingInteractionCapabilities,
-  ResolvedTilingSlotCommitmentCapability,
   ResolvedTilingKeymap,
+  ResolvedTilingSlotCommitmentCapability,
   TilingCommand,
   TilingCommandHandle,
   TilingKeyboardAction,
   TilingMoveModeState,
   TilingPaneSizing,
-  TilingPaneSizingMode,
   TilingPaneSwitcherState,
   TilingTitleBarSizingMode,
 } from "./types";
-import type {
-  DynamicDropIntentState as DynamicDropState,
-  DynamicEdgeZone,
-  DynamicDropIntentHitZoneDiagnostics,
-  DynamicZoneGeometryConfig,
-} from "./drop-intent-resolver";
 
 function resolveDragPointerType(pointerType: string): DragPointerType {
   if (pointerType === "touch") {
@@ -210,8 +217,11 @@ function resolveDragPointerType(pointerType: string): DragPointerType {
  * behavior; `resolvePaneZoneGeometry` clamps `centerRatio` and floors the px
  * knobs, so this stays a thin pass-through.
  */
-function currentGeometryConfig(geometry: ResolvedTilingDropHitZoneGeometryCapability): DynamicZoneGeometryConfig {
-  const devicePixelRatio: number = typeof window === "undefined" ? 1 : window.devicePixelRatio;
+function currentGeometryConfig(
+  geometry: ResolvedTilingDropHitZoneGeometryCapability,
+): DynamicZoneGeometryConfig {
+  const devicePixelRatio: number =
+    typeof window === "undefined" ? 1 : window.devicePixelRatio;
   return {
     centerRatio: geometry.centerRatio,
     centerRatioX: geometry.centerRatioX,
@@ -227,33 +237,35 @@ interface DynamicSplitPathEntry {
   axis: DynamicSplitAxis;
 }
 
-export const DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS: DynamicObservabilityColorConfig = {
-  dragSourceBorderColorHex: "#f0abfc",
-  dragTargetBorderColorHex: "#67e8f9",
-  projectedSourceBorderColorHex: "#fde68a",
-  projectedTargetBorderColorHex: "#86efac",
-  projectedSuccessorBorderColorHex: "#93c5fd",
-  projectedSourceFillColorHex: "#f59e0b",
-  projectedTargetFillColorHex: "#10b981",
-  projectedSuccessorFillColorHex: "#3b82f6",
-  hitZoneLeftColorHex: "#0ea5e9",
-  hitZoneRightColorHex: "#a855f7",
-  hitZoneTopColorHex: "#f59e0b",
-  hitZoneBottomColorHex: "#14b8a6",
-  hitZoneCenterColorHex: "#10b981",
-  hitZoneBlockedColorHex: "#fb7185",
-};
+export const DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS: DynamicObservabilityColorConfig =
+  {
+    dragSourceBorderColorHex: "#f0abfc",
+    dragTargetBorderColorHex: "#67e8f9",
+    projectedSourceBorderColorHex: "#fde68a",
+    projectedTargetBorderColorHex: "#86efac",
+    projectedSuccessorBorderColorHex: "#93c5fd",
+    projectedSourceFillColorHex: "#f59e0b",
+    projectedTargetFillColorHex: "#10b981",
+    projectedSuccessorFillColorHex: "#3b82f6",
+    hitZoneLeftColorHex: "#0ea5e9",
+    hitZoneRightColorHex: "#a855f7",
+    hitZoneTopColorHex: "#f59e0b",
+    hitZoneBottomColorHex: "#14b8a6",
+    hitZoneCenterColorHex: "#10b981",
+    hitZoneBlockedColorHex: "#fb7185",
+  };
 
-export const DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS: DynamicObservabilityColorEnableConfig = {
-  dragSourceBorderEnabled: true,
-  dragTargetBorderEnabled: true,
-  projectedSourceBorderEnabled: true,
-  projectedTargetBorderEnabled: true,
-  projectedSourceFillEnabled: true,
-  projectedTargetFillEnabled: true,
-  projectedSuccessorBorderEnabled: true,
-  projectedSuccessorFillEnabled: true,
-};
+export const DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS: DynamicObservabilityColorEnableConfig =
+  {
+    dragSourceBorderEnabled: true,
+    dragTargetBorderEnabled: true,
+    projectedSourceBorderEnabled: true,
+    projectedTargetBorderEnabled: true,
+    projectedSourceFillEnabled: true,
+    projectedTargetFillEnabled: true,
+    projectedSuccessorBorderEnabled: true,
+    projectedSuccessorFillEnabled: true,
+  };
 
 /** Baseline ghost-hop / survivor-reflow duration at `DEFAULT_DRAG_ANIMATION_SPEED_PERCENT`. */
 export const BASELINE_DRAG_HOP_DURATION_MS: number = 170;
@@ -286,15 +298,19 @@ export function dragSpeedsAtParity(
   survivorReflowSpeedPercent: number,
 ): boolean {
   return (
-    resolveDragAnimationDurationMs(ghostTransitSpeedPercent)
-    === resolveDragAnimationDurationMs(survivorReflowSpeedPercent)
+    resolveDragAnimationDurationMs(ghostTransitSpeedPercent) ===
+    resolveDragAnimationDurationMs(survivorReflowSpeedPercent)
   );
 }
 
-function hasEnabledProjectedFill(enables: DynamicObservabilityColorEnableConfig): boolean {
-  return enables.projectedSourceFillEnabled
-    || enables.projectedTargetFillEnabled
-    || enables.projectedSuccessorFillEnabled;
+function hasEnabledProjectedFill(
+  enables: DynamicObservabilityColorEnableConfig,
+): boolean {
+  return (
+    enables.projectedSourceFillEnabled ||
+    enables.projectedTargetFillEnabled ||
+    enables.projectedSuccessorFillEnabled
+  );
 }
 
 function projectedSubjectBorderEnabled(
@@ -504,7 +520,10 @@ function toHexChannel(channel: string): number | null {
   return parsed;
 }
 
-function parseHexColor(colorHex: string, fallbackRgb: Readonly<[number, number, number]>): Readonly<[number, number, number]> {
+function parseHexColor(
+  colorHex: string,
+  fallbackRgb: Readonly<[number, number, number]>,
+): Readonly<[number, number, number]> {
   const normalizedColorHex: string = colorHex.trim();
   const hexWithoutHash: string = normalizedColorHex.startsWith("#")
     ? normalizedColorHex.slice(1)
@@ -521,8 +540,15 @@ function parseHexColor(colorHex: string, fallbackRgb: Readonly<[number, number, 
   return [red, green, blue];
 }
 
-function rgbaFromHex(colorHex: string, alpha: number, fallbackRgb: Readonly<[number, number, number]>): string {
-  const rgb: Readonly<[number, number, number]> = parseHexColor(colorHex, fallbackRgb);
+function rgbaFromHex(
+  colorHex: string,
+  alpha: number,
+  fallbackRgb: Readonly<[number, number, number]>,
+): string {
+  const rgb: Readonly<[number, number, number]> = parseHexColor(
+    colorHex,
+    fallbackRgb,
+  );
   return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${clampUnitInterval(alpha)})`;
 }
 
@@ -546,7 +572,9 @@ function resolveHitZoneColorHex(
   return observabilityColors.hitZoneBottomColorHex;
 }
 
-function dropIntentAxisPathLabel(axisPath: ReadonlyArray<DynamicSplitAxis>): string {
+function dropIntentAxisPathLabel(
+  axisPath: ReadonlyArray<DynamicSplitAxis>,
+): string {
   if (axisPath.length === 0) {
     return "none";
   }
@@ -567,7 +595,12 @@ function dropIntentAxisPathLabel(axisPath: ReadonlyArray<DynamicSplitAxis>): str
  * which enumerates with the canonical `DROP_EDGE_ZONES`; this paint-order
  * constant is the only place the renderer chooses its own edge ordering.
  */
-const DROP_EDGE_ZONE_PAINT_ORDER: ReadonlyArray<DynamicEdgeZone> = ["left", "right", "top", "bottom"];
+const DROP_EDGE_ZONE_PAINT_ORDER: ReadonlyArray<DynamicEdgeZone> = [
+  "left",
+  "right",
+  "top",
+  "bottom",
+];
 
 function readSplitPathToLeaf(
   node: DynamicLayoutNode,
@@ -591,7 +624,10 @@ function readSplitPathToLeaf(
       axis: node.axis,
     },
   ];
-  return readSplitPathToLeaf(node.first, leafId, nextPath) ?? readSplitPathToLeaf(node.second, leafId, nextPath);
+  return (
+    readSplitPathToLeaf(node.first, leafId, nextPath) ??
+    readSplitPathToLeaf(node.second, leafId, nextPath)
+  );
 }
 
 export function resolveLeafDropPreview(
@@ -599,7 +635,11 @@ export function resolveLeafDropPreview(
   dragSourceLeafId: string | null,
   dropState: DynamicDropState | null,
 ): DynamicLeafDropPreview | null {
-  if (dragSourceLeafId == null || dropState == null || dropState.leafId === dragSourceLeafId) {
+  if (
+    dragSourceLeafId == null ||
+    dropState == null ||
+    dropState.leafId === dragSourceLeafId
+  ) {
     return null;
   }
   if (dropState.action !== "swap" && dropState.action !== "edge-insert") {
@@ -667,6 +707,70 @@ export function resolveLeafDropPreviewForMode(
   return resolveLeafDropPreview(leafId, dragSourceLeafId, dropState);
 }
 
+export interface DynamicPaneBodyRenderPolicyInput {
+  isPaneContentVisible: boolean;
+  liveDragModeEnabled: boolean;
+  dragPhase: DragMachineState["phase"];
+  isDragSource: boolean;
+  isReservedSlot: boolean;
+}
+
+/**
+ * Canonical pane-body visibility policy used by both the default tile renderer
+ * and the renderer-level reservation gate. This keeps hidden-mode placeholders,
+ * drag-source reveal, and live-mode reservation semantics in one pure resolver.
+ */
+export function resolvePaneBodyRenderMode(
+  input: DynamicPaneBodyRenderPolicyInput,
+): DynamicPaneBodyRenderMode {
+  const isDragGestureActive: boolean = input.dragPhase !== "idle";
+  const shouldRenderReservation: boolean =
+    input.liveDragModeEnabled &&
+    isDragGestureActive &&
+    input.isDragSource &&
+    input.isReservedSlot;
+  if (shouldRenderReservation) {
+    return "render-reservation";
+  }
+  const shouldRenderContent: boolean =
+    input.isPaneContentVisible || (isDragGestureActive && input.isDragSource);
+  return shouldRenderContent ? "render-content" : "render-placeholder";
+}
+
+type DynamicSplitDividerRenderMode =
+  | "render-divider-absent"
+  | "render-divider-enabled-visible"
+  | "render-divider-enabled-hidden"
+  | "render-divider-disabled-visible"
+  | "render-divider-disabled-hidden";
+
+interface DynamicSplitDividerRenderPolicyInput {
+  isBoundaryResizable: boolean;
+  resizeHandlesVisible: boolean;
+  isResizeAxisEnabled: boolean;
+}
+
+/**
+ * Canonical split-divider policy. Boundary-resizable decides whether a divider
+ * hit-target exists at all; resize capability decides interactivity; handle
+ * visibility decides divider chrome only.
+ */
+export function resolveSplitDividerRenderMode(
+  input: DynamicSplitDividerRenderPolicyInput,
+): DynamicSplitDividerRenderMode {
+  if (!input.isBoundaryResizable) {
+    return "render-divider-absent";
+  }
+  if (input.isResizeAxisEnabled) {
+    return input.resizeHandlesVisible
+      ? "render-divider-enabled-visible"
+      : "render-divider-enabled-hidden";
+  }
+  return input.resizeHandlesVisible
+    ? "render-divider-disabled-visible"
+    : "render-divider-disabled-hidden";
+}
+
 /**
  * Pure resolver for the DISPLAYED layout tree under the live (Hyprland) drag
  * model. While a live drag is in flight — `liveDragModeEnabled` AND a
@@ -723,11 +827,22 @@ export function resolveStableDragHitFootprints(
   }
   const gapClosed: DynamicLayoutNode = removeLeafTile(layout, dragSourceLeafId);
   return footprintsByLeafId(
-    collectLeafFootprints(gapClosed, 0, 0, viewport.width, viewport.height, config),
+    collectLeafFootprints(
+      gapClosed,
+      0,
+      0,
+      viewport.width,
+      viewport.height,
+      config,
+    ),
   );
 }
 
-export function buildDragPaneSnapshot(tile: DynamicTile): DynamicDragPaneSnapshot {
+export function buildDragPaneSnapshot(
+  tile: DynamicTile,
+): DynamicDragPaneSnapshot {
+  // Snapshot always comes from canonical tile payload, never from visibility
+  // presentation state (`render-placeholder` / `render-reservation`).
   return {
     tileId: tile.id,
     title: tile.title,
@@ -738,7 +853,9 @@ export function buildDragPaneSnapshot(tile: DynamicTile): DynamicDragPaneSnapsho
   };
 }
 
-function renderDragPaneShell(snapshot: DynamicDragPaneSnapshot): React.ReactElement {
+function renderDragPaneShell(
+  snapshot: DynamicDragPaneSnapshot,
+): React.ReactElement {
   return (
     <article
       className={cn(
@@ -769,11 +886,16 @@ function renderDragPaneShell(snapshot: DynamicDragPaneSnapshot): React.ReactElem
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 font-mono text-[11px] leading-5 text-slate-300">
         {snapshot.content != null
           ? snapshot.content
-          : snapshot.rows.map((row: string, rowIndex: number): React.ReactElement => (
-            <div key={`${snapshot.tileId}-drag-row-${rowIndex}`} className="whitespace-pre-wrap break-words">
-              {row}
-            </div>
-          ))}
+          : snapshot.rows.map(
+              (row: string, rowIndex: number): React.ReactElement => (
+                <div
+                  key={`${snapshot.tileId}-drag-row-${rowIndex}`}
+                  className="whitespace-pre-wrap break-words"
+                >
+                  {row}
+                </div>
+              ),
+            )}
       </div>
     </article>
   );
@@ -807,7 +929,11 @@ function DragSourceSlotReservation({
       />
     );
   }
-  const slotFillColor: string = rgbaFromHex(observabilityColors.dragSourceBorderColorHex, 0.06, [240, 171, 252]);
+  const slotFillColor: string = rgbaFromHex(
+    observabilityColors.dragSourceBorderColorHex,
+    0.06,
+    [240, 171, 252],
+  );
   return (
     <div
       className="h-full min-h-0 w-full min-w-0 overflow-hidden rounded-xl"
@@ -842,7 +968,8 @@ function DragSourceSlotReservation({
  */
 function useOverlayPortalContainer(): HTMLElement | null {
   const [container] = React.useState<HTMLElement | null>(
-    (): HTMLElement | null => (typeof document === "undefined" ? null : document.body),
+    (): HTMLElement | null =>
+      typeof document === "undefined" ? null : document.body,
   );
   return container;
 }
@@ -858,7 +985,11 @@ function useOverlayPortalContainer(): HTMLElement | null {
  * viewport ancestor. Returns `null` when there is no container (SSR only), at
  * which point the overlays are inactive anyway.
  */
-function OverlayPortal({ children }: { children: React.ReactNode }): React.ReactElement | null {
+function OverlayPortal({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.ReactElement | null {
   const container: HTMLElement | null = useOverlayPortalContainer();
   if (container == null) {
     return null;
@@ -924,17 +1055,25 @@ function DragPaneOverlay({
   };
   // baseRect = the resting rendered box: the measured slot when seated, else the
   // grab-anchored pickup-scaled source box (cursor-tracking, instant).
-  const baseRect: GhostRect | null = dragVisualState == null
-    ? null
-    : (dragVisualState.seatFootprint ?? deriveGhostPickupBox(dragVisualState.activeFootprint, grab, effectiveFactor));
+  const baseRect: GhostRect | null =
+    dragVisualState == null
+      ? null
+      : (dragVisualState.seatFootprint ??
+        deriveGhostPickupBox(
+          dragVisualState.activeFootprint,
+          grab,
+          effectiveFactor,
+        ));
   baseRectRef.current = baseRect;
 
-  const seatFootprint: DynamicPaneFootprint | null = dragVisualState?.seatFootprint ?? null;
+  const seatFootprint: DynamicPaneFootprint | null =
+    dragVisualState?.seatFootprint ?? null;
   // Morph-trigger key: changes on seat open/close + re-seat, NOT on a free-follow
   // cursor move, so steady free-follow never re-runs the morph effect.
-  const seatKey: string = seatFootprint == null
-    ? "free"
-    : `${seatFootprint.left},${seatFootprint.top},${seatFootprint.width},${seatFootprint.height}`;
+  const seatKey: string =
+    seatFootprint == null
+      ? "free"
+      : `${seatFootprint.left},${seatFootprint.top},${seatFootprint.width},${seatFootprint.height}`;
   const srcWidth: number = dragVisualState?.sourceFootprint.width ?? 0;
   const srcHeight: number = dragVisualState?.sourceFootprint.height ?? 0;
   const hasVisual: boolean = dragVisualState != null;
@@ -954,7 +1093,8 @@ function DragPaneOverlay({
     // position. A live (transformed) box is the correct FLIP `First` only while
     // a hop is mid-flight (smooth retarget); at rest the live box already equals
     // the freshly-applied base (`last`), which would zero the invert.
-    const hadInFlightTransform: boolean = rafRef.current != null || animationRef.current != null;
+    const hadInFlightTransform: boolean =
+      rafRef.current != null || animationRef.current != null;
 
     const cancelInFlight = (): void => {
       if (rafRef.current != null) {
@@ -986,26 +1126,35 @@ function DragPaneOverlay({
     //    would zero the invert — use the PRIOR commit's rendered base instead so
     //    the hop has a real distance to travel and `dragHopDurationMs` is honored.
     const live: DOMRect = node.getBoundingClientRect();
-    const liveRect: GhostRect = { left: live.left, top: live.top, width: live.width, height: live.height };
-    const first: GhostRect = justEntered && !seated
-      ? {
-          left: dragVisualState.activeFootprint.left,
-          top: dragVisualState.activeFootprint.top,
-          width: dragVisualState.activeFootprint.width,
-          height: dragVisualState.activeFootprint.height,
-        }
-      : resolveGhostHopFirstRect({
-          previousBaseRect: previousRenderedRectRef.current,
-          liveVisualRect: liveRect,
-          hasInFlightTransform: hadInFlightTransform,
-        });
+    const liveRect: GhostRect = {
+      left: live.left,
+      top: live.top,
+      width: live.width,
+      height: live.height,
+    };
+    const first: GhostRect =
+      justEntered && !seated
+        ? {
+            left: dragVisualState.activeFootprint.left,
+            top: dragVisualState.activeFootprint.top,
+            width: dragVisualState.activeFootprint.width,
+            height: dragVisualState.activeFootprint.height,
+          }
+        : resolveGhostHopFirstRect({
+            previousBaseRect: previousRenderedRectRef.current,
+            liveVisualRect: liveRect,
+            hasInFlightTransform: hadInFlightTransform,
+          });
 
     if (isDegenerateGhostRect(first) || isDegenerateGhostRect(last)) {
       node.style.transition = "none";
       node.style.transform = "none";
       return;
     }
-    const invert: GhostMorphTransform | null = deriveGhostMorphTransform(first, last);
+    const invert: GhostMorphTransform | null = deriveGhostMorphTransform(
+      first,
+      last,
+    );
     if (invert == null) {
       node.style.transition = "none";
       node.style.transform = "none";
@@ -1018,7 +1167,11 @@ function DragPaneOverlay({
       node.style.transition = "none";
       node.style.transform = `translate(${invert.tx}px, ${invert.ty}px) scale(${invert.sx}, ${invert.sy})`;
       void node.getBoundingClientRect();
-      const keyframes: Keyframe[] = buildCoherentDipKeyframes(invert, last.width, last.height);
+      const keyframes: Keyframe[] = buildCoherentDipKeyframes(
+        invert,
+        last.width,
+        last.height,
+      );
       const animation: Animation = node.animate(keyframes, {
         duration: dragHopDurationMs,
         easing: "linear",
@@ -1041,9 +1194,10 @@ function DragPaneOverlay({
     // for the magnetic ease (the swap-target/ghost landing bounce); magnitude 0
     // keeps the historical magnetic snap. Free-follow / hop-out / entrance keep
     // the standard hop easing. Invert → play to identity on the next frame.
-    const seatedEasing: string = swapBounceMagnitude > 0
-      ? buildBounceEasingCss(swapBounceMagnitude)
-      : GHOST_MAGNETIC_HOP_EASING;
+    const seatedEasing: string =
+      swapBounceMagnitude > 0
+        ? buildBounceEasingCss(swapBounceMagnitude)
+        : GHOST_MAGNETIC_HOP_EASING;
     const easing: string = seated ? seatedEasing : hopEasing;
     node.style.transition = "none";
     node.style.transform = `translate(${invert.tx}px, ${invert.ty}px) scale(${invert.sx}, ${invert.sy})`;
@@ -1107,7 +1261,9 @@ function DragPaneOverlay({
             lifted
               ? "opacity-90 shadow-[0_30px_60px_rgba(2,6,23,0.72)]"
               : "opacity-95 shadow-[0_22px_44px_rgba(2,6,23,0.62)]",
-            prefersReducedMotion ? "" : "transition-[opacity,box-shadow] duration-150",
+            prefersReducedMotion
+              ? ""
+              : "transition-[opacity,box-shadow] duration-150",
           )}
         >
           {renderDragPaneShell(dragVisualState.snapshot)}
@@ -1124,12 +1280,18 @@ function DragPaneOverlay({
  * `false` and reconciles on mount via `matchMedia`.
  */
 export function usePrefersReducedMotion(): boolean {
-  const [prefersReducedMotion, setPrefersReducedMotion] = React.useState<boolean>(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] =
+    React.useState<boolean>(false);
   React.useEffect((): (() => void) | void => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
       return;
     }
-    const query: MediaQueryList = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const query: MediaQueryList = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    );
     setPrefersReducedMotion(query.matches);
     const handleChange = (event: MediaQueryListEvent): void => {
       setPrefersReducedMotion(event.matches);
@@ -1161,10 +1323,21 @@ function dragCursorToneClassName(tone: DragCursorPresentation["tone"]): string {
  * - `invalid` — a `not-allowed` circle-with-slash.
  * - `grab` — a neutral drag-grip (the free-drag "carrying" look).
  */
-function DragCursorGlyph({ kind }: { kind: DragCursorPresentation["kind"] }): React.ReactElement {
+function DragCursorGlyph({
+  kind,
+}: {
+  kind: DragCursorPresentation["kind"];
+}): React.ReactElement {
   if (kind === "insert") {
     return (
-      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <svg
+        viewBox="0 0 16 16"
+        className="h-3.5 w-3.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        aria-hidden
+      >
         <circle cx="8" cy="8" r="5.5" />
         <circle cx="8" cy="8" r="1.8" fill="currentColor" stroke="none" />
       </svg>
@@ -1172,7 +1345,16 @@ function DragCursorGlyph({ kind }: { kind: DragCursorPresentation["kind"] }): Re
   }
   if (kind === "swap") {
     return (
-      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <svg
+        viewBox="0 0 16 16"
+        className="h-3.5 w-3.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
         <path d="M3 6 H11 M11 6 L8.5 3.5 M11 6 L8.5 8.5" />
         <path d="M13 10 H5 M5 10 L7.5 7.5 M5 10 L7.5 12.5" />
       </svg>
@@ -1180,14 +1362,26 @@ function DragCursorGlyph({ kind }: { kind: DragCursorPresentation["kind"] }): Re
   }
   if (kind === "invalid") {
     return (
-      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <svg
+        viewBox="0 0 16 16"
+        className="h-3.5 w-3.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        aria-hidden
+      >
         <circle cx="8" cy="8" r="5.5" />
         <path d="M4.1 4.1 L11.9 11.9" strokeLinecap="round" />
       </svg>
     );
   }
   return (
-    <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor" aria-hidden>
+    <svg
+      viewBox="0 0 16 16"
+      className="h-3 w-3"
+      fill="currentColor"
+      aria-hidden
+    >
       <circle cx="5" cy="5" r="1.3" />
       <circle cx="11" cy="5" r="1.3" />
       <circle cx="5" cy="8" r="1.3" />
@@ -1262,10 +1456,14 @@ function DragCursorOverlay({
     return null;
   }
 
-  const pointerX: number = dragVisualState.activeFootprint.left + dragVisualState.pointerAnchorOffsetX;
-  const pointerY: number = dragVisualState.activeFootprint.top + dragVisualState.pointerAnchorOffsetY;
-  const viewportWidth: number = typeof window === "undefined" ? 0 : window.innerWidth;
-  const viewportHeight: number = typeof window === "undefined" ? 0 : window.innerHeight;
+  const pointerX: number =
+    dragVisualState.activeFootprint.left + dragVisualState.pointerAnchorOffsetX;
+  const pointerY: number =
+    dragVisualState.activeFootprint.top + dragVisualState.pointerAnchorOffsetY;
+  const viewportWidth: number =
+    typeof window === "undefined" ? 0 : window.innerWidth;
+  const viewportHeight: number =
+    typeof window === "undefined" ? 0 : window.innerHeight;
   const point: DragCursorPoint = clampCursorPointToViewport(
     { x: pointerX, y: pointerY },
     { left: 0, top: 0, right: viewportWidth, bottom: viewportHeight },
@@ -1310,7 +1508,11 @@ function DragCursorOverlay({
   );
 }
 
-function DragCancelOverlay({ cancelVisualState }: { cancelVisualState: DynamicDragCancelVisualState | null }): React.ReactElement | null {
+function DragCancelOverlay({
+  cancelVisualState,
+}: {
+  cancelVisualState: DynamicDragCancelVisualState | null;
+}): React.ReactElement | null {
   const [isAnimating, setIsAnimating] = React.useState<boolean>(false);
 
   React.useEffect((): (() => void) | void => {
@@ -1337,10 +1539,18 @@ function DragCancelOverlay({ cancelVisualState }: { cancelVisualState: DynamicDr
       <div
         className="pointer-events-none fixed left-0 top-0"
         style={{
-          left: isAnimating ? cancelVisualState.toFootprint.left : cancelVisualState.fromFootprint.left,
-          top: isAnimating ? cancelVisualState.toFootprint.top : cancelVisualState.fromFootprint.top,
-          width: isAnimating ? cancelVisualState.toFootprint.width : cancelVisualState.fromFootprint.width,
-          height: isAnimating ? cancelVisualState.toFootprint.height : cancelVisualState.fromFootprint.height,
+          left: isAnimating
+            ? cancelVisualState.toFootprint.left
+            : cancelVisualState.fromFootprint.left,
+          top: isAnimating
+            ? cancelVisualState.toFootprint.top
+            : cancelVisualState.fromFootprint.top,
+          width: isAnimating
+            ? cancelVisualState.toFootprint.width
+            : cancelVisualState.fromFootprint.width,
+          height: isAnimating
+            ? cancelVisualState.toFootprint.height
+            : cancelVisualState.fromFootprint.height,
           opacity: isAnimating ? 0.16 : 0.7,
           transitionProperty: "left, top, width, height, opacity",
           transitionDuration: `${DRAG_CANCEL_ANIMATION_MS}ms`,
@@ -1357,7 +1567,11 @@ function DragCancelOverlay({ cancelVisualState }: { cancelVisualState: DynamicDr
   );
 }
 
-function edgeZoneClipPathStyle(zone: DynamicEdgeZone, centerRatioX: number, centerRatioY: number): React.CSSProperties {
+function edgeZoneClipPathStyle(
+  zone: DynamicEdgeZone,
+  centerRatioX: number,
+  centerRatioY: number,
+): React.CSSProperties {
   return {
     position: "absolute",
     inset: 0,
@@ -1365,8 +1579,14 @@ function edgeZoneClipPathStyle(zone: DynamicEdgeZone, centerRatioX: number, cent
   };
 }
 
-function centerZoneInsetStyle(centerRatioX: number, centerRatioY: number): React.CSSProperties {
-  const inset: { x: number; y: number } = paneZoneCenterInsetPercent(centerRatioX, centerRatioY);
+function centerZoneInsetStyle(
+  centerRatioX: number,
+  centerRatioY: number,
+): React.CSSProperties {
+  const inset: { x: number; y: number } = paneZoneCenterInsetPercent(
+    centerRatioX,
+    centerRatioY,
+  );
   return {
     position: "absolute",
     left: `${inset.x}%`,
@@ -1390,9 +1610,14 @@ function PaneHitZoneOverlay({
   const centerRatio: number = paneHitZoneDebug.centerRatio;
   const centerRatioX: number = paneHitZoneDebug.centerRatioX;
   const centerRatioY: number = paneHitZoneDebug.centerRatioY;
-  const edgeCandidateByZone: ReadonlyMap<DynamicEdgeZone, DynamicPaneHitZoneCandidateDebugState> = new Map(
+  const edgeCandidateByZone: ReadonlyMap<
+    DynamicEdgeZone,
+    DynamicPaneHitZoneCandidateDebugState
+  > = new Map(
     paneHitZoneDebug.edgeCandidates.map(
-      (candidate: DynamicPaneHitZoneCandidateDebugState): [DynamicEdgeZone, DynamicPaneHitZoneCandidateDebugState] => [
+      (
+        candidate: DynamicPaneHitZoneCandidateDebugState,
+      ): [DynamicEdgeZone, DynamicPaneHitZoneCandidateDebugState] => [
         candidate.zone,
         candidate,
       ],
@@ -1404,49 +1629,73 @@ function PaneHitZoneOverlay({
   return (
     <div className="pointer-events-none absolute inset-0 z-[9] p-1" aria-hidden>
       <div className="relative h-full w-full overflow-hidden rounded-lg border border-white/15 bg-black/10">
-        {DROP_EDGE_ZONE_PAINT_ORDER.map((zone: DynamicEdgeZone): React.ReactElement => {
-          const edgeCandidate: DynamicPaneHitZoneCandidateDebugState | undefined = edgeCandidateByZone.get(zone);
-          const isValid: boolean = edgeCandidate?.isValid ?? true;
-          const edgeColorHex: string = resolveHitZoneColorHex(zone, isValid, observabilityColors);
-          return (
-            <div
-              key={`zone-${zone}`}
-              style={{
-                ...edgeZoneClipPathStyle(zone, centerRatioX, centerRatioY),
-                backgroundColor: rgbaFromHex(edgeColorHex, paneHitZonesAlpha, [14, 165, 233]),
-              }}
-              title={edgeCandidate?.rejectionReason ?? `${zone} valid`}
-            >
+        {DROP_EDGE_ZONE_PAINT_ORDER.map(
+          (zone: DynamicEdgeZone): React.ReactElement => {
+            const edgeCandidate:
+              | DynamicPaneHitZoneCandidateDebugState
+              | undefined = edgeCandidateByZone.get(zone);
+            const isValid: boolean = edgeCandidate?.isValid ?? true;
+            const edgeColorHex: string = resolveHitZoneColorHex(
+              zone,
+              isValid,
+              observabilityColors,
+            );
+            return (
               <div
-                className={cn(
-                  edgeZoneLabelPositionClassName(zone),
-                  "rounded border border-black/30 bg-black/45 px-1 font-mono text-[8px] uppercase tracking-[0.12em] text-white",
-                )}
+                key={`zone-${zone}`}
+                style={{
+                  ...edgeZoneClipPathStyle(zone, centerRatioX, centerRatioY),
+                  backgroundColor: rgbaFromHex(
+                    edgeColorHex,
+                    paneHitZonesAlpha,
+                    [14, 165, 233],
+                  ),
+                }}
+                title={edgeCandidate?.rejectionReason ?? `${zone} valid`}
               >
-                {edgeZoneShortLabel(zone)} {isValid ? "ok" : "blocked"}
+                <div
+                  className={cn(
+                    edgeZoneLabelPositionClassName(zone),
+                    "rounded border border-black/30 bg-black/45 px-1 font-mono text-[8px] uppercase tracking-[0.12em] text-white",
+                  )}
+                >
+                  {edgeZoneShortLabel(zone)} {isValid ? "ok" : "blocked"}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          },
+        )}
         <div
           className="rounded-md border"
           style={{
             ...centerZoneInsetStyle(centerRatioX, centerRatioY),
-            borderColor: rgbaFromHex(centerColorHex, Math.min(1, paneHitZonesAlpha + 0.55), [16, 185, 129]),
-            backgroundColor: rgbaFromHex(centerColorHex, paneHitZonesAlpha, [16, 185, 129]),
+            borderColor: rgbaFromHex(
+              centerColorHex,
+              Math.min(1, paneHitZonesAlpha + 0.55),
+              [16, 185, 129],
+            ),
+            backgroundColor: rgbaFromHex(
+              centerColorHex,
+              paneHitZonesAlpha,
+              [16, 185, 129],
+            ),
           }}
         >
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded border border-black/30 bg-black/45 px-1 font-mono text-[8px] uppercase tracking-[0.12em] text-white">
             center swap {paneHitZoneDebug.centerIsValid ? "ok" : "blocked"}
           </div>
         </div>
-        {showDropIntentDebug
-          ? (
-            <div className="absolute bottom-1 left-1 right-1 rounded border border-white/15 bg-black/55 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.1em] text-slate-200">
-              partition: center {Math.round(centerRatio * 100)}% | edge band {Math.round(paneHitZoneDebug.centerRatio === 0 ? 0 : ((1 - centerRatio) / 2) * 100)}%
-            </div>
-          )
-          : null}
+        {showDropIntentDebug ? (
+          <div className="absolute bottom-1 left-1 right-1 rounded border border-white/15 bg-black/55 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.1em] text-slate-200">
+            partition: center {Math.round(centerRatio * 100)}% | edge band{" "}
+            {Math.round(
+              paneHitZoneDebug.centerRatio === 0
+                ? 0
+                : ((1 - centerRatio) / 2) * 100,
+            )}
+            %
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -1465,10 +1714,34 @@ interface TitleBarSizingButton {
  * pin. The pane the control lives in IS the target (no target-pane selector).
  */
 const TITLE_BAR_SIZING_BUTTONS: ReadonlyArray<TitleBarSizingButton> = [
-  { mode: "flexible", label: "flex", compactLabel: "f", title: "Flexible — ratio-distributed in both dimensions (clears any frozen size)" },
-  { mode: "static-height", label: "h", compactLabel: "h", title: "Static height — freeze this pane's height to its current measured pixels" },
-  { mode: "static-width", label: "w", compactLabel: "w", title: "Static width — freeze this pane's width to its current measured pixels" },
-  { mode: "static-both", label: "both", compactLabel: "b", title: "Static both — freeze this pane's width and height to its current measured pixels" },
+  {
+    mode: "flexible",
+    label: "flex",
+    compactLabel: "f",
+    title:
+      "Flexible — ratio-distributed in both dimensions (clears any frozen size)",
+  },
+  {
+    mode: "static-height",
+    label: "h",
+    compactLabel: "h",
+    title:
+      "Static height — freeze this pane's height to its current measured pixels",
+  },
+  {
+    mode: "static-width",
+    label: "w",
+    compactLabel: "w",
+    title:
+      "Static width — freeze this pane's width to its current measured pixels",
+  },
+  {
+    mode: "static-both",
+    label: "both",
+    compactLabel: "b",
+    title:
+      "Static both — freeze this pane's width and height to its current measured pixels",
+  },
 ];
 
 interface TitleBarAcquireButton {
@@ -1484,10 +1757,26 @@ interface TitleBarAcquireButton {
  * through to the `growLeafToward` ratio-push when nothing lies in the vector).
  */
 const TITLE_BAR_ACQUIRE_BUTTONS: ReadonlyArray<TitleBarAcquireButton> = [
-  { direction: "left", glyph: "\u2190", title: "Acquire space to the left (grow this pane leftward to the edge)" },
-  { direction: "up", glyph: "\u2191", title: "Acquire space upward (grow this pane up to the edge)" },
-  { direction: "down", glyph: "\u2193", title: "Acquire space downward (grow this pane down to the edge)" },
-  { direction: "right", glyph: "\u2192", title: "Acquire space to the right (grow this pane rightward to the edge)" },
+  {
+    direction: "left",
+    glyph: "\u2190",
+    title: "Acquire space to the left (grow this pane leftward to the edge)",
+  },
+  {
+    direction: "up",
+    glyph: "\u2191",
+    title: "Acquire space upward (grow this pane up to the edge)",
+  },
+  {
+    direction: "down",
+    glyph: "\u2193",
+    title: "Acquire space downward (grow this pane down to the edge)",
+  },
+  {
+    direction: "right",
+    glyph: "\u2192",
+    title: "Acquire space to the right (grow this pane rightward to the edge)",
+  },
 ];
 
 function PaneTitleBarControls({
@@ -1512,16 +1801,16 @@ function PaneTitleBarControls({
   }
   return (
     <div className="flex shrink-0 items-center gap-1.5">
-      {isSizingEnabled
-        ? (
-          <div
-            className={cn(
-              "flex shrink-0 items-center gap-0.5 rounded-md border border-white/15 bg-slate-900/70 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur",
-            )}
-            role="group"
-            aria-label={`pane ${leafId} sizing`}
-          >
-            {TITLE_BAR_SIZING_BUTTONS.map((button: TitleBarSizingButton): React.ReactElement => {
+      {isSizingEnabled ? (
+        <div
+          className={cn(
+            "flex shrink-0 items-center gap-0.5 rounded-md border border-white/15 bg-slate-900/70 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur",
+          )}
+          role="group"
+          aria-label={`pane ${leafId} sizing`}
+        >
+          {TITLE_BAR_SIZING_BUTTONS.map(
+            (button: TitleBarSizingButton): React.ReactElement => {
               const isActive: boolean = button.mode === activeSizingMode;
               return (
                 <button
@@ -1531,10 +1820,14 @@ function PaneTitleBarControls({
                   aria-pressed={isActive}
                   title={button.title}
                   aria-label={`${button.title} (pane ${leafId})`}
-                  onPointerDown={(event: React.PointerEvent<HTMLButtonElement>): void => {
+                  onPointerDown={(
+                    event: React.PointerEvent<HTMLButtonElement>,
+                  ): void => {
                     event.stopPropagation();
                   }}
-                  onClick={(event: React.MouseEvent<HTMLButtonElement>): void => {
+                  onClick={(
+                    event: React.MouseEvent<HTMLButtonElement>,
+                  ): void => {
                     event.stopPropagation();
                     onSetSizingMode(button.mode);
                   }}
@@ -1549,27 +1842,29 @@ function PaneTitleBarControls({
                   {compact ? button.compactLabel : button.label}
                 </button>
               );
-            })}
-          </div>
-        )
-        : null}
-      {isAcquireSpaceEnabled
-        ? (
-          <div
-            className={cn(
-              "flex shrink-0 items-center gap-0.5 rounded-md border border-white/15 bg-slate-900/70 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur",
-            )}
-            role="group"
-            aria-label={`pane ${leafId} acquire space`}
-          >
-            {TITLE_BAR_ACQUIRE_BUTTONS.map((button: TitleBarAcquireButton): React.ReactElement => (
+            },
+          )}
+        </div>
+      ) : null}
+      {isAcquireSpaceEnabled ? (
+        <div
+          className={cn(
+            "flex shrink-0 items-center gap-0.5 rounded-md border border-white/15 bg-slate-900/70 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur",
+          )}
+          role="group"
+          aria-label={`pane ${leafId} acquire space`}
+        >
+          {TITLE_BAR_ACQUIRE_BUTTONS.map(
+            (button: TitleBarAcquireButton): React.ReactElement => (
               <button
                 key={`acquire-${button.direction}`}
                 type="button"
                 draggable={false}
                 title={button.title}
                 aria-label={`${button.title} (pane ${leafId})`}
-                onPointerDown={(event: React.PointerEvent<HTMLButtonElement>): void => {
+                onPointerDown={(
+                  event: React.PointerEvent<HTMLButtonElement>,
+                ): void => {
                   event.stopPropagation();
                 }}
                 onClick={(event: React.MouseEvent<HTMLButtonElement>): void => {
@@ -1583,10 +1878,10 @@ function PaneTitleBarControls({
               >
                 <span aria-hidden>{button.glyph}</span>
               </button>
-            ))}
-          </div>
-        )
-        : null}
+            ),
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1596,7 +1891,7 @@ function DefaultDynamicTile({
   tile,
   paneOrdinal,
   paneWidthPx,
-  isPaneContentVisible,
+  paneBodyRenderMode,
   isDragSource,
   isDropTarget,
   isFocused,
@@ -1633,31 +1928,74 @@ function DefaultDynamicTile({
 }: DynamicRenderTileArgs): React.ReactElement {
   const isNarrowHeader: boolean = paneWidthPx < 430;
   const hideSubtitle: boolean = paneWidthPx < 340;
-  const shouldRenderDropLayer: boolean = isDropTarget || preview != null || isInvalidDrop;
+  const shouldRenderPaneContent: boolean =
+    paneBodyRenderMode === "render-content";
+  const shouldRenderDropLayer: boolean =
+    isDropTarget || preview != null || isInvalidDrop;
   const dragSourceBorderStyle: React.CSSProperties =
     isDragSource && observabilityColorEnables.dragSourceBorderEnabled
-      ? { borderColor: rgbaFromHex(observabilityColors.dragSourceBorderColorHex, 0.85, [240, 171, 252]) }
+      ? {
+          borderColor: rgbaFromHex(
+            observabilityColors.dragSourceBorderColorHex,
+            0.85,
+            [240, 171, 252],
+          ),
+        }
       : {};
-  const dropTargetBorderEnabled: boolean = observabilityColorEnables.dragTargetBorderEnabled;
-  const dropTargetBorderColor: string = rgbaFromHex(observabilityColors.dragTargetBorderColorHex, 0.8, [103, 232, 249]);
-  const dropTargetBackgroundColor: string = rgbaFromHex(observabilityColors.dragTargetBorderColorHex, 0.12, [103, 232, 249]);
-  const dropTargetShadowColor: string = rgbaFromHex(observabilityColors.dragTargetBorderColorHex, 0.28, [103, 232, 249]);
-  const dropIntentHintBackgroundColor: string = rgbaFromHex(observabilityColors.dragTargetBorderColorHex, 0.18, [103, 232, 249]);
-  const dropIntentHintOutlineColor: string = rgbaFromHex(observabilityColors.dragTargetBorderColorHex, 0.65, [103, 232, 249]);
-  const shouldRenderDropTargetBorder: boolean = dropTargetBorderEnabled && isDropTarget;
-  const shouldRenderDropIntentBorderHints: boolean = showDropBorderHints && dropTargetBorderEnabled;
+  const dropTargetBorderEnabled: boolean =
+    observabilityColorEnables.dragTargetBorderEnabled;
+  const dropTargetBorderColor: string = rgbaFromHex(
+    observabilityColors.dragTargetBorderColorHex,
+    0.8,
+    [103, 232, 249],
+  );
+  const dropTargetBackgroundColor: string = rgbaFromHex(
+    observabilityColors.dragTargetBorderColorHex,
+    0.12,
+    [103, 232, 249],
+  );
+  const dropTargetShadowColor: string = rgbaFromHex(
+    observabilityColors.dragTargetBorderColorHex,
+    0.28,
+    [103, 232, 249],
+  );
+  const dropIntentHintBackgroundColor: string = rgbaFromHex(
+    observabilityColors.dragTargetBorderColorHex,
+    0.18,
+    [103, 232, 249],
+  );
+  const dropIntentHintOutlineColor: string = rgbaFromHex(
+    observabilityColors.dragTargetBorderColorHex,
+    0.65,
+    [103, 232, 249],
+  );
+  const shouldRenderDropTargetBorder: boolean =
+    dropTargetBorderEnabled && isDropTarget;
+  const shouldRenderDropIntentBorderHints: boolean =
+    showDropBorderHints && dropTargetBorderEnabled;
 
   return (
     <article
       className={cn(
-        "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl border bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,23,0.96))] shadow-[0_14px_34px_rgba(2,6,23,0.62),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur",
+        // Pane host shell: no resting border outline. Focus (border-2 + ring),
+        // drop-target / eligibility / invalid rings, and the drag-source
+        // observability border below all supply their own width when active.
+        "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl bg-[linear-gradient(180deg,rgba(39,39,42,0.84),rgba(15,15,18,0.94))] shadow-[0_14px_34px_rgba(2,6,23,0.58),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur",
         accentClassName(tile.accent),
         isDropEligible ? "ring-1 ring-dashed ring-cyan-300/30" : "",
         isHoveringDropCandidate ? "ring-2 ring-cyan-200/45" : "",
         isDropTarget ? "ring-2 ring-cyan-300/70" : "",
         isInvalidDrop ? "ring-2 ring-rose-300/70" : "",
         isDragSource ? "opacity-70" : "",
-        isFocused ? cn("border-2 ring-2 ring-offset-0", focusFrameClassName(tile.accent)) : "",
+        isDragSource && observabilityColorEnables.dragSourceBorderEnabled
+          ? "border"
+          : "",
+        isFocused
+          ? cn(
+              "border-2 ring-2 ring-offset-0",
+              focusFrameClassName(tile.accent),
+            )
+          : "",
       )}
       style={dragSourceBorderStyle}
       data-leaf-id={leafId}
@@ -1667,98 +2005,127 @@ function DefaultDynamicTile({
       onPointerMove={onPointerMove}
       onPointerLeave={onPointerLeave}
     >
-      {paneHitZoneDebug != null
-        ? (
-          <PaneHitZoneOverlay
-            paneHitZoneDebug={paneHitZoneDebug}
-            paneHitZonesAlpha={paneHitZonesAlpha}
-            showDropIntentDebug={showDropIntentDebug}
-            observabilityColors={observabilityColors}
-          />
-        )
-        : null}
-      {shouldRenderDropLayer
-        ? (
-          <div className="pointer-events-none absolute inset-0 z-10 p-1">
-            <div
-              className={cn(
-                "relative h-full w-full rounded-lg border",
-                isInvalidDrop ? "border-rose-300/80" : "",
-              )}
-              style={isInvalidDrop
+      {paneHitZoneDebug != null ? (
+        <PaneHitZoneOverlay
+          paneHitZoneDebug={paneHitZoneDebug}
+          paneHitZonesAlpha={paneHitZonesAlpha}
+          showDropIntentDebug={showDropIntentDebug}
+          observabilityColors={observabilityColors}
+        />
+      ) : null}
+      {shouldRenderDropLayer ? (
+        <div className="pointer-events-none absolute inset-0 z-10 p-1">
+          <div
+            className={cn(
+              "relative h-full w-full rounded-lg border",
+              isInvalidDrop ? "border-rose-300/80" : "",
+            )}
+            style={
+              isInvalidDrop
                 ? undefined
                 : {
-                  borderColor: shouldRenderDropTargetBorder ? dropTargetBorderColor : undefined,
-                  backgroundColor: shouldRenderDropTargetBorder ? dropTargetBackgroundColor : undefined,
-                  boxShadow: shouldRenderDropTargetBorder ? `inset 0 0 0 1px ${dropTargetShadowColor}` : undefined,
+                    borderColor: shouldRenderDropTargetBorder
+                      ? dropTargetBorderColor
+                      : undefined,
+                    backgroundColor: shouldRenderDropTargetBorder
+                      ? dropTargetBackgroundColor
+                      : undefined,
+                    boxShadow: shouldRenderDropTargetBorder
+                      ? `inset 0 0 0 1px ${dropTargetShadowColor}`
+                      : undefined,
+                  }
+            }
+          >
+            {(shouldRenderDropIntentBorderHints ||
+              showDropIntentTranslucentBg) &&
+            dropZone != null &&
+            dropZone !== "center" ? (
+              <div
+                style={{
+                  ...edgeZoneClipPathStyle(
+                    dropZone,
+                    dropHitZoneCenterRatioX,
+                    dropHitZoneCenterRatioY,
+                  ),
+                  backgroundColor: showDropIntentTranslucentBg
+                    ? dropIntentHintBackgroundColor
+                    : undefined,
+                  outline: shouldRenderDropIntentBorderHints
+                    ? `1px solid ${dropIntentHintOutlineColor}`
+                    : undefined,
+                  outlineOffset: "-1px",
                 }}
-            >
-              {(shouldRenderDropIntentBorderHints || showDropIntentTranslucentBg)
-                && dropZone != null
-                && dropZone !== "center"
-                ? (
-                  <div
-                    style={{
-                      ...edgeZoneClipPathStyle(dropZone, dropHitZoneCenterRatioX, dropHitZoneCenterRatioY),
-                      backgroundColor: showDropIntentTranslucentBg ? dropIntentHintBackgroundColor : undefined,
-                      outline: shouldRenderDropIntentBorderHints ? `1px solid ${dropIntentHintOutlineColor}` : undefined,
-                      outlineOffset: "-1px",
-                    }}
-                  />
-                )
-                : null}
-              {(shouldRenderDropIntentBorderHints || showDropIntentTranslucentBg) && dropZone === "center"
-                ? (
-                  <div
-                    className={cn(
-                      "rounded-md",
-                      shouldRenderDropIntentBorderHints ? "border" : "",
-                    )}
-                    style={{
-                      ...centerZoneInsetStyle(dropHitZoneCenterRatioX, dropHitZoneCenterRatioY),
-                      borderColor: shouldRenderDropIntentBorderHints ? dropIntentHintOutlineColor : undefined,
-                      backgroundColor: showDropIntentTranslucentBg ? rgbaFromHex(observabilityColors.hitZoneCenterColorHex, 0.12, [16, 185, 129]) : undefined,
-                    }}
-                  />
-                )
-                : null}
+              />
+            ) : null}
+            {(shouldRenderDropIntentBorderHints ||
+              showDropIntentTranslucentBg) &&
+            dropZone === "center" ? (
+              <div
+                className={cn(
+                  "rounded-md",
+                  shouldRenderDropIntentBorderHints ? "border" : "",
+                )}
+                style={{
+                  ...centerZoneInsetStyle(
+                    dropHitZoneCenterRatioX,
+                    dropHitZoneCenterRatioY,
+                  ),
+                  borderColor: shouldRenderDropIntentBorderHints
+                    ? dropIntentHintOutlineColor
+                    : undefined,
+                  backgroundColor: showDropIntentTranslucentBg
+                    ? rgbaFromHex(
+                        observabilityColors.hitZoneCenterColorHex,
+                        0.12,
+                        [16, 185, 129],
+                      )
+                    : undefined,
+                }}
+              />
+            ) : null}
 
-              {showDropIntentDebug && preview != null
-                ? (
-                  <div className="absolute left-2 top-2 rounded border border-cyan-200/70 bg-cyan-500/25 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-cyan-50">
-                    drop preview: {preview.role} | drop intent: {dropIntentLabel(preview.zone)} | action: {dropIntentDebugAction ?? "edge-insert"} | axis path: {dropIntentDebugPath ?? "none"} | partner: {preview.partnerLeafId}
-                  </div>
-                )
-                : null}
+            {showDropIntentDebug && preview != null ? (
+              <div className="absolute left-2 top-2 rounded border border-cyan-200/70 bg-cyan-500/25 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-cyan-50">
+                drop preview: {preview.role} | drop intent:{" "}
+                {dropIntentLabel(preview.zone)} | action:{" "}
+                {dropIntentDebugAction ?? "edge-insert"} | axis path:{" "}
+                {dropIntentDebugPath ?? "none"} | partner:{" "}
+                {preview.partnerLeafId}
+              </div>
+            ) : null}
 
-              {showDropIntentDebug && dropZone != null && preview == null && !isInvalidDrop
-                ? (
-                  <div className="absolute left-2 top-2 rounded border border-cyan-200/60 bg-cyan-500/20 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-cyan-50">
-                    drop intent: {dropIntentLabel(dropZone)} | action: {dropIntentDebugAction ?? "edge-insert"} | axis path: {dropIntentDebugPath ?? "none"}
-                  </div>
-                )
-                : null}
+            {showDropIntentDebug &&
+            dropZone != null &&
+            preview == null &&
+            !isInvalidDrop ? (
+              <div className="absolute left-2 top-2 rounded border border-cyan-200/60 bg-cyan-500/20 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-cyan-50">
+                drop intent: {dropIntentLabel(dropZone)} | action:{" "}
+                {dropIntentDebugAction ?? "edge-insert"} | axis path:{" "}
+                {dropIntentDebugPath ?? "none"}
+              </div>
+            ) : null}
 
-              {isInvalidDrop
-                ? (
-                  <div className="absolute inset-2 rounded-md border border-rose-300/80 bg-rose-400/15">
-                    <div className="absolute left-2 top-2 rounded border border-rose-300/70 bg-rose-500/20 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-rose-50">
-                      invalid drop: same tile
-                    </div>
-                  </div>
-                )
-                : null}
-            </div>
+            {isInvalidDrop ? (
+              <div className="absolute inset-2 rounded-md border border-rose-300/80 bg-rose-400/15">
+                <div className="absolute left-2 top-2 rounded border border-rose-300/70 bg-rose-500/20 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-rose-50">
+                  invalid drop: same tile
+                </div>
+              </div>
+            ) : null}
           </div>
-        )
-        : null}
+        </div>
+      ) : null}
       <header
         onPointerDown={onHandlePointerDown}
         style={isRearrangeEnabled ? { touchAction: "none" } : undefined}
         className={cn(
-          "flex min-h-[44px] shrink-0 items-center justify-between border-b border-cyan-300/15 bg-slate-900/62 px-3 py-2 shadow-[inset_0_-1px_0_rgba(34,211,238,0.09)]",
-          isRearrangeEnabled ? "cursor-grab active:cursor-grabbing" : "cursor-default",
-          isFocused ? "border-b-cyan-200/35 bg-cyan-500/[0.08] shadow-[inset_0_-1px_0_rgba(56,189,248,0.2)]" : "",
+          "flex min-h-[42px] shrink-0 items-center justify-between border-b border-white/10 bg-slate-900/58 px-3 py-1.5 shadow-[inset_0_-1px_0_rgba(255,255,255,0.05)]",
+          isRearrangeEnabled
+            ? "cursor-grab active:cursor-grabbing"
+            : "cursor-default",
+          isFocused
+            ? "border-b-cyan-200/35 bg-cyan-500/[0.08] shadow-[inset_0_-1px_0_rgba(56,189,248,0.2)]"
+            : "",
         )}
       >
         <div className="min-w-0 text-left">
@@ -1771,50 +2138,57 @@ function DefaultDynamicTile({
           >
             {tile.title}
           </div>
-          {!hideSubtitle
-            ? (
-              <div
-                className="truncate font-mono text-[9px] uppercase tracking-[0.13em] text-slate-400"
-                title={tile.description ?? "drag header to swap"}
-              >
-                {tile.description ?? "drag header to swap"}
-              </div>
-            )
-            : null}
+          {!hideSubtitle ? (
+            <div
+              className="truncate font-mono text-[9px] uppercase tracking-[0.13em] text-slate-400"
+              title={tile.description ?? "drag header to swap"}
+            >
+              {tile.description ?? "drag header to swap"}
+            </div>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {isMaximizeEnabled
-            ? (
-              <button
-                type="button"
-                draggable={false}
-                aria-pressed={isMaximized}
-                title={isMaximized ? "restore pane (Esc)" : "maximize pane (Alt+Enter)"}
-                aria-label={isMaximized ? `restore pane ${leafId}` : `maximize pane ${leafId}`}
-                onPointerDown={(event: React.PointerEvent<HTMLButtonElement>): void => {
-                  event.stopPropagation();
-                }}
-                onClick={(event: React.MouseEvent<HTMLButtonElement>): void => {
-                  event.stopPropagation();
-                  onToggleMaximize();
-                }}
-                className={cn(
-                  "flex shrink-0 items-center justify-center rounded-md border font-mono leading-none transition-colors",
-                  isNarrowHeader ? "h-4 w-4 text-[10px]" : "h-5 w-5 text-[11px]",
-                  isMaximized
-                    ? "border-cyan-100/70 bg-cyan-400/20 text-cyan-50 shadow-[0_0_12px_rgba(34,211,238,0.32)]"
-                    : "border-white/20 bg-slate-950/70 text-slate-300 hover:border-cyan-200/45 hover:bg-cyan-400/12 hover:text-cyan-50",
-                )}
-              >
-                <span aria-hidden>{isMaximized ? "\u2715" : "\u2922"}</span>
-              </button>
-            )
-            : null}
+          {isMaximizeEnabled ? (
+            <button
+              type="button"
+              draggable={false}
+              aria-pressed={isMaximized}
+              title={
+                isMaximized ? "restore pane (Esc)" : "maximize pane (Alt+Enter)"
+              }
+              aria-label={
+                isMaximized
+                  ? `restore pane ${leafId}`
+                  : `maximize pane ${leafId}`
+              }
+              onPointerDown={(
+                event: React.PointerEvent<HTMLButtonElement>,
+              ): void => {
+                event.stopPropagation();
+              }}
+              onClick={(event: React.MouseEvent<HTMLButtonElement>): void => {
+                event.stopPropagation();
+                onToggleMaximize();
+              }}
+              className={cn(
+                "flex shrink-0 items-center justify-center rounded-md border font-mono leading-none transition-colors",
+                isNarrowHeader ? "h-4 w-4 text-[10px]" : "h-5 w-5 text-[11px]",
+                isMaximized
+                  ? "border-cyan-100/70 bg-cyan-400/20 text-cyan-50 shadow-[0_0_12px_rgba(34,211,238,0.32)]"
+                  : "border-white/20 bg-slate-950/70 text-slate-300 hover:border-cyan-200/45 hover:bg-cyan-400/12 hover:text-cyan-50",
+              )}
+            >
+              <span aria-hidden>{isMaximized ? "\u2715" : "\u2922"}</span>
+            </button>
+          ) : null}
           <PaneTitleBarControls
             leafId={leafId}
             isSizingEnabled={isTitleBarSizingEnabled}
             isAcquireSpaceEnabled={isTitleBarAcquireSpaceEnabled}
-            activeSizingMode={titleBarSizingModeId(widthSizingMode, heightSizingMode)}
+            activeSizingMode={titleBarSizingModeId(
+              widthSizingMode,
+              heightSizingMode,
+            )}
             compact={isNarrowHeader}
             onSetSizingMode={onSetSizingMode}
             onAcquireSpace={onAcquireSpace}
@@ -1822,33 +2196,43 @@ function DefaultDynamicTile({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 font-mono text-[11px] leading-5 text-slate-200">
-        {isPaneContentVisible
-          ? (
-            tile.content != null
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-1.5 font-mono text-[11px] leading-5 text-slate-200">
+        {shouldRenderPaneContent ? (
+          <React.Fragment key="pane-content-visible">
+            {tile.content != null
               ? tile.content
-              : (tile.rows ?? []).map((row: string, rowIndex: number): React.ReactElement => (
-                <div key={`${tile.id}-row-${rowIndex}`} className="whitespace-pre-wrap break-words">
-                  {row}
-                </div>
-              ))
-          )
-          : (
-            <div className="flex h-full min-h-0 flex-col items-center justify-center rounded-lg border border-slate-700/55 bg-slate-950/45 text-center font-mono uppercase">
-              <div className="text-[11px] font-semibold tracking-[0.14em] text-slate-300">
-                Pane {paneOrdinal}
-              </div>
-              <div className="mt-1 text-[9px] tracking-[0.12em] text-slate-500">
-                content hidden
-              </div>
+              : (tile.rows ?? []).map(
+                  (row: string, rowIndex: number): React.ReactElement => (
+                    <div
+                      key={`${tile.id}-row-${rowIndex}`}
+                      className="whitespace-pre-wrap break-words"
+                    >
+                      {row}
+                    </div>
+                  ),
+                )}
+          </React.Fragment>
+        ) : (
+          <div
+            key="pane-content-hidden"
+            className="flex h-full min-h-0 flex-col items-center justify-center text-center font-mono uppercase"
+          >
+            <div className="text-[11px] font-semibold tracking-[0.14em] text-slate-300">
+              Pane {paneOrdinal}
             </div>
-          )}
+            <div className="mt-1 text-[9px] tracking-[0.12em] text-slate-500">
+              content hidden
+            </div>
+          </div>
+        )}
       </div>
     </article>
   );
 }
 
-function isPointerLikeEvent(event: MouseEvent | PointerEvent): event is PointerEvent {
+function isPointerLikeEvent(
+  event: MouseEvent | PointerEvent,
+): event is PointerEvent {
   return "pointerId" in event;
 }
 
@@ -1878,7 +2262,9 @@ function projectedSubjectFillColorHex(
   return observabilityColors.projectedSuccessorFillColorHex;
 }
 
-function projectedSubjectLabel(subject: DynamicProjectedLandingSubject): string {
+function projectedSubjectLabel(
+  subject: DynamicProjectedLandingSubject,
+): string {
   if (subject === "source") {
     return "drag source landing overlay (S')";
   }
@@ -1905,64 +2291,102 @@ function ProjectedLandingOverlays({
     return null;
   }
 
-  const shouldRenderOverlayBackground: boolean = hasEnabledProjectedFill(observabilityColorEnables);
+  const shouldRenderOverlayBackground: boolean = hasEnabledProjectedFill(
+    observabilityColorEnables,
+  );
   const projectedOverlayZIndexBase: number = PROJECTED_OVERLAY_Z_INDEX_BASE;
-  const overlayContainerStyle: React.CSSProperties = { zIndex: projectedOverlayZIndexBase };
+  const overlayContainerStyle: React.CSSProperties = {
+    zIndex: projectedOverlayZIndexBase,
+  };
 
   return (
-    <div className="pointer-events-none absolute inset-0" style={overlayContainerStyle} aria-hidden>
-      {overlays.map((overlay: DynamicProjectedLandingOverlay): React.ReactElement | null => {
-        const borderEnabled: boolean = projectedSubjectBorderEnabled(overlay.subject, observabilityColorEnables);
-        const fillEnabled: boolean = projectedSubjectFillEnabled(overlay.subject, observabilityColorEnables);
-        if (!borderEnabled && !fillEnabled) {
-          return null;
-        }
-        const overlayBorderColorHex: string = projectedSubjectBorderColorHex(overlay.subject, observabilityColors);
-        const overlayFillColorHex: string = projectedSubjectFillColorHex(overlay.subject, observabilityColors);
-        const labelText: string = projectedSubjectLabel(overlay.subject);
-        const overlayStyle: React.CSSProperties = {
-          left: overlay.footprint.left,
-          top: overlay.footprint.top,
-          width: overlay.footprint.width,
-          height: overlay.footprint.height,
-          zIndex: projectedOverlayZIndexBase + PROJECTED_OVERLAY_Z_INDEX_OFFSET,
-        };
-        if (borderEnabled) {
-          overlayStyle.borderColor = rgbaFromHex(overlayBorderColorHex, 0.9, [16, 185, 129]);
-        }
-
-        if (shouldRenderOverlayBackground && fillEnabled) {
-          overlayStyle.backgroundColor = rgbaFromHex(
-            overlayFillColorHex,
-            projectedOverlayBackgroundAlpha,
-            [16, 185, 129],
+    <div
+      className="pointer-events-none absolute inset-0"
+      style={overlayContainerStyle}
+      aria-hidden
+    >
+      {overlays.map(
+        (
+          overlay: DynamicProjectedLandingOverlay,
+        ): React.ReactElement | null => {
+          const borderEnabled: boolean = projectedSubjectBorderEnabled(
+            overlay.subject,
+            observabilityColorEnables,
           );
-          overlayStyle.boxShadow =
-            "inset 0 0 0 1px rgba(255,255,255,0.52), inset 0 0 42px rgba(15,23,42,0.52), 0 0 26px rgba(15,23,42,0.28)";
-        }
+          const fillEnabled: boolean = projectedSubjectFillEnabled(
+            overlay.subject,
+            observabilityColorEnables,
+          );
+          if (!borderEnabled && !fillEnabled) {
+            return null;
+          }
+          const overlayBorderColorHex: string = projectedSubjectBorderColorHex(
+            overlay.subject,
+            observabilityColors,
+          );
+          const overlayFillColorHex: string = projectedSubjectFillColorHex(
+            overlay.subject,
+            observabilityColors,
+          );
+          const labelText: string = projectedSubjectLabel(overlay.subject);
+          const overlayStyle: React.CSSProperties = {
+            left: overlay.footprint.left,
+            top: overlay.footprint.top,
+            width: overlay.footprint.width,
+            height: overlay.footprint.height,
+            zIndex:
+              projectedOverlayZIndexBase + PROJECTED_OVERLAY_Z_INDEX_OFFSET,
+          };
+          if (borderEnabled) {
+            overlayStyle.borderColor = rgbaFromHex(
+              overlayBorderColorHex,
+              0.9,
+              [16, 185, 129],
+            );
+          }
 
-        return (
-          <div
-            key={`${overlay.subject}:${overlay.leafId}`}
-            className={cn("absolute rounded-md", borderEnabled ? "border" : "")}
-            style={overlayStyle}
-          >
-            {showLabels
-              ? (
+          if (shouldRenderOverlayBackground && fillEnabled) {
+            overlayStyle.backgroundColor = rgbaFromHex(
+              overlayFillColorHex,
+              projectedOverlayBackgroundAlpha,
+              [16, 185, 129],
+            );
+            overlayStyle.boxShadow =
+              "inset 0 0 0 1px rgba(255,255,255,0.52), inset 0 0 42px rgba(15,23,42,0.52), 0 0 26px rgba(15,23,42,0.28)";
+          }
+
+          return (
+            <div
+              key={`${overlay.subject}:${overlay.leafId}`}
+              className={cn(
+                "absolute rounded-md",
+                borderEnabled ? "border" : "",
+              )}
+              style={overlayStyle}
+            >
+              {showLabels ? (
                 <div
                   className="absolute left-2 top-2 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-white"
                   style={{
-                    borderColor: rgbaFromHex(overlayBorderColorHex, 0.85, [16, 185, 129]),
-                    backgroundColor: rgbaFromHex(overlayFillColorHex, 0.2, [16, 185, 129]),
+                    borderColor: rgbaFromHex(
+                      overlayBorderColorHex,
+                      0.85,
+                      [16, 185, 129],
+                    ),
+                    backgroundColor: rgbaFromHex(
+                      overlayFillColorHex,
+                      0.2,
+                      [16, 185, 129],
+                    ),
                   }}
                 >
                   {labelText}
                 </div>
-              )
-              : null}
-          </div>
-        );
-      })}
+              ) : null}
+            </div>
+          );
+        },
+      )}
     </div>
   );
 }
@@ -1974,9 +2398,14 @@ function buildDraggingLiveHitLogState(params: {
   leafFootprintsById: ReadonlyMap<string, DynamicPaneFootprint>;
   viewportElement: HTMLDivElement | null;
 }): DynamicLiveHitLogState {
-  const clientX: number = params.dragState.ghostFootprint.left + params.dragState.pointerAnchorOffset.x;
-  const clientY: number = params.dragState.ghostFootprint.top + params.dragState.pointerAnchorOffset.y;
-  const viewportRect: DOMRect | undefined = params.viewportElement?.getBoundingClientRect();
+  const clientX: number =
+    params.dragState.ghostFootprint.left +
+    params.dragState.pointerAnchorOffset.x;
+  const clientY: number =
+    params.dragState.ghostFootprint.top +
+    params.dragState.pointerAnchorOffset.y;
+  const viewportRect: DOMRect | undefined =
+    params.viewportElement?.getBoundingClientRect();
   const cursorViewport: DynamicLiveHitLogState["cursorViewport"] = {
     x: viewportRect == null ? clientX : clientX - viewportRect.left,
     y: viewportRect == null ? clientY : clientY - viewportRect.top,
@@ -2006,10 +2435,14 @@ function buildDraggingLiveHitLogState(params: {
   }
 
   const hoveredLeafId: string = params.dropState.leafId;
-  const sourcePaneFootprint: DynamicPaneFootprint | null = params.leafFootprintsById.get(hoveredLeafId) ?? null;
-  const intent: DynamicDropIntentDebugState = toDropIntentDebugState(params.dropState);
+  const sourcePaneFootprint: DynamicPaneFootprint | null =
+    params.leafFootprintsById.get(hoveredLeafId) ?? null;
+  const intent: DynamicDropIntentDebugState = toDropIntentDebugState(
+    params.dropState,
+  );
   const centerIsValid: boolean =
-    params.dropState.action !== "none" && params.dropState.blockedReason == null;
+    params.dropState.action !== "none" &&
+    params.dropState.blockedReason == null;
 
   return {
     hoveredLeafId,
@@ -2031,7 +2464,9 @@ function buildDraggingLiveHitLogState(params: {
   };
 }
 
-function toDropIntentDebugState(dropState: DynamicDropState): DynamicDropIntentDebugState {
+function toDropIntentDebugState(
+  dropState: DynamicDropState,
+): DynamicDropIntentDebugState {
   return {
     leafId: dropState.leafId,
     zone: dropState.zone,
@@ -2159,7 +2594,9 @@ function formatKeyChordLabel(chord: {
   return prefix.length === 0 ? keyLabel : `${prefix}+${keyLabel}`;
 }
 
-function resolvePaneShortcutChips(context: PaneShortcutContext): ReadonlyArray<PaneShortcutChipDescriptor> {
+function resolvePaneShortcutChips(
+  context: PaneShortcutContext,
+): ReadonlyArray<PaneShortcutChipDescriptor> {
   const activeFocusedLeafId: string | null = context.activeFocusedLeafId;
   const hasFocusedLeaf: boolean = activeFocusedLeafId != null;
   const focusedLeafId: string = activeFocusedLeafId ?? "";
@@ -2168,8 +2605,16 @@ function resolvePaneShortcutChips(context: PaneShortcutContext): ReadonlyArray<P
     : null;
   const isFocusedLeafGrouped: boolean = focusedGroup != null;
   const focusedGroupMemberCount: number = focusedGroup?.members.length ?? 0;
-  const cyclePreviousTarget: string | null = resolveCycledPaneId(context.leafIds, activeFocusedLeafId, "previous");
-  const cycleNextTarget: string | null = resolveCycledPaneId(context.leafIds, activeFocusedLeafId, "next");
+  const cyclePreviousTarget: string | null = resolveCycledPaneId(
+    context.leafIds,
+    activeFocusedLeafId,
+    "previous",
+  );
+  const cycleNextTarget: string | null = resolveCycledPaneId(
+    context.leafIds,
+    activeFocusedLeafId,
+    "next",
+  );
   const focusCurrentOrLastTarget: string | null = resolveFocusCurrentOrLast(
     context.focusHistory,
     context.activeFocusedLeafId,
@@ -2188,16 +2633,28 @@ function resolvePaneShortcutChips(context: PaneShortcutContext): ReadonlyArray<P
   const visibilityChecks = {
     toggleMaximize: (): boolean => hasFocusedLeaf,
     restore: (): boolean => context.activeMaximizedLeafId != null,
-    focusPrevious: (): boolean => cyclePreviousTarget != null && cyclePreviousTarget !== activeFocusedLeafId,
-    focusNext: (): boolean => cycleNextTarget != null && cycleNextTarget !== activeFocusedLeafId,
-    focusLeft: (): boolean => hasFocusedLeaf && findLeafByDirection(context.layout, focusedLeafId, "left") != null,
-    focusRight: (): boolean => hasFocusedLeaf && findLeafByDirection(context.layout, focusedLeafId, "right") != null,
-    focusUp: (): boolean => hasFocusedLeaf && findLeafByDirection(context.layout, focusedLeafId, "up") != null,
-    focusDown: (): boolean => hasFocusedLeaf && findLeafByDirection(context.layout, focusedLeafId, "down") != null,
-    focusCurrentOrLast: (): boolean => (
-      focusCurrentOrLastTarget != null && findLeafById(context.layout, focusCurrentOrLastTarget) != null
-    ),
-    enterMoveMode: (): boolean => hasFocusedLeaf && context.isLeafRearrangeEligible(focusedLeafId),
+    focusPrevious: (): boolean =>
+      cyclePreviousTarget != null &&
+      cyclePreviousTarget !== activeFocusedLeafId,
+    focusNext: (): boolean =>
+      cycleNextTarget != null && cycleNextTarget !== activeFocusedLeafId,
+    focusLeft: (): boolean =>
+      hasFocusedLeaf &&
+      findLeafByDirection(context.layout, focusedLeafId, "left") != null,
+    focusRight: (): boolean =>
+      hasFocusedLeaf &&
+      findLeafByDirection(context.layout, focusedLeafId, "right") != null,
+    focusUp: (): boolean =>
+      hasFocusedLeaf &&
+      findLeafByDirection(context.layout, focusedLeafId, "up") != null,
+    focusDown: (): boolean =>
+      hasFocusedLeaf &&
+      findLeafByDirection(context.layout, focusedLeafId, "down") != null,
+    focusCurrentOrLast: (): boolean =>
+      focusCurrentOrLastTarget != null &&
+      findLeafById(context.layout, focusCurrentOrLastTarget) != null,
+    enterMoveMode: (): boolean =>
+      hasFocusedLeaf && context.isLeafRearrangeEligible(focusedLeafId),
     cycleLayoutMode: (): boolean => context.layout.kind === "split",
     cycleMasterOrientation: (): boolean => context.layout.kind === "split",
     incrementMasterCount: (): boolean => context.layout.kind === "split",
@@ -2209,178 +2666,252 @@ function resolvePaneShortcutChips(context: PaneShortcutContext): ReadonlyArray<P
     groupTabPrevious: (): boolean => focusedGroupMemberCount > 1,
   };
 
-  const shortcutInventory: Array<PaneShortcutChipDescriptor & { isVisible: boolean }> = [
+  const shortcutInventory: Array<
+    PaneShortcutChipDescriptor & { isVisible: boolean }
+  > = [
     {
       id: "toggle-maximize",
       combo: formatKeyChordLabel(context.keymap.toggleMaximize),
-      tooltip: context.activeMaximizedLeafId == null
-        ? "Maximize the focused pane"
-        : "Toggle maximize on the focused pane",
+      tooltip:
+        context.activeMaximizedLeafId == null
+          ? "Maximize the focused pane"
+          : "Toggle maximize on the focused pane",
       command: { kind: "toggle-maximize" },
-      isVisible: isCommandEnabled({ kind: "toggle-maximize" }, context.commandGates) && visibilityChecks.toggleMaximize(),
+      isVisible:
+        isCommandEnabled({ kind: "toggle-maximize" }, context.commandGates) &&
+        visibilityChecks.toggleMaximize(),
     },
     {
       id: "restore",
       combo: formatKeyChordLabel(context.keymap.restore),
       tooltip: "Restore from maximized pane view",
       command: { kind: "restore" },
-      isVisible: isCommandEnabled({ kind: "restore" }, context.commandGates) && visibilityChecks.restore(),
+      isVisible:
+        isCommandEnabled({ kind: "restore" }, context.commandGates) &&
+        visibilityChecks.restore(),
     },
     {
       id: "focus-cycle-previous",
       combo: formatKeyChordLabel(context.keymap.previousPane),
       tooltip: "Focus previous pane",
       command: { kind: "focus-cycle", direction: "previous" },
-      isVisible: isCommandEnabled({ kind: "focus-cycle", direction: "previous" }, context.commandGates)
-        && visibilityChecks.focusPrevious(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "focus-cycle", direction: "previous" },
+          context.commandGates,
+        ) && visibilityChecks.focusPrevious(),
     },
     {
       id: "focus-cycle-next",
       combo: formatKeyChordLabel(context.keymap.nextPane),
       tooltip: "Focus next pane",
       command: { kind: "focus-cycle", direction: "next" },
-      isVisible: isCommandEnabled({ kind: "focus-cycle", direction: "next" }, context.commandGates)
-        && visibilityChecks.focusNext(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "focus-cycle", direction: "next" },
+          context.commandGates,
+        ) && visibilityChecks.focusNext(),
     },
     {
       id: "focus-left",
       combo: formatKeyChordLabel(context.keymap.focusLeft),
       tooltip: "Focus pane on the left",
       command: { kind: "focus-direction", direction: "left" },
-      isVisible: isCommandEnabled({ kind: "focus-direction", direction: "left" }, context.commandGates)
-        && visibilityChecks.focusLeft(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "focus-direction", direction: "left" },
+          context.commandGates,
+        ) && visibilityChecks.focusLeft(),
     },
     {
       id: "focus-right",
       combo: formatKeyChordLabel(context.keymap.focusRight),
       tooltip: "Focus pane on the right",
       command: { kind: "focus-direction", direction: "right" },
-      isVisible: isCommandEnabled({ kind: "focus-direction", direction: "right" }, context.commandGates)
-        && visibilityChecks.focusRight(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "focus-direction", direction: "right" },
+          context.commandGates,
+        ) && visibilityChecks.focusRight(),
     },
     {
       id: "focus-up",
       combo: formatKeyChordLabel(context.keymap.focusUp),
       tooltip: "Focus pane above",
       command: { kind: "focus-direction", direction: "up" },
-      isVisible: isCommandEnabled({ kind: "focus-direction", direction: "up" }, context.commandGates)
-        && visibilityChecks.focusUp(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "focus-direction", direction: "up" },
+          context.commandGates,
+        ) && visibilityChecks.focusUp(),
     },
     {
       id: "focus-down",
       combo: formatKeyChordLabel(context.keymap.focusDown),
       tooltip: "Focus pane below",
       command: { kind: "focus-direction", direction: "down" },
-      isVisible: isCommandEnabled({ kind: "focus-direction", direction: "down" }, context.commandGates)
-        && visibilityChecks.focusDown(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "focus-direction", direction: "down" },
+          context.commandGates,
+        ) && visibilityChecks.focusDown(),
     },
     {
       id: "focus-current-or-last",
       combo: formatKeyChordLabel(context.keymap.focusCurrentOrLast),
       tooltip: "Toggle focus between current and last pane",
       command: { kind: "focus-current-or-last" },
-      isVisible: isCommandEnabled({ kind: "focus-current-or-last" }, context.commandGates)
-        && visibilityChecks.focusCurrentOrLast(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "focus-current-or-last" },
+          context.commandGates,
+        ) && visibilityChecks.focusCurrentOrLast(),
     },
     {
       id: "enter-move-mode",
       combo: formatKeyChordLabel(context.keymap.enterMoveMode),
       tooltip: "Enter keyboard move mode",
       command: { kind: "enter-move-mode" },
-      isVisible: isCommandEnabled({ kind: "enter-move-mode" }, context.commandGates)
-        && visibilityChecks.enterMoveMode(),
+      isVisible:
+        isCommandEnabled({ kind: "enter-move-mode" }, context.commandGates) &&
+        visibilityChecks.enterMoveMode(),
     },
     {
       id: "cycle-layout-mode",
       combo: formatKeyChordLabel(context.keymap.cycleLayoutMode),
       tooltip: "Cycle layout mode (dwindle/master)",
       command: { kind: "cycle-layout-mode" },
-      isVisible: isCommandEnabled({ kind: "cycle-layout-mode" }, context.commandGates)
-        && visibilityChecks.cycleLayoutMode(),
+      isVisible:
+        isCommandEnabled({ kind: "cycle-layout-mode" }, context.commandGates) &&
+        visibilityChecks.cycleLayoutMode(),
     },
     {
       id: "cycle-master-orientation",
       combo: formatKeyChordLabel(context.keymap.cycleMasterOrientation),
       tooltip: "Cycle master orientation",
       command: { kind: "cycle-master-orientation" },
-      isVisible: isCommandEnabled({ kind: "cycle-master-orientation" }, context.commandGates)
-        && visibilityChecks.cycleMasterOrientation(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "cycle-master-orientation" },
+          context.commandGates,
+        ) && visibilityChecks.cycleMasterOrientation(),
     },
     {
       id: "increment-master-count",
       combo: formatKeyChordLabel(context.keymap.incrementMasterCount),
       tooltip: "Increase master count",
       command: { kind: "adjust-master-count", delta: 1 },
-      isVisible: isCommandEnabled({ kind: "adjust-master-count", delta: 1 }, context.commandGates)
-        && visibilityChecks.incrementMasterCount(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "adjust-master-count", delta: 1 },
+          context.commandGates,
+        ) && visibilityChecks.incrementMasterCount(),
     },
     {
       id: "decrement-master-count",
       combo: formatKeyChordLabel(context.keymap.decrementMasterCount),
       tooltip: "Decrease master count",
       command: { kind: "adjust-master-count", delta: -1 },
-      isVisible: isCommandEnabled({ kind: "adjust-master-count", delta: -1 }, context.commandGates)
-        && visibilityChecks.decrementMasterCount(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "adjust-master-count", delta: -1 },
+          context.commandGates,
+        ) && visibilityChecks.decrementMasterCount(),
     },
     {
       id: "increment-master-ratio",
       combo: formatKeyChordLabel(context.keymap.incrementMasterRatio),
       tooltip: "Increase master area ratio",
       command: { kind: "adjust-master-ratio", delta: 0.05 },
-      isVisible: isCommandEnabled({ kind: "adjust-master-ratio", delta: 0.05 }, context.commandGates)
-        && visibilityChecks.incrementMasterRatio(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "adjust-master-ratio", delta: 0.05 },
+          context.commandGates,
+        ) && visibilityChecks.incrementMasterRatio(),
     },
     {
       id: "decrement-master-ratio",
       combo: formatKeyChordLabel(context.keymap.decrementMasterRatio),
       tooltip: "Decrease master area ratio",
       command: { kind: "adjust-master-ratio", delta: -0.05 },
-      isVisible: isCommandEnabled({ kind: "adjust-master-ratio", delta: -0.05 }, context.commandGates)
-        && visibilityChecks.decrementMasterRatio(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "adjust-master-ratio", delta: -0.05 },
+          context.commandGates,
+        ) && visibilityChecks.decrementMasterRatio(),
     },
     {
       id: "toggle-group",
       combo: formatKeyChordLabel(context.keymap.toggleGroup),
-      tooltip: isFocusedLeafGrouped ? "Ungroup the focused pane" : "Group the focused pane with a neighbor",
+      tooltip: isFocusedLeafGrouped
+        ? "Ungroup the focused pane"
+        : "Group the focused pane with a neighbor",
       command: { kind: "toggle-group" },
-      isVisible: isCommandEnabled({ kind: "toggle-group" }, context.commandGates) && visibilityChecks.toggleGroup(),
+      isVisible:
+        isCommandEnabled({ kind: "toggle-group" }, context.commandGates) &&
+        visibilityChecks.toggleGroup(),
     },
     {
       id: "group-tab-next",
       combo: formatKeyChordLabel(context.keymap.groupTabNext),
       tooltip: "Activate next tab in focused group",
       command: { kind: "group-tab-cycle", direction: "next" },
-      isVisible: isCommandEnabled({ kind: "group-tab-cycle", direction: "next" }, context.commandGates)
-        && visibilityChecks.groupTabNext(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "group-tab-cycle", direction: "next" },
+          context.commandGates,
+        ) && visibilityChecks.groupTabNext(),
     },
     {
       id: "group-tab-previous",
       combo: formatKeyChordLabel(context.keymap.groupTabPrevious),
       tooltip: "Activate previous tab in focused group",
       command: { kind: "group-tab-cycle", direction: "previous" },
-      isVisible: isCommandEnabled({ kind: "group-tab-cycle", direction: "previous" }, context.commandGates)
-        && visibilityChecks.groupTabPrevious(),
+      isVisible:
+        isCommandEnabled(
+          { kind: "group-tab-cycle", direction: "previous" },
+          context.commandGates,
+        ) && visibilityChecks.groupTabPrevious(),
     },
   ];
 
   for (let paneNumber: number = 1; paneNumber <= 9; paneNumber += 1) {
-    const jumpTarget: string | null = resolveJumpedPaneId(context.leafIds, paneNumber);
+    const jumpTarget: string | null = resolveJumpedPaneId(
+      context.leafIds,
+      paneNumber,
+    );
     const jumpCommand: TilingCommand = { kind: "focus-jump", paneNumber };
-    const jumpModifierPrefix: string = keyChordModifierPrefix(context.keymap.jumpToPane);
+    const jumpModifierPrefix: string = keyChordModifierPrefix(
+      context.keymap.jumpToPane,
+    );
     shortcutInventory.push({
       id: `focus-jump-${paneNumber}`,
-      combo: jumpModifierPrefix.length === 0 ? `${paneNumber}` : `${jumpModifierPrefix}+${paneNumber}`,
+      combo:
+        jumpModifierPrefix.length === 0
+          ? `${paneNumber}`
+          : `${jumpModifierPrefix}+${paneNumber}`,
       tooltip: `Focus pane ${paneNumber}`,
       command: jumpCommand,
-      isVisible: isCommandEnabled(jumpCommand, context.commandGates)
-        && jumpTarget != null
-        && jumpTarget !== activeFocusedLeafId,
+      isVisible:
+        isCommandEnabled(jumpCommand, context.commandGates) &&
+        jumpTarget != null &&
+        jumpTarget !== activeFocusedLeafId,
     });
   }
 
   return shortcutInventory
-    .filter((chip: PaneShortcutChipDescriptor & { isVisible: boolean }): boolean => chip.isVisible)
-    .map(({ id, combo, tooltip, command }): PaneShortcutChipDescriptor => ({ id, combo, tooltip, command }));
+    .filter(
+      (chip: PaneShortcutChipDescriptor & { isVisible: boolean }): boolean =>
+        chip.isVisible,
+    )
+    .map(
+      ({ id, combo, tooltip, command }): PaneShortcutChipDescriptor => ({
+        id,
+        combo,
+        tooltip,
+        command,
+      }),
+    );
 }
 
 function tabAccentActiveClassName(accent: DynamicTile["accent"]): string {
@@ -2412,9 +2943,7 @@ function PaneTabStrip({
   onPaneContentVisibilityChange: (nextVisible: boolean) => void;
 }): React.ReactElement {
   return (
-    <div
-      className="flex shrink-0 items-center gap-1 rounded-xl border border-cyan-100/20 bg-slate-900/65 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_20px_rgba(34,211,238,0.14)] backdrop-blur"
-    >
+    <div className="flex shrink-0 items-center gap-1 rounded-xl bg-slate-900/65 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_20px_rgba(34,211,238,0.14)] backdrop-blur">
       <div
         aria-label="hypr tiling title"
         className="flex shrink-0 items-center px-1 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-100/90"
@@ -2432,7 +2961,9 @@ function PaneTabStrip({
           onChange={(event: React.ChangeEvent<HTMLInputElement>): void => {
             onPaneContentVisibilityChange(event.currentTarget.checked);
           }}
-          aria-label={isPaneContentVisible ? "hide pane content" : "show pane content"}
+          aria-label={
+            isPaneContentVisible ? "hide pane content" : "show pane content"
+          }
         />
         content
       </label>
@@ -2441,36 +2972,39 @@ function PaneTabStrip({
         aria-label="tiling panes"
         className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
       >
-        {tabs.map((tab: PaneTabDescriptor, tabIndex: number): React.ReactElement => {
-          const isActive: boolean = tab.leafId === activeFocusedLeafId;
-          const isMaximized: boolean = tab.leafId === activeMaximizedLeafId;
-          return (
-            <button
-              key={`pane-tab-${tab.leafId}`}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              title={`focus pane ${tab.leafId} (Alt+${tabIndex + 1})`}
-              onClick={(): void => onSelect(tab.leafId)}
-              className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
-                isActive
-                  ? tabAccentActiveClassName(tab.accent)
-                  : "border-white/15 bg-slate-950/80 text-slate-300 hover:border-cyan-200/35 hover:text-slate-100",
-              )}
-            >
-              <span className="font-semibold opacity-70">{tabIndex + 1}</span>
-              <span className="max-w-[13ch] truncate">{tab.title}</span>
-              {isMaximized
-                ? (
-                  <span className="rounded-sm border border-current/40 px-1 text-[8px] leading-none" aria-hidden>
+        {tabs.map(
+          (tab: PaneTabDescriptor, tabIndex: number): React.ReactElement => {
+            const isActive: boolean = tab.leafId === activeFocusedLeafId;
+            const isMaximized: boolean = tab.leafId === activeMaximizedLeafId;
+            return (
+              <button
+                key={`pane-tab-${tab.leafId}`}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                title={`focus pane ${tab.leafId} (Alt+${tabIndex + 1})`}
+                onClick={(): void => onSelect(tab.leafId)}
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
+                  isActive
+                    ? tabAccentActiveClassName(tab.accent)
+                    : "border-white/15 bg-slate-950/80 text-slate-300 hover:border-cyan-200/35 hover:text-slate-100",
+                )}
+              >
+                <span className="font-semibold opacity-70">{tabIndex + 1}</span>
+                <span className="max-w-[13ch] truncate">{tab.title}</span>
+                {isMaximized ? (
+                  <span
+                    className="rounded-sm border border-current/40 px-1 text-[8px] leading-none"
+                    aria-hidden
+                  >
                     max
                   </span>
-                )
-                : null}
-            </button>
-          );
-        })}
+                ) : null}
+              </button>
+            );
+          },
+        )}
       </div>
     </div>
   );
@@ -2478,7 +3012,10 @@ function PaneTabStrip({
 
 const PANE_SWITCHER_OVERLAY_Z_INDEX: number = 240;
 
-function switcherCardAccentClassName(accent: DynamicTile["accent"], isSelected: boolean): string {
+function switcherCardAccentClassName(
+  accent: DynamicTile["accent"],
+  isSelected: boolean,
+): string {
   if (!isSelected) {
     return "border-white/10 bg-slate-950/80 text-slate-400";
   }
@@ -2522,29 +3059,31 @@ function PaneSwitcherOverlay({
           switch pane — hold modifier, release to commit, esc to cancel
         </div>
         <div className="flex flex-wrap items-stretch justify-center gap-2">
-          {tabs.map((tab: PaneTabDescriptor, tabIndex: number): React.ReactElement => {
-            const isSelected: boolean = tab.leafId === selectedLeafId;
-            return (
-              <button
-                key={`pane-switcher-${tab.leafId}`}
-                type="button"
-                aria-current={isSelected}
-                title={`select pane ${tab.leafId} (Alt+${tabIndex + 1})`}
-                onClick={(): void => onSelect(tab.leafId)}
-                className={cn(
-                  "flex w-28 flex-col items-start gap-1 rounded-lg border px-2.5 py-2 text-left transition-colors",
-                  switcherCardAccentClassName(tab.accent, isSelected),
-                )}
-              >
-                <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.16em] opacity-70">
-                  {tabIndex + 1}
-                </span>
-                <span className="w-full truncate font-mono text-[11px] uppercase tracking-[0.1em]">
-                  {tab.title}
-                </span>
-              </button>
-            );
-          })}
+          {tabs.map(
+            (tab: PaneTabDescriptor, tabIndex: number): React.ReactElement => {
+              const isSelected: boolean = tab.leafId === selectedLeafId;
+              return (
+                <button
+                  key={`pane-switcher-${tab.leafId}`}
+                  type="button"
+                  aria-current={isSelected}
+                  title={`select pane ${tab.leafId} (Alt+${tabIndex + 1})`}
+                  onClick={(): void => onSelect(tab.leafId)}
+                  className={cn(
+                    "flex w-28 flex-col items-start gap-1 rounded-lg border px-2.5 py-2 text-left transition-colors",
+                    switcherCardAccentClassName(tab.accent, isSelected),
+                  )}
+                >
+                  <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.16em] opacity-70">
+                    {tabIndex + 1}
+                  </span>
+                  <span className="w-full truncate font-mono text-[11px] uppercase tracking-[0.1em]">
+                    {tab.title}
+                  </span>
+                </button>
+              );
+            },
+          )}
         </div>
       </div>
     </div>
@@ -2579,64 +3118,76 @@ function MovePaneAffordance({
   moveTargetPlacement: DynamicMovePlacement | null;
 }): React.ReactElement {
   return (
-    <div className="pointer-events-none absolute inset-0 z-[60] rounded-xl" aria-hidden>
-      {isMoveSource
-        ? (
-          <div className="absolute inset-0 rounded-xl ring-2 ring-amber-300/80">
-            <span className="absolute left-1/2 top-2 -translate-x-1/2 whitespace-nowrap rounded-full border border-amber-300/70 bg-slate-950/85 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-200">
-              moving · arrows aim · enter commit · esc cancel
-            </span>
-          </div>
-        )
-        : null}
-      {moveTargetPlacement != null
-        ? (
-          <div className="absolute inset-0 rounded-xl ring-2 ring-cyan-300/80">
-            <div className={cn("absolute rounded bg-cyan-300/80", moveEdgeBarClassName(moveTargetPlacement))} />
-            <span className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-cyan-300/70 bg-slate-950/85 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-200">
-              insert {moveTargetPlacement}
-            </span>
-          </div>
-        )
-        : null}
+    <div
+      className="pointer-events-none absolute inset-0 z-[60] rounded-xl"
+      aria-hidden
+    >
+      {isMoveSource ? (
+        <div className="absolute inset-0 rounded-xl ring-2 ring-amber-300/80">
+          <span className="absolute left-1/2 top-2 -translate-x-1/2 whitespace-nowrap rounded-full border border-amber-300/70 bg-slate-950/85 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-200">
+            moving · arrows aim · enter commit · esc cancel
+          </span>
+        </div>
+      ) : null}
+      {moveTargetPlacement != null ? (
+        <div className="absolute inset-0 rounded-xl ring-2 ring-cyan-300/80">
+          <div
+            className={cn(
+              "absolute rounded bg-cyan-300/80",
+              moveEdgeBarClassName(moveTargetPlacement),
+            )}
+          />
+          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-cyan-300/70 bg-slate-950/85 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-200">
+            insert {moveTargetPlacement}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, DynamicTilingRendererProps>(
-  function DynamicTilingRenderer({
-  layout,
-  tiles,
-  config,
-  onLayoutChange,
-  className,
-  interaction,
-  renderTile,
-  focusedLeafId,
-  onFocusedLeafChange,
-  maximizedLeafId,
-  onMaximizedLeafChange,
-  onProjectedOverlayCountChange,
-  showDropPreviewOverlays = true,
-  observabilityColors = DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS,
-  observabilityColorEnables = DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
-  projectedOverlayBackgroundAlpha = 0.9,
-  dragAnimationEnabled = true,
-  dragHopEasing,
-  dragReflowEasing,
-  ghostTransitSpeedPercent = DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
-  survivorReflowSpeedPercent = DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
-  swapBounceMagnitudePercent = DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT,
-  showDropBorderHints = true,
-  showDropIntentTranslucentBg = true,
-  showDropIntentDebug = true,
-  showPaneHitZones = false,
-  paneHitZonesAlpha = 0.2,
-  paneHitZoneSourceLeafId = null,
-  onDropIntentChange,
-  onLiveHitLogChange,
-}: DynamicTilingRendererProps, ref: React.ForwardedRef<TilingCommandHandle>): React.ReactElement {
-  const projectedOverlayBackgroundAlphaSafe: number = Math.min(Math.max(projectedOverlayBackgroundAlpha, 0), 1);
+export const DynamicTilingRenderer = React.forwardRef<
+  TilingCommandHandle,
+  DynamicTilingRendererProps
+>(function DynamicTilingRenderer(
+  {
+    layout,
+    tiles,
+    config,
+    onLayoutChange,
+    className,
+    interaction,
+    renderTile,
+    focusedLeafId,
+    onFocusedLeafChange,
+    maximizedLeafId,
+    onMaximizedLeafChange,
+    onProjectedOverlayCountChange,
+    showDropPreviewOverlays = true,
+    observabilityColors = DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS,
+    observabilityColorEnables = DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
+    projectedOverlayBackgroundAlpha = 0.9,
+    dragAnimationEnabled = true,
+    dragHopEasing,
+    dragReflowEasing,
+    ghostTransitSpeedPercent = DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
+    survivorReflowSpeedPercent = DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
+    swapBounceMagnitudePercent = DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT,
+    showDropBorderHints = true,
+    showDropIntentTranslucentBg = true,
+    showDropIntentDebug = true,
+    showPaneHitZones = false,
+    paneHitZonesAlpha = 0.2,
+    paneHitZoneSourceLeafId = null,
+    onDropIntentChange,
+    onLiveHitLogChange,
+  }: DynamicTilingRendererProps,
+  ref: React.ForwardedRef<TilingCommandHandle>,
+): React.ReactElement {
+  const projectedOverlayBackgroundAlphaSafe: number = Math.min(
+    Math.max(projectedOverlayBackgroundAlpha, 0),
+    1,
+  );
   // Two independently-resolved party durations. The ghost transit (hop / pickup /
   // cursor) runs on `ghostTransitSpeedPercent`; the survivor reflow runs on
   // `survivorReflowSpeedPercent`. The master gate collapses both to instant.
@@ -2648,7 +3199,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
     : INSTANT_DRAG_DURATION_MS;
   // Parity = equal resolved timing. The coherent dip is only geometrically valid
   // at parity; the bounce overshoot is per-element and parity-independent.
-  const speedsParity: boolean = dragSpeedsAtParity(ghostTransitSpeedPercent, survivorReflowSpeedPercent);
+  const speedsParity: boolean = dragSpeedsAtParity(
+    ghostTransitSpeedPercent,
+    survivorReflowSpeedPercent,
+  );
   const swapBounceMagnitude: number = dragAnimationEnabled
     ? clampSwapBounceMagnitudePercent(swapBounceMagnitudePercent)
     : 0;
@@ -2657,12 +3211,20 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // uses `resolvedReflowEasing`, which falls back to the hop curve when its own
   // prop is unset so the two read as one motion. Invalid / empty strings resolve
   // to the snappy-decel default rather than reaching the compositor broken.
-  const resolvedHopEasing: string = resolveDragEasing(dragHopEasing, DEFAULT_DRAG_HOP_EASING);
-  const resolvedReflowEasing: string = resolveDragEasing(dragReflowEasing, resolvedHopEasing);
-  const interactionCapabilities: ResolvedTilingInteractionCapabilities = React.useMemo(
-    (): ResolvedTilingInteractionCapabilities => resolveInteractionCapabilities(interaction),
-    [interaction],
+  const resolvedHopEasing: string = resolveDragEasing(
+    dragHopEasing,
+    DEFAULT_DRAG_HOP_EASING,
   );
+  const resolvedReflowEasing: string = resolveDragEasing(
+    dragReflowEasing,
+    resolvedHopEasing,
+  );
+  const interactionCapabilities: ResolvedTilingInteractionCapabilities =
+    React.useMemo(
+      (): ResolvedTilingInteractionCapabilities =>
+        resolveInteractionCapabilities(interaction),
+      [interaction],
+    );
   // PER-SUBTREE static drag gate (HT-SIZING-STATIC-DRAG-GATING). `isRearrangeEnabled`
   // is now the capability master switch ALONE — it is no longer ANDed with a
   // whole-tree static flag. The static geometry is handled per-leaf instead:
@@ -2677,7 +3239,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
     [layout],
   );
   const isLeafRearrangeEligible = React.useCallback(
-    (leafId: string): boolean => isRearrangeEnabled && !rearrangeGatedLeafIds.has(leafId),
+    (leafId: string): boolean =>
+      isRearrangeEnabled && !rearrangeGatedLeafIds.has(leafId),
     [isRearrangeEnabled, rearrangeGatedLeafIds],
   );
   // Live drag-mode (Hyprland-style detach-source + frozen tree + cursor-following
@@ -2685,18 +3248,26 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // pane can no longer enter live mode for ITSELF (the per-leaf gate refuses its
   // pickup), but flexible panes in the same tree CAN — the per-leaf gate at
   // pickup + target resolution preserves the "no wrong live geometry" invariant.
-  const liveDragModeEnabled: boolean = isRearrangeEnabled && interactionCapabilities.dragMode === "live";
+  const liveDragModeEnabled: boolean =
+    isRearrangeEnabled && interactionCapabilities.dragMode === "live";
   const isFocusSelectionEnabled: boolean = interactionCapabilities.focus;
   const isMaximizeEnabled: boolean = interactionCapabilities.maximize.enable;
-  const isTitleBarSizingEnabled: boolean = interactionCapabilities.paneTitleBarControls.sizing;
-  const isTitleBarAcquireSpaceEnabled: boolean = interactionCapabilities.paneTitleBarControls.acquireSpace;
-  const isPaneSwitchingEnabled: boolean = interactionCapabilities.paneSwitching.enable;
-  const showTabStrip: boolean = isPaneSwitchingEnabled && interactionCapabilities.paneSwitching.showTabStrip;
-  const [isPaneContentVisible, setIsPaneContentVisible] = React.useState<boolean>(false);
+  const isTitleBarSizingEnabled: boolean =
+    interactionCapabilities.paneTitleBarControls.sizing;
+  const isTitleBarAcquireSpaceEnabled: boolean =
+    interactionCapabilities.paneTitleBarControls.acquireSpace;
+  const isPaneSwitchingEnabled: boolean =
+    interactionCapabilities.paneSwitching.enable;
+  const showTabStrip: boolean =
+    isPaneSwitchingEnabled &&
+    interactionCapabilities.paneSwitching.showTabStrip;
+  const [isPaneContentVisible, setIsPaneContentVisible] =
+    React.useState<boolean>(false);
   const isMasterLayoutEnabled: boolean = interactionCapabilities.masterLayout;
   const isGroupingEnabled: boolean = interactionCapabilities.grouping;
-  const showSwitcherOverlay: boolean = isPaneSwitchingEnabled
-    && interactionCapabilities.paneSwitching.showSwitcherOverlay;
+  const showSwitcherOverlay: boolean =
+    isPaneSwitchingEnabled &&
+    interactionCapabilities.paneSwitching.showSwitcherOverlay;
   const keymap: ResolvedTilingKeymap = interactionCapabilities.keymap;
   // Any divider resize is enabled unless the resize capability is `"none"`; the
   // per-axis filter (`isResizeAxisEnabled`) still applies to a SPECIFIC split at
@@ -2732,20 +3303,31 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const isPointerWithinRootRef = React.useRef<boolean>(false);
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
-  const splitContainerRefs = React.useRef<Map<string, HTMLDivElement>>(new Map());
-  const groupTabStripRefs = React.useRef<Map<string, HTMLDivElement>>(new Map());
+  const splitContainerRefs = React.useRef<Map<string, HTMLDivElement>>(
+    new Map(),
+  );
+  const groupTabStripRefs = React.useRef<Map<string, HTMLDivElement>>(
+    new Map(),
+  );
   const clearCancelVisualTimeoutRef = React.useRef<number | null>(null);
-  const [viewportSize, setViewportSize] = React.useState<{ width: number; height: number }>({
+  const [viewportSize, setViewportSize] = React.useState<{
+    width: number;
+    height: number;
+  }>({
     width: 0,
     height: 0,
   });
-  const [resizeState, setResizeState] = React.useState<DynamicSplitResizeState | null>(null);
+  const [resizeState, setResizeState] =
+    React.useState<DynamicSplitResizeState | null>(null);
   // SINGLE drag-lifecycle owner (Pointer Events + explicit FSM). Replaces the
   // scattered HTML5-DnD state slots (`dragSourceLeafId` / `dropState` /
   // `dragHoverLeafId` / `dragVisualState` useStates + `didDropSucceedRef` /
   // `stableDropStateRef`). Every terminal pointer event routes
   // `dragging → settling → idle`, so a teardown edge can never be missed.
-  const [dragState, dispatchDrag] = React.useReducer(dragMachineReducer, DRAG_MACHINE_INITIAL_STATE);
+  const [dragState, dispatchDrag] = React.useReducer(
+    dragMachineReducer,
+    DRAG_MACHINE_INITIAL_STATE,
+  );
   // Latest FSM state mirrored to a ref so the window-level pointer listeners read
   // the current phase synchronously without re-subscribing on every move.
   const dragStateRef = React.useRef<DragMachineState>(dragState);
@@ -2755,11 +3337,13 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   const dragSnapshotRef = React.useRef<DynamicDragPaneSnapshot | null>(null);
   // The pointerId the drag captured on the stable root element, for release on settle.
   const capturedPointerIdRef = React.useRef<number | null>(null);
-  const [cancelVisualState, setCancelVisualState] = React.useState<DynamicDragCancelVisualState | null>(null);
+  const [cancelVisualState, setCancelVisualState] =
+    React.useState<DynamicDragCancelVisualState | null>(null);
   // The measured rect (client coords) of the resolved slot's reservation — the
   // single ghost hops INTO and FILLS this. `null` while free-following the
   // cursor (no target) or when the slot is off-screen/degenerate (§10 clamp).
-  const [seatFootprint, setSeatFootprint] = React.useState<DynamicPaneFootprint | null>(null);
+  const [seatFootprint, setSeatFootprint] =
+    React.useState<DynamicPaneFootprint | null>(null);
   // The cursor position captured when the current slot became seated — the
   // anchor the `delta-responsive` commitment policy measures re-aim travel from.
   const seatAnchorRef = React.useRef<DragMachinePoint | null>(null);
@@ -2768,7 +3352,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // FLIP `First` for an at-rest reflow. Kept fresh on EVERY commit (even idle) so
   // the first pickup reflow has a valid First. `survivorFlipRafRef` is the single
   // play-frame handle (one rAF per reflow batch).
-  const previousLeafRectsRef = React.useRef<Map<string, SurvivorRect>>(new Map());
+  const previousLeafRectsRef = React.useRef<Map<string, SurvivorRect>>(
+    new Map(),
+  );
   const survivorFlipRafRef = React.useRef<number | null>(null);
   // In-flight coherent-transit (swap) survivor dip animations (Web Animations),
   // tracked so a re-derived reflow batch can cancel them before re-measuring.
@@ -2780,7 +3366,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // nothing actually spills). This flag outlives the FSM `settling → idle`
   // transition (the cancel-settle glide plays AFTER `idle`), reset by a timer
   // sized to the reflow duration so the clip mask returns once the glide lands.
-  const [isSurvivorReflowAnimating, setIsSurvivorReflowAnimating] = React.useState<boolean>(false);
+  const [isSurvivorReflowAnimating, setIsSurvivorReflowAnimating] =
+    React.useState<boolean>(false);
   const survivorReflowEndTimerRef = React.useRef<number | null>(null);
   // Selectors off the single FSM state — the renderer reads these exactly where
   // it used to read the old useState slots.
@@ -2793,14 +3380,22 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // the instant the FSM returns to `idle`, so normal text selection in panes
   // still works at rest.
   const isDragGestureActive: boolean = dragState.phase !== "idle";
-  const [internalFocusedLeafId, setInternalFocusedLeafId] = React.useState<string | null>(null);
-  const [internalMaximizedLeafId, setInternalMaximizedLeafId] = React.useState<string | null>(null);
-  const [paneSwitcherState, setPaneSwitcherState] = React.useState<TilingPaneSwitcherState | null>(null);
-  const paneSwitcherStateRef = React.useRef<TilingPaneSwitcherState | null>(null);
+  const [internalFocusedLeafId, setInternalFocusedLeafId] = React.useState<
+    string | null
+  >(null);
+  const [internalMaximizedLeafId, setInternalMaximizedLeafId] = React.useState<
+    string | null
+  >(null);
+  const [paneSwitcherState, setPaneSwitcherState] =
+    React.useState<TilingPaneSwitcherState | null>(null);
+  const paneSwitcherStateRef = React.useRef<TilingPaneSwitcherState | null>(
+    null,
+  );
   // Keyboard MOVE MODE — the accessible analog of a drag pickup. Held in state
   // (drives the visual affordance) + mirrored to a ref so the document keydown
   // listener reads the latest without re-subscribing on every arrow press.
-  const [moveModeState, setMoveModeState] = React.useState<TilingMoveModeState | null>(null);
+  const [moveModeState, setMoveModeState] =
+    React.useState<TilingMoveModeState | null>(null);
   const moveModeStateRef = React.useRef<TilingMoveModeState | null>(null);
   // MRU focus history (HT-NAV-MRU-FOCUS-TOGGLE). A ref, not state: pushing on
   // every focus change must not re-render, and the `focus-current-or-last`
@@ -2825,7 +3420,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       // still resolves — eliminating the viewport-scope miss that returned `null`
       // and pinned a zero extent.
       const paneElement: HTMLElement | null =
-        rootRef.current?.querySelector<HTMLElement>(`[data-leaf-id="${targetLeafId}"]`) ?? null;
+        rootRef.current?.querySelector<HTMLElement>(
+          `[data-leaf-id="${targetLeafId}"]`,
+        ) ?? null;
       const rect: DOMRect | undefined = paneElement?.getBoundingClientRect();
       // Guard the zero-pin collapse: a missing element / zero-area rect must NOT
       // commit a `*Px:0` pin (a zero pin + flexShrink:0 collapses the leaf and
@@ -2863,23 +3460,39 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // Controlled.
   const acquireLeafSpace = React.useCallback(
     (targetLeafId: string, direction: DynamicFocusDirection): void => {
-      const viewportRect: DOMRect | undefined = viewportRef.current?.getBoundingClientRect();
-      const isHorizontalAnnex: boolean = direction === "left" || direction === "right";
+      const viewportRect: DOMRect | undefined =
+        viewportRef.current?.getBoundingClientRect();
+      const isHorizontalAnnex: boolean =
+        direction === "left" || direction === "right";
       const viewportWidthPx: number = viewportRect?.width ?? viewportSize.width;
-      const viewportHeightPx: number = viewportRect?.height ?? viewportSize.height;
-      const axisContainerSizePx: number = isHorizontalAnnex ? viewportWidthPx : viewportHeightPx;
+      const viewportHeightPx: number =
+        viewportRect?.height ?? viewportSize.height;
+      const axisContainerSizePx: number = isHorizontalAnnex
+        ? viewportWidthPx
+        : viewportHeightPx;
       // Perpendicular (off-axis) viewport extent — sizes the annex off-axis re-seed
       // band + decides the L3 min-size spill (`reseedEvicted`).
-      const crossContainerSizePx: number = isHorizontalAnnex ? viewportHeightPx : viewportWidthPx;
+      const crossContainerSizePx: number = isHorizontalAnnex
+        ? viewportHeightPx
+        : viewportWidthPx;
       const constraints: TilingGrowConstraints = {
         containerSizePx: axisContainerSizePx > 0 ? axisContainerSizePx : 1,
         gapPx: config.gapPx,
         minPaneSizePx: config.minPaneSizePx,
         crossSizePx: crossContainerSizePx > 0 ? crossContainerSizePx : 1,
       };
-      onLayoutChange(annexDirection(layout, targetLeafId, direction, constraints));
+      onLayoutChange(
+        annexDirection(layout, targetLeafId, direction, constraints),
+      );
     },
-    [config.gapPx, config.minPaneSizePx, layout, onLayoutChange, viewportSize.height, viewportSize.width],
+    [
+      config.gapPx,
+      config.minPaneSizePx,
+      layout,
+      onLayoutChange,
+      viewportSize.height,
+      viewportSize.width,
+    ],
   );
 
   React.useEffect((): void => {
@@ -2897,9 +3510,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // Latest slot-commitment policy mirrored to a ref so the coalescer (subscribed
   // once per drag) reads runtime mode/delta changes (e.g. the showcase toggle)
   // without re-subscribing.
-  const slotCommitmentRef = React.useRef<ResolvedTilingSlotCommitmentCapability>(
-    interactionCapabilities.slotCommitment,
-  );
+  const slotCommitmentRef =
+    React.useRef<ResolvedTilingSlotCommitmentCapability>(
+      interactionCapabilities.slotCommitment,
+    );
   React.useEffect((): void => {
     slotCommitmentRef.current = interactionCapabilities.slotCommitment;
   }, [interactionCapabilities.slotCommitment]);
@@ -2908,7 +3522,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // (subscribed once per drag, keyed on the owning pointer id) arms the
   // long-press timer with the current value without re-subscribing on a runtime
   // capability change (e.g. the showcase slider).
-  const touchLongPressMsRef = React.useRef<number>(interactionCapabilities.touchDrag.longPressMs);
+  const touchLongPressMsRef = React.useRef<number>(
+    interactionCapabilities.touchDrag.longPressMs,
+  );
   React.useEffect((): void => {
     touchLongPressMsRef.current = interactionCapabilities.touchDrag.longPressMs;
   }, [interactionCapabilities.touchDrag.longPressMs]);
@@ -2920,60 +3536,78 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // Prune the MRU focus history whenever the live leaf-id set changes so a pane
   // removed from the tree is never returned by the focus-current-or-last toggle.
   React.useEffect((): void => {
-    focusHistoryRef.current = pruneFocusHistory(focusHistoryRef.current, leafIds);
+    focusHistoryRef.current = pruneFocusHistory(
+      focusHistoryRef.current,
+      leafIds,
+    );
   }, [leafIds]);
-  const leafFootprintsById: ReadonlyMap<string, DynamicPaneFootprint> = React.useMemo(
-    (): ReadonlyMap<string, DynamicPaneFootprint> => footprintsByLeafId(
-      collectLeafFootprints(layout, 0, 0, viewportSize.width, viewportSize.height, config),
-    ),
-    [config, layout, viewportSize.height, viewportSize.width],
-  );
-  const activeFocusedLeafId: string | null = focusedLeafId ?? internalFocusedLeafId;
-  const controlledMaximizedLeafId: string | null = maximizedLeafId !== undefined
-    ? maximizedLeafId
-    : internalMaximizedLeafId;
+  const leafFootprintsById: ReadonlyMap<string, DynamicPaneFootprint> =
+    React.useMemo(
+      (): ReadonlyMap<string, DynamicPaneFootprint> =>
+        footprintsByLeafId(
+          collectLeafFootprints(
+            layout,
+            0,
+            0,
+            viewportSize.width,
+            viewportSize.height,
+            config,
+          ),
+        ),
+      [config, layout, viewportSize.height, viewportSize.width],
+    );
+  const activeFocusedLeafId: string | null =
+    focusedLeafId ?? internalFocusedLeafId;
+  const controlledMaximizedLeafId: string | null =
+    maximizedLeafId !== undefined ? maximizedLeafId : internalMaximizedLeafId;
   // A maximized id that no longer maps to a live leaf (e.g. layout changed)
   // collapses to restored — keeps maximize render-mode non-destructive + safe.
-  const activeMaximizedLeafId: string | null = isMaximizeEnabled
-    && controlledMaximizedLeafId != null
-    && findLeafById(layout, controlledMaximizedLeafId) != null
-    ? controlledMaximizedLeafId
-    : null;
+  const activeMaximizedLeafId: string | null =
+    isMaximizeEnabled &&
+    controlledMaximizedLeafId != null &&
+    findLeafById(layout, controlledMaximizedLeafId) != null
+      ? controlledMaximizedLeafId
+      : null;
   const paneTabs: ReadonlyArray<PaneTabDescriptor> = React.useMemo(
-    (): ReadonlyArray<PaneTabDescriptor> => leafIds.map((leafId: string): PaneTabDescriptor => {
-      const leaf: DynamicLeafNode | null = findLeafById(layout, leafId);
-      const tile: DynamicTile | undefined = leaf != null ? resolveTile(tiles, leaf.tileId) : undefined;
-      return {
-        leafId,
-        title: tile?.title ?? leafId,
-        accent: tile?.accent ?? "cyan",
-      };
-    }),
+    (): ReadonlyArray<PaneTabDescriptor> =>
+      leafIds.map((leafId: string): PaneTabDescriptor => {
+        const leaf: DynamicLeafNode | null = findLeafById(layout, leafId);
+        const tile: DynamicTile | undefined =
+          leaf != null ? resolveTile(tiles, leaf.tileId) : undefined;
+        return {
+          leafId,
+          title: tile?.title ?? leafId,
+          accent: tile?.accent ?? "cyan",
+        };
+      }),
     [layout, leafIds, tiles],
   );
-  const paneShortcutChips: ReadonlyArray<PaneShortcutChipDescriptor> = React.useMemo(
-    (): ReadonlyArray<PaneShortcutChipDescriptor> => resolvePaneShortcutChips({
-      keymap,
-      commandGates,
-      layout,
-      leafIds,
-      activeFocusedLeafId,
-      activeMaximizedLeafId,
-      focusHistory: focusHistoryRef.current,
-      isLeafRearrangeEligible,
-    }),
-    [
-      keymap,
-      commandGates,
-      layout,
-      leafIds,
-      activeFocusedLeafId,
-      activeMaximizedLeafId,
-      isLeafRearrangeEligible,
-    ],
-  );
+  const paneShortcutChips: ReadonlyArray<PaneShortcutChipDescriptor> =
+    React.useMemo(
+      (): ReadonlyArray<PaneShortcutChipDescriptor> =>
+        resolvePaneShortcutChips({
+          keymap,
+          commandGates,
+          layout,
+          leafIds,
+          activeFocusedLeafId,
+          activeMaximizedLeafId,
+          focusHistory: focusHistoryRef.current,
+          isLeafRearrangeEligible,
+        }),
+      [
+        keymap,
+        commandGates,
+        layout,
+        leafIds,
+        activeFocusedLeafId,
+        activeMaximizedLeafId,
+        isLeafRearrangeEligible,
+      ],
+    );
   const projectedDropLayout: DynamicLayoutNode | null = React.useMemo(
-    (): DynamicLayoutNode | null => resolveProjectedDropLayout(layout, dragSourceLeafId, dropState),
+    (): DynamicLayoutNode | null =>
+      resolveProjectedDropLayout(layout, dragSourceLeafId, dropState),
     [dragSourceLeafId, dropState, layout],
   );
   // TRUE live reflow: in live mode the rendered tree IS the derived candidate
@@ -2984,8 +3618,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // last candidate (no release-time jump). Preview mode keeps the prop layout and
   // paints the projected overlays on top (System A/B). See drag-machine.ts.
   const resolvedTargetLeafId: string | null = dropState?.leafId ?? null;
-  const resolvedTargetZone: DynamicLeafDropZone | null = dropState?.zone ?? null;
-  const resolvedTargetAction: DynamicDropState["action"] | null = dropState?.action ?? null;
+  const resolvedTargetZone: DynamicLeafDropZone | null =
+    dropState?.zone ?? null;
+  const resolvedTargetAction: DynamicDropState["action"] | null =
+    dropState?.action ?? null;
   // The candidate-tree leaf that CARRIES the dragged content — the slot the
   // single ghost reserves + hops into. For `swap` this is the resolved TARGET
   // leaf (tileIds swap in place, so the dragged content lands there and the
@@ -2993,13 +3629,23 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // leaf; `null` (gap-close) → no reservation, ghost free-follows. Reserving /
   // seating on THIS leaf (not blindly the source leaf) is what keeps a swap
   // preview single-instance + identical to the commit. See drag-machine.ts.
-  const ghostSeatLeafId: string | null = resolveDragGhostSeatLeafId(dragSourceLeafId, dropState);
+  const ghostSeatLeafId: string | null = resolveDragGhostSeatLeafId(
+    dragSourceLeafId,
+    dropState,
+  );
   const liveCandidateDisplayLayout: DynamicLayoutNode = React.useMemo(
-    (): DynamicLayoutNode => deriveCandidateTree(layout, dragSourceLeafId, dropState),
+    (): DynamicLayoutNode =>
+      deriveCandidateTree(layout, dragSourceLeafId, dropState),
     // dropState identity changes on every pointer move (ghost), so key on the
     // load-bearing resolve triple instead — identical resolves are free.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [layout, dragSourceLeafId, resolvedTargetLeafId, resolvedTargetZone, resolvedTargetAction],
+    [
+      layout,
+      dragSourceLeafId,
+      resolvedTargetLeafId,
+      resolvedTargetZone,
+      resolvedTargetAction,
+    ],
   );
   // On a COMMIT settle the FSM has already left `dragging` (so `dragSourceLeafId`
   // is null), but `onLayoutChange(deriveCandidateTree(...))` has not landed yet.
@@ -3012,33 +3658,37 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // opened). A CANCEL settle deliberately does NOT take this branch, so the
   // display falls back to the original `layout` and the survivors glide back to
   // re-accommodate the restored source.
-  const settlingCommitCandidate: DynamicLayoutNode | null = React.useMemo(
-    (): DynamicLayoutNode | null => {
+  const settlingCommitCandidate: DynamicLayoutNode | null =
+    React.useMemo((): DynamicLayoutNode | null => {
       if (
-        !liveDragModeEnabled
-        || dragState.phase !== "settling"
-        || dragState.outcome !== "commit"
-        || dragState.resolvedTarget == null
+        !liveDragModeEnabled ||
+        dragState.phase !== "settling" ||
+        dragState.outcome !== "commit" ||
+        dragState.resolvedTarget == null
       ) {
         return null;
       }
-      return deriveCandidateTree(layout, dragState.sourceLeafId, dragState.resolvedTarget);
-    },
-    [dragState, layout, liveDragModeEnabled],
-  );
-  const displayLayout: DynamicLayoutNode = liveDragModeEnabled && dragSourceLeafId != null
-    ? liveCandidateDisplayLayout
-    : settlingCommitCandidate ?? layout;
+      return deriveCandidateTree(
+        layout,
+        dragState.sourceLeafId,
+        dragState.resolvedTarget,
+      );
+    }, [dragState, layout, liveDragModeEnabled]);
+  const displayLayout: DynamicLayoutNode =
+    liveDragModeEnabled && dragSourceLeafId != null
+      ? liveCandidateDisplayLayout
+      : (settlingCommitCandidate ?? layout);
   // During a live drag (and the brief cancel-settle glide tail) the structural
   // layout containers go `overflow-visible` so gliding survivors are not clipped
   // by their own slot mid-FLIP. Only flips the structural divs — the article
   // keeps its own `overflow-hidden`, so pane content never spills.
-  const isSurvivorReflowOverflowWindow: boolean = liveDragModeEnabled
-    && (dragState.phase === "dragging" || isSurvivorReflowAnimating);
+  const isSurvivorReflowOverflowWindow: boolean =
+    liveDragModeEnabled &&
+    (dragState.phase === "dragging" || isSurvivorReflowAnimating);
   // The cursor-following ghost is derived from the FSM dragging state + the
   // pickup snapshot ref (no separate ghost useState to keep in sync).
-  const dragVisualState: DynamicDragVisualState | null = React.useMemo(
-    (): DynamicDragVisualState | null => {
+  const dragVisualState: DynamicDragVisualState | null =
+    React.useMemo((): DynamicDragVisualState | null => {
       if (dragState.phase !== "dragging" || dragSnapshotRef.current == null) {
         return null;
       }
@@ -3051,33 +3701,37 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         pointerAnchorOffsetY: dragState.pointerAnchorOffset.y,
         snapshot: dragSnapshotRef.current,
       };
-    },
-    [dragState, seatFootprint],
-  );
+    }, [dragState, seatFootprint]);
   // Custom drag cursor (tier "c"): a transform-pinned element that REPLACES the
   // OS cursor during a live drag. Gated on the SDK capability flag + live mode;
   // the presentation is derived from the SAME FSM-resolved target the ghost /
   // candidate tree read (no second resolution path), so the cursor's
   // arrow/validity always agrees with the drop the release would commit.
-  const dragCursorEnabled: boolean = liveDragModeEnabled && interactionCapabilities.customCursor;
+  const dragCursorEnabled: boolean =
+    liveDragModeEnabled && interactionCapabilities.customCursor;
   const prefersReducedMotion: boolean = usePrefersReducedMotion();
   const dragCursorPresentation: DragCursorPresentation = React.useMemo(
     (): DragCursorPresentation =>
-      resolveDragCursorPresentation(activeResolvedTarget(dragState), activeDragSourceLeafId(dragState) ?? ""),
+      resolveDragCursorPresentation(
+        activeResolvedTarget(dragState),
+        activeDragSourceLeafId(dragState) ?? "",
+      ),
     [dragState],
   );
-  const isCustomCursorActive: boolean = dragCursorEnabled && dragVisualState != null;
+  const isCustomCursorActive: boolean =
+    dragCursorEnabled && dragVisualState != null;
   // Coherent non-intersecting transit for the SWAP survivor (the displaced
   // target): when on, the surviving boxes dip toward ~70% mid-reflow in lockstep
   // with the ghost so the two crossing boxes never visually collide. Only the
   // swap case needs it (edge-insert boxes never trade places); gated off under
   // reduced motion. See `ghost-transit.ts` §7.
-  const survivorCoherentDipActive: boolean = shouldApplyCoherentTransitDip({
-    enabled: interactionCapabilities.coherentTransit,
-    action: resolvedTargetAction,
-    reducedMotion: prefersReducedMotion,
-    speedsParity,
-  }) && dragState.phase === "dragging";
+  const survivorCoherentDipActive: boolean =
+    shouldApplyCoherentTransitDip({
+      enabled: interactionCapabilities.coherentTransit,
+      action: resolvedTargetAction,
+      reducedMotion: prefersReducedMotion,
+      speedsParity,
+    }) && dragState.phase === "dragging";
   // Measure the resolved slot's reservation rect (client coords) so the single
   // ghost can hop INTO and FILL it. Runs after the candidate-tree DOM mutation
   // (layout effect, before paint), keyed on the resolve triple + viewport (NOT
@@ -3085,16 +3739,18 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // degenerate slots clear the seat → the ghost stays free-following (§10).
   React.useLayoutEffect((): void => {
     if (
-      !liveDragModeEnabled
-      || dragState.phase !== "dragging"
-      || dragSourceLeafId == null
-      || resolvedTargetLeafId == null
+      !liveDragModeEnabled ||
+      dragState.phase !== "dragging" ||
+      dragSourceLeafId == null ||
+      resolvedTargetLeafId == null
     ) {
       setSeatFootprint(null);
       return;
     }
     const reservationElement: HTMLElement | null =
-      rootRef.current?.querySelector<HTMLElement>("[data-drag-source-reservation]") ?? null;
+      rootRef.current?.querySelector<HTMLElement>(
+        "[data-drag-source-reservation]",
+      ) ?? null;
     if (reservationElement == null) {
       setSeatFootprint(null);
       return;
@@ -3104,18 +3760,24 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       setSeatFootprint(null);
       return;
     }
-    const viewportRect: DOMRect | undefined = viewportRef.current?.getBoundingClientRect();
+    const viewportRect: DOMRect | undefined =
+      viewportRef.current?.getBoundingClientRect();
     if (
-      viewportRect != null
-      && (rect.right < viewportRect.left
-        || rect.left > viewportRect.right
-        || rect.bottom < viewportRect.top
-        || rect.top > viewportRect.bottom)
+      viewportRect != null &&
+      (rect.right < viewportRect.left ||
+        rect.left > viewportRect.right ||
+        rect.bottom < viewportRect.top ||
+        rect.top > viewportRect.bottom)
     ) {
       setSeatFootprint(null);
       return;
     }
-    setSeatFootprint({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+    setSeatFootprint({
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     liveDragModeEnabled,
@@ -3146,8 +3808,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
     const leafElements: ReadonlyArray<HTMLElement> = Array.from(
       viewport.querySelectorAll<HTMLElement>("[data-leaf-id]"),
     );
-    const playReflow: boolean = liveDragModeEnabled
-      && (dragState.phase === "dragging" || dragState.phase === "settling");
+    const playReflow: boolean =
+      liveDragModeEnabled &&
+      (dragState.phase === "dragging" || dragState.phase === "settling");
     // Clamp boundary = the host container's visible region intersected with the
     // window, so a survivor scrolled out of the host (or off the window) is
     // snapped, never tweened across a large off-screen offset (§10).
@@ -3160,7 +3823,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
     );
     const clampBottom: number = Math.min(
       viewportDomRect.bottom,
-      typeof window === "undefined" ? viewportDomRect.bottom : window.innerHeight,
+      typeof window === "undefined"
+        ? viewportDomRect.bottom
+        : window.innerHeight,
     );
     const clampViewport: SurvivorRect = {
       left: clampLeft,
@@ -3209,7 +3874,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       // First (interruptible): the live transformed box if mid-flight, else the
       // recorded pre-reflow rect. Read BEFORE the transform is stripped so an
       // in-flight glide retargets smoothly.
-      const hasInFlightTransform: boolean = window.getComputedStyle(element).transform !== "none";
+      const hasInFlightTransform: boolean =
+        window.getComputedStyle(element).transform !== "none";
       const liveDomRect: DOMRect = element.getBoundingClientRect();
       const liveVisualRect: SurvivorRect = {
         left: liveDomRect.left,
@@ -3244,12 +3910,16 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         continue;
       }
       element.style.transformOrigin = "top left";
-      element.style.transform =
-        `translate(${transform.dx}px, ${transform.dy}px) scale(${transform.sx}, ${transform.sy})`;
+      element.style.transform = `translate(${transform.dx}px, ${transform.dy}px) scale(${transform.sx}, ${transform.sy})`;
       playableElements.push(element);
       playableDipPlans.push({
         element,
-        invert: { tx: transform.dx, ty: transform.dy, sx: transform.sx, sy: transform.sy },
+        invert: {
+          tx: transform.dx,
+          ty: transform.dy,
+          sx: transform.sx,
+          sy: transform.sy,
+        },
         lastWidth: last.width,
         lastHeight: last.height,
       });
@@ -3283,7 +3953,11 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         // the resting identity transform.
         const dipAnimations: Animation[] = [];
         for (const plan of playableDipPlans) {
-          const keyframes: Keyframe[] = buildCoherentDipKeyframes(plan.invert, plan.lastWidth, plan.lastHeight);
+          const keyframes: Keyframe[] = buildCoherentDipKeyframes(
+            plan.invert,
+            plan.lastWidth,
+            plan.lastHeight,
+          );
           const animation: Animation = plan.element.animate(keyframes, {
             duration: survivorReflowDurationMs,
             easing: "linear",
@@ -3303,9 +3977,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       // overshoot (the displaced/affected panes land with a bounce); magnitude 0
       // keeps the historical reflow easing. Per-element, so it is valid under
       // non-parity (split) speeds.
-      const reflowEasing: string = swapBounceMagnitude > 0
-        ? buildBounceEasingCss(swapBounceMagnitude)
-        : resolvedReflowEasing;
+      const reflowEasing: string =
+        swapBounceMagnitude > 0
+          ? buildBounceEasingCss(swapBounceMagnitude)
+          : resolvedReflowEasing;
       for (const element of playableElements) {
         element.style.transition = `transform ${survivorReflowDurationMs}ms ${reflowEasing}`;
         element.style.transform = "none";
@@ -3318,7 +3993,17 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayLayout, survivorReflowDurationMs, swapBounceMagnitude, resolvedReflowEasing, dragState.phase, liveDragModeEnabled, survivorCoherentDipActive, viewportSize.width, viewportSize.height]);
+  }, [
+    displayLayout,
+    survivorReflowDurationMs,
+    swapBounceMagnitude,
+    resolvedReflowEasing,
+    dragState.phase,
+    liveDragModeEnabled,
+    survivorCoherentDipActive,
+    viewportSize.width,
+    viewportSize.height,
+  ]);
   // Clear the survivor-reflow clip-mask timer on unmount.
   React.useEffect((): (() => void) => {
     return (): void => {
@@ -3340,74 +4025,108 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // memo deps are exactly the stable-reference inputs (layout / source / viewport
   // / config) — `dropState`/candidate is deliberately ABSENT, so reflow cannot
   // shift the hit geometry. See `resolveStableDragHitFootprints`.
-  const liveHitFootprintsById: ReadonlyMap<string, DynamicPaneFootprint> = React.useMemo(
-    (): ReadonlyMap<string, DynamicPaneFootprint> =>
-      resolveStableDragHitFootprints(
-        liveDragModeEnabled,
-        layout,
-        dragSourceLeafId,
-        viewportSize,
+  const liveHitFootprintsById: ReadonlyMap<string, DynamicPaneFootprint> =
+    React.useMemo(
+      (): ReadonlyMap<string, DynamicPaneFootprint> =>
+        resolveStableDragHitFootprints(
+          liveDragModeEnabled,
+          layout,
+          dragSourceLeafId,
+          viewportSize,
+          config,
+          leafFootprintsById,
+        ),
+      [
         config,
+        dragSourceLeafId,
+        layout,
         leafFootprintsById,
-      ),
-    [config, dragSourceLeafId, layout, leafFootprintsById, liveDragModeEnabled, viewportSize],
-  );
-  const projectedLandingOverlays: ReadonlyArray<DynamicProjectedLandingOverlay> = React.useMemo(
-    (): ReadonlyArray<DynamicProjectedLandingOverlay> => resolveProjectedLandingOverlays(
-      layout,
-      projectedDropLayout,
-      dragSourceLeafId,
-      dropState,
-      viewportSize.width,
-      viewportSize.height,
-      config,
-    ),
-    [config, dragSourceLeafId, dropState, layout, projectedDropLayout, viewportSize.height, viewportSize.width],
-  );
-  const paneHitZoneDebugByLeafId: ReadonlyMap<string, DynamicPaneHitZoneOverlayDebugState> = React.useMemo((): ReadonlyMap<
+        liveDragModeEnabled,
+        viewportSize,
+      ],
+    );
+  const projectedLandingOverlays: ReadonlyArray<DynamicProjectedLandingOverlay> =
+    React.useMemo(
+      (): ReadonlyArray<DynamicProjectedLandingOverlay> =>
+        resolveProjectedLandingOverlays(
+          layout,
+          projectedDropLayout,
+          dragSourceLeafId,
+          dropState,
+          viewportSize.width,
+          viewportSize.height,
+          config,
+        ),
+      [
+        config,
+        dragSourceLeafId,
+        dropState,
+        layout,
+        projectedDropLayout,
+        viewportSize.height,
+        viewportSize.width,
+      ],
+    );
+  const paneHitZoneDebugByLeafId: ReadonlyMap<
+    string,
+    DynamicPaneHitZoneOverlayDebugState
+  > = React.useMemo((): ReadonlyMap<
     string,
     DynamicPaneHitZoneOverlayDebugState
   > => {
     if (!showPaneHitZones || !isRearrangeEnabled) {
       return new Map<string, DynamicPaneHitZoneOverlayDebugState>();
     }
-    const hitZoneSourceLeafId: string | null = dragSourceLeafId ?? paneHitZoneSourceLeafId ?? activeFocusedLeafId ?? null;
-    const hitZoneByLeafId: Map<string, DynamicPaneHitZoneOverlayDebugState> = new Map<
-      string,
-      DynamicPaneHitZoneOverlayDebugState
-    >();
+    const hitZoneSourceLeafId: string | null =
+      dragSourceLeafId ??
+      paneHitZoneSourceLeafId ??
+      activeFocusedLeafId ??
+      null;
+    const hitZoneByLeafId: Map<string, DynamicPaneHitZoneOverlayDebugState> =
+      new Map<string, DynamicPaneHitZoneOverlayDebugState>();
     for (const leafId of leafIds) {
       // A statically-gated leaf is not a drop participant — no hit zones for it.
       if (rearrangeGatedLeafIds.has(leafId)) {
         continue;
       }
-      const targetFootprint: DynamicPaneFootprint | undefined = leafFootprintsById.get(leafId);
+      const targetFootprint: DynamicPaneFootprint | undefined =
+        leafFootprintsById.get(leafId);
       if (targetFootprint == null) {
         continue;
       }
-      const hitZoneDiagnostics: DynamicDropIntentHitZoneDiagnostics = resolveDropIntentHitZoneDiagnostics({
-        paneSize: { width: targetFootprint.width, height: targetFootprint.height },
-        geometryConfig: currentGeometryConfig(interactionCapabilities.dropHitZoneGeometry),
-        evaluateZone: (zone: DynamicLeafDropZone): { isValid: boolean; rejectionReason: string | null } =>
-          evaluateZoneCandidate({
-            zone,
-            layout,
-            sourceLeafId: hitZoneSourceLeafId,
-            targetLeafId: leafId,
-            targetFootprint,
-            config,
-            viewportWidth: viewportSize.width,
-            viewportHeight: viewportSize.height,
+      const hitZoneDiagnostics: DynamicDropIntentHitZoneDiagnostics =
+        resolveDropIntentHitZoneDiagnostics({
+          paneSize: {
+            width: targetFootprint.width,
+            height: targetFootprint.height,
+          },
+          geometryConfig: currentGeometryConfig(
+            interactionCapabilities.dropHitZoneGeometry,
+          ),
+          evaluateZone: (
+            zone: DynamicLeafDropZone,
+          ): { isValid: boolean; rejectionReason: string | null } =>
+            evaluateZoneCandidate({
+              zone,
+              layout,
+              sourceLeafId: hitZoneSourceLeafId,
+              targetLeafId: leafId,
+              targetFootprint,
+              config,
+              viewportWidth: viewportSize.width,
+              viewportHeight: viewportSize.height,
+            }),
+        });
+      const edgeCandidates: ReadonlyArray<DynamicPaneHitZoneCandidateDebugState> =
+        hitZoneDiagnostics.edgeZones.map(
+          (edgeZoneDiagnostic): DynamicPaneHitZoneCandidateDebugState => ({
+            zone: edgeZoneDiagnostic.zone,
+            isValid: edgeZoneDiagnostic.isValid,
+            rejectionReason: edgeZoneDiagnostic.rejectionReason,
           }),
-      });
-      const edgeCandidates: ReadonlyArray<DynamicPaneHitZoneCandidateDebugState> = hitZoneDiagnostics.edgeZones.map(
-        (edgeZoneDiagnostic): DynamicPaneHitZoneCandidateDebugState => ({
-          zone: edgeZoneDiagnostic.zone,
-          isValid: edgeZoneDiagnostic.isValid,
-          rejectionReason: edgeZoneDiagnostic.rejectionReason,
-        }),
-      );
-      const centerIsValid: boolean = hitZoneSourceLeafId == null || hitZoneSourceLeafId !== leafId;
+        );
+      const centerIsValid: boolean =
+        hitZoneSourceLeafId == null || hitZoneSourceLeafId !== leafId;
       hitZoneByLeafId.set(leafId, {
         leafId,
         dragSourceLeafId: hitZoneSourceLeafId,
@@ -3462,7 +4181,13 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         viewportElement: viewportRef.current,
       }),
     );
-  }, [dragSourceLeafId, dragState, dropState, leafFootprintsById, onLiveHitLogChange]);
+  }, [
+    dragSourceLeafId,
+    dragState,
+    dropState,
+    leafFootprintsById,
+    onLiveHitLogChange,
+  ]);
 
   React.useEffect((): (() => void) => {
     return (): void => {
@@ -3492,15 +4217,20 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
     const updateViewportSize = (): void => {
       const nextWidth: number = viewportElement.clientWidth;
       const nextHeight: number = viewportElement.clientHeight;
-      setViewportSize((previous: { width: number; height: number }): { width: number; height: number } => {
-        if (previous.width === nextWidth && previous.height === nextHeight) {
-          return previous;
-        }
-        return {
-          width: nextWidth,
-          height: nextHeight,
-        };
-      });
+      setViewportSize(
+        (previous: {
+          width: number;
+          height: number;
+        }): { width: number; height: number } => {
+          if (previous.width === nextWidth && previous.height === nextHeight) {
+            return previous;
+          }
+          return {
+            width: nextWidth,
+            height: nextHeight,
+          };
+        },
+      );
     };
 
     updateViewportSize();
@@ -3544,9 +4274,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
     }
 
     const handlePointerMove = (event: PointerEvent): void => {
-      const deltaPx: number = resizeState.axis === "horizontal"
-        ? event.clientX - resizeState.startPointerPx
-        : event.clientY - resizeState.startPointerPx;
+      const deltaPx: number =
+        resizeState.axis === "horizontal"
+          ? event.clientX - resizeState.startPointerPx
+          : event.clientY - resizeState.startPointerPx;
       const nextRatio: number = clampByMinSize(
         resizeState.startRatio + deltaPx / resizeState.containerSizePx,
         resizeState.containerSizePx,
@@ -3581,18 +4312,21 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         return;
       }
       event.preventDefault();
-      const splitContainer: HTMLDivElement | undefined = splitContainerRefs.current.get(node.id);
+      const splitContainer: HTMLDivElement | undefined =
+        splitContainerRefs.current.get(node.id);
       if (splitContainer == null) {
         return;
       }
 
       const rect: DOMRect = splitContainer.getBoundingClientRect();
-      const containerSizePx: number = node.axis === "horizontal" ? rect.width : rect.height;
+      const containerSizePx: number =
+        node.axis === "horizontal" ? rect.width : rect.height;
       if (containerSizePx <= 1) {
         return;
       }
 
-      const startPointerPx: number = node.axis === "horizontal" ? event.clientX : event.clientY;
+      const startPointerPx: number =
+        node.axis === "horizontal" ? event.clientX : event.clientY;
       const boundedRatio: number = clampByMinSize(
         node.ratio,
         containerSizePx,
@@ -3610,7 +4344,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         minPaneSizePx: resolvedMinPaneSizePx,
       });
 
-      if (event.currentTarget.setPointerCapture != null && isPointerLikeEvent(event.nativeEvent)) {
+      if (
+        event.currentTarget.setPointerCapture != null &&
+        isPointerLikeEvent(event.nativeEvent)
+      ) {
         event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
       }
     },
@@ -3637,7 +4374,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       }
       const isHorizontalDivider: boolean = node.axis === "horizontal";
       const decreaseKey: string = isHorizontalDivider ? "ArrowLeft" : "ArrowUp";
-      const increaseKey: string = isHorizontalDivider ? "ArrowRight" : "ArrowDown";
+      const increaseKey: string = isHorizontalDivider
+        ? "ArrowRight"
+        : "ArrowDown";
       const SEPARATOR_RATIO_STEP: number = 0.02;
       const SEPARATOR_RATIO_PAGE_STEP: number = 0.1;
       let nextRatio: number | null = null;
@@ -3676,7 +4415,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       if (!isFocusSelectionEnabled) {
         return;
       }
-      focusHistoryRef.current = pushFocusHistory(focusHistoryRef.current, leafId);
+      focusHistoryRef.current = pushFocusHistory(
+        focusHistoryRef.current,
+        leafId,
+      );
       setInternalFocusedLeafId(leafId);
       onFocusedLeafChange?.(leafId);
     },
@@ -3710,7 +4452,12 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         setMaximizedLeaf(leafId);
       }
     },
-    [activeMaximizedLeafId, isMaximizeEnabled, setFocusedLeaf, setMaximizedLeaf],
+    [
+      activeMaximizedLeafId,
+      isMaximizeEnabled,
+      setFocusedLeaf,
+      setMaximizedLeaf,
+    ],
   );
 
   // Commit the in-flight switcher: activate the highlighted pane (focus +
@@ -3718,7 +4465,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // latest selection from a ref so the document keyup listener need not
   // re-subscribe on every highlight advance.
   const commitPaneSwitcherSelection = React.useCallback((): void => {
-    const switcherState: TilingPaneSwitcherState | null = paneSwitcherStateRef.current;
+    const switcherState: TilingPaneSwitcherState | null =
+      paneSwitcherStateRef.current;
     if (switcherState != null) {
       activateLeaf(commitPaneSwitcher(switcherState));
     }
@@ -3735,7 +4483,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   const focusLeafElement = React.useCallback((leafId: string): void => {
     const rootElement: HTMLDivElement | null = rootRef.current;
     const paneElement: HTMLElement | null =
-      rootElement?.querySelector<HTMLElement>(`[data-leaf-id="${leafId}"]`) ?? null;
+      rootElement?.querySelector<HTMLElement>(`[data-leaf-id="${leafId}"]`) ??
+      null;
     paneElement?.focus({ preventScroll: true });
   }, []);
 
@@ -3756,16 +4505,26 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
 
   const aimMoveMode = React.useCallback(
     (direction: DynamicFocusDirection): void => {
-      setMoveModeState((current: TilingMoveModeState | null): TilingMoveModeState | null => {
-        if (current == null) {
-          return current;
-        }
-        const targetLeafId: string | null = findLeafByDirection(layout, current.sourceLeafId, direction);
-        if (targetLeafId == null || rearrangeGatedLeafIds.has(targetLeafId)) {
-          return current;
-        }
-        return { ...current, targetLeafId, placement: directionToPlacement(direction) };
-      });
+      setMoveModeState(
+        (current: TilingMoveModeState | null): TilingMoveModeState | null => {
+          if (current == null) {
+            return current;
+          }
+          const targetLeafId: string | null = findLeafByDirection(
+            layout,
+            current.sourceLeafId,
+            direction,
+          );
+          if (targetLeafId == null || rearrangeGatedLeafIds.has(targetLeafId)) {
+            return current;
+          }
+          return {
+            ...current,
+            targetLeafId,
+            placement: directionToPlacement(direction),
+          };
+        },
+      );
     },
     [layout, rearrangeGatedLeafIds],
   );
@@ -3773,11 +4532,20 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   const commitMoveMode = React.useCallback((): void => {
     const current: TilingMoveModeState | null = moveModeStateRef.current;
     setMoveModeState(null);
-    if (current == null || current.targetLeafId == null || current.placement == null) {
+    if (
+      current == null ||
+      current.targetLeafId == null ||
+      current.placement == null
+    ) {
       return;
     }
     onLayoutChange(
-      insertLeafAdjacent(layout, current.sourceLeafId, current.targetLeafId, current.placement),
+      insertLeafAdjacent(
+        layout,
+        current.sourceLeafId,
+        current.targetLeafId,
+        current.placement,
+      ),
     );
     setFocusedLeaf(current.sourceLeafId);
   }, [layout, onLayoutChange, setFocusedLeaf]);
@@ -3810,7 +4578,11 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           if (activeFocusedLeafId == null) {
             return false;
           }
-          const nextLeafId: string | null = findLeafByDirection(layout, activeFocusedLeafId, command.direction);
+          const nextLeafId: string | null = findLeafByDirection(
+            layout,
+            activeFocusedLeafId,
+            command.direction,
+          );
           if (nextLeafId == null) {
             return false;
           }
@@ -3819,7 +4591,11 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           return true;
         }
         case "focus-cycle": {
-          const nextLeafId: string | null = resolveCycledPaneId(leafIds, activeFocusedLeafId, command.direction);
+          const nextLeafId: string | null = resolveCycledPaneId(
+            leafIds,
+            activeFocusedLeafId,
+            command.direction,
+          );
           if (nextLeafId == null) {
             return false;
           }
@@ -3827,7 +4603,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           return true;
         }
         case "focus-jump": {
-          const jumpLeafId: string | null = resolveJumpedPaneId(leafIds, command.paneNumber);
+          const jumpLeafId: string | null = resolveJumpedPaneId(
+            leafIds,
+            command.paneNumber,
+          );
           if (jumpLeafId == null) {
             return false;
           }
@@ -3835,7 +4614,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           return true;
         }
         case "focus-current-or-last": {
-          const target: string | null = resolveFocusCurrentOrLast(focusHistoryRef.current, activeFocusedLeafId);
+          const target: string | null = resolveFocusCurrentOrLast(
+            focusHistoryRef.current,
+            activeFocusedLeafId,
+          );
           if (target == null || findLeafById(layout, target) == null) {
             return false;
           }
@@ -3897,23 +4679,32 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         }
         case "swap-panes": {
           if (
-            findLeafById(layout, command.sourceLeafId) == null
-            || findLeafById(layout, command.targetLeafId) == null
-            || command.sourceLeafId === command.targetLeafId
+            findLeafById(layout, command.sourceLeafId) == null ||
+            findLeafById(layout, command.targetLeafId) == null ||
+            command.sourceLeafId === command.targetLeafId
           ) {
             return false;
           }
-          onLayoutChange(swapLeafTiles(layout, command.sourceLeafId, command.targetLeafId));
+          onLayoutChange(
+            swapLeafTiles(layout, command.sourceLeafId, command.targetLeafId),
+          );
           return true;
         }
         case "insert-adjacent": {
           if (
-            findLeafById(layout, command.sourceLeafId) == null
-            || findLeafById(layout, command.targetLeafId) == null
+            findLeafById(layout, command.sourceLeafId) == null ||
+            findLeafById(layout, command.targetLeafId) == null
           ) {
             return false;
           }
-          onLayoutChange(insertLeafAdjacent(layout, command.sourceLeafId, command.targetLeafId, command.placement));
+          onLayoutChange(
+            insertLeafAdjacent(
+              layout,
+              command.sourceLeafId,
+              command.targetLeafId,
+              command.placement,
+            ),
+          );
           setFocusedLeaf(command.sourceLeafId);
           return true;
         }
@@ -3934,7 +4725,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           return true;
         }
         case "set-split-ratio": {
-          onLayoutChange(updateSplitRatio(layout, command.splitId, command.ratio));
+          onLayoutChange(
+            updateSplitRatio(layout, command.splitId, command.ratio),
+          );
           return true;
         }
         case "toggle-split-axis": {
@@ -3951,7 +4744,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           // `splitId` is optional on the master-layout commands; omitted resolves
           // against the ROOT split (the workspace-level layout selector). When the
           // layout is a single leaf there is no split to retarget — no-op.
-          const targetSplitId: string | null = command.splitId ?? (layout.kind === "split" ? layout.id : null);
+          const targetSplitId: string | null =
+            command.splitId ?? (layout.kind === "split" ? layout.id : null);
           if (targetSplitId == null) {
             return false;
           }
@@ -3967,18 +4761,35 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
               next = setSplitMasterCount(layout, targetSplitId, command.count);
               break;
             case "adjust-master-count":
-              next = adjustSplitMasterCount(layout, targetSplitId, command.delta);
+              next = adjustSplitMasterCount(
+                layout,
+                targetSplitId,
+                command.delta,
+              );
               break;
             case "set-master-orientation":
-              next = setSplitMasterOrientation(layout, targetSplitId, command.orientation);
+              next = setSplitMasterOrientation(
+                layout,
+                targetSplitId,
+                command.orientation,
+              );
               break;
             case "cycle-master-orientation": {
               let workingLayout: DynamicLayoutNode = layout;
-              const targetSplit: DynamicSplitNode | undefined = collectSplitNodes(workingLayout).find(
-                (split: DynamicSplitNode): boolean => split.id === targetSplitId,
-              );
-              if (targetSplit != null && (targetSplit.layoutMode ?? "dwindle") !== "master") {
-                workingLayout = setSplitLayoutMode(workingLayout, targetSplitId, "master");
+              const targetSplit: DynamicSplitNode | undefined =
+                collectSplitNodes(workingLayout).find(
+                  (split: DynamicSplitNode): boolean =>
+                    split.id === targetSplitId,
+                );
+              if (
+                targetSplit != null &&
+                (targetSplit.layoutMode ?? "dwindle") !== "master"
+              ) {
+                workingLayout = setSplitLayoutMode(
+                  workingLayout,
+                  targetSplitId,
+                  "master",
+                );
               }
               next = cycleSplitMasterOrientation(workingLayout, targetSplitId);
               break;
@@ -4004,13 +4815,17 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         case "toggle-group": {
           // Focused (or explicit) leaf: if grouped → ungroup; else group it with
           // its reading-order neighbor (the Hyprland `togglegroup` ergonomic).
-          const focusLeafId: string | null = command.leafId ?? activeFocusedLeafId;
+          const focusLeafId: string | null =
+            command.leafId ?? activeFocusedLeafId;
           if (focusLeafId == null) {
             return false;
           }
           const existingGroup = findGroupContainingLeaf(layout, focusLeafId);
           if (existingGroup != null) {
-            const next: DynamicLayoutNode = ungroupNode(layout, existingGroup.id);
+            const next: DynamicLayoutNode = ungroupNode(
+              layout,
+              existingGroup.id,
+            );
             if (next === layout) {
               return false;
             }
@@ -4023,8 +4838,13 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
             return false;
           }
           const neighborId: string =
-            focusIndex + 1 < outerIds.length ? outerIds[focusIndex + 1] : outerIds[focusIndex - 1];
-          const next: DynamicLayoutNode = groupLeaves(layout, [focusLeafId, neighborId]);
+            focusIndex + 1 < outerIds.length
+              ? outerIds[focusIndex + 1]
+              : outerIds[focusIndex - 1];
+          const next: DynamicLayoutNode = groupLeaves(layout, [
+            focusLeafId,
+            neighborId,
+          ]);
           if (next === layout) {
             return false;
           }
@@ -4035,7 +4855,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           const groupId: string | null =
             command.groupId ??
             (activeFocusedLeafId != null
-              ? findGroupContainingLeaf(layout, activeFocusedLeafId)?.id ?? null
+              ? (findGroupContainingLeaf(layout, activeFocusedLeafId)?.id ??
+                null)
               : null);
           if (groupId == null) {
             return false;
@@ -4048,7 +4869,11 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           return true;
         }
         case "add-to-group": {
-          const next: DynamicLayoutNode = addLeafToGroup(layout, command.groupId, command.sourceLeafId);
+          const next: DynamicLayoutNode = addLeafToGroup(
+            layout,
+            command.groupId,
+            command.sourceLeafId,
+          );
           if (next === layout) {
             return false;
           }
@@ -4056,7 +4881,11 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           return true;
         }
         case "remove-from-group": {
-          const next: DynamicLayoutNode = removeMemberFromGroup(layout, command.groupId, command.memberId);
+          const next: DynamicLayoutNode = removeMemberFromGroup(
+            layout,
+            command.groupId,
+            command.memberId,
+          );
           if (next === layout) {
             return false;
           }
@@ -4068,12 +4897,17 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           const groupId: string | null =
             command.groupId ??
             (activeFocusedLeafId != null
-              ? findGroupContainingLeaf(layout, activeFocusedLeafId)?.id ?? null
+              ? (findGroupContainingLeaf(layout, activeFocusedLeafId)?.id ??
+                null)
               : null);
           if (groupId == null) {
             return false;
           }
-          const next: DynamicLayoutNode = cycleActiveGroupMember(layout, groupId, command.direction);
+          const next: DynamicLayoutNode = cycleActiveGroupMember(
+            layout,
+            groupId,
+            command.direction,
+          );
           if (next === layout) {
             return false;
           }
@@ -4088,7 +4922,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           const groupId: string | null =
             command.groupId ??
             (activeFocusedLeafId != null
-              ? findGroupContainingLeaf(layout, activeFocusedLeafId)?.id ?? null
+              ? (findGroupContainingLeaf(layout, activeFocusedLeafId)?.id ??
+                null)
               : null);
           if (groupId == null) {
             return false;
@@ -4102,7 +4937,11 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
             return false;
           }
           const memberId: string = targetGroup.members[memberIndex].id;
-          const next: DynamicLayoutNode = setActiveGroupMember(layout, groupId, memberId);
+          const next: DynamicLayoutNode = setActiveGroupMember(
+            layout,
+            groupId,
+            memberId,
+          );
           if (next === layout) {
             return false;
           }
@@ -4182,7 +5021,13 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           cancelMoveMode();
           return;
         }
-        if (event.code === "Enter" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        if (
+          event.code === "Enter" &&
+          !event.altKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.shiftKey
+        ) {
           preventDefault();
           commitMoveMode();
           return;
@@ -4197,7 +5042,12 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
             shiftKey: event.shiftKey,
           },
           keymap,
-          { maximizeEnabled: false, paneSwitchingEnabled: false, focusEnabled: true, rearrangeEnabled: false },
+          {
+            maximizeEnabled: false,
+            paneSwitchingEnabled: false,
+            focusEnabled: true,
+            rearrangeEnabled: false,
+          },
         );
         if (moveAction != null && moveAction.kind === "focus-direction") {
           preventDefault();
@@ -4212,7 +5062,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       // programmatic dispatch). A matched binding consumes the resolution even
       // when its command is gated out (returns a no-op) so it predictably
       // shadows any default on that chord.
-      const customCommand: TilingCommand | null = matchKeyBinding(event, interactionCapabilities.keyBindings.bindings);
+      const customCommand: TilingCommand | null = matchKeyBinding(
+        event,
+        interactionCapabilities.keyBindings.bindings,
+      );
       if (customCommand != null) {
         if (dispatchCommand(customCommand)) {
           preventDefault();
@@ -4245,16 +5098,24 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         return;
       }
       if (action.kind === "previous-pane" || action.kind === "next-pane") {
-        const direction: "next" | "previous" = action.kind === "next-pane" ? "next" : "previous";
-        const cycleChord = direction === "next" ? keymap.nextPane : keymap.previousPane;
+        const direction: "next" | "previous" =
+          action.kind === "next-pane" ? "next" : "previous";
+        const cycleChord =
+          direction === "next" ? keymap.nextPane : keymap.previousPane;
         // macOS Cmd+Tab flow: when the overlay is enabled and the cycle chord
         // carries a held modifier, open/advance the visual switcher instead of
         // activating immediately. The selection commits on modifier release.
         // This is a keyboard-only modal interaction, so it stays out of
         // `dispatchCommand` (a direct `focus-cycle` dispatch always activates).
         if (showSwitcherOverlay && chordHasModifier(cycleChord)) {
-          const holdModifiers = { alt: cycleChord.alt, ctrl: cycleChord.ctrl, meta: cycleChord.meta, shift: cycleChord.shift };
-          const currentSwitcherState: TilingPaneSwitcherState | null = paneSwitcherStateRef.current;
+          const holdModifiers = {
+            alt: cycleChord.alt,
+            ctrl: cycleChord.ctrl,
+            meta: cycleChord.meta,
+            shift: cycleChord.shift,
+          };
+          const currentSwitcherState: TilingPaneSwitcherState | null =
+            paneSwitcherStateRef.current;
           if (currentSwitcherState == null) {
             const opened: TilingPaneSwitcherState | null = openPaneSwitcher(
               leafIds,
@@ -4270,7 +5131,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
             return;
           }
           preventDefault();
-          setPaneSwitcherState(advancePaneSwitcher(leafIds, currentSwitcherState, direction));
+          setPaneSwitcherState(
+            advancePaneSwitcher(leafIds, currentSwitcherState, direction),
+          );
           return;
         }
         if (dispatchCommand({ kind: "focus-cycle", direction })) {
@@ -4282,7 +5145,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         // jump-to-pane: while the switcher is open, the digit re-targets the
         // highlight (commit still happens on modifier release); otherwise it
         // routes through the command router as a direct focus-jump.
-        const currentSwitcherState: TilingPaneSwitcherState | null = paneSwitcherStateRef.current;
+        const currentSwitcherState: TilingPaneSwitcherState | null =
+          paneSwitcherStateRef.current;
         if (showSwitcherOverlay && currentSwitcherState != null) {
           const nextSwitcherState: TilingPaneSwitcherState = jumpPaneSwitcher(
             leafIds,
@@ -4293,7 +5157,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           setPaneSwitcherState(nextSwitcherState);
           return;
         }
-        if (dispatchCommand({ kind: "focus-jump", paneNumber: action.paneNumber })) {
+        if (
+          dispatchCommand({ kind: "focus-jump", paneNumber: action.paneNumber })
+        ) {
           preventDefault();
         }
         return;
@@ -4350,7 +5216,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       // A focused separator owns the arrow keys for keyboard resize (its own
       // onKeyDown handles them) — never let the document-level focus-nav also
       // consume the same press.
-      if (event.target instanceof HTMLElement && event.target.getAttribute("role") === "separator") {
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.getAttribute("role") === "separator"
+      ) {
         return;
       }
       const target: EventTarget | null = event.target;
@@ -4361,12 +5230,15 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       ) {
         return;
       }
-      const focusWithinRoot: boolean = rootElement.contains(document.activeElement);
-      const engaged: boolean = paneSwitcherStateRef.current != null
-        || moveModeStateRef.current != null
-        || activeMaximizedLeafId != null
-        || focusWithinRoot
-        || isPointerWithinRootRef.current;
+      const focusWithinRoot: boolean = rootElement.contains(
+        document.activeElement,
+      );
+      const engaged: boolean =
+        paneSwitcherStateRef.current != null ||
+        moveModeStateRef.current != null ||
+        activeMaximizedLeafId != null ||
+        focusWithinRoot ||
+        isPointerWithinRootRef.current;
       if (!engaged) {
         return;
       }
@@ -4416,7 +5288,11 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
     if (paneSwitcherState == null) {
       return;
     }
-    if (!isPaneSwitchingEnabled || !showSwitcherOverlay || !leafIds.includes(paneSwitcherState.selectedLeafId)) {
+    if (
+      !isPaneSwitchingEnabled ||
+      !showSwitcherOverlay ||
+      !leafIds.includes(paneSwitcherState.selectedLeafId)
+    ) {
       setPaneSwitcherState(null);
     }
   }, [isPaneSwitchingEnabled, leafIds, paneSwitcherState, showSwitcherOverlay]);
@@ -4444,7 +5320,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // unrelated re-renders.
   const previousMaximizedLeafIdRef = React.useRef<string | null>(null);
   React.useEffect((): void => {
-    const previousMaximizedLeafId: string | null = previousMaximizedLeafIdRef.current;
+    const previousMaximizedLeafId: string | null =
+      previousMaximizedLeafIdRef.current;
     if (previousMaximizedLeafId === activeMaximizedLeafId) {
       return;
     }
@@ -4454,9 +5331,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       return;
     }
     if (activeMaximizedLeafId != null) {
-      const maximizedPaneElement: HTMLElement | null = rootElement.querySelector<HTMLElement>(
-        `[data-leaf-id="${activeMaximizedLeafId}"]`,
-      );
+      const maximizedPaneElement: HTMLElement | null =
+        rootElement.querySelector<HTMLElement>(
+          `[data-leaf-id="${activeMaximizedLeafId}"]`,
+        );
       if (maximizedPaneElement != null) {
         maximizedPaneElement.focus({ preventScroll: true });
         return;
@@ -4464,39 +5342,45 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
     }
     // Restore (or maximized pane not found): keep focus anchored on the root so
     // the document listener's focus-within engagement check stays satisfied.
-    if (previousMaximizedLeafId != null && !rootElement.contains(document.activeElement)) {
+    if (
+      previousMaximizedLeafId != null &&
+      !rootElement.contains(document.activeElement)
+    ) {
       rootElement.focus({ preventScroll: true });
     }
   }, [activeMaximizedLeafId]);
 
-  const beginCancelFlyBackAnimation = React.useCallback((activeState: DynamicDragVisualState): void => {
-    if (clearCancelVisualTimeoutRef.current != null) {
-      window.clearTimeout(clearCancelVisualTimeoutRef.current);
-      clearCancelVisualTimeoutRef.current = null;
-    }
+  const beginCancelFlyBackAnimation = React.useCallback(
+    (activeState: DynamicDragVisualState): void => {
+      if (clearCancelVisualTimeoutRef.current != null) {
+        window.clearTimeout(clearCancelVisualTimeoutRef.current);
+        clearCancelVisualTimeoutRef.current = null;
+      }
 
-    // Hidden-tab guard: when the page is not visible (a BLUR / VISIBILITY_HIDDEN
-    // interrupt) skip the fly-back entirely. Background tabs throttle timers, so
-    // the clearing `setTimeout` could fire arbitrarily late and the fly-back
-    // ghost would be left HANGING on the screen when the user returns. With no
-    // overlay set there is nothing to strand — the layout already reverted.
-    if (typeof document !== "undefined" && document.hidden) {
-      setCancelVisualState(null);
-      return;
-    }
+      // Hidden-tab guard: when the page is not visible (a BLUR / VISIBILITY_HIDDEN
+      // interrupt) skip the fly-back entirely. Background tabs throttle timers, so
+      // the clearing `setTimeout` could fire arbitrarily late and the fly-back
+      // ghost would be left HANGING on the screen when the user returns. With no
+      // overlay set there is nothing to strand — the layout already reverted.
+      if (typeof document !== "undefined" && document.hidden) {
+        setCancelVisualState(null);
+        return;
+      }
 
-    setCancelVisualState({
-      sourceLeafId: activeState.sourceLeafId,
-      fromFootprint: activeState.activeFootprint,
-      toFootprint: activeState.sourceFootprint,
-      snapshot: activeState.snapshot,
-    });
+      setCancelVisualState({
+        sourceLeafId: activeState.sourceLeafId,
+        fromFootprint: activeState.activeFootprint,
+        toFootprint: activeState.sourceFootprint,
+        snapshot: activeState.snapshot,
+      });
 
-    clearCancelVisualTimeoutRef.current = window.setTimeout((): void => {
-      setCancelVisualState(null);
-      clearCancelVisualTimeoutRef.current = null;
-    }, DRAG_CANCEL_ANIMATION_MS + 40);
-  }, []);
+      clearCancelVisualTimeoutRef.current = window.setTimeout((): void => {
+        setCancelVisualState(null);
+        clearCancelVisualTimeoutRef.current = null;
+      }, DRAG_CANCEL_ANIMATION_MS + 40);
+    },
+    [],
+  );
 
   React.useEffect((): (() => void) => {
     return (): void => {
@@ -4550,15 +5434,15 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       if (!isRearrangeEnabled) {
         return null;
       }
-      const viewportRect: DOMRect | undefined = viewportRef.current?.getBoundingClientRect();
+      const viewportRect: DOMRect | undefined =
+        viewportRef.current?.getBoundingClientRect();
       if (viewportRect == null) {
         return null;
       }
       const localX: number = clientX - viewportRect.left;
       const localY: number = clientY - viewportRect.top;
-      const hitFootprints: ReadonlyMap<string, DynamicPaneFootprint> = liveDragModeEnabled
-        ? liveHitFootprintsById
-        : leafFootprintsById;
+      const hitFootprints: ReadonlyMap<string, DynamicPaneFootprint> =
+        liveDragModeEnabled ? liveHitFootprintsById : leafFootprintsById;
       // Tab-strip hits take priority over the group body: the strip sits above the
       // active-member footprint and is the Hyprland groupbar merge target.
       if (interactionCapabilities.grouping) {
@@ -4566,29 +5450,38 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           clientX,
           clientY,
           collectGroups(layout).map((group: DynamicGroupNode) => {
-            const stripElement: HTMLDivElement | undefined = groupTabStripRefs.current.get(group.id);
-            const stripRect: DOMRect | undefined = stripElement?.getBoundingClientRect();
+            const stripElement: HTMLDivElement | undefined =
+              groupTabStripRefs.current.get(group.id);
+            const stripRect: DOMRect | undefined =
+              stripElement?.getBoundingClientRect();
             return {
               groupId: group.id,
               activeMemberLeafId: group.activeMemberId,
-              bounds: stripRect == null
-                ? null
-                : {
-                    left: stripRect.left,
-                    top: stripRect.top,
-                    right: stripRect.right,
-                    bottom: stripRect.bottom,
-                  },
+              bounds:
+                stripRect == null
+                  ? null
+                  : {
+                      left: stripRect.left,
+                      top: stripRect.top,
+                      right: stripRect.right,
+                      bottom: stripRect.bottom,
+                    },
             };
           }),
         );
-        if (tabStripHit != null && tabStripHit.activeMemberLeafId !== sourceLeafId) {
+        if (
+          tabStripHit != null &&
+          tabStripHit.activeMemberLeafId !== sourceLeafId
+        ) {
           const targetFootprint: DynamicPaneFootprint | undefined =
             hitFootprints.get(tabStripHit.activeMemberLeafId);
           if (targetFootprint != null) {
             return buildGroupTabStripMergeIntent({
               activeMemberLeafId: tabStripHit.activeMemberLeafId,
-              evaluateCenter: (): { isValid: boolean; rejectionReason: string | null } =>
+              evaluateCenter: (): {
+                isValid: boolean;
+                rejectionReason: string | null;
+              } =>
                 evaluateZoneCandidate({
                   zone: "center",
                   layout,
@@ -4612,7 +5505,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         if (leafId === sourceLeafId || rearrangeGatedLeafIds.has(leafId)) {
           continue;
         }
-        const footprint: DynamicPaneFootprint | undefined = hitFootprints.get(leafId);
+        const footprint: DynamicPaneFootprint | undefined =
+          hitFootprints.get(leafId);
         if (
           footprint != null &&
           localX >= footprint.left &&
@@ -4628,7 +5522,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       if (hitLeafId == null || hitFootprint == null) {
         return null;
       }
-      const splitPath: ReadonlyArray<DynamicSplitPathEntry> = readSplitPathToLeaf(layout, hitLeafId) ?? [];
+      const splitPath: ReadonlyArray<DynamicSplitPathEntry> =
+        readSplitPathToLeaf(layout, hitLeafId) ?? [];
       const axisPath: ReadonlyArray<DynamicSplitAxis> = splitPath.map(
         (pathEntry: DynamicSplitPathEntry): DynamicSplitAxis => pathEntry.axis,
       );
@@ -4639,16 +5534,23 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       // Seed the geometric hysteresis band from the prior resolved zone (only for
       // the same hovered leaf) so zone flips must overcome the band — the
       // anti-thrash damper that makes live reflow stable.
-      const previousZone: DynamicLeafDropZone | null = previousZoneSeed(previousTarget, hitLeafId);
+      const previousZone: DynamicLeafDropZone | null = previousZoneSeed(
+        previousTarget,
+        hitLeafId,
+      );
       return resolveDropIntent({
         leafId: hitLeafId,
         paneLocalX: paneLocalPoint.x,
         paneLocalY: paneLocalPoint.y,
         paneSize: { width: hitFootprint.width, height: hitFootprint.height },
         axisPath,
-        geometryConfig: currentGeometryConfig(interactionCapabilities.dropHitZoneGeometry),
+        geometryConfig: currentGeometryConfig(
+          interactionCapabilities.dropHitZoneGeometry,
+        ),
         previousZone,
-        evaluateZone: (zone: DynamicLeafDropZone): { isValid: boolean; rejectionReason: string | null } =>
+        evaluateZone: (
+          zone: DynamicLeafDropZone,
+        ): { isValid: boolean; rejectionReason: string | null } =>
           evaluateZoneCandidate({
             zone,
             layout,
@@ -4686,7 +5588,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // primitive so the input-layer effect can key on it (the `idle`/`settling`
   // variants carry no `pointerId`).
   const activeDragPointerId: number | null =
-    dragState.phase === "armed" || dragState.phase === "dragging" ? dragState.pointerId : null;
+    dragState.phase === "armed" || dragState.phase === "dragging"
+      ? dragState.pointerId
+      : null;
   React.useEffect((): (() => void) | void => {
     if (activeDragPointerId == null) {
       return;
@@ -4698,115 +5602,143 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
     // frame so multiple moves cannot trigger multiple target-resolution +
     // candidate-tree recomputes within one frame. `.cancel()` on teardown drops
     // any pending frame so it can never fire after the drag has settled.
-    const coalescer: FrameCoalescer<DragMachinePoint> = createFrameCoalescer<DragMachinePoint>(
-      (client: DragMachinePoint): void => {
-        const current: DragMachineState = dragStateRef.current;
-        if (current.phase === "armed") {
-          if (current.touchDrag) {
-            // Touch must disambiguate before capture. A pre-long-press scroll-axis
-            // flick is released to the page: forward the move so the reducer drops
-            // to idle, and take NO capture (capturing then idling would leak the
-            // capture, since the settle path only releases on `settling`). A
-            // sub-threshold hold keeps armed (the long-press timer still runs). A
-            // non-scroll threshold crossing is a deliberate pickup → fall through
-            // to capture + promote.
-            const resolution: TouchArmedMoveResolution = resolveTouchArmedMove({
-              origin: current.originClient,
+    const coalescer: FrameCoalescer<DragMachinePoint> =
+      createFrameCoalescer<DragMachinePoint>(
+        (client: DragMachinePoint): void => {
+          const current: DragMachineState = dragStateRef.current;
+          if (current.phase === "armed") {
+            if (current.touchDrag) {
+              // Touch must disambiguate before capture. A pre-long-press scroll-axis
+              // flick is released to the page: forward the move so the reducer drops
+              // to idle, and take NO capture (capturing then idling would leak the
+              // capture, since the settle path only releases on `settling`). A
+              // sub-threshold hold keeps armed (the long-press timer still runs). A
+              // non-scroll threshold crossing is a deliberate pickup → fall through
+              // to capture + promote.
+              const resolution: TouchArmedMoveResolution =
+                resolveTouchArmedMove({
+                  origin: current.originClient,
+                  client,
+                  longPressSatisfied: false,
+                });
+              if (resolution === "scroll-escape") {
+                dispatchDrag({
+                  type: "POINTER_MOVE",
+                  pointerId: owningPointerId,
+                  client,
+                });
+                return;
+              }
+              if (resolution === "hold") {
+                return;
+              }
+            } else if (
+              !hasCrossedPickupThreshold(current.originClient, client)
+            ) {
+              return;
+            }
+            // Threshold crossed (mouse/pen) or a deliberate touch pickup → take
+            // capture on the stable root, then promote to dragging and resolve the
+            // first target.
+            const rootElement: HTMLDivElement | null = rootRef.current;
+            if (rootElement?.setPointerCapture != null) {
+              try {
+                rootElement.setPointerCapture(owningPointerId);
+                capturedPointerIdRef.current = owningPointerId;
+              } catch {
+                // Capture is best-effort; window listeners still receive events.
+              }
+            }
+            dispatchDrag({
+              type: "POINTER_MOVE",
+              pointerId: owningPointerId,
               client,
-              longPressSatisfied: false,
             });
-            if (resolution === "scroll-escape") {
-              dispatchDrag({ type: "POINTER_MOVE", pointerId: owningPointerId, client });
-              return;
-            }
-            if (resolution === "hold") {
-              return;
-            }
-          } else if (!hasCrossedPickupThreshold(current.originClient, client)) {
-            return;
-          }
-          // Threshold crossed (mouse/pen) or a deliberate touch pickup → take
-          // capture on the stable root, then promote to dragging and resolve the
-          // first target.
-          const rootElement: HTMLDivElement | null = rootRef.current;
-          if (rootElement?.setPointerCapture != null) {
-            try {
-              rootElement.setPointerCapture(owningPointerId);
-              capturedPointerIdRef.current = owningPointerId;
-            } catch {
-              // Capture is best-effort; window listeners still receive events.
-            }
-          }
-          dispatchDrag({ type: "POINTER_MOVE", pointerId: owningPointerId, client });
-          const firstTarget: DynamicDropState | null = resolvePointerTarget(
-            client.x,
-            client.y,
-            current.sourceLeafId,
-            null,
-          );
-          seatAnchorRef.current =
-            firstTarget != null && isCommittableTarget(firstTarget, current.sourceLeafId)
-              ? { x: client.x, y: client.y }
-              : null;
-          dispatchDrag({
-            type: "TARGET_RESOLVED",
-            pointerId: owningPointerId,
-            resolvedTarget: firstTarget,
-          });
-        } else if (current.phase === "dragging") {
-          dispatchDrag({ type: "POINTER_MOVE", pointerId: owningPointerId, client });
-          const freshTarget: DynamicDropState | null = resolvePointerTarget(
-            client.x,
-            client.y,
-            current.sourceLeafId,
-            current.resolvedTarget,
-          );
-          const seatedTarget: DynamicDropState | null = current.resolvedTarget;
-          // Slot-commitment policy: once the ghost has hopped into a seated slot,
-          // hold it (no retarget) until the policy says re-resolve. `zone-exit-hold`
-          // holds until the cursor leaves the seated pane; `delta-responsive`
-          // (default) re-aims once the cursor travels beyond the delta from the
-          // seat anchor. The delta gates WHETHER to re-run resolution (a coarse
-          // re-aim gate) — it is NOT fed into `resolveDropIntent`'s zone
-          // hysteresis, so the two dampers never double-count.
-          let nextTarget: DynamicDropState | null = freshTarget;
-          if (seatedTarget != null && isCommittableTarget(seatedTarget, current.sourceLeafId)) {
-            const cursorWithinSeatedFootprint: boolean =
-              freshTarget != null && freshTarget.leafId === seatedTarget.leafId;
-            const reresolve: boolean = shouldReresolveSeatedTarget({
-              mode: slotCommitmentRef.current.mode,
-              seatAnchor: seatAnchorRef.current ?? client,
-              currentClient: client,
-              reresolveDeltaPx: slotCommitmentRef.current.reresolveDeltaPx,
-              cursorWithinSeatedFootprint,
+            const firstTarget: DynamicDropState | null = resolvePointerTarget(
+              client.x,
+              client.y,
+              current.sourceLeafId,
+              null,
+            );
+            seatAnchorRef.current =
+              firstTarget != null &&
+              isCommittableTarget(firstTarget, current.sourceLeafId)
+                ? { x: client.x, y: client.y }
+                : null;
+            dispatchDrag({
+              type: "TARGET_RESOLVED",
+              pointerId: owningPointerId,
+              resolvedTarget: firstTarget,
             });
-            if (!reresolve) {
-              nextTarget = seatedTarget;
+          } else if (current.phase === "dragging") {
+            dispatchDrag({
+              type: "POINTER_MOVE",
+              pointerId: owningPointerId,
+              client,
+            });
+            const freshTarget: DynamicDropState | null = resolvePointerTarget(
+              client.x,
+              client.y,
+              current.sourceLeafId,
+              current.resolvedTarget,
+            );
+            const seatedTarget: DynamicDropState | null =
+              current.resolvedTarget;
+            // Slot-commitment policy: once the ghost has hopped into a seated slot,
+            // hold it (no retarget) until the policy says re-resolve. `zone-exit-hold`
+            // holds until the cursor leaves the seated pane; `delta-responsive`
+            // (default) re-aims once the cursor travels beyond the delta from the
+            // seat anchor. The delta gates WHETHER to re-run resolution (a coarse
+            // re-aim gate) — it is NOT fed into `resolveDropIntent`'s zone
+            // hysteresis, so the two dampers never double-count.
+            let nextTarget: DynamicDropState | null = freshTarget;
+            if (
+              seatedTarget != null &&
+              isCommittableTarget(seatedTarget, current.sourceLeafId)
+            ) {
+              const cursorWithinSeatedFootprint: boolean =
+                freshTarget != null &&
+                freshTarget.leafId === seatedTarget.leafId;
+              const reresolve: boolean = shouldReresolveSeatedTarget({
+                mode: slotCommitmentRef.current.mode,
+                seatAnchor: seatAnchorRef.current ?? client,
+                currentClient: client,
+                reresolveDeltaPx: slotCommitmentRef.current.reresolveDeltaPx,
+                cursorWithinSeatedFootprint,
+              });
+              if (!reresolve) {
+                nextTarget = seatedTarget;
+              }
             }
-          }
-          // Re-anchor the seat on a (re)seat onto a committable target; clear it
-          // when no slot is seated so the next seat re-anchors fresh.
-          if (nextTarget != null && isCommittableTarget(nextTarget, current.sourceLeafId)) {
-            const isNewSeat: boolean =
-              seatedTarget == null
-              || seatedTarget.leafId !== nextTarget.leafId
-              || seatedTarget.zone !== nextTarget.zone
-              || seatedTarget.action !== nextTarget.action;
-            if (isNewSeat) {
-              seatAnchorRef.current = { x: client.x, y: client.y };
+            // Re-anchor the seat on a (re)seat onto a committable target; clear it
+            // when no slot is seated so the next seat re-anchors fresh.
+            if (
+              nextTarget != null &&
+              isCommittableTarget(nextTarget, current.sourceLeafId)
+            ) {
+              const isNewSeat: boolean =
+                seatedTarget == null ||
+                seatedTarget.leafId !== nextTarget.leafId ||
+                seatedTarget.zone !== nextTarget.zone ||
+                seatedTarget.action !== nextTarget.action;
+              if (isNewSeat) {
+                seatAnchorRef.current = { x: client.x, y: client.y };
+              }
+            } else {
+              seatAnchorRef.current = null;
             }
-          } else {
-            seatAnchorRef.current = null;
+            dispatchDrag({
+              type: "TARGET_RESOLVED",
+              pointerId: owningPointerId,
+              resolvedTarget: nextTarget,
+            });
           }
-          dispatchDrag({
-            type: "TARGET_RESOLVED",
-            pointerId: owningPointerId,
-            resolvedTarget: nextTarget,
-          });
-        }
-      },
-      { request: window.requestAnimationFrame.bind(window), cancel: window.cancelAnimationFrame.bind(window) },
-    );
+        },
+        {
+          request: window.requestAnimationFrame.bind(window),
+          cancel: window.cancelAnimationFrame.bind(window),
+        },
+      );
 
     // Touch long-press pickup timer. Armed once when a TOUCH press enters
     // `armed`; the held finger becomes a drag when it fires (mouse/pen never arm
@@ -4823,7 +5755,11 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       longPressTimerId = window.setTimeout((): void => {
         longPressTimerId = null;
         const held: DragMachineState = dragStateRef.current;
-        if (held.phase !== "armed" || !held.touchDrag || held.pointerId !== owningPointerId) {
+        if (
+          held.phase !== "armed" ||
+          !held.touchDrag ||
+          held.pointerId !== owningPointerId
+        ) {
           return;
         }
         // Held finger satisfied the long-press → take capture on the stable root
@@ -4847,10 +5783,15 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           null,
         );
         seatAnchorRef.current =
-          firstTarget != null && isCommittableTarget(firstTarget, held.sourceLeafId)
+          firstTarget != null &&
+          isCommittableTarget(firstTarget, held.sourceLeafId)
             ? { x: held.originClient.x, y: held.originClient.y }
             : null;
-        dispatchDrag({ type: "TARGET_RESOLVED", pointerId: owningPointerId, resolvedTarget: firstTarget });
+        dispatchDrag({
+          type: "TARGET_RESOLVED",
+          pointerId: owningPointerId,
+          resolvedTarget: firstTarget,
+        });
       }, touchLongPressMsRef.current);
     }
 
@@ -4914,7 +5855,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerCancel);
-      window.removeEventListener("lostpointercapture", handleLostPointerCapture);
+      window.removeEventListener(
+        "lostpointercapture",
+        handleLostPointerCapture,
+      );
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("blur", handleBlur);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -4950,7 +5894,11 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
 
     const committedTree: DynamicLayoutNode | null =
       dragState.outcome === "commit" && dragState.resolvedTarget != null
-        ? deriveCandidateTree(layout, dragState.sourceLeafId, dragState.resolvedTarget)
+        ? deriveCandidateTree(
+            layout,
+            dragState.sourceLeafId,
+            dragState.resolvedTarget,
+          )
         : null;
     // Commit-time tree verification: a corrupt candidate (duplicated/orphaned
     // leaf, NaN ratio, missing split child) is REFUSED — the drag falls through
@@ -4975,13 +5923,26 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
     setSeatFootprint(null);
     onLiveHitLogChange?.(null);
     dispatchDrag({ type: "SETTLE_DONE" });
-  }, [beginCancelFlyBackAnimation, dragState, layout, onLayoutChange, onLiveHitLogChange]);
+  }, [
+    beginCancelFlyBackAnimation,
+    dragState,
+    layout,
+    onLayoutChange,
+    onLiveHitLogChange,
+  ]);
 
   const resolveLiveHitLogState = React.useCallback(
-    (event: React.SyntheticEvent<HTMLElement> & { clientX: number; clientY: number }, hoveredLeafId: string): DynamicLiveHitLogState | null => {
+    (
+      event: React.SyntheticEvent<HTMLElement> & {
+        clientX: number;
+        clientY: number;
+      },
+      hoveredLeafId: string,
+    ): DynamicLiveHitLogState | null => {
       const pointerX: number = event.clientX;
       const pointerY: number = event.clientY;
-      const targetFootprint: DynamicPaneFootprint | undefined = leafFootprintsById.get(hoveredLeafId);
+      const targetFootprint: DynamicPaneFootprint | undefined =
+        leafFootprintsById.get(hoveredLeafId);
       if (targetFootprint == null) {
         return null;
       }
@@ -4991,44 +5952,58 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         { left: paneRect.left, top: paneRect.top },
       );
       const paneSize = { width: paneRect.width, height: paneRect.height };
-      const geometryConfig: DynamicZoneGeometryConfig = currentGeometryConfig(interactionCapabilities.dropHitZoneGeometry);
-      const viewportRect: DOMRect | undefined = viewportRef.current?.getBoundingClientRect();
+      const geometryConfig: DynamicZoneGeometryConfig = currentGeometryConfig(
+        interactionCapabilities.dropHitZoneGeometry,
+      );
+      const viewportRect: DOMRect | undefined =
+        viewportRef.current?.getBoundingClientRect();
       const cursorViewport = {
         x: viewportRect == null ? pointerX : pointerX - viewportRect.left,
         y: viewportRect == null ? pointerY : pointerY - viewportRect.top,
       };
-      const resolverSourceLeafId: string | null = dragSourceLeafId ?? paneHitZoneSourceLeafId ?? activeFocusedLeafId ?? null;
-      const dragSourcePaneFootprint: DynamicPaneFootprint | null = dragSourceLeafId == null
-        ? null
-        : leafFootprintsById.get(dragSourceLeafId) ?? null;
-      const hitZoneDiagnostics: DynamicDropIntentHitZoneDiagnostics = resolveDropIntentHitZoneDiagnostics({
-        paneSize,
-        geometryConfig,
-        evaluateZone: (zone: DynamicLeafDropZone): { isValid: boolean; rejectionReason: string | null } =>
-          evaluateZoneCandidate({
-            zone,
-            layout,
-            sourceLeafId: resolverSourceLeafId,
-            targetLeafId: hoveredLeafId,
-            targetFootprint,
-            config,
-            viewportWidth: viewportSize.width,
-            viewportHeight: viewportSize.height,
-          }),
-      });
-      const edgeDiagnostics: DynamicLiveHitLogState["edgeDiagnostics"] = hitZoneDiagnostics.edgeZones.map(
-        (edgeZoneDiagnostic) => ({
+      const resolverSourceLeafId: string | null =
+        dragSourceLeafId ??
+        paneHitZoneSourceLeafId ??
+        activeFocusedLeafId ??
+        null;
+      const dragSourcePaneFootprint: DynamicPaneFootprint | null =
+        dragSourceLeafId == null
+          ? null
+          : (leafFootprintsById.get(dragSourceLeafId) ?? null);
+      const hitZoneDiagnostics: DynamicDropIntentHitZoneDiagnostics =
+        resolveDropIntentHitZoneDiagnostics({
+          paneSize,
+          geometryConfig,
+          evaluateZone: (
+            zone: DynamicLeafDropZone,
+          ): { isValid: boolean; rejectionReason: string | null } =>
+            evaluateZoneCandidate({
+              zone,
+              layout,
+              sourceLeafId: resolverSourceLeafId,
+              targetLeafId: hoveredLeafId,
+              targetFootprint,
+              config,
+              viewportWidth: viewportSize.width,
+              viewportHeight: viewportSize.height,
+            }),
+        });
+      const edgeDiagnostics: DynamicLiveHitLogState["edgeDiagnostics"] =
+        hitZoneDiagnostics.edgeZones.map((edgeZoneDiagnostic) => ({
           zone: edgeZoneDiagnostic.zone,
           isValid: edgeZoneDiagnostic.isValid,
           rejectionReason: edgeZoneDiagnostic.rejectionReason,
-        }),
-      );
-      const centerIsValid: boolean = resolverSourceLeafId == null || resolverSourceLeafId !== hoveredLeafId;
+        }));
+      const centerIsValid: boolean =
+        resolverSourceLeafId == null || resolverSourceLeafId !== hoveredLeafId;
       const centerBlockedReason: string | null = centerIsValid
         ? null
         : `center swap blocked: same source and target leaf (${hoveredLeafId})`;
 
-      if (resolverSourceLeafId == null || resolverSourceLeafId === hoveredLeafId) {
+      if (
+        resolverSourceLeafId == null ||
+        resolverSourceLeafId === hoveredLeafId
+      ) {
         return {
           hoveredLeafId,
           sourceLeafId: hoveredLeafId,
@@ -5049,11 +6024,15 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         };
       }
 
-      const splitPath: ReadonlyArray<DynamicSplitPathEntry> = readSplitPathToLeaf(layout, hoveredLeafId) ?? [];
+      const splitPath: ReadonlyArray<DynamicSplitPathEntry> =
+        readSplitPathToLeaf(layout, hoveredLeafId) ?? [];
       const axisPath: ReadonlyArray<DynamicSplitAxis> = splitPath.map(
         (pathEntry: DynamicSplitPathEntry): DynamicSplitAxis => pathEntry.axis,
       );
-      const previousZone: DynamicLeafDropZone | null = previousZoneSeed(dropState, hoveredLeafId);
+      const previousZone: DynamicLeafDropZone | null = previousZoneSeed(
+        dropState,
+        hoveredLeafId,
+      );
       const resolvedIntent: DynamicDropState = resolveDropIntent({
         leafId: hoveredLeafId,
         paneLocalX: paneLocalPoint.x,
@@ -5062,7 +6041,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         axisPath,
         geometryConfig,
         previousZone,
-        evaluateZone: (zone: DynamicLeafDropZone): { isValid: boolean; rejectionReason: string | null } =>
+        evaluateZone: (
+          zone: DynamicLeafDropZone,
+        ): { isValid: boolean; rejectionReason: string | null } =>
           evaluateZoneCandidate({
             zone,
             layout,
@@ -5074,7 +6055,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
             viewportHeight: viewportSize.height,
           }),
       });
-      const intent: DynamicDropIntentDebugState = toDropIntentDebugState(resolvedIntent);
+      const intent: DynamicDropIntentDebugState =
+        toDropIntentDebugState(resolvedIntent);
 
       return {
         hoveredLeafId,
@@ -5109,7 +6091,11 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   );
 
   const renderBranch = React.useCallback(
-    (node: DynamicLayoutNode, containerWidthPx: number, containerHeightPx: number): React.ReactElement => {
+    (
+      node: DynamicLayoutNode,
+      containerWidthPx: number,
+      containerHeightPx: number,
+    ): React.ReactElement => {
       if (node.kind === "leaf") {
         const tile: DynamicTile | undefined = resolveTile(tiles, node.tileId);
         const tileForDisplay: DynamicTile = tile ?? {
@@ -5122,7 +6108,26 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
 
         const isMoveSource: boolean = moveModeState?.sourceLeafId === node.id;
         const moveTargetPlacement: DynamicMovePlacement | null =
-          moveModeState != null && moveModeState.targetLeafId === node.id ? moveModeState.placement : null;
+          moveModeState != null && moveModeState.targetLeafId === node.id
+            ? moveModeState.placement
+            : null;
+        // Live mode: "drag source slot" = the ghost-seat slot (the slot holding
+        // the dragged content in the candidate — TARGET leaf for swap, source
+        // leaf for edge-insert). This is the slot painted as a content-less
+        // reservation the single ghost fills, so the dragged pane is never
+        // double-painted (the SWAP fix) and the displaced pane renders normally.
+        // Preview mode keeps the literal source-in-place dim affordance.
+        const isDragSourceSlot: boolean = liveDragModeEnabled
+          ? ghostSeatLeafId != null && node.id === ghostSeatLeafId
+          : dragSourceLeafId === node.id;
+        const paneBodyRenderMode: DynamicPaneBodyRenderMode =
+          resolvePaneBodyRenderMode({
+            isPaneContentVisible,
+            liveDragModeEnabled,
+            dragPhase: dragState.phase,
+            isDragSource: isDragSourceSlot,
+            isReservedSlot: isDragSourceSlot,
+          });
 
         const tileArgs: DynamicRenderTileArgs = {
           leafId: node.id,
@@ -5130,17 +6135,12 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           paneOrdinal: Math.max(1, leafIds.indexOf(node.id) + 1),
           paneWidthPx: containerWidthPx,
           isPaneContentVisible,
-          // Live mode: "drag source slot" = the ghost-seat slot (the slot holding
-          // the dragged content in the candidate — TARGET leaf for swap, source
-          // leaf for edge-insert). This is the slot painted as a content-less
-          // reservation the single ghost fills, so the dragged pane is never
-          // double-painted (the SWAP fix) and the displaced pane renders normally.
-          // Preview mode keeps the literal source-in-place dim affordance.
-          isDragSource: liveDragModeEnabled
-            ? ghostSeatLeafId != null && node.id === ghostSeatLeafId
-            : dragSourceLeafId === node.id,
-          isDropTarget: dropState?.leafId === node.id && dropState.action !== "none",
-          isDropEligible: dragSourceLeafId != null && dragSourceLeafId !== node.id,
+          paneBodyRenderMode,
+          isDragSource: isDragSourceSlot,
+          isDropTarget:
+            dropState?.leafId === node.id && dropState.action !== "none",
+          isDropEligible:
+            dragSourceLeafId != null && dragSourceLeafId !== node.id,
           isHoveringDropCandidate: dropState?.leafId === node.id,
           isInvalidDrop: false,
           isFocused: isFocusSelectionEnabled && activeFocusedLeafId === node.id,
@@ -5162,11 +6162,16 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           onAcquireSpace: (direction: DynamicFocusDirection): void => {
             acquireLeafSpace(node.id, direction);
           },
-          dropZone: dropState?.leafId === node.id && dropState.action !== "none" ? dropState.zone : null,
-          dropIntentDebugPath: dropState?.leafId === node.id
-            ? dropIntentAxisPathLabel(dropState.axisPath)
-            : null,
-          dropIntentDebugAction: dropState?.leafId === node.id ? dropState.action : null,
+          dropZone:
+            dropState?.leafId === node.id && dropState.action !== "none"
+              ? dropState.zone
+              : null,
+          dropIntentDebugPath:
+            dropState?.leafId === node.id
+              ? dropIntentAxisPathLabel(dropState.axisPath)
+              : null,
+          dropIntentDebugAction:
+            dropState?.leafId === node.id ? dropState.action : null,
           preview: resolveLeafDropPreviewForMode(
             liveDragModeEnabled,
             node.id,
@@ -5177,11 +6182,16 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           showDropBorderHints,
           showDropIntentTranslucentBg,
           showDropIntentDebug,
-          dropHitZoneCenterRatio: interactionCapabilities.dropHitZoneGeometry.centerRatio,
-          dropHitZoneCenterRatioX: interactionCapabilities.dropHitZoneGeometry.centerRatioX,
-          dropHitZoneCenterRatioY: interactionCapabilities.dropHitZoneGeometry.centerRatioY,
+          dropHitZoneCenterRatio:
+            interactionCapabilities.dropHitZoneGeometry.centerRatio,
+          dropHitZoneCenterRatioX:
+            interactionCapabilities.dropHitZoneGeometry.centerRatioX,
+          dropHitZoneCenterRatioY:
+            interactionCapabilities.dropHitZoneGeometry.centerRatioY,
           paneHitZonesAlpha: paneHitZonesAlphaSafe,
-          paneHitZoneDebug: showPaneHitZones ? paneHitZoneDebugByLeafId.get(node.id) ?? null : null,
+          paneHitZoneDebug: showPaneHitZones
+            ? (paneHitZoneDebugByLeafId.get(node.id) ?? null)
+            : null,
           observabilityColors,
           observabilityColorEnables,
           onFocus: (): void => {
@@ -5191,7 +6201,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           // is taken (on the stable root) only once the pickup threshold is
           // crossed, in the window pointermove listener — so a sub-threshold tap
           // stays a click and is never stolen from the title bar.
-          onHandlePointerDown: (event: React.PointerEvent<HTMLElement>): void => {
+          onHandlePointerDown: (
+            event: React.PointerEvent<HTMLElement>,
+          ): void => {
             // Per-leaf gate: a statically-gated pane (a static pane itself, or a
             // leaf in an unpinned-static subtree) is not a drag source.
             if (!isLeafRearrangeEligible(node.id)) {
@@ -5203,10 +6215,14 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
             // Touch-drag enable gate: when a consumer reserves touch for
             // tap/scroll (`touchDrag.enable: false`), a touch press never starts a
             // drag. Mouse/pen are unaffected.
-            if (event.pointerType === "touch" && !interactionCapabilities.touchDrag.enable) {
+            if (
+              event.pointerType === "touch" &&
+              !interactionCapabilities.touchDrag.enable
+            ) {
               return;
             }
-            const currentPhase: DragMachineState["phase"] = dragStateRef.current.phase;
+            const currentPhase: DragMachineState["phase"] =
+              dragStateRef.current.phase;
             if (currentPhase === "armed" || currentPhase === "dragging") {
               return;
             }
@@ -5220,7 +6236,9 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
             const pressTarget: EventTarget | null = event.target;
             const isInteractiveControl: boolean =
               pressTarget instanceof Element &&
-              pressTarget.closest('button, a, input, textarea, select, [role="button"]') != null;
+              pressTarget.closest(
+                'button, a, input, textarea, select, [role="button"]',
+              ) != null;
             if (!isInteractiveControl) {
               event.preventDefault();
               if (typeof window !== "undefined") {
@@ -5230,8 +6248,11 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
             setFocusedLeaf(node.id);
             setCancelVisualState(null);
             onLiveHitLogChange?.(null);
-            const sourcePaneElement: HTMLElement = event.currentTarget.closest("article[data-leaf-id]") ?? event.currentTarget;
-            const sourcePaneRect: DOMRect = sourcePaneElement.getBoundingClientRect();
+            const sourcePaneElement: HTMLElement =
+              event.currentTarget.closest("article[data-leaf-id]") ??
+              event.currentTarget;
+            const sourcePaneRect: DOMRect =
+              sourcePaneElement.getBoundingClientRect();
             dragSnapshotRef.current = buildDragPaneSnapshot(tileForDisplay);
             dispatchDrag({
               type: "POINTER_DOWN",
@@ -5257,7 +6278,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
             if (dragStateRef.current.phase !== "idle") {
               return;
             }
-            const liveHitLogState: DynamicLiveHitLogState | null = resolveLiveHitLogState(event, node.id);
+            const liveHitLogState: DynamicLiveHitLogState | null =
+              resolveLiveHitLogState(event, node.id);
             onLiveHitLogChange?.(liveHitLogState);
           },
           onPointerLeave: (event: React.PointerEvent<HTMLElement>): void => {
@@ -5283,8 +6305,12 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         // when flexible it keeps the fill + overflow clamp.
         const leafStaticHeight: boolean = isStaticInDimension(node, "height");
         const leafStaticWidth: boolean = isStaticInDimension(node, "width");
-        const pinnedHeightPx: number | undefined = leafStaticHeight ? node.sizing?.heightPx : undefined;
-        const pinnedWidthPx: number | undefined = leafStaticWidth ? node.sizing?.widthPx : undefined;
+        const pinnedHeightPx: number | undefined = leafStaticHeight
+          ? node.sizing?.heightPx
+          : undefined;
+        const pinnedWidthPx: number | undefined = leafStaticWidth
+          ? node.sizing?.widthPx
+          : undefined;
         const leafWrapperStyle: React.CSSProperties = {};
         if (pinnedHeightPx != null) {
           leafWrapperStyle.height = pinnedHeightPx;
@@ -5295,12 +6321,17 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           leafWrapperStyle.flexShrink = 0;
         }
         const leafHeightClass: string = leafStaticHeight
-          ? (pinnedHeightPx != null ? "" : "h-auto")
+          ? pinnedHeightPx != null
+            ? ""
+            : "h-auto"
           : "h-full max-h-full min-h-0";
         const leafWidthClass: string = leafStaticWidth
-          ? (pinnedWidthPx != null ? "" : "w-auto")
+          ? pinnedWidthPx != null
+            ? ""
+            : "w-auto"
           : "w-full min-w-0";
-        const showMoveAffordance: boolean = isMoveSource || moveTargetPlacement != null;
+        const showMoveAffordance: boolean =
+          isMoveSource || moveTargetPlacement != null;
         // Single-instance gate: when the picked-up source leaf appears in the
         // live candidate tree (target resolved → it sits in the destination
         // slot), paint that slot as a content-less RESERVATION — the slot still
@@ -5309,36 +6340,36 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         // empty hole and the source is never painted twice. Renderer-agnostic on
         // purpose: it overrides any custom `renderTile` too, so no consumer
         // re-introduces the in-slot source copy.
-        const renderReservedDragSlot: boolean = shouldReserveDragSourceSlot(
-          liveDragModeEnabled,
-          tileArgs.isDragSource,
-        );
+        const renderReservedDragSlot: boolean =
+          tileArgs.paneBodyRenderMode === "render-reservation";
         return (
           <div
             className={cn(
-              isSurvivorReflowOverflowWindow ? "overflow-visible" : "overflow-hidden",
+              isSurvivorReflowOverflowWindow
+                ? "overflow-visible"
+                : "overflow-hidden",
               leafHeightClass,
               leafWidthClass,
               showMoveAffordance ? "relative" : "",
             )}
             style={leafWrapperStyle}
           >
-            {renderReservedDragSlot
-              ? <DragSourceSlotReservation
-                  observabilityColors={observabilityColors}
-                  observabilityColorEnables={observabilityColorEnables}
-                />
-              : renderTile == null
-                ? <DefaultDynamicTile {...tileArgs} />
-                : renderTile(tileArgs)}
-            {showMoveAffordance
-              ? (
-                <MovePaneAffordance
-                  isMoveSource={isMoveSource}
-                  moveTargetPlacement={moveTargetPlacement}
-                />
-              )
-              : null}
+            {renderReservedDragSlot ? (
+              <DragSourceSlotReservation
+                observabilityColors={observabilityColors}
+                observabilityColorEnables={observabilityColorEnables}
+              />
+            ) : renderTile == null ? (
+              <DefaultDynamicTile {...tileArgs} />
+            ) : (
+              renderTile(tileArgs)
+            )}
+            {showMoveAffordance ? (
+              <MovePaneAffordance
+                isMoveSource={isMoveSource}
+                moveTargetPlacement={moveTargetPlacement}
+              />
+            ) : null}
           </div>
         );
       }
@@ -5351,22 +6382,30 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         const groupNode: DynamicGroupNode = node;
         const activeMember: DynamicLeafNode =
           groupNode.members.find(
-            (member: DynamicLeafNode): boolean => member.id === groupNode.activeMemberId,
+            (member: DynamicLeafNode): boolean =>
+              member.id === groupNode.activeMemberId,
           ) ?? groupNode.members[0];
         const isGroupMergeTarget: boolean =
           dropState?.action === "group-merge" &&
-          findGroupContainingLeaf(layout, dropState.leafId)?.id === groupNode.id;
+          findGroupContainingLeaf(layout, dropState.leafId)?.id ===
+            groupNode.id;
         return (
           <section
-            ref={(element: HTMLDivElement | null): void => setSplitContainerRef(groupNode.id, element)}
+            ref={(element: HTMLDivElement | null): void =>
+              setSplitContainerRef(groupNode.id, element)
+            }
             data-group-id={groupNode.id}
             className={cn(
               "hpt-group relative flex h-full max-h-full min-h-0 w-full min-w-0 flex-col gap-1",
-              isSurvivorReflowOverflowWindow ? "overflow-visible" : "overflow-hidden",
+              isSurvivorReflowOverflowWindow
+                ? "overflow-visible"
+                : "overflow-hidden",
             )}
           >
             <div
-              ref={(element: HTMLDivElement | null): void => setGroupTabStripRef(groupNode.id, element)}
+              ref={(element: HTMLDivElement | null): void =>
+                setGroupTabStripRef(groupNode.id, element)
+              }
               role="tablist"
               aria-label={`group ${groupNode.id} members`}
               className={cn(
@@ -5376,63 +6415,79 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
                   : "border-white/10 bg-black/30",
               )}
             >
-              {groupNode.members.map((member: DynamicLeafNode, memberIndex: number): React.ReactElement => {
-                const memberTile: DynamicTile | undefined = resolveTile(tiles, member.tileId);
-                const memberTitle: string = memberTile?.title ?? member.tileId;
-                const isActiveMember: boolean = member.id === groupNode.activeMemberId;
-                return (
-                  <div
-                    key={`hpt-group-tab-${member.id}`}
-                    className={cn(
-                      "hpt-group-tab flex shrink-0 items-center gap-0.5 rounded border font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
-                      isActiveMember
-                        ? tabAccentActiveClassName(memberTile?.accent)
-                        : "border-white/10 bg-slate-950/70 text-slate-400",
-                    )}
-                  >
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={isActiveMember}
-                      title={`group member ${member.id} (Alt+${memberIndex + 1})`}
-                      onClick={(): void => {
-                        dispatchCommand({
-                          kind: "group-tab-jump",
-                          groupId: groupNode.id,
-                          memberNumber: memberIndex + 1,
-                        });
-                      }}
+              {groupNode.members.map(
+                (
+                  member: DynamicLeafNode,
+                  memberIndex: number,
+                ): React.ReactElement => {
+                  const memberTile: DynamicTile | undefined = resolveTile(
+                    tiles,
+                    member.tileId,
+                  );
+                  const memberTitle: string =
+                    memberTile?.title ?? member.tileId;
+                  const isActiveMember: boolean =
+                    member.id === groupNode.activeMemberId;
+                  return (
+                    <div
+                      key={`hpt-group-tab-${member.id}`}
                       className={cn(
-                        "flex shrink-0 items-center gap-1.5 rounded px-2 py-1 transition-colors",
+                        "hpt-group-tab flex shrink-0 items-center gap-0.5 rounded border font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
                         isActiveMember
-                          ? "text-inherit"
-                          : "hover:border-white/25 hover:text-slate-200",
+                          ? tabAccentActiveClassName(memberTile?.accent)
+                          : "border-white/10 bg-slate-950/70 text-slate-400",
                       )}
                     >
-                      <span className="font-semibold opacity-70">{memberIndex + 1}</span>
-                      <span className="max-w-[12ch] truncate">{memberTitle}</span>
-                    </button>
-                    {isGroupingEnabled ? (
                       <button
                         type="button"
-                        aria-label={`remove ${memberTitle} from group ${groupNode.id}`}
-                        title={`Eject ${memberTitle} from this group`}
-                        onClick={(event: React.MouseEvent<HTMLButtonElement>): void => {
-                          event.stopPropagation();
+                        role="tab"
+                        aria-selected={isActiveMember}
+                        title={`group member ${member.id} (Alt+${memberIndex + 1})`}
+                        onClick={(): void => {
                           dispatchCommand({
-                            kind: "remove-from-group",
+                            kind: "group-tab-jump",
                             groupId: groupNode.id,
-                            memberId: member.id,
+                            memberNumber: memberIndex + 1,
                           });
                         }}
-                        className="hpt-group-tab-remove mr-0.5 rounded border border-white/10 px-1 py-0.5 text-[9px] text-slate-500 transition-colors hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-rose-200"
+                        className={cn(
+                          "flex shrink-0 items-center gap-1.5 rounded px-2 py-1 transition-colors",
+                          isActiveMember
+                            ? "text-inherit"
+                            : "hover:border-white/25 hover:text-slate-200",
+                        )}
                       >
-                        ×
+                        <span className="font-semibold opacity-70">
+                          {memberIndex + 1}
+                        </span>
+                        <span className="max-w-[12ch] truncate">
+                          {memberTitle}
+                        </span>
                       </button>
-                    ) : null}
-                  </div>
-                );
-              })}
+                      {isGroupingEnabled ? (
+                        <button
+                          type="button"
+                          aria-label={`remove ${memberTitle} from group ${groupNode.id}`}
+                          title={`Eject ${memberTitle} from this group`}
+                          onClick={(
+                            event: React.MouseEvent<HTMLButtonElement>,
+                          ): void => {
+                            event.stopPropagation();
+                            dispatchCommand({
+                              kind: "remove-from-group",
+                              groupId: groupNode.id,
+                              memberId: member.id,
+                            });
+                          }}
+                          className="hpt-group-tab-remove mr-0.5 rounded border border-white/10 px-1 py-0.5 text-[9px] text-slate-500 transition-colors hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-rose-200"
+                        >
+                          ×
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                },
+              )}
             </div>
             <div className="hpt-group-active relative min-h-0 w-full flex-1 overflow-hidden">
               {renderBranch(activeMember, containerWidthPx, containerHeightPx)}
@@ -5448,7 +6503,8 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       // footprints can never diverge. Dwindle (the default) falls through to the
       // recursive flex spine below.
       if (node.layoutMode === "master") {
-        const masterSlots: ReadonlyArray<DynamicLayoutNode> = collectMasterSlots(node);
+        const masterSlots: ReadonlyArray<DynamicLayoutNode> =
+          collectMasterSlots(node);
         const masterFootprints = footprintsByLeafId(
           resolveMasterStackFootprints(
             masterSlots,
@@ -5462,49 +6518,76 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         );
         return (
           <section
-            ref={(element: HTMLDivElement | null): void => setSplitContainerRef(node.id, element)}
+            ref={(element: HTMLDivElement | null): void =>
+              setSplitContainerRef(node.id, element)
+            }
             className={cn(
               "relative h-full max-h-full min-h-0 w-full min-w-0",
-              isSurvivorReflowOverflowWindow ? "overflow-visible" : "overflow-hidden",
+              isSurvivorReflowOverflowWindow
+                ? "overflow-visible"
+                : "overflow-hidden",
             )}
           >
-            {masterSlots.map((slot: DynamicLayoutNode): React.ReactElement | null => {
-              const slotFootprint = masterFootprints.get(slotRepresentativeLeafId(slot));
-              if (slotFootprint == null) {
-                return null;
-              }
-              return (
-                <div
-                  key={slot.id}
-                  className="absolute"
-                  style={{
-                    left: slotFootprint.left,
-                    top: slotFootprint.top,
-                    width: slotFootprint.width,
-                    height: slotFootprint.height,
-                  }}
-                >
-                  {renderBranch(slot, slotFootprint.width, slotFootprint.height)}
-                </div>
-              );
-            })}
+            {masterSlots.map(
+              (slot: DynamicLayoutNode): React.ReactElement | null => {
+                const slotFootprint = masterFootprints.get(
+                  slotRepresentativeLeafId(slot),
+                );
+                if (slotFootprint == null) {
+                  return null;
+                }
+                return (
+                  <div
+                    key={slot.id}
+                    className="absolute"
+                    style={{
+                      left: slotFootprint.left,
+                      top: slotFootprint.top,
+                      width: slotFootprint.width,
+                      height: slotFootprint.height,
+                    }}
+                  >
+                    {renderBranch(
+                      slot,
+                      slotFootprint.width,
+                      slotFootprint.height,
+                    )}
+                  </div>
+                );
+              },
+            )}
           </section>
         );
       }
 
       const resolvedGapPx: number = node.gapPx ?? config.gapPx;
-      const resolvedMinPaneSizePx: number = node.minPaneSizePx ?? config.minPaneSizePx;
+      const resolvedMinPaneSizePx: number =
+        node.minPaneSizePx ?? config.minPaneSizePx;
       const isHorizontal: boolean = node.axis === "horizontal";
-      const axisContainerSizePx: number = isHorizontal ? containerWidthPx : containerHeightPx;
+      const axisContainerSizePx: number = isHorizontal
+        ? containerWidthPx
+        : containerHeightPx;
 
       // Per-child static flags. A child static ALONG the split axis is
       // content-sized + excluded from ratio + removes the divider; a child static
       // on the CROSS axis content-sizes that axis (align-self:flex-start) but
       // still shares the split-axis ratio.
-      const firstStaticAlongAxis: boolean = isStaticAlongSplitAxis(node.first, node.axis);
-      const secondStaticAlongAxis: boolean = isStaticAlongSplitAxis(node.second, node.axis);
-      const firstStaticCross: boolean = isStaticOnCrossAxis(node.first, node.axis);
-      const secondStaticCross: boolean = isStaticOnCrossAxis(node.second, node.axis);
+      const firstStaticAlongAxis: boolean = isStaticAlongSplitAxis(
+        node.first,
+        node.axis,
+      );
+      const secondStaticAlongAxis: boolean = isStaticAlongSplitAxis(
+        node.second,
+        node.axis,
+      );
+      const firstStaticCross: boolean = isStaticOnCrossAxis(
+        node.first,
+        node.axis,
+      );
+      const secondStaticCross: boolean = isStaticOnCrossAxis(
+        node.second,
+        node.axis,
+      );
 
       const safeRatio: number = clampByMinSize(
         node.ratio,
@@ -5512,18 +6595,36 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         resolvedGapPx,
         resolvedMinPaneSizePx,
       );
-      const isDividerResizeEnabled: boolean = isResizeAxisEnabled(interactionCapabilities.resize, node.axis);
-      // Suppress the separator entirely on a boundary that touches a
-      // static-along-axis child (no inert handle painted there).
-      const renderDivider: boolean = !firstStaticAlongAxis && !secondStaticAlongAxis;
-      const splitGapOffsetPx: number = renderDivider ? (resolvedGapPx + config.handleSizePx) / 2 : 0;
+      const isDividerResizeEnabled: boolean = isResizeAxisEnabled(
+        interactionCapabilities.resize,
+        node.axis,
+      );
+      const dividerRenderMode: DynamicSplitDividerRenderMode =
+        resolveSplitDividerRenderMode({
+          isBoundaryResizable: !firstStaticAlongAxis && !secondStaticAlongAxis,
+          resizeHandlesVisible: interactionCapabilities.resizeHandlesVisible,
+          isResizeAxisEnabled: isDividerResizeEnabled,
+        });
+      const renderDivider: boolean =
+        dividerRenderMode !== "render-divider-absent";
+      const isRenderedDividerInteractive: boolean =
+        dividerRenderMode === "render-divider-enabled-visible" ||
+        dividerRenderMode === "render-divider-enabled-hidden";
+      const isDividerChromeVisible: boolean =
+        dividerRenderMode === "render-divider-enabled-visible" ||
+        dividerRenderMode === "render-divider-disabled-visible";
+      const splitGapOffsetPx: number = renderDivider
+        ? (resolvedGapPx + config.handleSizePx) / 2
+        : 0;
       const distribution = resolveBinarySplitDistribution(
         firstStaticAlongAxis,
         secondStaticAlongAxis,
         safeRatio,
       );
 
-      const mainFlexStyle = (sizing: SplitChildMainSizing): React.CSSProperties => {
+      const mainFlexStyle = (
+        sizing: SplitChildMainSizing,
+      ): React.CSSProperties => {
         if (sizing.kind === "content") {
           return { flexGrow: 0, flexShrink: 0, flexBasis: "auto" };
         }
@@ -5538,26 +6639,46 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       };
       const childMainPx = (sizing: SplitChildMainSizing): number =>
         sizing.kind === "ratio"
-          ? Math.max(0, axisContainerSizePx * sizing.basisFraction - splitGapOffsetPx)
+          ? Math.max(
+              0,
+              axisContainerSizePx * sizing.basisFraction - splitGapOffsetPx,
+            )
           : axisContainerSizePx;
       const firstMainPx: number = childMainPx(distribution.first);
       const secondMainPx: number = childMainPx(distribution.second);
-      const firstBranchWidthPx: number = isHorizontal ? firstMainPx : containerWidthPx;
-      const firstBranchHeightPx: number = isHorizontal ? containerHeightPx : firstMainPx;
-      const secondBranchWidthPx: number = isHorizontal ? secondMainPx : containerWidthPx;
-      const secondBranchHeightPx: number = isHorizontal ? containerHeightPx : secondMainPx;
+      const firstBranchWidthPx: number = isHorizontal
+        ? firstMainPx
+        : containerWidthPx;
+      const firstBranchHeightPx: number = isHorizontal
+        ? containerHeightPx
+        : firstMainPx;
+      const secondBranchWidthPx: number = isHorizontal
+        ? secondMainPx
+        : containerWidthPx;
+      const secondBranchHeightPx: number = isHorizontal
+        ? containerHeightPx
+        : secondMainPx;
 
       return (
         <section
-          ref={(element: HTMLDivElement | null): void => setSplitContainerRef(node.id, element)}
+          ref={(element: HTMLDivElement | null): void =>
+            setSplitContainerRef(node.id, element)
+          }
           className={cn(
             "relative flex h-full max-h-full min-h-0 w-full min-w-0",
-            isSurvivorReflowOverflowWindow ? "overflow-visible" : "overflow-hidden",
+            isSurvivorReflowOverflowWindow
+              ? "overflow-visible"
+              : "overflow-hidden",
             isHorizontal ? "flex-row" : "flex-col",
           )}
         >
           <div
-            className={cn("flex min-h-0 min-w-0", isSurvivorReflowOverflowWindow ? "overflow-visible" : "overflow-hidden")}
+            className={cn(
+              "flex min-h-0 min-w-0",
+              isSurvivorReflowOverflowWindow
+                ? "overflow-visible"
+                : "overflow-hidden",
+            )}
             style={{
               ...mainFlexStyle(distribution.first),
               ...(firstStaticCross ? { alignSelf: "flex-start" } : {}),
@@ -5566,64 +6687,122 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
             {renderBranch(node.first, firstBranchWidthPx, firstBranchHeightPx)}
           </div>
 
-          {renderDivider
-            ? (
-              <div
-                role="separator"
-                // A vertical divider (between SIDE-BY-SIDE panes, split axis
-                // "horizontal") is itself oriented vertically; a horizontal
-                // divider (between STACKED panes, axis "vertical") is oriented
-                // horizontally.
-                aria-orientation={isHorizontal ? "vertical" : "horizontal"}
-                aria-label={isDividerResizeEnabled
+          {renderDivider ? (
+            <div
+              role="separator"
+              // A vertical divider (between SIDE-BY-SIDE panes, split axis
+              // "horizontal") is itself oriented vertically; a horizontal
+              // divider (between STACKED panes, axis "vertical") is oriented
+              // horizontally.
+              aria-orientation={isHorizontal ? "vertical" : "horizontal"}
+              aria-label={
+                isRenderedDividerInteractive
                   ? `resize split ${node.id}`
-                  : `split ${node.id} (resize disabled)`}
-                aria-disabled={!isDividerResizeEnabled}
-                // The split ratio is the FIRST child's fraction; surface it as a
-                // 0–100 percentage for assistive tech + keyboard resize.
-                aria-valuenow={Math.round(safeRatio * 100)}
-                aria-valuemin={5}
-                aria-valuemax={95}
-                aria-valuetext={`${Math.round(safeRatio * 100)}%`}
-                data-resize-enabled={isDividerResizeEnabled}
-                tabIndex={isDividerResizeEnabled ? 0 : -1}
-                onPointerDown={isDividerResizeEnabled
+                  : `split ${node.id} (resize disabled)`
+              }
+              aria-disabled={!isRenderedDividerInteractive}
+              // The split ratio is the FIRST child's fraction; surface it as a
+              // 0–100 percentage for assistive tech + keyboard resize.
+              aria-valuenow={Math.round(safeRatio * 100)}
+              aria-valuemin={5}
+              aria-valuemax={95}
+              aria-valuetext={`${Math.round(safeRatio * 100)}%`}
+              data-resize-enabled={isRenderedDividerInteractive}
+              tabIndex={isRenderedDividerInteractive ? 0 : -1}
+              onPointerDown={
+                isRenderedDividerInteractive
                   ? (event: React.PointerEvent<HTMLDivElement>): void =>
-                    beginResize(event, node, resolvedGapPx, resolvedMinPaneSizePx)
-                  : undefined}
-                onKeyDown={isDividerResizeEnabled
+                      beginResize(
+                        event,
+                        node,
+                        resolvedGapPx,
+                        resolvedMinPaneSizePx,
+                      )
+                  : undefined
+              }
+              onKeyDown={
+                isRenderedDividerInteractive
                   ? (event: React.KeyboardEvent<HTMLDivElement>): void =>
-                    handleSeparatorKeyDown(event, node, axisContainerSizePx, resolvedGapPx, resolvedMinPaneSizePx)
-                  : undefined}
-                className={cn(
-                  "shrink-0 rounded outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70",
-                  isDividerResizeEnabled
-                    ? cn("bg-white/10 hover:bg-cyan-300/40", isHorizontal ? "h-full cursor-col-resize" : "w-full cursor-row-resize")
-                    : cn("bg-white/[0.04] cursor-default", isHorizontal ? "h-full" : "w-full"),
-                )}
-                style={isHorizontal
+                      handleSeparatorKeyDown(
+                        event,
+                        node,
+                        axisContainerSizePx,
+                        resolvedGapPx,
+                        resolvedMinPaneSizePx,
+                      )
+                  : undefined
+              }
+              className={cn(
+                "shrink-0 rounded outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70",
+                isDividerChromeVisible
+                  ? cn(
+                      isRenderedDividerInteractive
+                        ? "bg-white/10 hover:bg-cyan-300/40"
+                        : "bg-white/[0.04] cursor-default",
+                      isHorizontal
+                        ? cn(
+                            "h-full",
+                            isRenderedDividerInteractive
+                              ? "cursor-col-resize"
+                              : undefined,
+                          )
+                        : cn(
+                            "w-full",
+                            isRenderedDividerInteractive
+                              ? "cursor-row-resize"
+                              : undefined,
+                          ),
+                    )
+                  : cn(
+                      "bg-transparent hover:bg-transparent",
+                      isHorizontal
+                        ? cn(
+                            "h-full",
+                            isRenderedDividerInteractive
+                              ? "cursor-col-resize"
+                              : "cursor-default",
+                          )
+                        : cn(
+                            "w-full",
+                            isRenderedDividerInteractive
+                              ? "cursor-row-resize"
+                              : "cursor-default",
+                          ),
+                    ),
+              )}
+              style={
+                isHorizontal
                   ? {
-                    width: config.handleSizePx,
-                    marginLeft: resolvedGapPx / 2,
-                    marginRight: resolvedGapPx / 2,
-                  }
+                      width: config.handleSizePx,
+                      marginLeft: resolvedGapPx / 2,
+                      marginRight: resolvedGapPx / 2,
+                    }
                   : {
-                    height: config.handleSizePx,
-                    marginTop: resolvedGapPx / 2,
-                    marginBottom: resolvedGapPx / 2,
-                  }}
-              />
-            )
-            : null}
+                      height: config.handleSizePx,
+                      marginTop: resolvedGapPx / 2,
+                      marginBottom: resolvedGapPx / 2,
+                    }
+              }
+            />
+          ) : null}
 
           <div
-            className={cn("flex min-h-0 min-w-0", isSurvivorReflowOverflowWindow ? "overflow-visible" : "overflow-hidden")}
+            className={cn(
+              "flex min-h-0 min-w-0",
+              isSurvivorReflowOverflowWindow
+                ? "overflow-visible"
+                : "overflow-hidden",
+            )}
             style={{
               ...mainFlexStyle(distribution.second),
               ...(secondStaticCross ? { alignSelf: "flex-start" } : {}),
             }}
           >
-            {renderBranch(node.second, secondBranchWidthPx, secondBranchHeightPx)}
+            {renderBranch(
+              node.second,
+              secondBranchWidthPx,
+              secondBranchHeightPx,
+            )}
           </div>
         </section>
       );
@@ -5638,6 +6817,7 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
       activeFocusedLeafId,
       activeMaximizedLeafId,
       dragSourceLeafId,
+      dragState.phase,
       ghostSeatLeafId,
       dropState,
       interactionCapabilities,
@@ -5675,9 +6855,10 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
     ],
   );
 
-  const maximizedLeaf: DynamicLeafNode | null = activeMaximizedLeafId != null
-    ? findLeafById(layout, activeMaximizedLeafId)
-    : null;
+  const maximizedLeaf: DynamicLeafNode | null =
+    activeMaximizedLeafId != null
+      ? findLeafById(layout, activeMaximizedLeafId)
+      : null;
   // In live mode the displayed tree is the derived candidate tree (the
   // destination physically reflows to the post-drop result); otherwise the prop
   // layout. The projected landing overlays (S' / T' / successor) are the
@@ -5685,14 +6866,15 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
   // the cursor-following ghost replace them entirely, so they are suppressed (no
   // projection-vs-reflow double-preview). This is the render gate that guarantees
   // zero projection/landing-shadow in live mode.
-  const showProjectedLandingOverlays: boolean = showDropPreviewOverlays && !liveDragModeEnabled;
+  const showProjectedLandingOverlays: boolean =
+    showDropPreviewOverlays && !liveDragModeEnabled;
 
   return (
     <div
       ref={rootRef}
       tabIndex={-1}
       className={cn(
-        "flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl bg-[linear-gradient(180deg,rgba(15,23,42,0.42),rgba(2,6,23,0.7))] p-1.5 outline-none",
+        "flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl bg-[linear-gradient(180deg,rgba(39,39,42,0.36),rgba(15,15,18,0.66))] p-1 outline-none",
         // Suppress native text selection across panes for the whole drag
         // gesture (`select-none` emits both `-webkit-user-select` and
         // `user-select: none`); the rule cascades to every pane body. Dropped
@@ -5710,20 +6892,18 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         isPointerWithinRootRef.current = false;
       }}
     >
-      {showTabStrip && paneTabs.length > 0
-        ? (
-          <div className="mb-2 shrink-0">
-            <PaneTabStrip
-              tabs={paneTabs}
-              activeFocusedLeafId={activeFocusedLeafId}
-              activeMaximizedLeafId={activeMaximizedLeafId}
-              isPaneContentVisible={isPaneContentVisible}
-              onSelect={activateLeaf}
-              onPaneContentVisibilityChange={setIsPaneContentVisible}
-            />
-          </div>
-        )
-        : null}
+      {showTabStrip && paneTabs.length > 0 ? (
+        <div className="mb-1.5 shrink-0">
+          <PaneTabStrip
+            tabs={paneTabs}
+            activeFocusedLeafId={activeFocusedLeafId}
+            activeMaximizedLeafId={activeMaximizedLeafId}
+            isPaneContentVisible={isPaneContentVisible}
+            onSelect={activateLeaf}
+            onPaneContentVisibilityChange={setIsPaneContentVisible}
+          />
+        </div>
+      ) : null}
       <div
         ref={viewportRef}
         className="relative isolate min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg bg-slate-950/50"
@@ -5734,28 +6914,36 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
         // ancestor), not via descendant hit-testing, so input is unaffected; the
         // ghost + cancel overlays are already `pointer-events-none`. Restored the
         // instant the FSM leaves `dragging`.
-        style={dragState.phase === "dragging" ? { pointerEvents: "none" } : undefined}
+        style={
+          dragState.phase === "dragging" ? { pointerEvents: "none" } : undefined
+        }
       >
         {maximizedLeaf != null
           ? renderBranch(maximizedLeaf, viewportSize.width, viewportSize.height)
-          : renderBranch(displayLayout, viewportSize.width, viewportSize.height)}
-        {showProjectedLandingOverlays
-          ? (
-            <ProjectedLandingOverlays
-              overlays={projectedLandingOverlays}
-              showLabels={showDropIntentDebug}
-              observabilityColors={observabilityColors}
-              observabilityColorEnables={observabilityColorEnables}
-              projectedOverlayBackgroundAlpha={projectedOverlayBackgroundAlphaSafe}
-            />
-          )
-          : null}
+          : renderBranch(
+              displayLayout,
+              viewportSize.width,
+              viewportSize.height,
+            )}
+        {showProjectedLandingOverlays ? (
+          <ProjectedLandingOverlays
+            overlays={projectedLandingOverlays}
+            showLabels={showDropIntentDebug}
+            observabilityColors={observabilityColors}
+            observabilityColorEnables={observabilityColorEnables}
+            projectedOverlayBackgroundAlpha={
+              projectedOverlayBackgroundAlphaSafe
+            }
+          />
+        ) : null}
         <DragCancelOverlay cancelVisualState={cancelVisualState} />
         <DragPaneOverlay
           dragVisualState={dragVisualState}
           dragHopDurationMs={ghostTransitDurationMs}
           hopEasing={resolvedHopEasing}
-          pickupScaleFactor={ghostPickupScaleFactor(interactionCapabilities.ghostPickupScalePercent)}
+          pickupScaleFactor={ghostPickupScaleFactor(
+            interactionCapabilities.ghostPickupScalePercent,
+          )}
           coherentDipActive={shouldApplyCoherentTransitDip({
             enabled: interactionCapabilities.coherentTransit,
             action: dropState?.action ?? null,
@@ -5765,35 +6953,35 @@ export const DynamicTilingRenderer = React.forwardRef<TilingCommandHandle, Dynam
           swapBounceMagnitude={swapBounceMagnitude}
           prefersReducedMotion={prefersReducedMotion}
         />
-        {dragCursorEnabled
-          ? (
-            <DragCursorOverlay
-              dragVisualState={dragVisualState}
-              presentation={dragCursorPresentation}
-              dragHopDurationMs={ghostTransitDurationMs}
-              hopEasing={resolvedHopEasing}
-              prefersReducedMotion={prefersReducedMotion}
-            />
-          )
-          : null}
-        {showSwitcherOverlay && paneSwitcherState != null && paneTabs.length > 0
-          ? (
-            <PaneSwitcherOverlay
-              tabs={paneTabs}
-              selectedLeafId={paneSwitcherState.selectedLeafId}
-              onSelect={(leafId: string): void => {
-                setPaneSwitcherState(null);
-                activateLeaf(leafId);
-              }}
-            />
-          )
-          : null}
+        {dragCursorEnabled ? (
+          <DragCursorOverlay
+            dragVisualState={dragVisualState}
+            presentation={dragCursorPresentation}
+            dragHopDurationMs={ghostTransitDurationMs}
+            hopEasing={resolvedHopEasing}
+            prefersReducedMotion={prefersReducedMotion}
+          />
+        ) : null}
+        {showSwitcherOverlay &&
+        paneSwitcherState != null &&
+        paneTabs.length > 0 ? (
+          <PaneSwitcherOverlay
+            tabs={paneTabs}
+            selectedLeafId={paneSwitcherState.selectedLeafId}
+            onSelect={(leafId: string): void => {
+              setPaneSwitcherState(null);
+              activateLeaf(leafId);
+            }}
+          />
+        ) : null}
       </div>
     </div>
   );
 });
 
-export function readTileOrderByLeaf(node: DynamicLayoutNode): ReadonlyArray<string> {
+export function readTileOrderByLeaf(
+  node: DynamicLayoutNode,
+): ReadonlyArray<string> {
   if (node.kind === "leaf") {
     return [node.tileId];
   }
@@ -5804,7 +6992,10 @@ export function readTileOrderByLeaf(node: DynamicLayoutNode): ReadonlyArray<stri
     return node.members.map((member: DynamicLeafNode): string => member.tileId);
   }
 
-  return [...readTileOrderByLeaf(node.first), ...readTileOrderByLeaf(node.second)];
+  return [
+    ...readTileOrderByLeaf(node.first),
+    ...readTileOrderByLeaf(node.second),
+  ];
 }
 
 export function isLeafNode(node: DynamicLayoutNode): node is DynamicLeafNode {

@@ -581,6 +581,7 @@ export function DynamicTilingShowcase(): React.ReactElement {
       (): ResolvedTilingInteractionCapabilities =>
         resolveInteractionCapabilities({
           dragMode: "live",
+          resizeHandlesVisible: false,
           paneSwitching: {
             enable: true,
             showTabStrip: true,
@@ -841,9 +842,12 @@ export function DynamicTilingShowcase(): React.ReactElement {
     );
 
   return (
-    <main className="flex h-screen max-h-screen min-h-0 overflow-hidden bg-[#020617] p-2 text-slate-100">
-      <section className="flex h-full max-h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-slate-950/85 p-1">
-        <div className="flex h-full max-h-full min-h-0 min-w-0 max-w-full flex-1 flex-row gap-2 overflow-hidden">
+    <main
+      className="flex h-screen max-h-screen min-h-0 overflow-hidden bg-[#0b0d12] bg-cover bg-center bg-no-repeat p-1.5 text-slate-100"
+      style={{ backgroundImage: "url('/src/showcase-bg-simple.svg')" }}
+    >
+      <section className="flex h-full max-h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-zinc-950/45 p-0.5 backdrop-blur-[1px]">
+        <div className="flex h-full max-h-full min-h-0 min-w-0 max-w-full flex-1 flex-row gap-1.5 overflow-hidden">
           <div className="h-full max-h-full min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl bg-transparent p-0">
             <DynamicTilingRenderer
               ref={rendererCommandHandleRef}
@@ -889,14 +893,14 @@ export function DynamicTilingShowcase(): React.ReactElement {
           </div>
 
           <div
-            className={`h-full max-h-full min-h-0 shrink-0 overflow-hidden rounded-2xl border border-cyan-200/20 bg-[linear-gradient(180deg,rgba(2,6,23,0.7),rgba(2,6,23,0.9))] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_28px_rgba(14,116,144,0.18)] transition-[width] duration-200 ease-out ${
+            className={`h-full max-h-full min-h-0 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.74),rgba(10,10,12,0.9))] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_24px_rgba(15,23,42,0.24)] transition-[width] duration-200 ease-out ${
               isControlPaneCollapsed ? "w-16" : "w-[352px]"
             }`}
             data-control-pane-state={
               isControlPaneCollapsed ? "collapsed" : "expanded"
             }
           >
-            <div className="flex h-full min-h-0 flex-col p-2.5">
+            <div className="flex h-full min-h-0 flex-col p-2">
               <button
                 type="button"
                 onClick={(): void =>
@@ -916,7 +920,7 @@ export function DynamicTilingShowcase(): React.ReactElement {
                     : "Collapse control panel"
                 }
                 className={`
-                  mb-2 flex shrink-0 items-center rounded-lg border border-cyan-200/55 bg-cyan-500/12 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.2)] transition-colors hover:border-cyan-100/80 hover:bg-cyan-500/20
+                  mb-1.5 flex shrink-0 items-center rounded-lg border border-cyan-200/55 bg-cyan-500/12 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.2)] transition-colors hover:border-cyan-100/80 hover:bg-cyan-500/20
                   ${isControlPaneCollapsed ? "justify-center px-0" : "justify-between px-2.5"}
                 `}
               >
@@ -931,7 +935,7 @@ export function DynamicTilingShowcase(): React.ReactElement {
               </button>
               {isControlPaneCollapsed ? (
                 <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-0.5">
                     {controlPaneShortcuts.map(
                       (
                         shortcut: ShowcaseControlShortcut,
@@ -949,14 +953,14 @@ export function DynamicTilingShowcase(): React.ReactElement {
                                 shortcut.command,
                               );
                             }}
-                            className="w-full rounded-md border border-cyan-200/20 bg-[linear-gradient(180deg,rgba(15,23,42,0.78),rgba(2,6,23,0.86))] px-1 py-1.5 text-center font-mono uppercase text-slate-200 transition-colors hover:border-cyan-200/50 hover:text-cyan-50"
+                            className="w-full rounded-md bg-[linear-gradient(180deg,rgba(39,39,42,0.78),rgba(17,17,20,0.9))] px-1 py-1 text-center font-mono uppercase text-slate-200 transition-colors hover:bg-[linear-gradient(180deg,rgba(63,63,70,0.85),rgba(24,24,27,0.95))] hover:text-slate-50"
                           >
                             <span className="block text-[7px] leading-none tracking-[0.12em] text-slate-400">
                               {comboRows.modifiers.length > 0
                                 ? comboRows.modifiers
                                 : "key"}
                             </span>
-                            <span className="mt-1 block text-[9px] font-semibold leading-none tracking-[0.1em]">
+                            <span className="mt-0.5 block text-[9px] font-semibold leading-none tracking-[0.1em]">
                               {comboRows.primaryKey}
                             </span>
                           </button>
