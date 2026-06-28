@@ -81,15 +81,24 @@ const ALERT_TABLE_HEADERS: ReadonlyArray<string> = ["id", "tenant", "rule", "sev
 // Design tokens — single source of truth. See `_agent/showcase-content-design-concept.md`.
 // ---------------------------------------------------------------------------
 
+// Surfaces are tuned to nest under the renderer's liquid-glass pane chrome
+// (translucent gradient + backdrop-blur + a white/[0.06] hairline rim, header
+// on bg-white/[0.05]). Content tiers therefore use translucent white-on-glass
+// fills (not opaque slate boxes), ring/divider opacities matched to the glass
+// rim, and radii bumped one step so they sit concentrically inside the pane's
+// rounded-2xl. Typography + semantic status hues are unchanged: titles stay
+// slate and the per-pane accent is deliberately NOT bled into content (it is
+// the chrome's identity color) — content harmonizes by surface, not by hue.
 const TOKENS = {
   surface: {
-    section: "rounded-lg bg-slate-900/40 ring-1 ring-inset ring-white/5",
-    well: "rounded-md bg-slate-950/60 ring-1 ring-inset ring-white/5",
-    card: "rounded-md bg-white/[0.03] ring-1 ring-inset ring-white/5 hover:bg-white/[0.05]",
+    section:
+      "rounded-xl bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] ring-1 ring-inset ring-white/[0.08]",
+    well: "rounded-lg bg-slate-950/40 ring-1 ring-inset ring-white/[0.06]",
+    card: "rounded-lg bg-white/[0.03] ring-1 ring-inset ring-white/[0.07] hover:bg-white/[0.06]",
   },
-  rule: "border-b border-white/10",
-  hairline: "divide-y divide-white/5",
-  rowHover: "hover:bg-white/[0.03]",
+  rule: "border-b border-white/[0.08]",
+  hairline: "divide-y divide-white/[0.06]",
+  rowHover: "hover:bg-white/[0.04]",
   type: {
     sectionTitle: "text-[11px] font-semibold tracking-tight text-slate-100",
     sectionMeta: "text-[10px] text-slate-500",
