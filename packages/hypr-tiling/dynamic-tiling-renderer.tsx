@@ -875,12 +875,17 @@ function renderDragPaneShell(
   return (
     <article
       className={cn(
-        "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border bg-slate-950/90 shadow-xl backdrop-blur",
+        // Lifted liquid-glass ghost: matches DefaultDynamicTile's glass tokens
+        // but a touch more opaque + a deeper drop shadow + a brighter glass rim
+        // so the dragged pane reads as floating above the board. The ghost is
+        // rendered through a document.body portal (position:fixed), so this
+        // backdrop-filter never contains it.
+        "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl bg-[linear-gradient(155deg,rgba(52,57,71,0.74),rgba(13,15,21,0.82))] shadow-[0_28px_70px_-18px_rgba(0,0,0,0.78),inset_0_1px_0_rgba(255,255,255,0.14),inset_0_0_0_1px_rgba(255,255,255,0.08)] backdrop-blur-2xl backdrop-saturate-150",
         accentClassName(snapshot.accent),
       )}
       aria-hidden
     >
-      <header className="flex shrink-0 items-center justify-between border-b border-white/10 bg-white/[0.04] px-3 py-2">
+      <header className="flex shrink-0 items-center justify-between border-b border-white/[0.08] bg-white/[0.06] px-3 py-2">
         <div className="min-w-0">
           <div
             className={cn(
@@ -1993,10 +1998,18 @@ function DefaultDynamicTile({
   return (
     <article
       className={cn(
-        // Pane host shell: no resting border outline. Focus (border-2 + ring),
-        // drop-target / eligibility / invalid rings, and the drag-source
-        // observability border below all supply their own width when active.
-        "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl bg-[linear-gradient(180deg,rgba(39,39,42,0.84),rgba(15,15,18,0.94))] shadow-[0_14px_34px_rgba(2,6,23,0.58),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur",
+        // Pane host shell: liquid-glass surface — a translucent dark gradient
+        // (low enough alpha that the neon-terminal grid reads faintly through),
+        // a wide backdrop blur + saturate for the "frosted glass" refraction, a
+        // soft drop shadow, a top sheen highlight, and a hairline inset edge
+        // (the glass rim) supplied via box-shadow so it never fights the
+        // border-property states below. No resting BORDER outline: focus
+        // (border-2 + ring), drop-target / eligibility / invalid rings, and the
+        // drag-source observability border all supply their own width when
+        // active. The backdrop-filter here creates a containing block for
+        // position:fixed DESCENDANTS only — the drag ghost is portaled to
+        // document.body (not a descendant), so this never reintroduces drift.
+        "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl bg-[linear-gradient(155deg,rgba(48,53,66,0.50),rgba(12,14,19,0.60))] shadow-[0_18px_44px_-14px_rgba(2,6,23,0.72),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-xl backdrop-saturate-150",
         accentClassName(tile.accent),
         isDropEligible ? "ring-1 ring-dashed ring-cyan-300/30" : "",
         isHoveringDropCandidate ? "ring-2 ring-cyan-200/45" : "",
@@ -2135,12 +2148,12 @@ function DefaultDynamicTile({
         onPointerDown={onHandlePointerDown}
         style={isRearrangeEnabled ? { touchAction: "none" } : undefined}
         className={cn(
-          "flex min-h-[42px] shrink-0 items-center justify-between border-b border-white/10 bg-slate-900/58 px-3 py-1.5 shadow-[inset_0_-1px_0_rgba(255,255,255,0.05)]",
+          "flex min-h-[42px] shrink-0 items-center justify-between border-b border-white/[0.08] bg-white/[0.05] px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
           isRearrangeEnabled
             ? "cursor-grab active:cursor-grabbing"
             : "cursor-default",
           isFocused
-            ? "border-b-cyan-200/35 bg-cyan-500/[0.08] shadow-[inset_0_-1px_0_rgba(56,189,248,0.2)]"
+            ? "border-b-cyan-200/35 bg-cyan-500/[0.10] shadow-[inset_0_1px_0_rgba(56,189,248,0.18)]"
             : "",
         )}
       >
