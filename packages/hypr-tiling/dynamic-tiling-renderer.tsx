@@ -5613,14 +5613,16 @@ export const DynamicTilingRenderer = React.forwardRef<
     }
     const owningPointerId: number = activeDragPointerId;
 
-    // rAF coalescer: raw `pointermove` coords are buffered and processed at most
-    // once per frame (latest wins), decoupling the input frame from the render
-    // frame so multiple moves cannot trigger multiple target-resolution +
-    // candidate-tree recomputes within one frame. `.cancel()` on teardown drops
-    // any pending frame so it can never fire after the drag has settled.
-    const coalescer: FrameCoalescer<DragMachinePoint> =
-      createFrameCoalescer<DragMachinePoint>(
-        (client: DragMachinePoint): void => {
+    // Resolve one pointer sample into FSM events: promote `armed → dragging`
+    // once the pickup threshold is crossed and resolve the drop target for the
+    // current cursor position. Extracted (not inlined into the coalescer) so the
+    // RELEASE path can run it SYNCHRONOUSLY from the raw `pointerup` coords — a
+    // fast flick releases in the same task as its `pointermove`s, before the rAF
+    // coalescer flushes, so without a synchronous release-time resolve the FSM
+    // would still be `armed` (or hold a stale target) and POINTER_UP would
+    // settle as a click/cancel, reverting the pane to its origin.
+    const processPointerSample = (client: DragMachinePoint): void => {
+      {
           const current: DragMachineState = dragStateRef.current;
           if (current.phase === "armed") {
             if (current.touchDrag) {
@@ -5749,12 +5751,19 @@ export const DynamicTilingRenderer = React.forwardRef<
               resolvedTarget: nextTarget,
             });
           }
-        },
-        {
-          request: window.requestAnimationFrame.bind(window),
-          cancel: window.cancelAnimationFrame.bind(window),
-        },
-      );
+      }
+    };
+
+    // rAF coalescer: raw `pointermove` coords are buffered and processed at most
+    // once per frame (latest wins), decoupling the input frame from the render
+    // frame so multiple moves cannot trigger multiple target-resolution +
+    // candidate-tree recomputes within one frame. `.cancel()` on teardown drops
+    // any pending frame so it can never fire after the drag has settled.
+    const coalescer: FrameCoalescer<DragMachinePoint> =
+      createFrameCoalescer<DragMachinePoint>(processPointerSample, {
+        request: window.requestAnimationFrame.bind(window),
+        cancel: window.cancelAnimationFrame.bind(window),
+      });
 
     // Touch long-press pickup timer. Armed once when a TOUCH press enters
     // `armed`; the held finger becomes a drag when it fires (mouse/pen never arm
@@ -5820,6 +5829,27 @@ export const DynamicTilingRenderer = React.forwardRef<
     const handlePointerUp = (event: PointerEvent): void => {
       if (event.pointerId !== owningPointerId) {
         return;
+      }
+      // Release-time synchronous resolve. A fast drag-release fires its
+      // `pointermove`s and this `pointerup` within a single task, before the rAF
+      // coalescer has a chance to flush — so the buffered sample (which both
+      // promotes `armed → dragging` AND resolves the drop target) would be
+      // dropped by `coalescer.cancel()` on teardown, leaving the FSM in `armed`
+      // (or holding a stale target). POINTER_UP would then settle as a
+      // click/cancel and the pane snaps back to its origin. Cancel the buffered
+      // frame and process the RELEASE pointer position inline so the reducer
+      // queue becomes POINTER_MOVE → TARGET_RESOLVED → POINTER_UP and the drop
+      // commits to the slot under the pointer at release time. Touch is exempt:
+      // a finger never reaches `dragging` without the long-press timer, so a
+      // pre-pickup tap-release must stay a click (no synchronous promote).
+      const releaseState: DragMachineState = dragStateRef.current;
+      const releaseIsTouch: boolean =
+        (releaseState.phase === "armed" ||
+          releaseState.phase === "dragging") &&
+        releaseState.touchDrag;
+      if (!releaseIsTouch) {
+        coalescer.cancel();
+        processPointerSample({ x: event.clientX, y: event.clientY });
       }
       dispatchDrag({ type: "POINTER_UP", pointerId: owningPointerId });
     };

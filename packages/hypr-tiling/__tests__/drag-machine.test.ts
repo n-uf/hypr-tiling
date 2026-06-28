@@ -757,3 +757,77 @@ describe("createFrameCoalescer — rAF coalescing + teardown cleanup", (): void 
     expect(scheduler.pendingCount()).toBe(0);
   });
 });
+
+describe("drag-machine — fast drag-release commits at the release position (coalescer-race regression)", (): void => {
+  // Failure reproduced empirically (CDP probe, headless Chrome against the dev
+  // server): a SLOW drag (a frame between each move, so the rAF coalescer
+  // flushes and resolves a target) commits the swap; a FAST flick (moves + the
+  // `pointerup` within a single frame, before the coalescer flushes) does NOT —
+  // the pane snaps back to its origin.
+  //
+  // Root cause: the rAF coalescer is the ONLY thing that promotes `armed →
+  // dragging` AND resolves the drop target. On a fast release the buffered
+  // sample never runs before `pointerup`, and teardown `cancel()`s it — so the
+  // FSM is still `armed` (or holds a stale/empty target) when POINTER_UP
+  // arrives, settling as a click/cancel.
+  //
+  // Fix: the renderer's `handlePointerUp` cancels the buffered frame and runs
+  // the SAME resolution synchronously from the RELEASE pointer position before
+  // dispatching POINTER_UP. For a mouse/pen flick past the pickup threshold
+  // that produces the reducer event sequence asserted below.
+
+  it("the buggy path: a buffered move that never flushes leaves the target unresolved (dropped frame)", (): void => {
+    const scheduler: FakeFrameScheduler = makeFakeScheduler();
+    const onFrame = jest.fn<(payload: { x: number; y: number }) => void>();
+    const coalescer = createFrameCoalescer(onFrame, scheduler);
+    // Fast flick: a burst of moves arms ONE frame …
+    coalescer.schedule({ x: 200, y: 200 });
+    coalescer.schedule({ x: 300, y: 300 });
+    expect(scheduler.pendingCount()).toBe(1);
+    // … but the release tears the drag down before the frame runs.
+    coalescer.cancel();
+    scheduler.runFrames();
+    // The sample that would have promoted + resolved the target NEVER ran.
+    expect(onFrame).not.toHaveBeenCalled();
+  });
+
+  it("armed + bare POINTER_UP → idle (the un-fixed revert: release settles as a click, no commit)", (): void => {
+    const armed: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, pointerDown());
+    const released: DragMachineState = dragMachineReducer(armed, { type: "POINTER_UP", pointerId: 1 });
+    expect(released).toEqual({ phase: "idle" });
+  });
+
+  it("the fix: the release-time event sequence (POINTER_MOVE → TARGET_RESOLVED → POINTER_UP) settles to a commit carrying the release-position target", (): void => {
+    // This is exactly what the renderer's `handlePointerUp` now enqueues by
+    // calling `processPointerSample(releaseClient)` (which dispatches
+    // POINTER_MOVE then TARGET_RESOLVED) immediately before POINTER_UP.
+    const releaseClient = { x: 300, y: 300 }; // past the pickup threshold from origin {110,110}
+    let state: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, pointerDown());
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: releaseClient });
+    expect(state.phase).toBe("dragging");
+    state = dragMachineReducer(state, {
+      type: "TARGET_RESOLVED",
+      pointerId: 1,
+      resolvedTarget: makeTarget("C", "center", "swap"),
+    });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase).toBe("settling");
+    if (state.phase === "settling") {
+      expect(state.outcome).toBe("commit");
+      expect(state.resolvedTarget?.leafId).toBe("C");
+    }
+  });
+
+  it("the fix preserves click-vs-drag: a sub-threshold release-position sample never promotes (stays a click → idle)", (): void => {
+    // `processPointerSample` only promotes when the pickup threshold is crossed;
+    // a tiny release at {112,112} (2px from origin) does not, so POINTER_UP from
+    // `armed` is still a click.
+    let state: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, pointerDown());
+    const subThreshold = { x: 112, y: 112 };
+    if (!hasCrossedPickupThreshold({ x: 110, y: 110 }, subThreshold)) {
+      // no promotion dispatched
+      state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    }
+    expect(state).toEqual({ phase: "idle" });
+  });
+});
