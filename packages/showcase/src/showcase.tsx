@@ -4,6 +4,7 @@ import {
   ANIMATION_CONTROL_DEFAULTS,
   DEFAULT_DRAG_HOP_EASING,
   DEFAULT_TILING_LAYOUT_CONFIG,
+  DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS,
   DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
   DynamicTilingRenderer,
   TilingObservabilityPanel,
@@ -403,22 +404,11 @@ const DEFAULT_SHOW_DROP_PREVIEW_LANDING_SHADOWS: boolean = true;
 const LIVE_LEDGER_RETENTION_LIMIT: number = 60;
 /** How long the "preview all hit zones on adjustment" overlay stays up after the last geometry slider input. */
 const HIT_ZONE_GEOMETRY_PREVIEW_MS: number = 1200;
-const DEFAULT_OBSERVABILITY_COLORS: DynamicObservabilityColorConfig = {
-  dragSourceBorderColorHex: "#f0abfc",
-  dragTargetBorderColorHex: "#67e8f9",
-  projectedSourceBorderColorHex: "#fde68a",
-  projectedTargetBorderColorHex: "#86efac",
-  projectedSuccessorBorderColorHex: "#93c5fd",
-  projectedSourceFillColorHex: "#f59e0b",
-  projectedTargetFillColorHex: "#10b981",
-  projectedSuccessorFillColorHex: "#3b82f6",
-  hitZoneLeftColorHex: "#0ea5e9",
-  hitZoneRightColorHex: "#a855f7",
-  hitZoneTopColorHex: "#f59e0b",
-  hitZoneBottomColorHex: "#14b8a6",
-  hitZoneCenterColorHex: "#10b981",
-  hitZoneBlockedColorHex: "#fb7185",
-};
+// Debug-overlay color palette seeded from the library default (single source of
+// truth) — the panel's sliders tune it from here and "reset to defaults" lands
+// back on the same library baseline.
+const DEFAULT_OBSERVABILITY_COLORS: DynamicObservabilityColorConfig =
+  DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS;
 
 function toTileMap(
   tiles: ReadonlyArray<DynamicTile>,
