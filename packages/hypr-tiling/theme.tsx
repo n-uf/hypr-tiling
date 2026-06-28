@@ -362,10 +362,13 @@ export function accentHue(accent: DynamicTileAccent | undefined): TilingAccentHu
 }
 
 /**
- * Built-in theme: NEON-TERMINAL. The migration target for the previously
- * hardcoded liquid-glass / neon look. Round 1 reproduces the prior surfaces
- * verbatim; round 4 refines the intensity (calmer glass, softer glow). Default
- * library theme.
+ * Built-in theme: NEON-TERMINAL — the neon-terminal direction, REFINED and
+ * dialed back from the original heavy look. Calmer glass (blur `xl`→`md`,
+ * saturate `150`→`125`; ghost `2xl`→`lg`), softer drop shadows, a lower-contrast
+ * focus glow (`focusGlowSoft` + a single `ring-1` instead of `ring-2`), and more
+ * disciplined accent use (resting panes wear only a faint accent border — the
+ * colored shadow tint is dropped). Keeps the direction; makes it tasteful.
+ * Default library theme.
  */
 const NEON_TERMINAL_THEME: TilingTheme = {
   id: "neon-terminal",
@@ -378,44 +381,44 @@ const NEON_TERMINAL_THEME: TilingTheme = {
   },
   paneShell: {
     surface:
-      "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl bg-[linear-gradient(155deg,rgba(48,53,66,0.50),rgba(12,14,19,0.60))] shadow-[0_18px_44px_-14px_rgba(2,6,23,0.72),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-xl backdrop-saturate-150",
+      "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl bg-[linear-gradient(155deg,rgba(48,53,66,0.55),rgba(12,14,19,0.66))] shadow-[0_12px_30px_-16px_rgba(2,6,23,0.6),inset_0_1px_0_rgba(255,255,255,0.08),inset_0_0_0_1px_rgba(255,255,255,0.05)] backdrop-blur-md backdrop-saturate-[1.25]",
     bodyText:
       "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-1.5 font-mono text-[11px] leading-5 text-slate-200",
     subtitleText: "text-slate-400",
-    dropEligibleRing: "ring-1 ring-dashed ring-cyan-300/30",
-    dropHoverRing: "ring-2 ring-cyan-200/45",
-    dropTargetRing: "ring-2 ring-cyan-300/70",
-    invalidDropRing: "ring-2 ring-rose-300/70",
+    dropEligibleRing: "ring-1 ring-dashed ring-cyan-300/25",
+    dropHoverRing: "ring-1 ring-cyan-200/40",
+    dropTargetRing: "ring-2 ring-cyan-300/60",
+    invalidDropRing: "ring-2 ring-rose-300/60",
     dragSourceOpacity: "opacity-70",
   },
   paneHeader: {
-    base: "flex min-h-[42px] shrink-0 items-center justify-between border-b border-white/[0.08] bg-white/[0.05] px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+    base: "flex min-h-[42px] shrink-0 items-center justify-between border-b border-white/[0.07] bg-white/[0.04] px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
     focused:
-      "border-b-cyan-200/35 bg-cyan-500/[0.10] shadow-[inset_0_1px_0_rgba(56,189,248,0.18)]",
+      "border-b-cyan-200/25 bg-cyan-500/[0.06] shadow-[inset_0_1px_0_rgba(56,189,248,0.10)]",
     titleText:
       "truncate font-mono text-[11px] font-semibold uppercase tracking-[0.16em]",
     controlIdle:
-      "border-white/20 bg-slate-950/70 text-slate-300 hover:border-cyan-200/45 hover:bg-cyan-400/12 hover:text-cyan-50",
+      "border-white/20 bg-slate-950/70 text-slate-300 hover:border-cyan-200/35 hover:bg-cyan-400/10 hover:text-cyan-50",
     controlActive:
-      "border-cyan-100/70 bg-cyan-400/20 text-cyan-50 shadow-[0_0_12px_rgba(34,211,238,0.32)]",
+      "border-cyan-100/60 bg-cyan-400/15 text-cyan-50 shadow-[0_0_8px_rgba(34,211,238,0.20)]",
   },
   ghost: {
     surface:
-      "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl bg-[linear-gradient(155deg,rgba(52,57,71,0.74),rgba(13,15,21,0.82))] shadow-[0_28px_70px_-18px_rgba(0,0,0,0.78),inset_0_1px_0_rgba(255,255,255,0.14),inset_0_0_0_1px_rgba(255,255,255,0.08)] backdrop-blur-2xl backdrop-saturate-150",
+      "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl bg-[linear-gradient(155deg,rgba(52,57,71,0.80),rgba(13,15,21,0.88))] shadow-[0_20px_48px_-20px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-lg backdrop-saturate-[1.25]",
     header:
-      "flex shrink-0 items-center justify-between border-b border-white/[0.08] bg-white/[0.06] px-3 py-2",
+      "flex shrink-0 items-center justify-between border-b border-white/[0.07] bg-white/[0.05] px-3 py-2",
     bodyText: "text-slate-300",
     subtitleText: "text-slate-500",
   },
   divider: {
-    base: "shrink-0 rounded outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70",
-    visibleInteractive: "bg-white/10 hover:bg-cyan-300/40",
+    base: "shrink-0 rounded outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60",
+    visibleInteractive: "bg-white/10 hover:bg-cyan-300/30",
     visibleStatic: "bg-white/[0.04] cursor-default",
     hidden: "bg-transparent hover:bg-transparent",
   },
   topBar: {
     container:
-      "flex shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-zinc-900/70 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_22px_rgba(0,0,0,0.42)] backdrop-blur",
+      "flex shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-zinc-900/70 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_4px_14px_rgba(0,0,0,0.30)] backdrop-blur",
     titleText:
       "flex shrink-0 items-center px-1 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-300",
     pickerGroup:
@@ -427,22 +430,22 @@ const NEON_TERMINAL_THEME: TilingTheme = {
     tabInactive:
       "border-white/15 bg-zinc-950/80 text-slate-300 hover:border-white/30 hover:text-slate-100",
     switcherCard:
-      "pointer-events-auto max-w-[90%] rounded-2xl border border-white/15 bg-slate-950/85 px-4 py-3 shadow-[0_22px_60px_rgba(2,6,23,0.7)] backdrop-blur",
+      "pointer-events-auto max-w-[90%] rounded-2xl border border-white/15 bg-slate-950/85 px-4 py-3 shadow-[0_16px_44px_rgba(2,6,23,0.6)] backdrop-blur",
     switcherCardInactive: "border-white/10 bg-slate-950/80 text-slate-400",
   },
-  resolvePaneAccentSurface: (accent: DynamicTileAccent | undefined): string => {
-    const hue: TilingAccentHue = accentHue(accent);
-    return cn(hue.surfaceBorder, hue.surfaceShadow);
-  },
+  // Disciplined accent use: a faint accent border at rest, no colored shadow tint.
+  resolvePaneAccentSurface: (accent: DynamicTileAccent | undefined): string =>
+    accentHue(accent).surfaceBorder,
   resolveAccentText: (accent: DynamicTileAccent | undefined): string =>
     accentHue(accent).text,
+  // Lower-contrast focus frame: border-2 + single ring-1 + softened glow.
   resolveFocusFrame: (accent: DynamicTileAccent | undefined): string => {
     const hue: TilingAccentHue = accentHue(accent);
     return cn(
-      "border-2 ring-2 ring-offset-0",
+      "border-2 ring-1 ring-offset-0",
       hue.focusBorder,
       hue.focusRing,
-      hue.focusGlow,
+      hue.focusGlowSoft,
     );
   },
   resolveTabActive: (accent: DynamicTileAccent | undefined): string => {
