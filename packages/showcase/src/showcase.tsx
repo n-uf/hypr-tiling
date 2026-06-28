@@ -23,6 +23,7 @@ import {
   type DynamicPaneFootprint,
   type DynamicSplitNode,
   type DynamicTile,
+  type DynamicTileAccent,
   type ResolvedTilingInteractionCapabilities,
   type ResolvedTilingKeyChord,
   type ResolvedTilingKeyChordModifiers,
@@ -586,8 +587,21 @@ export function DynamicTilingShowcase(): React.ReactElement {
   const [observabilityLedgerEntries, setObservabilityLedgerEntries] =
     React.useState<ReadonlyArray<TilingObservabilityLedgerEntry>>([]);
   const previousLedgerSnapshotRef = React.useRef<string>("initial");
+  // Tiles are stateful so the top-bar accent picker can recolor a pane's tile.
+  const [tiles, setTiles] =
+    React.useState<ReadonlyArray<DynamicTile>>(SHOWCASE_TILES);
   const tilesMap: ReadonlyMap<string, DynamicTile> = React.useMemo(
-    (): ReadonlyMap<string, DynamicTile> => toTileMap(SHOWCASE_TILES),
+    (): ReadonlyMap<string, DynamicTile> => toTileMap(tiles),
+    [tiles],
+  );
+  const handleTileAccentChange = React.useCallback(
+    (tileId: string, accent: DynamicTileAccent): void => {
+      setTiles((previous: ReadonlyArray<DynamicTile>): ReadonlyArray<DynamicTile> =>
+        previous.map((tile: DynamicTile): DynamicTile =>
+          tile.id === tileId ? { ...tile, accent } : tile,
+        ),
+      );
+    },
     [],
   );
 
@@ -845,6 +859,7 @@ export function DynamicTilingShowcase(): React.ReactElement {
               interaction={effectiveInteractionCapabilities}
               focusedLeafId={focusedLeafId}
               onFocusedLeafChange={setFocusedLeafId}
+              onTileAccentChange={handleTileAccentChange}
               showDropPreviewOverlays={
                 previewOverlaysEnabled && showDropPreviewOverlays
               }

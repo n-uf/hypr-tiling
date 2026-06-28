@@ -185,6 +185,8 @@ import type {
   DynamicSplitNode,
   DynamicSplitResizeState,
   DynamicTile,
+  DynamicTileAccent,
+  DynamicTileAccentSwatch,
   DynamicTilingRendererProps,
   ResolvedTilingDropHitZoneGeometryCapability,
   ResolvedTilingInteractionCapabilities,
@@ -437,46 +439,147 @@ function resolveTile(
   return tiles.get(tileId);
 }
 
-function accentClassName(accent: DynamicTile["accent"]): string {
-  if (accent === "violet") {
-    return "border-violet-400/40 shadow-violet-500/15";
-  }
-  if (accent === "sky") {
-    return "border-sky-400/40 shadow-sky-500/15";
-  }
-  if (accent === "pink") {
-    return "border-pink-400/40 shadow-pink-500/15";
-  }
+/**
+ * Single source of truth for every accent's Tailwind class strings. Keyed by
+ * the closed `DynamicTileAccent` union so the compiler enforces full coverage
+ * (add a member to the union → this record fails to type until the theme is
+ * filled in). Literal class strings keep Tailwind's JIT able to see + emit
+ * every utility. Field roles:
+ * - `surface`     resting pane border + colored shadow tint
+ * - `text`        accented title / metadata text
+ * - `focusFrame`  the focused-pane 1px ring + neon glow
+ * - `tabActive`   the active group-tab chip
+ * - `swatch`      a solid bg for a palette-picker dot
+ * - `label`       human-facing palette label
+ */
+interface DynamicTileAccentTheme {
+  readonly label: string;
+  readonly surface: string;
+  readonly text: string;
+  readonly focusFrame: string;
+  readonly tabActive: string;
+  readonly swatch: string;
+}
 
-  return "border-cyan-400/40 shadow-cyan-500/15";
+const DYNAMIC_TILE_ACCENT_THEMES: Record<
+  DynamicTileAccent,
+  DynamicTileAccentTheme
+> = {
+  cyan: {
+    label: "cyan",
+    surface: "border-cyan-400/40 shadow-cyan-500/15",
+    text: "text-cyan-200",
+    focusFrame:
+      "border-cyan-200 ring-cyan-300 shadow-[0_0_0_1px_rgba(165,243,252,0.9),0_0_28px_rgba(34,211,238,0.45)]",
+    tabActive: "border-cyan-300/70 bg-cyan-500/20 text-cyan-100",
+    swatch: "bg-cyan-400",
+  },
+  sky: {
+    label: "sky",
+    surface: "border-sky-400/40 shadow-sky-500/15",
+    text: "text-sky-200",
+    focusFrame:
+      "border-sky-200 ring-sky-300 shadow-[0_0_0_1px_rgba(186,230,253,0.9),0_0_28px_rgba(14,165,233,0.45)]",
+    tabActive: "border-sky-300/70 bg-sky-500/20 text-sky-100",
+    swatch: "bg-sky-400",
+  },
+  violet: {
+    label: "violet",
+    surface: "border-violet-400/40 shadow-violet-500/15",
+    text: "text-violet-200",
+    focusFrame:
+      "border-violet-200 ring-violet-300 shadow-[0_0_0_1px_rgba(196,181,253,0.9),0_0_28px_rgba(139,92,246,0.45)]",
+    tabActive: "border-violet-300/70 bg-violet-500/20 text-violet-100",
+    swatch: "bg-violet-400",
+  },
+  indigo: {
+    label: "indigo",
+    surface: "border-indigo-400/40 shadow-indigo-500/15",
+    text: "text-indigo-200",
+    focusFrame:
+      "border-indigo-200 ring-indigo-300 shadow-[0_0_0_1px_rgba(199,210,254,0.9),0_0_28px_rgba(99,102,241,0.45)]",
+    tabActive: "border-indigo-300/70 bg-indigo-500/20 text-indigo-100",
+    swatch: "bg-indigo-400",
+  },
+  emerald: {
+    label: "emerald",
+    surface: "border-emerald-400/40 shadow-emerald-500/15",
+    text: "text-emerald-200",
+    focusFrame:
+      "border-emerald-200 ring-emerald-300 shadow-[0_0_0_1px_rgba(167,243,208,0.9),0_0_28px_rgba(16,185,129,0.45)]",
+    tabActive: "border-emerald-300/70 bg-emerald-500/20 text-emerald-100",
+    swatch: "bg-emerald-400",
+  },
+  amber: {
+    label: "amber",
+    surface: "border-amber-400/40 shadow-amber-500/15",
+    text: "text-amber-200",
+    focusFrame:
+      "border-amber-200 ring-amber-300 shadow-[0_0_0_1px_rgba(253,230,138,0.9),0_0_28px_rgba(245,158,11,0.45)]",
+    tabActive: "border-amber-300/70 bg-amber-500/20 text-amber-100",
+    swatch: "bg-amber-400",
+  },
+  rose: {
+    label: "rose",
+    surface: "border-rose-400/40 shadow-rose-500/15",
+    text: "text-rose-200",
+    focusFrame:
+      "border-rose-200 ring-rose-300 shadow-[0_0_0_1px_rgba(254,205,211,0.9),0_0_28px_rgba(244,63,94,0.45)]",
+    tabActive: "border-rose-300/70 bg-rose-500/20 text-rose-100",
+    swatch: "bg-rose-400",
+  },
+  pink: {
+    label: "pink",
+    surface: "border-pink-400/40 shadow-pink-500/15",
+    text: "text-pink-200",
+    focusFrame:
+      "border-pink-200 ring-pink-300 shadow-[0_0_0_1px_rgba(251,207,232,0.9),0_0_28px_rgba(236,72,153,0.45)]",
+    tabActive: "border-pink-300/70 bg-pink-500/20 text-pink-100",
+    swatch: "bg-pink-400",
+  },
+};
+
+/**
+ * The ordered, enumerable accent palette — the generic library capability a
+ * consumer iterates to build an accent picker. `DynamicTile.accent` falls back
+ * to the first entry (`cyan`) when omitted.
+ */
+export const DYNAMIC_TILE_ACCENTS: readonly DynamicTileAccent[] = [
+  "cyan",
+  "sky",
+  "violet",
+  "indigo",
+  "emerald",
+  "amber",
+  "rose",
+  "pink",
+];
+
+/** Picker-ready metadata (accent + label + swatch class) for every accent. */
+export const DYNAMIC_TILE_ACCENT_SWATCHES: readonly DynamicTileAccentSwatch[] =
+  DYNAMIC_TILE_ACCENTS.map(
+    (accent: DynamicTileAccent): DynamicTileAccentSwatch => ({
+      accent,
+      label: DYNAMIC_TILE_ACCENT_THEMES[accent].label,
+      swatchClassName: DYNAMIC_TILE_ACCENT_THEMES[accent].swatch,
+    }),
+  );
+
+/** Resolve an accent (or the `cyan` fallback) to its theme. */
+function accentTheme(accent: DynamicTile["accent"]): DynamicTileAccentTheme {
+  return DYNAMIC_TILE_ACCENT_THEMES[accent ?? "cyan"];
+}
+
+function accentClassName(accent: DynamicTile["accent"]): string {
+  return accentTheme(accent).surface;
 }
 
 function accentTextClassName(accent: DynamicTile["accent"]): string {
-  if (accent === "violet") {
-    return "text-violet-200";
-  }
-  if (accent === "sky") {
-    return "text-sky-200";
-  }
-  if (accent === "pink") {
-    return "text-pink-200";
-  }
-
-  return "text-cyan-200";
+  return accentTheme(accent).text;
 }
 
 function focusFrameClassName(accent: DynamicTile["accent"]): string {
-  if (accent === "violet") {
-    return "border-violet-200 ring-violet-300 shadow-[0_0_0_1px_rgba(196,181,253,0.9),0_0_28px_rgba(139,92,246,0.45)]";
-  }
-  if (accent === "sky") {
-    return "border-sky-200 ring-sky-300 shadow-[0_0_0_1px_rgba(186,230,253,0.9),0_0_28px_rgba(14,165,233,0.45)]";
-  }
-  if (accent === "pink") {
-    return "border-pink-200 ring-pink-300 shadow-[0_0_0_1px_rgba(251,207,232,0.9),0_0_28px_rgba(236,72,153,0.45)]";
-  }
-
-  return "border-cyan-200 ring-cyan-300 shadow-[0_0_0_1px_rgba(165,243,252,0.9),0_0_28px_rgba(34,211,238,0.45)]";
+  return accentTheme(accent).focusFrame;
 }
 
 function dropIntentLabel(zone: DynamicLeafDropZone): string {
@@ -2944,16 +3047,18 @@ function resolvePaneShortcutChips(
 }
 
 function tabAccentActiveClassName(accent: DynamicTile["accent"]): string {
-  if (accent === "violet") {
-    return "border-violet-300/70 bg-violet-500/20 text-violet-100";
-  }
-  if (accent === "sky") {
-    return "border-sky-300/70 bg-sky-500/20 text-sky-100";
-  }
-  if (accent === "pink") {
-    return "border-pink-300/70 bg-pink-500/20 text-pink-100";
-  }
-  return "border-cyan-300/70 bg-cyan-500/20 text-cyan-100";
+  return accentTheme(accent).tabActive;
+}
+
+/**
+ * Accent-picker config handed to the top-bar tab strip. Present only when the
+ * consumer wires `onTileAccentChange`; carries the focused tile's current
+ * accent (for the active-swatch ring) and a commit callback already bound to
+ * the focused tile id.
+ */
+interface PaneTabStripAccentPicker {
+  activeAccent: DynamicTileAccent;
+  onSelect: (accent: DynamicTileAccent) => void;
 }
 
 function PaneTabStrip({
@@ -2961,6 +3066,7 @@ function PaneTabStrip({
   activeFocusedLeafId,
   activeMaximizedLeafId,
   isPaneContentVisible,
+  accentPicker,
   onSelect,
   onPaneContentVisibilityChange,
 }: {
@@ -2968,6 +3074,7 @@ function PaneTabStrip({
   activeFocusedLeafId: string | null;
   activeMaximizedLeafId: string | null;
   isPaneContentVisible: boolean;
+  accentPicker: PaneTabStripAccentPicker | null;
   onSelect: (leafId: string) => void;
   onPaneContentVisibilityChange: (nextVisible: boolean) => void;
 }): React.ReactElement {
@@ -2979,6 +3086,37 @@ function PaneTabStrip({
       >
         HYPR TILING
       </div>
+      {accentPicker != null ? (
+        <div
+          role="group"
+          aria-label="focused pane accent palette"
+          className="flex shrink-0 items-center gap-1 rounded-md border border-white/10 bg-zinc-950/60 px-1.5 py-1"
+        >
+          {DYNAMIC_TILE_ACCENT_SWATCHES.map(
+            (swatch: DynamicTileAccentSwatch): React.ReactElement => {
+              const isActiveAccent: boolean =
+                swatch.accent === accentPicker.activeAccent;
+              return (
+                <button
+                  key={`accent-${swatch.accent}`}
+                  type="button"
+                  aria-label={`set focused pane accent to ${swatch.label}`}
+                  aria-pressed={isActiveAccent}
+                  title={swatch.label}
+                  onClick={(): void => accentPicker.onSelect(swatch.accent)}
+                  className={cn(
+                    "h-3.5 w-3.5 rounded-full border transition-transform hover:scale-110",
+                    swatch.swatchClassName,
+                    isActiveAccent
+                      ? "border-white ring-1 ring-white/70"
+                      : "border-white/25",
+                  )}
+                />
+              );
+            },
+          )}
+        </div>
+      ) : null}
       <label
         className="flex shrink-0 cursor-pointer select-none items-center gap-1 px-1 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-slate-400 hover:text-slate-100"
         title={isPaneContentVisible ? "Hide pane content" : "Show pane content"}
@@ -3045,19 +3183,12 @@ function switcherCardAccentClassName(
   accent: DynamicTile["accent"],
   isSelected: boolean,
 ): string {
-  if (!isSelected) {
-    return "border-white/10 bg-slate-950/80 text-slate-400";
-  }
-  if (accent === "violet") {
-    return "border-violet-300/80 bg-violet-500/25 text-violet-50 shadow-[0_0_22px_rgba(139,92,246,0.45)]";
-  }
-  if (accent === "sky") {
-    return "border-sky-300/80 bg-sky-500/25 text-sky-50 shadow-[0_0_22px_rgba(14,165,233,0.45)]";
-  }
-  if (accent === "pink") {
-    return "border-pink-300/80 bg-pink-500/25 text-pink-50 shadow-[0_0_22px_rgba(236,72,153,0.45)]";
-  }
-  return "border-cyan-300/80 bg-cyan-500/25 text-cyan-50 shadow-[0_0_22px_rgba(34,211,238,0.45)]";
+  // Selected card borrows the accent's tab-active chip styling so all palette
+  // members render correctly (the prior if-chain fell back to cyan for the
+  // expanded palette); unselected stays accent-neutral.
+  return isSelected
+    ? accentTheme(accent).tabActive
+    : "border-white/10 bg-slate-950/80 text-slate-400";
 }
 
 /**
@@ -3189,6 +3320,7 @@ export const DynamicTilingRenderer = React.forwardRef<
     renderTile,
     focusedLeafId,
     onFocusedLeafChange,
+    onTileAccentChange,
     maximizedLeafId,
     onMaximizedLeafChange,
     onProjectedOverlayCountChange,
@@ -3611,6 +3743,40 @@ export const DynamicTilingRenderer = React.forwardRef<
       }),
     [layout, leafIds, tiles],
   );
+  // Focused tile + its current accent — the target the top-bar accent picker
+  // recolors. Null when nothing is focused or the focused leaf has no tile.
+  const focusedTileAccentTarget: {
+    tileId: string;
+    accent: DynamicTileAccent;
+  } | null = React.useMemo(() => {
+    if (activeFocusedLeafId == null) {
+      return null;
+    }
+    const leaf: DynamicLeafNode | null = findLeafById(
+      layout,
+      activeFocusedLeafId,
+    );
+    if (leaf == null) {
+      return null;
+    }
+    const tile: DynamicTile | undefined = resolveTile(tiles, leaf.tileId);
+    if (tile == null) {
+      return null;
+    }
+    return { tileId: leaf.tileId, accent: tile.accent ?? "cyan" };
+  }, [activeFocusedLeafId, layout, tiles]);
+  const tabStripAccentPicker: PaneTabStripAccentPicker | null =
+    React.useMemo(() => {
+      if (onTileAccentChange == null || focusedTileAccentTarget == null) {
+        return null;
+      }
+      const targetTileId: string = focusedTileAccentTarget.tileId;
+      return {
+        activeAccent: focusedTileAccentTarget.accent,
+        onSelect: (accent: DynamicTileAccent): void =>
+          onTileAccentChange(targetTileId, accent),
+      };
+    }, [focusedTileAccentTarget, onTileAccentChange]);
   const paneShortcutChips: ReadonlyArray<PaneShortcutChipDescriptor> =
     React.useMemo(
       (): ReadonlyArray<PaneShortcutChipDescriptor> =>
@@ -6958,6 +7124,7 @@ export const DynamicTilingRenderer = React.forwardRef<
             activeFocusedLeafId={activeFocusedLeafId}
             activeMaximizedLeafId={activeMaximizedLeafId}
             isPaneContentVisible={isPaneContentVisible}
+            accentPicker={tabStripAccentPicker}
             onSelect={activateLeaf}
             onPaneContentVisibilityChange={setIsPaneContentVisible}
           />

@@ -818,7 +818,32 @@ export interface ResolvedTilingKeyBindings {
   replaceDefaults: boolean;
 }
 
-export type DynamicTileAccent = "cyan" | "violet" | "sky" | "pink";
+/**
+ * Per-pane identity accent. A closed, typed palette so a consumer can drive a
+ * picker from the enumerable `DYNAMIC_TILE_ACCENTS` list (exported from the
+ * renderer) with exhaustive type-checking — adding a member here forces every
+ * accent theme map to cover it.
+ */
+export type DynamicTileAccent =
+  | "cyan"
+  | "sky"
+  | "violet"
+  | "indigo"
+  | "emerald"
+  | "amber"
+  | "rose"
+  | "pink";
+
+/**
+ * A pickable accent paired with a human label and a solid Tailwind background
+ * class for rendering a swatch dot — the generic metadata a palette control
+ * (e.g. the showcase top-bar picker) iterates to offer accent selection.
+ */
+export interface DynamicTileAccentSwatch {
+  accent: DynamicTileAccent;
+  label: string;
+  swatchClassName: string;
+}
 
 /**
  * Generic tile payload. Only `id` + `title` are required so a product consumer
@@ -1229,6 +1254,16 @@ export interface DynamicTilingRendererProps {
   renderTile?: (args: DynamicRenderTileArgs) => React.ReactNode;
   focusedLeafId?: string | null;
   onFocusedLeafChange?: (leafId: string) => void;
+  /**
+   * When provided, the top-bar tab strip surfaces an accent palette picker
+   * (the enumerable `DYNAMIC_TILE_ACCENTS` swatches) that recolors the
+   * currently-focused pane's tile. The renderer resolves the focused tile id;
+   * the consumer owns the tile registry and applies the new accent (e.g. by
+   * updating its tiles state). Omit to hide the picker — accent remains a
+   * static per-tile property. Generic mechanism; the demo palette composition
+   * lives with the consumer.
+   */
+  onTileAccentChange?: (tileId: string, accent: DynamicTileAccent) => void;
   /**
    * Controlled maximized-pane id. `undefined` → uncontrolled (renderer-managed
    * internal state). `null` → controlled, nothing maximized. A leaf id →
