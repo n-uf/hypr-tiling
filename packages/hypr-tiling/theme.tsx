@@ -452,13 +452,98 @@ const NEON_TERMINAL_THEME: TilingTheme = {
 };
 
 /**
- * Built-in theme registry, keyed by the closed `TilingThemeId` union. Round 2
- * fills in `clean-flat`; until then it aliases the neon theme so the engine
- * compiles + every consumer resolves a real theme.
+ * Built-in theme: CLEAN-FLAT. A calm, neutral, flat alternative — the opposite
+ * of the heavy-neon look. No glass blur, restrained hairline borders, subtle
+ * shadows, neutral slate surfaces. Accents are spent sparingly: resting panes
+ * stay neutral (no colored border), and an accent only appears on the focus
+ * frame (thin 1px ring, no glow), the active tab chip (soft tint), and the
+ * title text. Quiet and professional.
+ */
+const CLEAN_FLAT_THEME: TilingTheme = {
+  id: "clean-flat",
+  label: "clean flat",
+  root: {
+    container:
+      "flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg bg-slate-950 p-1 outline-none",
+    viewport:
+      "relative isolate min-h-0 min-w-0 flex-1 overflow-hidden rounded-md bg-slate-900/60",
+  },
+  paneShell: {
+    surface:
+      "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border border-slate-700/50 bg-slate-800/40 shadow-sm",
+    bodyText:
+      "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-1.5 font-mono text-[11px] leading-5 text-slate-300",
+    subtitleText: "text-slate-500",
+    dropEligibleRing: "ring-1 ring-dashed ring-slate-400/30",
+    dropHoverRing: "ring-1 ring-slate-300/50",
+    dropTargetRing: "ring-2 ring-slate-200/60",
+    invalidDropRing: "ring-2 ring-rose-400/60",
+    dragSourceOpacity: "opacity-60",
+  },
+  paneHeader: {
+    base: "flex min-h-[42px] shrink-0 items-center justify-between border-b border-slate-700/50 bg-slate-800/30 px-3 py-1.5",
+    focused: "border-b-slate-400/40 bg-slate-700/30",
+    titleText:
+      "truncate font-mono text-[11px] font-semibold uppercase tracking-[0.12em]",
+    controlIdle:
+      "border-slate-700 bg-slate-800/60 text-slate-400 hover:border-slate-500 hover:bg-slate-700/60 hover:text-slate-100",
+    controlActive: "border-slate-400/60 bg-slate-600/40 text-slate-100",
+  },
+  ghost: {
+    surface:
+      "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border border-slate-600/60 bg-slate-800 shadow-lg",
+    header:
+      "flex shrink-0 items-center justify-between border-b border-slate-700/60 bg-slate-800/80 px-3 py-2",
+    bodyText: "text-slate-300",
+    subtitleText: "text-slate-500",
+  },
+  divider: {
+    base: "shrink-0 rounded outline-none focus-visible:ring-2 focus-visible:ring-slate-400/60",
+    visibleInteractive: "bg-slate-600/40 hover:bg-slate-400/60",
+    visibleStatic: "bg-slate-700/30 cursor-default",
+    hidden: "bg-transparent hover:bg-transparent",
+  },
+  topBar: {
+    container:
+      "flex shrink-0 items-center gap-1 rounded-lg border border-slate-700/60 bg-slate-900 px-2 py-1.5",
+    titleText:
+      "flex shrink-0 items-center px-1 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-400",
+    pickerGroup:
+      "flex shrink-0 items-center gap-1 rounded-md border border-slate-700/60 bg-slate-800/50 px-1.5 py-1",
+    controlGroup:
+      "flex shrink-0 items-center gap-1 rounded-md border border-slate-700/60 bg-slate-800/50 px-1.5 py-1",
+    tabBase:
+      "flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
+    tabInactive:
+      "border-slate-700/60 bg-slate-800/40 text-slate-400 hover:border-slate-500 hover:text-slate-100",
+    switcherCard:
+      "pointer-events-auto max-w-[90%] rounded-lg border border-slate-700/60 bg-slate-900 px-4 py-3 shadow-lg",
+    switcherCardInactive: "border-slate-700/60 bg-slate-800/40 text-slate-400",
+  },
+  // Resting panes stay neutral — accents are spent sparingly.
+  resolvePaneAccentSurface: (): string => "",
+  resolveAccentText: (accent: DynamicTileAccent | undefined): string =>
+    accentHue(accent).text,
+  // Thin 1px accent border + 1px ring, no glow.
+  resolveFocusFrame: (accent: DynamicTileAccent | undefined): string => {
+    const hue: TilingAccentHue = accentHue(accent);
+    return cn("border ring-1 ring-offset-0", hue.focusBorder, hue.focusRing);
+  },
+  // Soft accent fill + accent text on the active chip.
+  resolveTabActive: (accent: DynamicTileAccent | undefined): string => {
+    const hue: TilingAccentHue = accentHue(accent);
+    return cn(hue.tabBorder, hue.tabBgSoft, hue.textStrong);
+  },
+};
+
+/**
+ * Built-in theme registry, keyed by the closed `TilingThemeId` union. Adding a
+ * member to `TilingThemeId` forces a new entry here (the `Record` fails to
+ * compile until filled in).
  */
 export const TILING_THEME_REGISTRY: Record<TilingThemeId, TilingTheme> = {
   "neon-terminal": NEON_TERMINAL_THEME,
-  "clean-flat": NEON_TERMINAL_THEME,
+  "clean-flat": CLEAN_FLAT_THEME,
 };
 
 /** Default library theme id (preserves the prior look at the round-1 checkpoint). */
