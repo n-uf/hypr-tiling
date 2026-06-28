@@ -4,6 +4,13 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { cn } from "./cn";
 import {
+  DYNAMIC_TILE_ACCENT_SWATCHES,
+  TilingThemeProvider,
+  resolveTilingTheme,
+  useTilingTheme,
+  type TilingTheme,
+} from "./theme";
+import {
   isCommandEnabled,
   keyboardActionToCommand,
   type TilingCommandGates,
@@ -439,148 +446,12 @@ function resolveTile(
   return tiles.get(tileId);
 }
 
-/**
- * Single source of truth for every accent's Tailwind class strings. Keyed by
- * the closed `DynamicTileAccent` union so the compiler enforces full coverage
- * (add a member to the union → this record fails to type until the theme is
- * filled in). Literal class strings keep Tailwind's JIT able to see + emit
- * every utility. Field roles:
- * - `surface`     resting pane border + colored shadow tint
- * - `text`        accented title / metadata text
- * - `focusFrame`  the focused-pane 1px ring + neon glow
- * - `tabActive`   the active group-tab chip
- * - `swatch`      a solid bg for a palette-picker dot
- * - `label`       human-facing palette label
- */
-interface DynamicTileAccentTheme {
-  readonly label: string;
-  readonly surface: string;
-  readonly text: string;
-  readonly focusFrame: string;
-  readonly tabActive: string;
-  readonly swatch: string;
-}
-
-const DYNAMIC_TILE_ACCENT_THEMES: Record<
-  DynamicTileAccent,
-  DynamicTileAccentTheme
-> = {
-  cyan: {
-    label: "cyan",
-    surface: "border-cyan-400/40 shadow-cyan-500/15",
-    text: "text-cyan-200",
-    focusFrame:
-      "border-cyan-200 ring-cyan-300 shadow-[0_0_0_1px_rgba(165,243,252,0.9),0_0_28px_rgba(34,211,238,0.45)]",
-    tabActive: "border-cyan-300/70 bg-cyan-500/20 text-cyan-100",
-    swatch: "bg-cyan-400",
-  },
-  sky: {
-    label: "sky",
-    surface: "border-sky-400/40 shadow-sky-500/15",
-    text: "text-sky-200",
-    focusFrame:
-      "border-sky-200 ring-sky-300 shadow-[0_0_0_1px_rgba(186,230,253,0.9),0_0_28px_rgba(14,165,233,0.45)]",
-    tabActive: "border-sky-300/70 bg-sky-500/20 text-sky-100",
-    swatch: "bg-sky-400",
-  },
-  violet: {
-    label: "violet",
-    surface: "border-violet-400/40 shadow-violet-500/15",
-    text: "text-violet-200",
-    focusFrame:
-      "border-violet-200 ring-violet-300 shadow-[0_0_0_1px_rgba(196,181,253,0.9),0_0_28px_rgba(139,92,246,0.45)]",
-    tabActive: "border-violet-300/70 bg-violet-500/20 text-violet-100",
-    swatch: "bg-violet-400",
-  },
-  indigo: {
-    label: "indigo",
-    surface: "border-indigo-400/40 shadow-indigo-500/15",
-    text: "text-indigo-200",
-    focusFrame:
-      "border-indigo-200 ring-indigo-300 shadow-[0_0_0_1px_rgba(199,210,254,0.9),0_0_28px_rgba(99,102,241,0.45)]",
-    tabActive: "border-indigo-300/70 bg-indigo-500/20 text-indigo-100",
-    swatch: "bg-indigo-400",
-  },
-  emerald: {
-    label: "emerald",
-    surface: "border-emerald-400/40 shadow-emerald-500/15",
-    text: "text-emerald-200",
-    focusFrame:
-      "border-emerald-200 ring-emerald-300 shadow-[0_0_0_1px_rgba(167,243,208,0.9),0_0_28px_rgba(16,185,129,0.45)]",
-    tabActive: "border-emerald-300/70 bg-emerald-500/20 text-emerald-100",
-    swatch: "bg-emerald-400",
-  },
-  amber: {
-    label: "amber",
-    surface: "border-amber-400/40 shadow-amber-500/15",
-    text: "text-amber-200",
-    focusFrame:
-      "border-amber-200 ring-amber-300 shadow-[0_0_0_1px_rgba(253,230,138,0.9),0_0_28px_rgba(245,158,11,0.45)]",
-    tabActive: "border-amber-300/70 bg-amber-500/20 text-amber-100",
-    swatch: "bg-amber-400",
-  },
-  rose: {
-    label: "rose",
-    surface: "border-rose-400/40 shadow-rose-500/15",
-    text: "text-rose-200",
-    focusFrame:
-      "border-rose-200 ring-rose-300 shadow-[0_0_0_1px_rgba(254,205,211,0.9),0_0_28px_rgba(244,63,94,0.45)]",
-    tabActive: "border-rose-300/70 bg-rose-500/20 text-rose-100",
-    swatch: "bg-rose-400",
-  },
-  pink: {
-    label: "pink",
-    surface: "border-pink-400/40 shadow-pink-500/15",
-    text: "text-pink-200",
-    focusFrame:
-      "border-pink-200 ring-pink-300 shadow-[0_0_0_1px_rgba(251,207,232,0.9),0_0_28px_rgba(236,72,153,0.45)]",
-    tabActive: "border-pink-300/70 bg-pink-500/20 text-pink-100",
-    swatch: "bg-pink-400",
-  },
-};
-
-/**
- * The ordered, enumerable accent palette — the generic library capability a
- * consumer iterates to build an accent picker. `DynamicTile.accent` falls back
- * to the first entry (`cyan`) when omitted.
- */
-export const DYNAMIC_TILE_ACCENTS: readonly DynamicTileAccent[] = [
-  "cyan",
-  "sky",
-  "violet",
-  "indigo",
-  "emerald",
-  "amber",
-  "rose",
-  "pink",
-];
-
-/** Picker-ready metadata (accent + label + swatch class) for every accent. */
-export const DYNAMIC_TILE_ACCENT_SWATCHES: readonly DynamicTileAccentSwatch[] =
-  DYNAMIC_TILE_ACCENTS.map(
-    (accent: DynamicTileAccent): DynamicTileAccentSwatch => ({
-      accent,
-      label: DYNAMIC_TILE_ACCENT_THEMES[accent].label,
-      swatchClassName: DYNAMIC_TILE_ACCENT_THEMES[accent].swatch,
-    }),
-  );
-
-/** Resolve an accent (or the `cyan` fallback) to its theme. */
-function accentTheme(accent: DynamicTile["accent"]): DynamicTileAccentTheme {
-  return DYNAMIC_TILE_ACCENT_THEMES[accent ?? "cyan"];
-}
-
-function accentClassName(accent: DynamicTile["accent"]): string {
-  return accentTheme(accent).surface;
-}
-
-function accentTextClassName(accent: DynamicTile["accent"]): string {
-  return accentTheme(accent).text;
-}
-
-function focusFrameClassName(accent: DynamicTile["accent"]): string {
-  return accentTheme(accent).focusFrame;
-}
+// Per-accent class strings, the closed `TilingThemeId` registry, and the
+// active-theme context all live in `./theme`. Accent hue atoms
+// (`TILING_ACCENT_HUES`) + the theme's accent-composition resolvers replace the
+// former inline `DYNAMIC_TILE_ACCENT_THEMES` record and its helper functions;
+// every renderer surface now reads tokens from the active `TilingTheme` (via
+// `useTilingTheme`) instead of hardcoded class strings.
 
 function dropIntentLabel(zone: DynamicLeafDropZone): string {
   if (zone === "left") {
@@ -974,31 +845,36 @@ export function buildDragPaneSnapshot(
 
 function renderDragPaneShell(
   snapshot: DynamicDragPaneSnapshot,
+  theme: TilingTheme,
 ): React.ReactElement {
   return (
     <article
       className={cn(
-        // Lifted liquid-glass ghost: matches DefaultDynamicTile's glass tokens
-        // but a touch more opaque + a deeper drop shadow + a brighter glass rim
-        // so the dragged pane reads as floating above the board. The ghost is
-        // rendered through a document.body portal (position:fixed), so this
-        // backdrop-filter never contains it.
-        "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl bg-[linear-gradient(155deg,rgba(52,57,71,0.74),rgba(13,15,21,0.82))] shadow-[0_28px_70px_-18px_rgba(0,0,0,0.78),inset_0_1px_0_rgba(255,255,255,0.14),inset_0_0_0_1px_rgba(255,255,255,0.08)] backdrop-blur-2xl backdrop-saturate-150",
-        accentClassName(snapshot.accent),
+        // Lifted ghost: the active theme's ghost surface tokens (a touch more
+        // opaque + deeper shadow than a resting pane) tinted with the dragged
+        // pane's accent. Rendered through a document.body portal
+        // (position:fixed), so any backdrop-filter here never contains it.
+        theme.ghost.surface,
+        theme.resolvePaneAccentSurface(snapshot.accent),
       )}
       aria-hidden
     >
-      <header className="flex shrink-0 items-center justify-between border-b border-white/[0.08] bg-white/[0.06] px-3 py-2">
+      <header className={theme.ghost.header}>
         <div className="min-w-0">
           <div
             className={cn(
               "truncate font-mono text-[11px] font-semibold uppercase tracking-[0.2em]",
-              accentTextClassName(snapshot.accent),
+              theme.resolveAccentText(snapshot.accent),
             )}
           >
             {snapshot.title}
           </div>
-          <div className="truncate font-mono text-[9px] uppercase tracking-[0.16em] text-slate-500">
+          <div
+            className={cn(
+              "truncate font-mono text-[9px] uppercase tracking-[0.16em]",
+              theme.ghost.subtitleText,
+            )}
+          >
             {snapshot.description ?? "drag header to swap"}
           </div>
         </div>
@@ -1007,7 +883,12 @@ function renderDragPaneShell(
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 font-mono text-[11px] leading-5 text-slate-300">
+      <div
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 font-mono text-[11px] leading-5",
+          theme.ghost.bodyText,
+        )}
+      >
         {snapshot.content != null
           ? snapshot.content
           : snapshot.rows.map(
@@ -1149,6 +1030,7 @@ function DragPaneOverlay({
   swapBounceMagnitude: number;
   prefersReducedMotion: boolean;
 }): React.ReactElement | null {
+  const theme: TilingTheme = useTilingTheme();
   const nodeRef = React.useRef<HTMLDivElement | null>(null);
   const rafRef = React.useRef<number | null>(null);
   const animationRef = React.useRef<Animation | null>(null);
@@ -1390,7 +1272,7 @@ function DragPaneOverlay({
               : "transition-[opacity,box-shadow] duration-150",
           )}
         >
-          {renderDragPaneShell(dragVisualState.snapshot)}
+          {renderDragPaneShell(dragVisualState.snapshot, theme)}
         </div>
       </div>
     </OverlayPortal>
@@ -1637,6 +1519,7 @@ function DragCancelOverlay({
 }: {
   cancelVisualState: DynamicDragCancelVisualState | null;
 }): React.ReactElement | null {
+  const theme: TilingTheme = useTilingTheme();
   const [isAnimating, setIsAnimating] = React.useState<boolean>(false);
 
   React.useEffect((): (() => void) | void => {
@@ -1684,7 +1567,7 @@ function DragCancelOverlay({
         aria-hidden
       >
         <div className="h-full w-full shadow-[0_18px_34px_rgba(2,6,23,0.5)]">
-          {renderDragPaneShell(cancelVisualState.snapshot)}
+          {renderDragPaneShell(cancelVisualState.snapshot, theme)}
         </div>
       </div>
     </OverlayPortal>
@@ -2050,6 +1933,7 @@ function DefaultDynamicTile({
   onPointerMove,
   onPointerLeave,
 }: DynamicRenderTileArgs): React.ReactElement {
+  const theme: TilingTheme = useTilingTheme();
   const isNarrowHeader: boolean = paneWidthPx < 430;
   const hideSubtitle: boolean = paneWidthPx < 340;
   const shouldRenderPaneContent: boolean =
@@ -2101,33 +1985,25 @@ function DefaultDynamicTile({
   return (
     <article
       className={cn(
-        // Pane host shell: liquid-glass surface — a translucent dark gradient
-        // (low enough alpha that the neon-terminal grid reads faintly through),
-        // a wide backdrop blur + saturate for the "frosted glass" refraction, a
-        // soft drop shadow, a top sheen highlight, and a hairline inset edge
-        // (the glass rim) supplied via box-shadow so it never fights the
-        // border-property states below. No resting BORDER outline: focus
-        // (border-2 + ring), drop-target / eligibility / invalid rings, and the
-        // drag-source observability border all supply their own width when
-        // active. The backdrop-filter here creates a containing block for
-        // position:fixed DESCENDANTS only — the drag ghost is portaled to
-        // document.body (not a descendant), so this never reintroduces drift.
-        "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl bg-[linear-gradient(155deg,rgba(48,53,66,0.50),rgba(12,14,19,0.60))] shadow-[0_18px_44px_-14px_rgba(2,6,23,0.72),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-xl backdrop-saturate-150",
-        accentClassName(tile.accent),
-        isDropEligible ? "ring-1 ring-dashed ring-cyan-300/30" : "",
-        isHoveringDropCandidate ? "ring-2 ring-cyan-200/45" : "",
-        isDropTarget ? "ring-2 ring-cyan-300/70" : "",
-        isInvalidDrop ? "ring-2 ring-rose-300/70" : "",
-        isDragSource ? "opacity-70" : "",
+        // Pane host shell: the active theme's pane-surface token (bg/gradient,
+        // radius, shadow/rim, backdrop-filter) tinted with the pane's accent.
+        // No resting BORDER outline from the surface itself: focus, drop-target
+        // / eligibility / invalid rings, and the drag-source observability
+        // border all supply their own width when active. A backdrop-filter in
+        // the surface token creates a containing block for position:fixed
+        // DESCENDANTS only — the drag ghost is portaled to document.body (not a
+        // descendant), so this never reintroduces drift.
+        theme.paneShell.surface,
+        theme.resolvePaneAccentSurface(tile.accent),
+        isDropEligible ? theme.paneShell.dropEligibleRing : "",
+        isHoveringDropCandidate ? theme.paneShell.dropHoverRing : "",
+        isDropTarget ? theme.paneShell.dropTargetRing : "",
+        isInvalidDrop ? theme.paneShell.invalidDropRing : "",
+        isDragSource ? theme.paneShell.dragSourceOpacity : "",
         isDragSource && observabilityColorEnables.dragSourceBorderEnabled
           ? "border"
           : "",
-        isFocused
-          ? cn(
-              "border-2 ring-2 ring-offset-0",
-              focusFrameClassName(tile.accent),
-            )
-          : "",
+        isFocused ? theme.resolveFocusFrame(tile.accent) : "",
       )}
       style={dragSourceBorderStyle}
       data-leaf-id={leafId}
@@ -2251,20 +2127,18 @@ function DefaultDynamicTile({
         onPointerDown={onHandlePointerDown}
         style={isRearrangeEnabled ? { touchAction: "none" } : undefined}
         className={cn(
-          "flex min-h-[42px] shrink-0 items-center justify-between border-b border-white/[0.08] bg-white/[0.05] px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+          theme.paneHeader.base,
           isRearrangeEnabled
             ? "cursor-grab active:cursor-grabbing"
             : "cursor-default",
-          isFocused
-            ? "border-b-cyan-200/35 bg-cyan-500/[0.10] shadow-[inset_0_1px_0_rgba(56,189,248,0.18)]"
-            : "",
+          isFocused ? theme.paneHeader.focused : "",
         )}
       >
         <div className="min-w-0 text-left">
           <div
             className={cn(
-              "truncate font-mono text-[11px] font-semibold uppercase tracking-[0.16em]",
-              accentTextClassName(tile.accent),
+              theme.paneHeader.titleText,
+              theme.resolveAccentText(tile.accent),
             )}
             title={tile.title}
           >
@@ -2272,7 +2146,10 @@ function DefaultDynamicTile({
           </div>
           {!hideSubtitle ? (
             <div
-              className="truncate font-mono text-[9px] uppercase tracking-[0.13em] text-slate-400"
+              className={cn(
+                "truncate font-mono text-[9px] uppercase tracking-[0.13em]",
+                theme.paneShell.subtitleText,
+              )}
               title={tile.description ?? "drag header to swap"}
             >
               {tile.description ?? "drag header to swap"}
@@ -2306,8 +2183,8 @@ function DefaultDynamicTile({
                 "flex shrink-0 items-center justify-center rounded-md border font-mono leading-none transition-colors",
                 isNarrowHeader ? "h-4 w-4 text-[10px]" : "h-5 w-5 text-[11px]",
                 isMaximized
-                  ? "border-cyan-100/70 bg-cyan-400/20 text-cyan-50 shadow-[0_0_12px_rgba(34,211,238,0.32)]"
-                  : "border-white/20 bg-slate-950/70 text-slate-300 hover:border-cyan-200/45 hover:bg-cyan-400/12 hover:text-cyan-50",
+                  ? theme.paneHeader.controlActive
+                  : theme.paneHeader.controlIdle,
               )}
             >
               <span aria-hidden>{isMaximized ? "\u2715" : "\u2922"}</span>
@@ -2328,7 +2205,7 @@ function DefaultDynamicTile({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-1.5 font-mono text-[11px] leading-5 text-slate-200">
+      <div className={theme.paneShell.bodyText}>
         {shouldRenderPaneContent ? (
           <React.Fragment key="pane-content-visible">
             {tile.content != null
@@ -3046,10 +2923,6 @@ function resolvePaneShortcutChips(
     );
 }
 
-function tabAccentActiveClassName(accent: DynamicTile["accent"]): string {
-  return accentTheme(accent).tabActive;
-}
-
 /**
  * Accent-picker config handed to the top-bar tab strip. Present only when the
  * consumer wires `onTileAccentChange`; carries the focused tile's current
@@ -3078,19 +2951,17 @@ function PaneTabStrip({
   onSelect: (leafId: string) => void;
   onPaneContentVisibilityChange: (nextVisible: boolean) => void;
 }): React.ReactElement {
+  const theme: TilingTheme = useTilingTheme();
   return (
-    <div className="flex shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-zinc-900/70 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_22px_rgba(0,0,0,0.42)] backdrop-blur">
-      <div
-        aria-label="hypr tiling title"
-        className="flex shrink-0 items-center px-1 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-300"
-      >
+    <div className={theme.topBar.container}>
+      <div aria-label="hypr tiling title" className={theme.topBar.titleText}>
         HYPR TILING
       </div>
       {accentPicker != null ? (
         <div
           role="group"
           aria-label="focused pane accent palette"
-          className="flex shrink-0 items-center gap-1 rounded-md border border-white/10 bg-zinc-950/60 px-1.5 py-1"
+          className={theme.topBar.pickerGroup}
         >
           {DYNAMIC_TILE_ACCENT_SWATCHES.map(
             (swatch: DynamicTileAccentSwatch): React.ReactElement => {
@@ -3152,10 +3023,10 @@ function PaneTabStrip({
                 title={`focus pane ${tab.leafId} (Alt+${tabIndex + 1})`}
                 onClick={(): void => onSelect(tab.leafId)}
                 className={cn(
-                  "flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
+                  theme.topBar.tabBase,
                   isActive
-                    ? tabAccentActiveClassName(tab.accent)
-                    : "border-white/15 bg-zinc-950/80 text-slate-300 hover:border-white/30 hover:text-slate-100",
+                    ? theme.resolveTabActive(tab.accent)
+                    : theme.topBar.tabInactive,
                 )}
               >
                 <span className="font-semibold opacity-70">{tabIndex + 1}</span>
@@ -3179,18 +3050,6 @@ function PaneTabStrip({
 
 const PANE_SWITCHER_OVERLAY_Z_INDEX: number = 240;
 
-function switcherCardAccentClassName(
-  accent: DynamicTile["accent"],
-  isSelected: boolean,
-): string {
-  // Selected card borrows the accent's tab-active chip styling so all palette
-  // members render correctly (the prior if-chain fell back to cyan for the
-  // expanded palette); unselected stays accent-neutral.
-  return isSelected
-    ? accentTheme(accent).tabActive
-    : "border-white/10 bg-slate-950/80 text-slate-400";
-}
-
 /**
  * macOS Cmd+Tab-style centered switcher overlay. Lists every pane as a small
  * card (number + title) and highlights the currently-selected pane. Driven by
@@ -3207,6 +3066,7 @@ function PaneSwitcherOverlay({
   selectedLeafId: string;
   onSelect: (leafId: string) => void;
 }): React.ReactElement {
+  const theme: TilingTheme = useTilingTheme();
   return (
     <div
       className="pointer-events-none absolute inset-0 flex items-center justify-center"
@@ -3214,7 +3074,7 @@ function PaneSwitcherOverlay({
       role="dialog"
       aria-label="pane switcher"
     >
-      <div className="pointer-events-auto max-w-[90%] rounded-2xl border border-white/15 bg-slate-950/85 px-4 py-3 shadow-[0_22px_60px_rgba(2,6,23,0.7)] backdrop-blur">
+      <div className={theme.topBar.switcherCard}>
         <div className="mb-2 text-center font-mono text-[9px] uppercase tracking-[0.22em] text-slate-400">
           switch pane — hold modifier, release to commit, esc to cancel
         </div>
@@ -3231,7 +3091,9 @@ function PaneSwitcherOverlay({
                   onClick={(): void => onSelect(tab.leafId)}
                   className={cn(
                     "flex w-28 flex-col items-start gap-1 rounded-lg border px-2.5 py-2 text-left transition-colors",
-                    switcherCardAccentClassName(tab.accent, isSelected),
+                    isSelected
+                      ? theme.resolveTabActive(tab.accent)
+                      : theme.topBar.switcherCardInactive,
                   )}
                 >
                   <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.16em] opacity-70">
@@ -3321,6 +3183,7 @@ export const DynamicTilingRenderer = React.forwardRef<
     focusedLeafId,
     onFocusedLeafChange,
     onTileAccentChange,
+    themeId,
     maximizedLeafId,
     onMaximizedLeafChange,
     onProjectedOverlayCountChange,
@@ -3345,6 +3208,11 @@ export const DynamicTilingRenderer = React.forwardRef<
   }: DynamicTilingRendererProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
 ): React.ReactElement {
+  // Active theme resolved from the prop (or the library default). The registry
+  // returns a stable object reference per id, so this is referentially stable
+  // across renders unless `themeId` changes — safe to thread through the
+  // `renderBranch` memo deps. Provided to every subcomponent via context.
+  const theme: TilingTheme = resolveTilingTheme(themeId);
   const projectedOverlayBackgroundAlphaSafe: number = Math.min(
     Math.max(projectedOverlayBackgroundAlpha, 0),
     1,
@@ -6659,7 +6527,7 @@ export const DynamicTilingRenderer = React.forwardRef<
                       className={cn(
                         "hpt-group-tab flex shrink-0 items-center gap-0.5 rounded border font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
                         isActiveMember
-                          ? tabAccentActiveClassName(memberTile?.accent)
+                          ? theme.resolveTabActive(memberTile?.accent)
                           : "border-white/10 bg-slate-950/70 text-slate-400",
                       )}
                     >
@@ -6958,12 +6826,12 @@ export const DynamicTilingRenderer = React.forwardRef<
                   : undefined
               }
               className={cn(
-                "shrink-0 rounded outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70",
+                theme.divider.base,
                 isDividerChromeVisible
                   ? cn(
                       isRenderedDividerInteractive
-                        ? "bg-white/10 hover:bg-cyan-300/40"
-                        : "bg-white/[0.04] cursor-default",
+                        ? theme.divider.visibleInteractive
+                        : theme.divider.visibleStatic,
                       isHorizontal
                         ? cn(
                             "h-full",
@@ -6979,7 +6847,7 @@ export const DynamicTilingRenderer = React.forwardRef<
                           ),
                     )
                   : cn(
-                      "bg-transparent hover:bg-transparent",
+                      theme.divider.hidden,
                       isHorizontal
                         ? cn(
                             "h-full",
@@ -7077,6 +6945,7 @@ export const DynamicTilingRenderer = React.forwardRef<
       layout,
       setGroupTabStripRef,
       isPaneContentVisible,
+      theme,
     ],
   );
 
@@ -7095,11 +6964,12 @@ export const DynamicTilingRenderer = React.forwardRef<
     showDropPreviewOverlays && !liveDragModeEnabled;
 
   return (
+    <TilingThemeProvider theme={theme}>
     <div
       ref={rootRef}
       tabIndex={-1}
       className={cn(
-        "flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl bg-[linear-gradient(180deg,rgba(39,39,42,0.36),rgba(15,15,18,0.66))] p-1 outline-none",
+        theme.root.container,
         // Suppress native text selection across panes for the whole drag
         // gesture (`select-none` emits both `-webkit-user-select` and
         // `user-select: none`); the rule cascades to every pane body. Dropped
@@ -7132,7 +7002,7 @@ export const DynamicTilingRenderer = React.forwardRef<
       ) : null}
       <div
         ref={viewportRef}
-        className="relative isolate min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg bg-slate-950/50"
+        className={theme.root.viewport}
         // While dragging, the reflowing candidate-tree layer is made inert so
         // native hit-testing / `elementFromPoint` can NEVER re-target to a pane
         // that just slid under the cursor (belt-and-suspenders with the root's
@@ -7202,6 +7072,7 @@ export const DynamicTilingRenderer = React.forwardRef<
         ) : null}
       </div>
     </div>
+    </TilingThemeProvider>
   );
 });
 

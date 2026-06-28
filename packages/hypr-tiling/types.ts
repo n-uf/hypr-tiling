@@ -835,6 +835,15 @@ export type DynamicTileAccent =
   | "pink";
 
 /**
+ * Closed set of built-in visual theme ids for the renderer. A theme bundles the
+ * class-string tokens for every surface (pane shell, header, focus frame,
+ * ghost, dividers, root, tab strip) plus the accent-composition resolvers. The
+ * token interfaces + registry live in `./theme`; this union is the central
+ * contract a consumer types its `themeId` state against.
+ */
+export type TilingThemeId = "neon-terminal" | "clean-flat";
+
+/**
  * A pickable accent paired with a human label and a solid Tailwind background
  * class for rendering a swatch dot — the generic metadata a palette control
  * (e.g. the showcase top-bar picker) iterates to offer accent selection.
@@ -1246,6 +1255,22 @@ export interface DynamicTilingRendererProps {
   config: DynamicLayoutConfig;
   onLayoutChange: (layout: DynamicLayoutNode) => void;
   className?: string;
+  /**
+   * Active visual theme id. Selects which built-in `TilingTheme` paints every
+   * renderer surface (pane shells, header, focus frame, ghost, dividers, root,
+   * tab strip) and how per-pane accents compose with it. Undefined resolves to
+   * the library default (`"neon-terminal"`). Reacts to prop changes without
+   * remount — a live switch re-themes the whole tree.
+   */
+  themeId?: TilingThemeId;
+  /**
+   * Notified when the in-renderer theme switcher (top-bar control) requests a
+   * different theme. Present this control only when wired; the consumer owns
+   * the `themeId` state (controlled). Omit to hide the switcher — the theme
+   * stays whatever `themeId` resolves to. Generic mechanism; the demo theme
+   * composition lives with the consumer.
+   */
+  onThemeChange?: (themeId: TilingThemeId) => void;
   /**
    * Reactive interaction-capability flags. Undefined resolves to all-enabled.
    * Changing this prop at runtime updates renderer behavior immediately.
