@@ -28,6 +28,8 @@ import {
   DRAG_MACHINE_INITIAL_STATE,
   activeDragSourceLeafId,
   activeResolvedTarget,
+  presentationDragSourceLeafId,
+  presentationResolvedTarget,
   createFrameCoalescer,
   deriveCandidateTree,
   dragMachineReducer,
@@ -44,6 +46,11 @@ import {
   type FrameCoalescer,
   type TouchArmedMoveResolution,
 } from "./drag-machine";
+import {
+  resolveDragPresentation,
+  resolvePaneBodyRenderMode,
+  type DynamicPaneBodyRenderPolicyInput,
+} from "./drag-presentation";
 import type {
   DynamicDropIntentHitZoneDiagnostics,
   DynamicDropIntentState as DynamicDropState,
@@ -701,40 +708,8 @@ export function resolveLeafDropPreviewForMode(
   return resolveLeafDropPreview(leafId, dragSourceLeafId, dropState);
 }
 
-export interface DynamicPaneBodyRenderPolicyInput {
-  isPaneContentVisible: boolean;
-  liveDragModeEnabled: boolean;
-  dragPhase: DragMachineState["phase"];
-  isDragSource: boolean;
-  isReservedSlot: boolean;
-}
-
-/**
- * Canonical pane-body visibility policy used by both the default tile renderer
- * and the renderer-level reservation gate. This keeps hidden-mode placeholders,
- * drag-source reveal, and live-mode reservation semantics in one pure resolver.
- */
-export function resolvePaneBodyRenderMode(
-  input: DynamicPaneBodyRenderPolicyInput,
-): DynamicPaneBodyRenderMode {
-  const isDragGestureActive: boolean = input.dragPhase !== "idle";
-  // Empty mode (`!isPaneContentVisible`): at rest panes show placeholders; during
-  // a live drag the hop-in slot reveals content (aligned with preview-mode drag
-  // reveal) so the user sees what lands. Content-visible mode keeps the
-  // content-less reservation so the single ghost fills the slot (no double-paint).
-  const shouldRenderReservation: boolean =
-    input.liveDragModeEnabled &&
-    input.isPaneContentVisible &&
-    isDragGestureActive &&
-    input.isDragSource &&
-    input.isReservedSlot;
-  if (shouldRenderReservation) {
-    return "render-reservation";
-  }
-  const shouldRenderContent: boolean =
-    input.isPaneContentVisible || (isDragGestureActive && input.isDragSource);
-  return shouldRenderContent ? "render-content" : "render-placeholder";
-}
+export type { DynamicPaneBodyRenderPolicyInput } from "./drag-presentation";
+export { resolveDragPresentation, resolvePaneBodyRenderMode } from "./drag-presentation";
 
 type DynamicSplitDividerRenderMode =
   | "render-divider-absent"
@@ -2214,12 +2189,7 @@ function DefaultDynamicTile({
         </div>
       </header>
 
-      <div
-        className={theme.paneShell.bodyText}
-        {...(isDragSource && shouldRenderPaneContent
-          ? { "data-drag-source-reservation": true }
-          : {})}
-      >
+      <div className={theme.paneShell.bodyText}>
         {shouldRenderPaneContent ? (
           <React.Fragment key="pane-content-visible">
             {tile.content != null
@@ -2418,6 +2388,7 @@ function buildDraggingLiveHitLogState(params: {
   dragState: Extract<DragMachineState, { phase: "dragging" }>;
   dropState: DynamicDropState | null;
   dragSourceLeafId: string;
+  ghostSeatLeafId: string | null;
   leafFootprintsById: ReadonlyMap<string, DynamicPaneFootprint>;
   viewportElement: HTMLDivElement | null;
 }): DynamicLiveHitLogState {
@@ -2435,6 +2406,16 @@ function buildDraggingLiveHitLogState(params: {
   };
   const dragSourcePaneFootprint: DynamicPaneFootprint | null =
     params.leafFootprintsById.get(params.dragSourceLeafId) ?? null;
+  const presentationFields: Pick<
+    DynamicLiveHitLogState,
+    | "ghostSeatLeafId"
+    | "presentationDropAction"
+    | "suppressSourceContentInEmptyMode"
+  > = {
+    ghostSeatLeafId: params.ghostSeatLeafId,
+    presentationDropAction: params.dropState?.action ?? null,
+    suppressSourceContentInEmptyMode: true,
+  };
 
   if (params.dropState == null) {
     return {
@@ -2454,6 +2435,7 @@ function buildDraggingLiveHitLogState(params: {
       centerBlockedReason: null,
       edgeDiagnostics: [],
       intent: null,
+      ...presentationFields,
     };
   }
 
@@ -2484,6 +2466,7 @@ function buildDraggingLiveHitLogState(params: {
     centerBlockedReason: params.dropState.blockedReason,
     edgeDiagnostics: [],
     intent,
+    ...presentationFields,
   };
 }
 
@@ -3461,6 +3444,12 @@ export const DynamicTilingRenderer = React.forwardRef<
   // it used to read the old useState slots.
   const dragSourceLeafId: string | null = activeDragSourceLeafId(dragState);
   const dropState: DynamicDropState | null = activeResolvedTarget(dragState);
+  const presentationSourceLeafId: string | null =
+    presentationDragSourceLeafId(dragState);
+  const presentationDropState: DynamicDropState | null =
+    presentationResolvedTarget(dragState);
+  const dragSettlingOutcome: "commit" | "cancel" | null =
+    dragState.phase === "settling" ? dragState.outcome : null;
   // A drag gesture is materially in flight whenever the FSM is NOT idle
   // (`armed` / `dragging` / `settling`). Drives the `select-none` gate on the
   // tiling root so the browser cannot run its native pointer-drag text
@@ -3752,11 +3741,12 @@ export const DynamicTilingRenderer = React.forwardRef<
   // `layout`, so zone jitter cannot accumulate and the committed tree equals the
   // last candidate (no release-time jump). Preview mode keeps the prop layout and
   // paints the projected overlays on top (System A/B). See drag-machine.ts.
-  const resolvedTargetLeafId: string | null = dropState?.leafId ?? null;
+  const resolvedTargetLeafId: string | null =
+    presentationDropState?.leafId ?? null;
   const resolvedTargetZone: DynamicLeafDropZone | null =
-    dropState?.zone ?? null;
+    presentationDropState?.zone ?? null;
   const resolvedTargetAction: DynamicDropState["action"] | null =
-    dropState?.action ?? null;
+    presentationDropState?.action ?? null;
   // The candidate-tree leaf that CARRIES the dragged content — the slot the
   // single ghost reserves + hops into. For `swap` this is the resolved TARGET
   // leaf (tileIds swap in place, so the dragged content lands there and the
@@ -3765,8 +3755,8 @@ export const DynamicTilingRenderer = React.forwardRef<
   // seating on THIS leaf (not blindly the source leaf) is what keeps a swap
   // preview single-instance + identical to the commit. See drag-machine.ts.
   const ghostSeatLeafId: string | null = resolveDragGhostSeatLeafId(
-    dragSourceLeafId,
-    dropState,
+    presentationSourceLeafId,
+    presentationDropState,
   );
   const liveCandidateDisplayLayout: DynamicLayoutNode = React.useMemo(
     (): DynamicLayoutNode =>
@@ -3873,19 +3863,24 @@ export const DynamicTilingRenderer = React.forwardRef<
   // per cursor move — the slot rect is stable per resolved target). Off-screen /
   // degenerate slots clear the seat → the ghost stays free-following (§10).
   React.useLayoutEffect((): void => {
+    const isPresentationDragging: boolean =
+      dragState.phase === "dragging" ||
+      (dragState.phase === "settling" &&
+        dragState.outcome === "commit" &&
+        presentationSourceLeafId != null);
     if (
       !liveDragModeEnabled ||
-      dragState.phase !== "dragging" ||
-      dragSourceLeafId == null ||
+      !isPresentationDragging ||
+      presentationSourceLeafId == null ||
+      ghostSeatLeafId == null ||
       resolvedTargetLeafId == null
     ) {
       setSeatFootprint(null);
       return;
     }
+    const reservationSelector: string = `[data-leaf-id="${ghostSeatLeafId}"] [data-drag-source-reservation]`;
     const reservationElement: HTMLElement | null =
-      rootRef.current?.querySelector<HTMLElement>(
-        "[data-drag-source-reservation]",
-      ) ?? null;
+      rootRef.current?.querySelector<HTMLElement>(reservationSelector) ?? null;
     if (reservationElement == null) {
       setSeatFootprint(null);
       return;
@@ -3917,7 +3912,8 @@ export const DynamicTilingRenderer = React.forwardRef<
   }, [
     liveDragModeEnabled,
     dragState.phase,
-    dragSourceLeafId,
+    dragSettlingOutcome,
+    presentationSourceLeafId,
     ghostSeatLeafId,
     resolvedTargetLeafId,
     resolvedTargetZone,
@@ -4327,12 +4323,14 @@ export const DynamicTilingRenderer = React.forwardRef<
         dragState,
         dropState,
         dragSourceLeafId,
+        ghostSeatLeafId,
         leafFootprintsById,
         viewportElement: viewportRef.current,
       }),
     );
   }, [
     dragSourceLeafId,
+    ghostSeatLeafId,
     dragState,
     dropState,
     leafFootprintsById,
@@ -6307,23 +6305,48 @@ export const DynamicTilingRenderer = React.forwardRef<
           moveModeState != null && moveModeState.targetLeafId === node.id
             ? moveModeState.placement
             : null;
-        // Live mode: "drag source slot" = the ghost-seat slot (the slot holding
-        // the dragged content in the candidate — TARGET leaf for swap, source
-        // leaf for edge-insert). This is the slot painted as a content-less
-        // reservation the single ghost fills, so the dragged pane is never
-        // double-painted (the SWAP fix) and the displaced pane renders normally.
-        // Preview mode keeps the literal source-in-place dim affordance.
+        // Live mode: ghost-seat slot = hop-in reservation the single ghost fills.
+        // Preview mode keeps the literal pickup-origin dim affordance.
+        const leafPresentation = resolveDragPresentation({
+          isPaneContentVisible,
+          liveDragModeEnabled,
+          dragPhase: dragState.phase,
+          settlingOutcome: dragSettlingOutcome,
+          leafId: node.id,
+          pickupOriginLeafId: presentationSourceLeafId,
+          ghostSeatLeafId,
+          dropAction:
+            dropState?.leafId === node.id ? (dropState.action ?? null) : null,
+          dropZone:
+            dropState?.leafId === node.id ? (dropState.zone ?? null) : null,
+        });
         const isDragSourceSlot: boolean = liveDragModeEnabled
-          ? ghostSeatLeafId != null && node.id === ghostSeatLeafId
-          : dragSourceLeafId === node.id;
+          ? leafPresentation.isGhostSeatLeaf
+          : leafPresentation.isPickupOriginLeaf &&
+            dragState.phase === "dragging";
         const paneBodyRenderMode: DynamicPaneBodyRenderMode =
-          resolvePaneBodyRenderMode({
-            isPaneContentVisible,
-            liveDragModeEnabled,
-            dragPhase: dragState.phase,
-            isDragSource: isDragSourceSlot,
-            isReservedSlot: isDragSourceSlot,
-          });
+          leafPresentation.paneBodyRenderMode;
+        const isDropTargetLeaf: boolean =
+          dropState?.leafId === node.id && dropState.action !== "none";
+        // Edge-insert uses edge-band chrome; suppress center-swap overlay when the
+        // resolved action is edge-insert or action/zone disagree (hysteresis guard).
+        const effectiveDropZone: DynamicLeafDropZone | null =
+          isDropTargetLeaf &&
+          !leafPresentation.preferEdgeInsertChrome &&
+          dropState != null
+            ? dropState.zone
+            : isDropTargetLeaf &&
+                leafPresentation.preferEdgeInsertChrome &&
+                dropState != null &&
+                dropState.zone !== "center"
+              ? dropState.zone
+              : isDropTargetLeaf &&
+                  leafPresentation.preferEdgeInsertChrome &&
+                  dropState != null
+                ? dropState.dominantEdge
+                : isDropTargetLeaf && dropState != null
+                  ? dropState.zone
+                  : null;
 
         const tileArgs: DynamicRenderTileArgs = {
           leafId: node.id,
@@ -6333,8 +6356,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           isPaneContentVisible,
           paneBodyRenderMode,
           isDragSource: isDragSourceSlot,
-          isDropTarget:
-            dropState?.leafId === node.id && dropState.action !== "none",
+          isDropTarget: isDropTargetLeaf,
           isDropEligible:
             dragSourceLeafId != null && dragSourceLeafId !== node.id,
           isHoveringDropCandidate: dropState?.leafId === node.id,
@@ -6358,10 +6380,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           onAcquireSpace: (direction: DynamicFocusDirection): void => {
             acquireLeafSpace(node.id, direction);
           },
-          dropZone:
-            dropState?.leafId === node.id && dropState.action !== "none"
-              ? dropState.zone
-              : null,
+          dropZone: effectiveDropZone,
           dropIntentDebugPath:
             dropState?.leafId === node.id
               ? dropIntentAxisPathLabel(dropState.axisPath)
@@ -7014,6 +7033,8 @@ export const DynamicTilingRenderer = React.forwardRef<
       activeMaximizedLeafId,
       dragSourceLeafId,
       dragState.phase,
+      dragSettlingOutcome,
+      presentationSourceLeafId,
       ghostSeatLeafId,
       dropState,
       interactionCapabilities,

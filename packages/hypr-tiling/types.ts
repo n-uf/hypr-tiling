@@ -1114,6 +1114,12 @@ export interface DynamicLiveHitLogState {
   centerBlockedReason: string | null;
   edgeDiagnostics: ReadonlyArray<DynamicLiveHitEdgeDebugState>;
   intent: DynamicDropIntentDebugState | null;
+  /** Leaf whose in-tree slot the ghost seats into (swap target or edge-insert source). */
+  ghostSeatLeafId?: string | null;
+  /** Resolved drop action for the active hover target (observability). */
+  presentationDropAction?: DynamicDropAction | null;
+  /** Whether pickup-origin content is suppressed in empty live drag. */
+  suppressSourceContentInEmptyMode?: boolean;
 }
 
 export interface DynamicPaneHitZoneCandidateDebugState {
