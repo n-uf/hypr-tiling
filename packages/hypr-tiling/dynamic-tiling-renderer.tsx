@@ -47,9 +47,8 @@ import {
   type TouchArmedMoveResolution,
 } from "./drag-machine";
 import {
+  isDragPresentationActive,
   resolveDragPresentation,
-  resolvePaneBodyRenderMode,
-  type DynamicPaneBodyRenderPolicyInput,
 } from "./drag-presentation";
 import type {
   DynamicDropIntentHitZoneDiagnostics,
@@ -708,8 +707,7 @@ export function resolveLeafDropPreviewForMode(
   return resolveLeafDropPreview(leafId, dragSourceLeafId, dropState);
 }
 
-export type { DynamicPaneBodyRenderPolicyInput } from "./drag-presentation";
-export { resolveDragPresentation, resolvePaneBodyRenderMode } from "./drag-presentation";
+export { isDragPresentationActive, resolveDragPresentation } from "./drag-presentation";
 
 type DynamicSplitDividerRenderMode =
   | "render-divider-absent"
@@ -3863,11 +3861,10 @@ export const DynamicTilingRenderer = React.forwardRef<
   // per cursor move — the slot rect is stable per resolved target). Off-screen /
   // degenerate slots clear the seat → the ghost stays free-following (§10).
   React.useLayoutEffect((): void => {
-    const isPresentationDragging: boolean =
-      dragState.phase === "dragging" ||
-      (dragState.phase === "settling" &&
-        dragState.outcome === "commit" &&
-        presentationSourceLeafId != null);
+    const isPresentationDragging: boolean = isDragPresentationActive(
+      dragState.phase,
+      dragSettlingOutcome,
+    );
     if (
       !liveDragModeEnabled ||
       !isPresentationDragging ||
@@ -6319,6 +6316,8 @@ export const DynamicTilingRenderer = React.forwardRef<
             dropState?.leafId === node.id ? (dropState.action ?? null) : null,
           dropZone:
             dropState?.leafId === node.id ? (dropState.zone ?? null) : null,
+          dropDominantEdge:
+            dropState?.leafId === node.id ? (dropState.dominantEdge ?? null) : null,
         });
         const isDragSourceSlot: boolean = liveDragModeEnabled
           ? leafPresentation.isGhostSeatLeaf
@@ -6328,25 +6327,10 @@ export const DynamicTilingRenderer = React.forwardRef<
           leafPresentation.paneBodyRenderMode;
         const isDropTargetLeaf: boolean =
           dropState?.leafId === node.id && dropState.action !== "none";
-        // Edge-insert uses edge-band chrome; suppress center-swap overlay when the
-        // resolved action is edge-insert or action/zone disagree (hysteresis guard).
+        // The drop-target chrome zone (edge-insert-vs-center already resolved in
+        // the presentation SSOT — no caller-side ternary).
         const effectiveDropZone: DynamicLeafDropZone | null =
-          isDropTargetLeaf &&
-          !leafPresentation.preferEdgeInsertChrome &&
-          dropState != null
-            ? dropState.zone
-            : isDropTargetLeaf &&
-                leafPresentation.preferEdgeInsertChrome &&
-                dropState != null &&
-                dropState.zone !== "center"
-              ? dropState.zone
-              : isDropTargetLeaf &&
-                  leafPresentation.preferEdgeInsertChrome &&
-                  dropState != null
-                ? dropState.dominantEdge
-                : isDropTargetLeaf && dropState != null
-                  ? dropState.zone
-                  : null;
+          leafPresentation.dropChromeZone;
 
         const tileArgs: DynamicRenderTileArgs = {
           leafId: node.id,
