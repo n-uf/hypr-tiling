@@ -39,6 +39,49 @@
  */
 
 /**
+ * Multiple of the baseline hop duration used as the DEFAULT drag idle-watchdog
+ * deadline (M3). Expressed as a documented multiple — never a symptom-tuned
+ * constant — so the deadline scales with the configured animation speed. 30×
+ * ≈ 5100ms: comfortably longer than any real deliberate re-aim pause (so no
+ * genuine drag trips it), short enough that a wedged `dragging` self-heals
+ * within a few seconds.
+ */
+export const DRAG_RECOVERY_MAX_DRAGGING_IDLE_HOP_MULTIPLE: number = 30;
+
+/**
+ * Pure mirror of the renderer's `BASELINE_DRAG_HOP_DURATION_MS` (170ms at
+ * default animation speed). The recovery defaults derive from it WITHOUT
+ * importing the renderer: `interaction-capabilities.ts` (where these defaults
+ * are consumed) is itself imported BY the renderer, so importing the renderer
+ * constant back would form an evaluation-order import cycle that leaves the
+ * defaults `NaN`. Kept private; only the derived defaults below are exported.
+ */
+const BASELINE_HOP_DURATION_MS: number = 170;
+
+/**
+ * Default M3 idle deadline (ms): `30 × 170 ≈ 5100`. A drag with no
+ * `POINTER_MOVE` / `TARGET_RESOLVED` progress for this long (monotonic) is
+ * force-reconciled to `idle` via the existing `POINTER_CANCEL` edge.
+ */
+export const DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS: number =
+  DRAG_RECOVERY_MAX_DRAGGING_IDLE_HOP_MULTIPLE * BASELINE_HOP_DURATION_MS;
+
+/**
+ * Default M1 rAF-fallback slack (ms) ≈ 2 frames @ 60Hz. Only guarantees the
+ * "play-to-identity" transition gets WRITTEN when the compositor frame is
+ * starved; the easing duration itself is unchanged.
+ */
+export const DRAG_RECOVERY_DEFAULT_FRAME_DEADLINE_MS: number = 32;
+
+/**
+ * Default M2 transition-completion slack (ms). Names the `+60` mask-close slack
+ * the survivor-reflow effect already uses (`survivorReflowDurationMs + 60`) as a
+ * single typed knob: the cleanup fires on `transitionend` OR
+ * `duration + transitionSlackMs`, whichever first.
+ */
+export const DRAG_RECOVERY_DEFAULT_TRANSITION_SLACK_MS: number = 60;
+
+/**
  * Injected frame + timer scheduler for M1's rAF-with-timeout race. The renderer
  * supplies the real `window.requestAnimationFrame` / `window.setTimeout`
  * family; tests supply controllable fakes. Kept separate from

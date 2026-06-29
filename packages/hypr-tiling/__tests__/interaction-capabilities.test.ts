@@ -20,6 +20,12 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   dragMode: "live",
   slotCommitment: { mode: "delta-responsive", reresolveDeltaPx: 24 },
   touchDrag: { enable: true, longPressMs: 220 },
+  dragRecovery: {
+    enable: true,
+    maxDraggingIdleMs: 5100,
+    frameDeadlineMs: 32,
+    transitionSlackMs: 60,
+  },
   customCursor: true,
   ghostPickupScalePercent: 90,
   coherentTransit: true,

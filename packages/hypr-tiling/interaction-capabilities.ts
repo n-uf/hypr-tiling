@@ -3,6 +3,11 @@ import {
   DEFAULT_DRAG_SLOT_COMMITMENT_MODE,
   DEFAULT_TOUCH_LONG_PRESS_MS,
 } from "./drag-machine";
+import {
+  DRAG_RECOVERY_DEFAULT_FRAME_DEADLINE_MS,
+  DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS,
+  DRAG_RECOVERY_DEFAULT_TRANSITION_SLACK_MS,
+} from "./drag-recovery";
 import { DEFAULT_GHOST_PICKUP_SCALE_PERCENT, clampGhostPickupScalePercent } from "./ghost-transit";
 import { DYNAMIC_DROP_INTENT_CONFIG } from "./drop-intent-resolver";
 import { TILING_KEYMAP_DEFAULTS, resolveKeymap } from "./pane-switching";
@@ -33,6 +38,12 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
   touchDrag: {
     enable: true,
     longPressMs: DEFAULT_TOUCH_LONG_PRESS_MS,
+  },
+  dragRecovery: {
+    enable: true,
+    maxDraggingIdleMs: DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS,
+    frameDeadlineMs: DRAG_RECOVERY_DEFAULT_FRAME_DEADLINE_MS,
+    transitionSlackMs: DRAG_RECOVERY_DEFAULT_TRANSITION_SLACK_MS,
   },
   customCursor: true,
   ghostPickupScalePercent: DEFAULT_GHOST_PICKUP_SCALE_PERCENT,
@@ -149,6 +160,26 @@ export function resolveInteractionCapabilities(
       longPressMs: Math.max(
         0,
         capabilities?.touchDrag?.longPressMs ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.touchDrag.longPressMs,
+      ),
+    },
+    dragRecovery: {
+      enable: capabilities?.dragRecovery?.enable ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.dragRecovery.enable,
+      // Negative deadlines are nonsensical (a timer cannot fire before t=0);
+      // clamp to a non-negative delay, mirroring the touch long-press clamp.
+      maxDraggingIdleMs: Math.max(
+        0,
+        capabilities?.dragRecovery?.maxDraggingIdleMs
+          ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.dragRecovery.maxDraggingIdleMs,
+      ),
+      frameDeadlineMs: Math.max(
+        0,
+        capabilities?.dragRecovery?.frameDeadlineMs
+          ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.dragRecovery.frameDeadlineMs,
+      ),
+      transitionSlackMs: Math.max(
+        0,
+        capabilities?.dragRecovery?.transitionSlackMs
+          ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.dragRecovery.transitionSlackMs,
       ),
     },
     customCursor: capabilities?.customCursor ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.customCursor,

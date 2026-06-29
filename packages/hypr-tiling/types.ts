@@ -194,6 +194,50 @@ export interface ResolvedTilingTouchDragCapability {
 }
 
 /**
+ * Drag / transition self-healing recovery configuration. Hardens the live-drag
+ * ANIMATION + TIMING layer (not the FSM, which is already un-wedgeable) against
+ * frame starvation — background-tab `requestAnimationFrame` suspension, CPU
+ * throttling, long tasks, dropped/late pointer events, interrupted transitions.
+ * The recovery primitives live in `drag-recovery.ts`; this is their typed knob
+ * surface. All deadlines are documented multiples of the animation duration or
+ * of a frame, never symptom-tuned constants. Only meaningful in
+ * `dragMode: "live"`.
+ *
+ * - `enable` — master gate for the recovery layer (idle watchdog +
+ *   rAF-with-timeout arming + idempotent style teardown). Default `true`.
+ * - `maxDraggingIdleMs` — the drag idle-watchdog deadline: `armed` / `dragging`
+ *   with no `POINTER_MOVE` / `TARGET_RESOLVED` progress for longer than this
+ *   (measured MONOTONICALLY, so throttle-robust) force-reconciles to `idle` via
+ *   the existing `POINTER_CANCEL` edge with pointer capture released. Default
+ *   `30 × BASELINE_DRAG_HOP_DURATION_MS ≈ 5100ms`.
+ * - `frameDeadlineMs` — the rAF-fallback slack: each FLIP "play-to-identity"
+ *   write is armed as a `requestAnimationFrame` racing a `setTimeout` of this
+ *   long, first-wins + idempotent, so a starved frame never leaves an element
+ *   frozen at its inverted `First`. Default `~2 frames ≈ 32ms`.
+ * - `transitionSlackMs` — the transition-completion slack: style cleanup fires
+ *   on `transitionend` OR `duration + transitionSlackMs`, whichever first.
+ *   Default `60ms` (names the existing `+60` mask-close slack).
+ */
+export interface TilingDragRecoveryCapability {
+  /** Enable the self-healing recovery layer. Default `true`. */
+  enable?: boolean;
+  /** Idle-watchdog deadline (ms). Default `30 × BASELINE_DRAG_HOP_DURATION_MS ≈ 5100`. */
+  maxDraggingIdleMs?: number;
+  /** rAF-fallback slack (ms). Default `~2 frames ≈ 32`. */
+  frameDeadlineMs?: number;
+  /** Transition-completion slack (ms). Default `60`. */
+  transitionSlackMs?: number;
+}
+
+/** Fully-resolved drag-recovery configuration (no optional fields). */
+export interface ResolvedTilingDragRecoveryCapability {
+  enable: boolean;
+  maxDraggingIdleMs: number;
+  frameDeadlineMs: number;
+  transitionSlackMs: number;
+}
+
+/**
  * A single keyboard chord: a PHYSICAL `KeyboardEvent.code` value plus the
  * modifier state required to match it. Absent modifiers resolve to `false` (the
  * modifier must NOT be held) — a chord fully specifies its modifier requirements.
@@ -718,6 +762,14 @@ export interface TilingInteractionCapabilities {
    */
   touchDrag?: TilingTouchDragCapability;
   /**
+   * Drag / transition self-healing recovery (idle watchdog + rAF-with-timeout
+   * animation arming + idempotent transient-style teardown). Hardens the
+   * live-drag animation/timing layer against frame starvation. Only meaningful
+   * in `dragMode: "live"`. Default all-resolved (`enable: true`,
+   * `maxDraggingIdleMs ≈ 5100`, `frameDeadlineMs ≈ 32`, `transitionSlackMs: 60`).
+   */
+  dragRecovery?: TilingDragRecoveryCapability;
+  /**
    * Custom-rendered drag cursor (interaction tier "c"). When `true` (default),
    * an active live drag hides the OS cursor (`cursor: none` on the tiling root)
    * and renders a transform-pinned cursor element that follows the pointer and
@@ -811,6 +863,7 @@ export interface ResolvedTilingInteractionCapabilities {
   dragMode: TilingDragMode;
   slotCommitment: ResolvedTilingSlotCommitmentCapability;
   touchDrag: ResolvedTilingTouchDragCapability;
+  dragRecovery: ResolvedTilingDragRecoveryCapability;
   customCursor: boolean;
   ghostPickupScalePercent: number;
   coherentTransit: boolean;
