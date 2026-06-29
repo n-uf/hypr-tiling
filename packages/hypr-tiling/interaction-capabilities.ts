@@ -23,6 +23,7 @@ import type {
 export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   resize: "both",
   resizeHandlesVisible: false,
+  slotHopInEnabled: true,
   rearrange: true,
   dragMode: "live",
   slotCommitment: {
@@ -128,6 +129,9 @@ export function resolveInteractionCapabilities(
     resizeHandlesVisible:
       capabilities?.resizeHandlesVisible
       ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.resizeHandlesVisible,
+    slotHopInEnabled:
+      capabilities?.slotHopInEnabled
+      ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.slotHopInEnabled,
     rearrange: capabilities?.rearrange ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.rearrange,
     dragMode: capabilities?.dragMode ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.dragMode,
     slotCommitment: {

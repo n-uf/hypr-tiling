@@ -47,6 +47,7 @@ import {
   type TouchArmedMoveResolution,
 } from "./drag-machine";
 import {
+  dragSourceReservationSelector,
   isDragPresentationActive,
   resolveDragPresentation,
   resolvePaneBodyRenderMode,
@@ -3880,6 +3881,12 @@ export const DynamicTilingRenderer = React.forwardRef<
     );
     if (
       !liveDragModeEnabled ||
+      // `slotHopInEnabled: false` deliberately skips the hop-in: the seat is
+      // never measured, so the ghost free-follows the cursor and the in-tree
+      // content-less reservation slot stays shown (the reservation-plus-ghost
+      // duality). `true` (default) measures the seat so the single ghost hops
+      // INTO and FILLS it as the single instance.
+      !interactionCapabilities.slotHopInEnabled ||
       !isPresentationDragging ||
       presentationSourceLeafId == null ||
       ghostSeatLeafId == null ||
@@ -3888,7 +3895,12 @@ export const DynamicTilingRenderer = React.forwardRef<
       setSeatFootprint(null);
       return;
     }
-    const reservationSelector: string = `[data-leaf-id="${ghostSeatLeafId}"] [data-drag-source-reservation]`;
+    // SCOPED to the ghost-seat leaf (`cc23956`). Resolves only because the
+    // reserved-slot wrapper emits `data-leaf-id={node.id}` below — without that
+    // the descendant selector can never match a `DragSourceSlotReservation`
+    // (which carries no `data-leaf-id`), which is the `cc23956` regression.
+    const reservationSelector: string =
+      dragSourceReservationSelector(ghostSeatLeafId);
     const reservationElement: HTMLElement | null =
       rootRef.current?.querySelector<HTMLElement>(reservationSelector) ?? null;
     if (reservationElement == null) {
@@ -3921,6 +3933,7 @@ export const DynamicTilingRenderer = React.forwardRef<
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     liveDragModeEnabled,
+    interactionCapabilities.slotHopInEnabled,
     dragState.phase,
     dragSettlingOutcome,
     presentationSourceLeafId,
@@ -6572,6 +6585,16 @@ export const DynamicTilingRenderer = React.forwardRef<
               showMoveAffordance ? "relative" : "",
             )}
             style={leafWrapperStyle}
+            // A reserved slot renders `DragSourceSlotReservation` (which carries
+            // `data-drag-source-reservation` but no `data-leaf-id`) INSTEAD of
+            // `DefaultDynamicTile` (the sole `data-leaf-id` emitter), so the seat
+            // measurement's SCOPED selector (`dragSourceReservationSelector`)
+            // would have no `data-leaf-id` ancestor to resolve against — the
+            // `cc23956` regression. Emit it on the reserved wrapper so the scoped
+            // selector matches and the ghost can hop into the seat. Only on the
+            // reserved leaf, so non-reserved leaves keep their single
+            // article-level `data-leaf-id` (no duplicate-id collection).
+            {...(renderReservedDragSlot ? { "data-leaf-id": node.id } : {})}
           >
             {renderReservedDragSlot ? (
               <DragSourceSlotReservation

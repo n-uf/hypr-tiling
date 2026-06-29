@@ -83,6 +83,56 @@ If a labeled placeholder is wanted instead, that is a one-line change in
 
 ---
 
+## 0.1 `slotHopInEnabled` toggle + the `cc23956` seat-measurement regression
+
+The dragged pane has TWO drag-presentation behaviors, selected by the typed
+library capability `TilingInteractionCapabilities.slotHopInEnabled` (resolved in
+`interaction-capabilities.ts`, **default `true`**). The capability is surfaced as
+the **"slot hop-in"** checkbox in the control panel
+(`tiling-observability-panel.tsx`, gated to `dragMode: "live"` + `rearrange`).
+
+- **`slotHopInEnabled === true` (default, ORIGINAL single-instance hop-in):** the
+  single content-honoring ghost (`DragPaneOverlay`) HOPS INTO and FILLS the
+  resolved slot — the seat-rect `useLayoutEffect` measures the ghost-seat leaf's
+  reservation rect (`seatFootprint`), so the ghost seats as the single instance
+  and no separate empty reservation lingers beside a free-following ghost.
+- **`slotHopInEnabled === false` (AFFECTED-TODAY duality):** the seat measurement
+  is deliberately skipped (`setSeatFootprint(null)`), so the ghost free-follows
+  the cursor and the in-tree content-less `DragSourceSlotReservation` slot stays
+  shown — the reservation-plus-ghost duality.
+
+The **render model is identical in both modes** and identical to the correct
+≈2026-06-26 state (`fb27ebe`): the ghost-seat slot is always painted as a
+content-less reservation (`isGhostSeatReservation` → `render-reservation`) and the
+single portaled ghost is the only content carrier. The ONLY divergence is whether
+the seat is MEASURED (hop) or not (free-follow). The uniform, content-agnostic
+body rule (`resolvePaneBodyRenderMode`, `410b6e2`) is unchanged in both modes.
+
+### The `cc23956` regression that `slotHopInEnabled === true` also FIXES
+
+Commit `cc23956 (drag: wire presentation policy, scoped seat measure, edge chrome
+guard)` scoped the seat-rect selector to
+`[data-leaf-id="${ghostSeatLeafId}"] [data-drag-source-reservation]`
+(now centralized as `dragSourceReservationSelector` in `drag-presentation.ts`).
+This descendant selector can **never match**: a reserved slot renders
+`DragSourceSlotReservation` (carries `data-drag-source-reservation`, **no
+`data-leaf-id`**) INSTEAD of `DefaultDynamicTile` (the sole emitter of
+`data-leaf-id={leafId}`, on its own article — not an ancestor of the reservation).
+So `reservationElement == null` → `setSeatFootprint(null)` → the ghost never
+hopped and the empty reservation lingered beside the free-following ghost — the
+operator's symptom, present on `main` for EVERY drag regardless of any toggle.
+
+**Fix (option (a), per-leaf scoping preserved):** the reserved-leaf wrapper `<div>`
+now emits `data-leaf-id={node.id}` (only on the reserved leaf, so non-reserved
+leaves keep their single article-level `data-leaf-id` — no duplicate-id
+collection in `survivor-reflow`'s `querySelectorAll("[data-leaf-id]")`). The
+scoped `dragSourceReservationSelector` now resolves, the ghost hops into the seat,
+single-instance, no lingering reservation. Guarded by
+`__tests__/seat-reservation-selector.test.ts` (the scoped selector matches the
+reserved slot iff the wrapper carries `data-leaf-id`).
+
+---
+
 ## 1. Subfolders / module structure
 
 ```
@@ -408,7 +458,7 @@ once.
 | `72560e0` empty-mode hop-in reveal | `showInTreeHopIn`/`hopInLeafId` in-tree content reveal | **REMOVE** | reverted in product; left dead fields in the resolver struct + tests |
 | `7ed9307` seated-target preserve on gap release | `shouldPreserveSeatedTargetOnRelease` | **KEEP** | encodes I4; clean pure selector |
 | `1c68c5f` presentation resolver | `resolveDragPresentation` + settling-commit selectors | **FOLD** | the SSOT idea is right; trim to consumed fields + absorb the chrome-zone decision |
-| `cc23956` wire policy + scoped seat + edge chrome guard | wired resolver into render branch; scoped seat measure; edge chrome | **FOLD** | keep the wiring; move the edge-chrome ternary into the resolver |
+| `cc23956` wire policy + scoped seat + edge chrome guard | wired resolver into render branch; scoped seat measure; edge chrome | **FOLD + FIX** | keep the wiring; the scoped seat selector `[data-leaf-id] [data-drag-source-reservation]` never matched (reserved slot emits no `data-leaf-id`) → ghost never hopped; fixed by emitting `data-leaf-id` on the reserved wrapper (see §0.1) |
 
 ### Patches that fought each other (now resolved)
 

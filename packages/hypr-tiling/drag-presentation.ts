@@ -53,6 +53,27 @@ export interface DragPresentationMode {
 }
 
 /**
+ * The CSS selector the seat-rect measurement uses to find the ghost-seat leaf's
+ * reservation rect (client coords) so the single ghost can hop INTO and FILL it.
+ *
+ * The selector is SCOPED to the ghost-seat leaf (`cc23956`'s per-leaf intent):
+ * it matches the `[data-drag-source-reservation]` node that is a descendant of
+ * the leaf carrying `data-leaf-id="<ghostSeatLeafId>"`. For this to resolve, the
+ * reserved-slot wrapper MUST emit `data-leaf-id={node.id}` — a reserved slot
+ * renders `DragSourceSlotReservation` (which carries `data-drag-source-reservation`
+ * but no `data-leaf-id`) INSTEAD of `DefaultDynamicTile` (the only emitter of
+ * `data-leaf-id` on its own article). `cc23956` introduced this scoped selector
+ * WITHOUT emitting `data-leaf-id` on the reserved wrapper, so it could never
+ * match → `seatFootprint` stayed null → the ghost never hopped and the empty
+ * reservation lingered beside the free-following ghost. The renderer closes the
+ * gap by emitting `data-leaf-id` on the reserved wrapper; this helper centralizes
+ * the selector so the contract is unit-testable.
+ */
+export function dragSourceReservationSelector(ghostSeatLeafId: string): string {
+  return `[data-leaf-id="${ghostSeatLeafId}"] [data-drag-source-reservation]`;
+}
+
+/**
  * Whether a drag gesture is materially in flight for presentation purposes.
  * Extends through `settling` commit so the hop-in reservation does not flash off
  * for a frame before the committed layout prop lands. This is the SINGLE

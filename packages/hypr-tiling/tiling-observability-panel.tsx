@@ -1754,6 +1754,26 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
 
                 <label
                   className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-300"
+                  title="Live-drag slot hop-in. On (default): the single ghost hops INTO and FILLS the resolved slot as the single instance — no separate empty reservation lingers. Off: the ghost free-follows the cursor and the in-tree content-less reservation slot stays shown (reservation-plus-ghost duality)."
+                >
+                  <StyledCheckbox
+                    disabled={
+                      !props.interactionCapabilities.rearrange
+                      || props.interactionCapabilities.dragMode !== "live"
+                    }
+                    checked={props.interactionCapabilities.slotHopInEnabled}
+                    onChange={(checked: boolean): void => props.setInteractionCapabilities(
+                      (previous: ResolvedTilingInteractionCapabilities): ResolvedTilingInteractionCapabilities => ({
+                        ...previous,
+                        slotHopInEnabled: checked,
+                      }),
+                    )}
+                  />
+                  slot hop-in
+                </label>
+
+                <label
+                  className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-300"
                   title="Drag-to-rearrange (move / swap / edge-insert). When off, panes are not draggable and no drop overlays activate."
                 >
                   <StyledCheckbox

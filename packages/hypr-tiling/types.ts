@@ -674,6 +674,23 @@ export interface TilingInteractionCapabilities {
    */
   resizeHandlesVisible?: boolean;
   /**
+   * Live-drag slot hop-in. Selects between the two drag-presentation behaviors
+   * for the dragged pane:
+   *
+   * - `true` (default, ORIGINAL): the single content-honoring ghost HOPS INTO
+   *   and FILLS the resolved slot — the seat rect is measured so the ghost seats
+   *   as the single instance and no separate empty reservation lingers beside a
+   *   free-following ghost.
+   * - `false` (the seat-measurement is deliberately skipped): the ghost
+   *   free-follows the cursor and the in-tree content-less reservation slot stays
+   *   shown — the reservation-plus-ghost duality.
+   *
+   * Orthogonal to the CONTENT toggle: in BOTH modes the pane body honors content
+   * uniformly (see `resolvePaneBodyRenderMode`). Only meaningful in
+   * `dragMode: "live"`. Default `true`.
+   */
+  slotHopInEnabled?: boolean;
+  /**
    * Drag-to-rearrange (move / swap / edge-insert) capability. When `false`,
    * panes are not draggable and no drop overlays / hit-zones activate.
    * Default `true`.
@@ -789,6 +806,7 @@ export interface TilingInteractionCapabilities {
 export interface ResolvedTilingInteractionCapabilities {
   resize: TilingResizeCapability;
   resizeHandlesVisible: boolean;
+  slotHopInEnabled: boolean;
   rearrange: boolean;
   dragMode: TilingDragMode;
   slotCommitment: ResolvedTilingSlotCommitmentCapability;

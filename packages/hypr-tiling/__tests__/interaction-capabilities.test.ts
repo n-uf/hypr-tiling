@@ -15,6 +15,7 @@ import type {
 const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   resize: "both",
   resizeHandlesVisible: false,
+  slotHopInEnabled: true,
   rearrange: true,
   dragMode: "live",
   slotCommitment: { mode: "delta-responsive", reresolveDeltaPx: 24 },
@@ -68,6 +69,22 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       ...RESOLVED_DEFAULTS,
       resizeHandlesVisible: true,
     });
+  });
+
+  it("defaults slotHopInEnabled to true (the ORIGINAL single-instance hop-in)", (): void => {
+    expect(resolveInteractionCapabilities(undefined).slotHopInEnabled).toBe(true);
+    expect(resolveInteractionCapabilities({}).slotHopInEnabled).toBe(true);
+  });
+
+  it("preserves an explicit slotHopInEnabled false (the seat-skip duality mode)", (): void => {
+    expect(resolveInteractionCapabilities({ slotHopInEnabled: false })).toEqual({
+      ...RESOLVED_DEFAULTS,
+      slotHopInEnabled: false,
+    });
+  });
+
+  it("preserves an explicit slotHopInEnabled true (idempotent with the default)", (): void => {
+    expect(resolveInteractionCapabilities({ slotHopInEnabled: true })).toEqual(RESOLVED_DEFAULTS);
   });
 
   it("preserves an explicit false (not overridden by the default)", (): void => {
