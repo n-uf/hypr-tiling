@@ -97,6 +97,16 @@ import {
   type GhostRect,
 } from "./ghost-transit";
 import {
+  createDragWatchdog,
+  scheduleFrameOrTimeout,
+  stripTransientDragStyles,
+  type DragWatchdog,
+  type FrameOrTimeoutScheduler,
+  type RacedFrameHandle,
+  type TimerScheduler,
+  type TransientDragStyleTarget,
+} from "./drag-recovery";
+import {
   isResizeAxisEnabled,
   resolveInteractionCapabilities,
 } from "./interaction-capabilities";
@@ -318,6 +328,30 @@ export function resolveDragAnimationDurationMs(speedPercent: number): number {
     DRAG_ANIMATION_SPEED_MAX_PERCENT,
   );
   return Math.round(BASELINE_DRAG_HOP_DURATION_MS * (100 / clampedPercent));
+}
+
+/**
+ * `window`-backed frame + timer scheduler for the drag-recovery primitives
+ * (`scheduleFrameOrTimeout` M1). Defined at module scope (stable identity) so it
+ * never re-arms an effect; `window` is referenced only inside the closures, so
+ * the constant is SSR-safe (the closures run only in a browser, inside effects).
+ */
+const WINDOW_FRAME_OR_TIMEOUT_SCHEDULER: FrameOrTimeoutScheduler = {
+  requestFrame: (callback: () => void): number => window.requestAnimationFrame(callback),
+  cancelFrame: (handle: number): void => window.cancelAnimationFrame(handle),
+  setTimer: (callback: () => void, ms: number): number => window.setTimeout(callback, ms),
+  clearTimer: (handle: number): void => window.clearTimeout(handle),
+};
+
+/** `window`-backed timer scheduler for the drag idle watchdog (M3). */
+const WINDOW_TIMER_SCHEDULER: TimerScheduler = {
+  setTimer: (callback: () => void, ms: number): number => window.setTimeout(callback, ms),
+  clearTimer: (handle: number): void => window.clearTimeout(handle),
+};
+
+/** Monotonic clock for the idle watchdog — `performance.now()` where available. */
+function monotonicNow(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
 /** Duration the drag-motion timings collapse to when `dragAnimationEnabled` is `false`. */
@@ -1022,6 +1056,7 @@ function DragPaneOverlay({
   swapBounceMagnitude,
   prefersReducedMotion,
   isPaneContentVisible,
+  frameDeadlineMs,
 }: {
   dragVisualState: DynamicDragVisualState | null;
   dragHopDurationMs: number;
@@ -1031,10 +1066,19 @@ function DragPaneOverlay({
   swapBounceMagnitude: number;
   prefersReducedMotion: boolean;
   isPaneContentVisible: boolean;
+  /**
+   * M1 rAF-fallback slack (ms). The FLIP "play-to-identity" arm races
+   * `requestAnimationFrame` against a `setTimeout` of this long, first-wins +
+   * idempotent, so a starved compositor frame never strands the ghost at its
+   * inverted `First`. From `interaction.dragRecovery.frameDeadlineMs`.
+   */
+  frameDeadlineMs: number;
 }): React.ReactElement | null {
   const theme: TilingTheme = useTilingTheme();
   const nodeRef = React.useRef<HTMLDivElement | null>(null);
-  const rafRef = React.useRef<number | null>(null);
+  // The in-flight "play-to-identity" arm — an M1 raced (rAF-or-timeout) handle
+  // rather than a bare rAF id, so a starved frame cannot freeze the ghost.
+  const rafRef = React.useRef<RacedFrameHandle | null>(null);
   const animationRef = React.useRef<Animation | null>(null);
   // The node's resting box (Last), kept fresh every render so the morph effect
   // (which is keyed off morph TRIGGERS, not cursor position) reads the current
@@ -1106,7 +1150,7 @@ function DragPaneOverlay({
 
     const cancelInFlight = (): void => {
       if (rafRef.current != null) {
-        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current.cancel();
         rafRef.current = null;
       }
       if (animationRef.current != null) {
@@ -1187,7 +1231,10 @@ function DragPaneOverlay({
       });
       animationRef.current = animation;
       animation.onfinish = (): void => {
-        node.style.transform = "none";
+        // Route the dip finish-pin through the idempotent M4 teardown so a
+        // cancelled-mid-flight dip (fill:none reverts to the inverted base)
+        // never strands the ghost at an offset.
+        stripTransientDragStyles({ ghost: node, leaves: [] });
         if (animationRef.current === animation) {
           animationRef.current = null;
         }
@@ -1210,10 +1257,17 @@ function DragPaneOverlay({
     node.style.transition = "none";
     node.style.transform = `translate(${invert.tx}px, ${invert.ty}px) scale(${invert.sx}, ${invert.sy})`;
     void node.getBoundingClientRect();
-    rafRef.current = window.requestAnimationFrame((): void => {
-      node.style.transition = `transform ${dragHopDurationMs}ms ${easing}`;
-      node.style.transform = "none";
-    });
+    // M1: race the play-to-identity write against a timeout so a starved frame
+    // (background-tab rAF suspension / CPU throttle) still writes the transition
+    // — the ghost can never freeze at its inverted First.
+    rafRef.current = scheduleFrameOrTimeout(
+      WINDOW_FRAME_OR_TIMEOUT_SCHEDULER,
+      frameDeadlineMs,
+      (): void => {
+        node.style.transition = `transform ${dragHopDurationMs}ms ${easing}`;
+        node.style.transform = "none";
+      },
+    );
     return (): void => {
       cancelInFlight();
     };
@@ -1230,6 +1284,7 @@ function DragPaneOverlay({
     swapBounceMagnitude,
     prefersReducedMotion,
     hasVisual,
+    frameDeadlineMs,
   ]);
 
   // Record the base rect painted THIS commit as the FLIP `First` for the next
@@ -3331,6 +3386,13 @@ export const DynamicTilingRenderer = React.forwardRef<
   // pickup + target resolution preserves the "no wrong live geometry" invariant.
   const liveDragModeEnabled: boolean =
     isRearrangeEnabled && interactionCapabilities.dragMode === "live";
+  // Drag / transition self-healing recovery knobs. `enable` gates the idle
+  // watchdog (M3) + explicit transient-style teardown (M4) + visibilitychange
+  // reconcile (M5); the rAF-with-timeout animation arming (M1) is always on as a
+  // pure backstop (it cannot alter the happy path). `frameDeadlineMs` feeds M1.
+  const isDragRecoveryEnabled: boolean = interactionCapabilities.dragRecovery.enable;
+  const dragRecoveryMaxIdleMs: number = interactionCapabilities.dragRecovery.maxDraggingIdleMs;
+  const dragRecoveryFrameDeadlineMs: number = interactionCapabilities.dragRecovery.frameDeadlineMs;
   const isFocusSelectionEnabled: boolean = interactionCapabilities.focus;
   const isMaximizeEnabled: boolean = interactionCapabilities.maximize.enable;
   const isTitleBarSizingEnabled: boolean =
@@ -3438,7 +3500,10 @@ export const DynamicTilingRenderer = React.forwardRef<
   );
   /** TRUE once a survivor-reflow layout effect has run with `phase === "dragging"`. */
   const didPaintDraggingFrameRef = React.useRef<boolean>(false);
-  const survivorFlipRafRef = React.useRef<number | null>(null);
+  // The single play-frame handle (one per reflow batch) — an M1 raced
+  // (rAF-or-timeout) handle so a starved frame cannot freeze the survivors at
+  // their inverted First.
+  const survivorFlipRafRef = React.useRef<RacedFrameHandle | null>(null);
   // In-flight coherent-transit (swap) survivor dip animations (Web Animations),
   // tracked so a re-derived reflow batch can cancel them before re-measuring.
   const survivorDipAnimationsRef = React.useRef<Animation[]>([]);
@@ -3452,6 +3517,28 @@ export const DynamicTilingRenderer = React.forwardRef<
   const [isSurvivorReflowAnimating, setIsSurvivorReflowAnimating] =
     React.useState<boolean>(false);
   const survivorReflowEndTimerRef = React.useRef<number | null>(null);
+  // M4 idempotent transient-style teardown for the survivor leaves: clear any
+  // residual FLIP transform/transition on every `[data-leaf-id]` element and
+  // cancel the tracked WAAPI dips + the raced play handle. Safe to call on every
+  // exit path (settle teardown, watchdog expiry, visibilitychange reconcile) —
+  // clearing to identity and cancelling a finished handle are both no-ops. The
+  // ghost node is owned by `DragPaneOverlay` (cleaned up by its own effect on
+  // unmount), so it is not reachable here and is intentionally `null`.
+  const stripSurvivorTransientStyles = React.useCallback((): void => {
+    const viewport: HTMLDivElement | null = viewportRef.current;
+    const leaves: TransientDragStyleTarget[] =
+      viewport == null
+        ? []
+        : Array.from(viewport.querySelectorAll<HTMLElement>("[data-leaf-id]"));
+    stripTransientDragStyles({
+      ghost: null,
+      leaves,
+      animations: survivorDipAnimationsRef.current,
+      racedHandles: survivorFlipRafRef.current == null ? [] : [survivorFlipRafRef.current],
+    });
+    survivorDipAnimationsRef.current = [];
+    survivorFlipRafRef.current = null;
+  }, []);
   // Selectors off the single FSM state — the renderer reads these exactly where
   // it used to read the old useState slots.
   const dragSourceLeafId: string | null = activeDragSourceLeafId(dragState);
@@ -4111,10 +4198,15 @@ export const DynamicTilingRenderer = React.forwardRef<
     // Force the inverted transforms to paint before arming the transition, then
     // play every survivor to identity on the next frame (one rAF per batch).
     void viewport.getBoundingClientRect();
-    if (survivorFlipRafRef.current != null) {
-      window.cancelAnimationFrame(survivorFlipRafRef.current);
-    }
-    survivorFlipRafRef.current = window.requestAnimationFrame((): void => {
+    // M1: race the play-to-identity write against a timeout so a starved frame
+    // never leaves the survivors frozen at their inverted First (the timer-only
+    // mask-close at `survivorReflowDurationMs + 60` would otherwise re-clip them
+    // while still transformed).
+    survivorFlipRafRef.current?.cancel();
+    survivorFlipRafRef.current = scheduleFrameOrTimeout(
+      WINDOW_FRAME_OR_TIMEOUT_SCHEDULER,
+      dragRecoveryFrameDeadlineMs,
+      (): void => {
       if (survivorCoherentDipActive) {
         // Coherent transit: keyframe each survivor with the mid-reflow dip so it
         // shrinks + grows in lockstep with the ghost (no mid-cross collision).
@@ -4133,9 +4225,12 @@ export const DynamicTilingRenderer = React.forwardRef<
             fill: "none",
           });
           const target: HTMLElement = plan.element;
+          // M4: pin the resting identity transform through the shared
+          // transient-style stripper so a dip that finishes after a mid-flight
+          // cancel still lands clean (idempotent with the settle/watchdog
+          // teardown that may have already run).
           animation.onfinish = (): void => {
-            target.style.transition = "none";
-            target.style.transform = "none";
+            stripTransientDragStyles({ ghost: null, leaves: [target] });
           };
           dipAnimations.push(animation);
         }
@@ -4156,10 +4251,8 @@ export const DynamicTilingRenderer = React.forwardRef<
       }
     });
     return (): void => {
-      if (survivorFlipRafRef.current != null) {
-        window.cancelAnimationFrame(survivorFlipRafRef.current);
-        survivorFlipRafRef.current = null;
-      }
+      survivorFlipRafRef.current?.cancel();
+      survivorFlipRafRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -4170,6 +4263,7 @@ export const DynamicTilingRenderer = React.forwardRef<
     dragState.phase,
     liveDragModeEnabled,
     survivorCoherentDipActive,
+    dragRecoveryFrameDeadlineMs,
     viewportSize.width,
     viewportSize.height,
   ]);
@@ -6046,7 +6140,12 @@ export const DynamicTilingRenderer = React.forwardRef<
     };
     const handleVisibilityChange = (): void => {
       if (document.visibilityState === "hidden") {
+        // M5 reconcile: a tab hidden mid-drag cancels through the existing edge,
+        // and any transient FLIP styles are stripped so the leaves are clean when
+        // the tab is shown again (INV-R4). The cancel side effect plus this strip
+        // are both idempotent with the settle teardown.
         dispatchDrag({ type: "VISIBILITY_HIDDEN" });
+        stripSurvivorTransientStyles();
       }
     };
 
@@ -6079,7 +6178,12 @@ export const DynamicTilingRenderer = React.forwardRef<
       window.removeEventListener("blur", handleBlur);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeDragPointerId, onLiveHitLogChange, resolvePointerTarget]);
+  }, [
+    activeDragPointerId,
+    onLiveHitLogChange,
+    resolvePointerTarget,
+    stripSurvivorTransientStyles,
+  ]);
 
   // The single teardown path. On `settling` the renderer runs the commit OR the
   // cancel side effect (NEVER both), releases pointer capture, then advances the
@@ -6107,6 +6211,12 @@ export const DynamicTilingRenderer = React.forwardRef<
       }
     }
     capturedPointerIdRef.current = null;
+    // M4 backstop: strip any residual FLIP transform/transition from the
+    // survivors + cancel tracked dips/raced handles on the settle edge, so once
+    // the FSM reaches `idle` no `[data-leaf-id]` element retains a non-identity
+    // inline transform (INV-R1). On commit the subsequent layout change re-arms a
+    // fresh survivor reflow; on cancel the leaves stay at identity.
+    stripSurvivorTransientStyles();
 
     const committedTree: DynamicLayoutNode | null =
       dragState.outcome === "commit" && dragState.resolvedTarget != null
@@ -6146,6 +6256,45 @@ export const DynamicTilingRenderer = React.forwardRef<
     layout,
     onLayoutChange,
     onLiveHitLogChange,
+    stripSurvivorTransientStyles,
+  ]);
+
+  // M3 idle watchdog. While the FSM is `armed` or `dragging`, a monotonic-clock
+  // timer is armed for `dragRecoveryMaxIdleMs`; every FSM transition (pickup,
+  // each coalesced pointer move, target resolution) re-runs this effect and so
+  // re-arms the timer — i.e. progress resets the idle clock. If the drag stalls
+  // (hang under CPU throttling, a dropped pointercancel, a wedged compositor)
+  // past the idle budget, the watchdog force-reconciles by dispatching
+  // `POINTER_CANCEL` — reusing the existing cancel edge (no new FSM phase/event)
+  // so the normal `settling(cancel) → idle` teardown releases capture, and a
+  // belt-and-braces style strip clears any residual transforms (INV-R2). Gated
+  // by the `dragRecovery.enable` capability; the monotonic `now` guard makes the
+  // expiry robust to timer coalescing/throttling.
+  React.useEffect((): undefined | (() => void) => {
+    if (!isDragRecoveryEnabled) {
+      return undefined;
+    }
+    if (dragState.phase !== "armed" && dragState.phase !== "dragging") {
+      return undefined;
+    }
+    const watchdog: DragWatchdog = createDragWatchdog({
+      maxIdleMs: dragRecoveryMaxIdleMs,
+      now: monotonicNow,
+      scheduler: WINDOW_TIMER_SCHEDULER,
+      onExpire: (): void => {
+        dispatchDrag({ type: "POINTER_CANCEL" });
+        stripSurvivorTransientStyles();
+      },
+    });
+    watchdog.progress();
+    return (): void => {
+      watchdog.cancel();
+    };
+  }, [
+    dragState,
+    isDragRecoveryEnabled,
+    dragRecoveryMaxIdleMs,
+    stripSurvivorTransientStyles,
   ]);
 
   const resolveLiveHitLogState = React.useCallback(
@@ -7204,6 +7353,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           swapBounceMagnitude={swapBounceMagnitude}
           prefersReducedMotion={prefersReducedMotion}
           isPaneContentVisible={isPaneContentVisible}
+          frameDeadlineMs={dragRecoveryFrameDeadlineMs}
         />
         {dragCursorEnabled ? (
           <DragCursorOverlay

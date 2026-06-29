@@ -513,3 +513,108 @@ work was confined to the drag **presentation** layer.
 `split-container-insert` stays in `DynamicDropAction` though the drag resolver
 never produces it — an explicit exhaustive `never` guard would document the
 unreachable union member at compile time. Tracked, not done here.
+
+---
+
+## 10. Drag / transition self-healing recovery layer
+
+The FSM (§3) structurally eliminates a "stuck on a logical event" drag: every
+interruption is an enumerated cancel edge to `idle`. It does **not** by itself
+defend against two *physical* failure modes that live entirely in the renderer's
+animation plumbing, below the FSM:
+
+1. **A starved animation frame.** The ghost morph (§4) and the survivor reflow
+   (§4) both arm their play-to-identity transition write inside a bare
+   `requestAnimationFrame`. When the tab is backgrounded (rAF suspended) or the
+   main thread is under heavy CPU throttling, that callback can be deferred
+   indefinitely. The element is left frozen at its inverted FLIP *First* (a
+   visible offset/scale), and — for the survivors — the timer-only clip-mask
+   close at `survivorReflowDurationMs + 60` fires meanwhile and re-clips them
+   while still transformed.
+2. **A drag that never receives its terminal event.** A dropped `pointercancel`
+   (OS gesture steal, devtools, a wedged compositor) can leave the FSM parked in
+   `armed`/`dragging` with pointer capture held and transient inline styles on
+   the leaves, with no event arriving to drive the existing cancel edge.
+
+The recovery layer is a **pure module** (`drag-recovery.ts`, DOM-less, injected
+clock + scheduler) plus thin renderer wiring. It adds **no new FSM phase or
+event** — the watchdog force-reconciles by feeding the *existing* `POINTER_CANCEL`
+edge, so the entire core (§3) is untouched.
+
+### 10.1 Primitives (`drag-recovery.ts`)
+
+| Primitive | Mechanism | Failure mode it closes |
+|---|---|---|
+| `scheduleFrameOrTimeout(scheduler, frameDeadlineMs, cb)` (M1) | races `requestAnimationFrame` against `setTimeout(frameDeadlineMs)`, first-wins, runs `cb` exactly once, returns a `RacedFrameHandle` whose `cancel()` drops both arms | starved frame freezes a FLIP at its inverted First |
+| `onTransitionSettled({ target, durationMs, transitionSlackMs, scheduler, onSettled })` (M2) | resolves on `transitionend` OR a `durationMs + transitionSlackMs` timeout, whichever first, exactly once | a `transitionend` that never fires (interrupted/again-throttled) strands a cleanup |
+| `createDragWatchdog({ maxIdleMs, now, scheduler, onExpire })` (M3) | monotonic idle timer; `progress()` records `now()` and re-arms; on fire it re-checks `now() - lastProgress` against `maxIdleMs` and either expires or re-arms for the remainder (robust to timer coalescing) | a drag parked past the idle budget with no terminal event |
+| `stripTransientDragStyles({ ghost, leaves, animations, racedHandles })` (M4) | idempotent clear of `transform` / `transition` / `transform-origin` / `will-change` / `contain` to identity + `cancel()` of every tracked WAAPI animation and raced handle | residual inline transforms / live animations after any exit path |
+
+All four operate on **minimal typed style-target interfaces**
+(`TransientDragStyleTarget` mirrors the existing `SurvivorReflowLeafStyleTarget`
+shape — only the `style` fields touched), so the module never imports the DOM
+lib and is unit-tested with a fake scheduler + injected clock. M5 (visibility
+reconcile) is not a primitive — it is the renderer routing a `visibilitychange`
+into the existing cancel edge + M4.
+
+### 10.2 Typed capability + non-ad-hoc defaults
+
+`TilingDragRecoveryCapability` (consumer-facing, all-optional) resolves to
+`ResolvedTilingDragRecoveryCapability` in `interaction-capabilities.ts` via the
+same nested-resolve pattern as `slotCommitment` / `touchDrag` (`??`, never `||`;
+numeric fields clamped `Math.max(0, …)`). Defaults live as named constants in
+`drag-recovery.ts`, **derived from the renderer's own motion budget rather than
+hand-picked**:
+
+| Field | Default | Derivation (why non-ad-hoc) |
+|---|---|---|
+| `enable` | `true` | recovery is a backstop, on by default; flips off the watchdog (M3) + explicit teardown (M4) + visibility reconcile (M5). M1 stays on regardless — it cannot alter the happy path |
+| `maxDraggingIdleMs` | `30 * BASELINE_DRAG_HOP_DURATION_MS` = `5100` | the budget is expressed in *hop durations*, not a magic millisecond count: a drag idle for 30× the baseline hop animation is unambiguously hung, and the budget tracks the motion constant if it changes. `BASELINE_HOP_DURATION_MS` is mirrored locally in `drag-recovery.ts` to avoid a renderer→capabilities import cycle |
+| `frameDeadlineMs` | `32` | ≈ two 60 Hz frames; the rAF arm wins under normal load, the timeout fires only when the frame is genuinely starved |
+| `transitionSlackMs` | `60` | matches the renderer's existing survivor clip-mask tail (`+ 60`), so the M2 fallback and the legacy mask-close agree |
+
+### 10.3 Renderer wiring (anchored by symbol)
+
+All four edits were re-anchored on **symbols** (not line numbers) since
+`dynamic-tiling-renderer.tsx` is a contested file:
+
+1. **Ghost morph FLIP** (`DragPaneOverlay` morph `useLayoutEffect`): the bare
+   `rafRef.current = window.requestAnimationFrame(…)` arm → `scheduleFrameOrTimeout(
+   WINDOW_FRAME_OR_TIMEOUT_SCHEDULER, frameDeadlineMs, …)`; `rafRef` retyped to
+   `RacedFrameHandle | null`; `cancelInFlight` calls `rafRef.current.cancel()`.
+2. **Survivor reflow FLIP** (survivor-reflow effect): the
+   `survivorFlipRafRef.current = window.requestAnimationFrame(…)` arm → the same
+   M1 race; `survivorFlipRafRef` retyped to `RacedFrameHandle | null`; cleanup
+   calls `.cancel()`.
+3. **Idle watchdog** (`useEffect` keyed on `dragState`): armed only while the
+   phase is `armed`/`dragging` and `dragRecovery.enable`; `progress()` on mount,
+   and because the effect lists `dragState` in its deps every FSM transition
+   (each coalesced move, target resolve) re-runs it → re-arms (idle reset). On
+   expiry it `dispatchDrag({ type: "POINTER_CANCEL" })` (existing edge) +
+   `stripSurvivorTransientStyles()`.
+4. **M4 teardown routed into every exit path** via the `stripSurvivorTransientStyles`
+   callback (clears all `[data-leaf-id]` leaves + cancels tracked dips + the
+   raced handle): the settle teardown effect (after `capturedPointerIdRef.current
+   = null`), the watchdog expiry, and `handleVisibilityChange` (hidden). The WAAPI
+   coherent-dip `onfinish` pins (ghost dip + survivor dip) are routed through
+   `stripTransientDragStyles` so a dip that finishes *after* a mid-flight cancel
+   (its `fill:none` reverts to the inverted base) still lands clean.
+
+### 10.4 Invariants → tests
+
+| # | Invariant | Enforced by | Tested |
+|---|---|---|---|
+| INV-R1 | No `[data-leaf-id]` leaf or ghost retains a non-identity inline `transform`/`transition` once the FSM is `idle` | M4 routed into settle teardown + dip `onfinish`; idempotent | `drag-recovery.test.ts` (M4 clears all fields, idempotent on repeat) |
+| INV-R2 | An `armed`/`dragging` drag idle (monotonic) past `maxDraggingIdleMs` force-reconciles to `idle` with capture released | M3 watchdog → existing `POINTER_CANCEL` edge | `drag-recovery.test.ts` (expiry after `maxIdleMs`, re-arm on `progress()`, never trips when progress recent); `drag-machine.test.ts` (watchdog-driven `POINTER_CANCEL` drives `dragging → settling(cancel) → idle`) |
+| INV-R3 | Each FLIP play-to-identity write runs **exactly once and always** | M1 first-wins race + idempotent single run | `drag-recovery.test.ts` (M1 fires once whether the rAF or the timeout wins; `cancel()` drops both) |
+| INV-R4 | A hidden→shown tab leaves the FSM `idle` with styles stripped | M5: `visibilitychange` hidden → `VISIBILITY_HIDDEN` (existing cancel edge) + M4 | covered by the FSM `VISIBILITY_HIDDEN` cancel edge (`drag-machine.test.ts`) + M4 idempotence (`drag-recovery.test.ts`) |
+
+### 10.5 Verdict
+
+The recovery layer is **additive and core-preserving**: the FSM, candidate /
+geometry core, and the content-agnostic presentation rule (§0) are untouched.
+The watchdog reuses the existing `POINTER_CANCEL` edge rather than introducing a
+parked-recovery state, M1 is a pure backstop that cannot perturb the happy path,
+and M4 is idempotent so it is safe on every (possibly overlapping) exit path. The
+defaults are derived from the renderer's motion budget (hop-duration multiples,
+frame counts) rather than magic numbers, so they track the animation constants.
