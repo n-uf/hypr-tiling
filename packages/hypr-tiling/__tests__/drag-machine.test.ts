@@ -998,6 +998,48 @@ describe("drag-machine — committable-seat SSOT + atomic seated-release commit 
       expect(state.outcome).toBe("cancel");
     }
   });
+
+  it("release commit is synchronous: POINTER_UP settles immediately from the resolved target with no settling window / time gate", (): void => {
+    // Operator directive: mouse release must commit immediately and
+    // synchronously — the commit decision must NOT be reactive/deferred behind
+    // any intentional settling window, debounce, hold-threshold, or timer. The
+    // FSM encodes this structurally: the commit/cancel outcome is a pure function
+    // of `resolvedTarget` at the POINTER_UP transition (`settleFrom` →
+    // `isCommittableTarget`), evaluated in the SAME synchronous reducer call —
+    // there is no elapsed-time input and no intermediate "pending-commit" state to
+    // wait through. The renderer's `handlePointerUp` runs this exact sequence in
+    // one task (`coalescer.cancel()` → release sample dispatches POINTER_MOVE +
+    // TARGET_RESOLVED(committableSeatRef) → POINTER_UP), so no dwell is required
+    // and no timer gates the commit. A future regression that introduced a
+    // settling window would have to add an event/state between TARGET_RESOLVED and
+    // the commit, breaking this single-call invariant.
+    let state: DragMachineState = dragMachineReducer(
+      DRAG_MACHINE_INITIAL_STATE,
+      pointerDown(),
+    );
+    state = dragMachineReducer(state, {
+      type: "POINTER_MOVE",
+      pointerId: 1,
+      client: { x: 200, y: 200 },
+    });
+    state = dragMachineReducer(state, {
+      type: "TARGET_RESOLVED",
+      pointerId: 1,
+      resolvedTarget: seatedSwap,
+    });
+    // Still `dragging` — no auto-advance toward commit without the release event.
+    expect(state.phase).toBe("dragging");
+    // The very next reducer call (POINTER_UP) IS the commit — one step, no window.
+    const settled: DragMachineState = dragMachineReducer(state, {
+      type: "POINTER_UP",
+      pointerId: 1,
+    });
+    expect(settled.phase).toBe("settling");
+    if (settled.phase === "settling") {
+      expect(settled.outcome).toBe("commit");
+      expect(settled.resolvedTarget?.leafId).toBe("C");
+    }
+  });
 });
 
 describe("drag-machine — presentation selectors extend through settling commit", (): void => {
