@@ -674,15 +674,42 @@ All four edits were re-anchored on **symbols** (not line numbers) since
    coherent-dip `onfinish` pins (ghost dip + survivor dip) are routed through
    `stripTransientDragStyles` so a dip that finishes *after* a mid-flight cancel
    (its `fill:none` reverts to the inverted base) still lands clean.
+5. **Survivor clip-mask close via M2** (survivor-reflow effect): the bare
+   `survivorReflowEndTimerRef = window.setTimeout(…, survivorReflowDurationMs +
+   60)` → `onTransitionSettled({ target: playableElements[last], durationMs:
+   survivorReflowDurationMs, transitionSlackMs: dragRecovery.transitionSlackMs,
+   scheduler: WINDOW_TIMER_SCHEDULER, onSettled })`; the ref is retyped to
+   `TransitionSettledHandle | null`, cancelled + re-armed per reflow batch and on
+   unmount. The mask now closes on the survivor's real `transitionend` OR the
+   `duration + transitionSlackMs` starvation backstop, whichever first; in
+   coherent-dip mode (WAAPI, no `transitionend`) the timeout backstop closes it —
+   identical to the historical `+60`. This is the gap-closure that wires M2 (it
+   was implemented + unit-tested but previously unconsumed) and reads the resolved
+   `transitionSlackMs` capability (previously resolved but unread).
 
 ### 10.4 Invariants → tests
 
 | # | Invariant | Enforced by | Tested |
 |---|---|---|---|
-| INV-R1 | No `[data-leaf-id]` leaf or ghost retains a non-identity inline `transform`/`transition` once the FSM is `idle` | M4 routed into settle teardown + dip `onfinish`; idempotent | `drag-recovery.test.ts` (M4 clears all fields, idempotent on repeat) |
-| INV-R2 | An `armed`/`dragging` drag idle (monotonic) past `maxDraggingIdleMs` force-reconciles to `idle` with capture released | M3 watchdog → existing `POINTER_CANCEL` edge | `drag-recovery.test.ts` (expiry after `maxIdleMs`, re-arm on `progress()`, never trips when progress recent); `drag-machine.test.ts` (watchdog-driven `POINTER_CANCEL` drives `dragging → settling(cancel) → idle`) |
-| INV-R3 | Each FLIP play-to-identity write runs **exactly once and always** | M1 first-wins race + idempotent single run | `drag-recovery.test.ts` (M1 fires once whether the rAF or the timeout wins; `cancel()` drops both) |
-| INV-R4 | A hidden→shown tab leaves the FSM `idle` with styles stripped | M5: `visibilitychange` hidden → `VISIBILITY_HIDDEN` (existing cancel edge) + M4 | covered by the FSM `VISIBILITY_HIDDEN` cancel edge (`drag-machine.test.ts`) + M4 idempotence (`drag-recovery.test.ts`) |
+| INV-R1 | No `[data-leaf-id]` leaf or ghost retains a non-identity inline `transform`/`transition` once the FSM is `idle` | M4 routed into settle teardown + dip `onfinish`; idempotent | `drag-recovery.test.ts` (M4 clears all fields, idempotent on repeat); `drag-recovery-dom.test.ts` (jsdom: real `[data-leaf-id]` element resolves to identity via the M1 timeout fallback when rAF never fires; M3 expiry strips real inline `transform`/`transition`) |
+| INV-R2 | An `armed`/`dragging` drag idle (monotonic) past `maxDraggingIdleMs` force-reconciles to `idle` with capture released | M3 watchdog → existing `POINTER_CANCEL` edge | `drag-recovery.test.ts` (expiry after `maxIdleMs`, re-arm on `progress()`, never trips when progress recent); `drag-machine.test.ts` (watchdog-driven `POINTER_CANCEL` drives `dragging → settling(cancel) → idle`); `drag-recovery-dom.test.ts` (jsdom: a never-arriving `pointerup` self-heals the harnessed drag to `idle`, and a late fire after progress re-arms instead of tripping) |
+| INV-R3 | Each FLIP play-to-identity write runs **exactly once and always** | M1 first-wins race + idempotent single run | `drag-recovery.test.ts` (M1 fires once whether the rAF or the timeout wins; `cancel()` drops both); `drag-recovery-dom.test.ts` (jsdom: rAF-starved survivor still reaches identity; a late frame after the timeout-won play is a no-op — no transform thrash) |
+| INV-R4 | A hidden→shown tab leaves the FSM `idle` with styles stripped | M5: `visibilitychange` hidden → `VISIBILITY_HIDDEN` (existing cancel edge) + M4 | covered by the FSM `VISIBILITY_HIDDEN` cancel edge (`drag-machine.test.ts`) + M4 idempotence (`drag-recovery.test.ts`); live manual repro: `_agent/drag-recovery-cdp-throttle.md` §5 (CDP `Page.setWebLifecycleState` hidden→active under CPU throttle) |
+
+INV-R1..INV-R4 also have a LIVE manual validation recipe under CPU throttling +
+frame starvation + mid-drag tab-hide + long-task injection at
+`_agent/drag-recovery-cdp-throttle.md` (headless-Chrome `Emulation.setCPUThrottlingRate`
++ `Input.dispatchMouseEvent` + `Page.setWebLifecycleState`), for confirming the
+WIRED renderer behavior against a real compositor that neither the `node`
+unit-tests nor the jsdom integration test can reproduce.
+
+> jsdom scoping note: `drag-recovery-dom.test.ts` does NOT mount the full
+> `DynamicTilingRenderer` — under jsdom `viewportSize` (from `ResizeObserver`) and
+> all drag geometry (`getBoundingClientRect`) are unavailable/zero, so a
+> pointer-driven drag cannot reach `dragging`. It mounts the smallest harness that
+> arms the SAME exported recovery primitives through real React effects against
+> real `[data-leaf-id]` DOM nodes; the renderer's own wiring of those primitives
+> is covered by typecheck + the existing renderer effects.
 
 ### 10.5 Verdict
 

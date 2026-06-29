@@ -98,12 +98,14 @@ import {
 } from "./ghost-transit";
 import {
   createDragWatchdog,
+  onTransitionSettled,
   scheduleFrameOrTimeout,
   stripTransientDragStyles,
   type DragWatchdog,
   type FrameOrTimeoutScheduler,
   type RacedFrameHandle,
   type TimerScheduler,
+  type TransitionSettledHandle,
   type TransientDragStyleTarget,
 } from "./drag-recovery";
 import {
@@ -3393,6 +3395,12 @@ export const DynamicTilingRenderer = React.forwardRef<
   const isDragRecoveryEnabled: boolean = interactionCapabilities.dragRecovery.enable;
   const dragRecoveryMaxIdleMs: number = interactionCapabilities.dragRecovery.maxDraggingIdleMs;
   const dragRecoveryFrameDeadlineMs: number = interactionCapabilities.dragRecovery.frameDeadlineMs;
+  // M2 transition-completion slack: the survivor-reflow clip-mask close fires on
+  // `transitionend` OR `survivorReflowDurationMs + transitionSlackMs`, whichever
+  // first (`onTransitionSettled`). Names the historical `+60` mask slack as a
+  // single typed knob; always read (M2 is a pure backstop, like M1).
+  const dragRecoveryTransitionSlackMs: number =
+    interactionCapabilities.dragRecovery.transitionSlackMs;
   const isFocusSelectionEnabled: boolean = interactionCapabilities.focus;
   const isMaximizeEnabled: boolean = interactionCapabilities.maximize.enable;
   const isTitleBarSizingEnabled: boolean =
@@ -3525,7 +3533,13 @@ export const DynamicTilingRenderer = React.forwardRef<
   // sized to the reflow duration so the clip mask returns once the glide lands.
   const [isSurvivorReflowAnimating, setIsSurvivorReflowAnimating] =
     React.useState<boolean>(false);
-  const survivorReflowEndTimerRef = React.useRef<number | null>(null);
+  // M2 transition-completion handle for the clip-mask close (replaces the bare
+  // `setTimeout(survivorReflowDurationMs + 60)`): closes the mask on the survivor
+  // `transitionend` OR the `duration + transitionSlackMs` starvation backstop,
+  // whichever first. Cancelable + re-armed per reflow batch.
+  const survivorReflowEndHandleRef = React.useRef<TransitionSettledHandle | null>(
+    null,
+  );
   // M4 idempotent transient-style teardown for the survivor leaves: clear any
   // residual FLIP transform/transition on every `[data-leaf-id]` element and
   // cancel the tracked WAAPI dips + the raced play handle. Safe to call on every
@@ -4193,17 +4207,26 @@ export const DynamicTilingRenderer = React.forwardRef<
     if (playableElements.length === 0) {
       return;
     }
-    // Open the clip mask (overflow-visible) for the glide, and (re)arm a timer to
-    // close it once the glide lands — extended on every reflow batch so a rapid
-    // open/close keeps the mask open for the whole sequence + tail.
+    // Open the clip mask (overflow-visible) for the glide, and (re)arm the M2
+    // transition-completion guard to close it once the glide lands — on the
+    // representative survivor's `transitionend` OR the
+    // `survivorReflowDurationMs + transitionSlackMs` starvation backstop,
+    // whichever first. Re-armed (cancel + re-arm) on every reflow batch so a
+    // rapid open/close keeps the mask open for the whole sequence + tail. In
+    // coherent-dip mode the survivors use WAAPI (no `transitionend`), so the
+    // timeout backstop closes the mask — identical to the historical `+60` timer.
     setIsSurvivorReflowAnimating(true);
-    if (survivorReflowEndTimerRef.current != null) {
-      window.clearTimeout(survivorReflowEndTimerRef.current);
-    }
-    survivorReflowEndTimerRef.current = window.setTimeout((): void => {
-      survivorReflowEndTimerRef.current = null;
-      setIsSurvivorReflowAnimating(false);
-    }, survivorReflowDurationMs + 60);
+    survivorReflowEndHandleRef.current?.cancel();
+    survivorReflowEndHandleRef.current = onTransitionSettled({
+      target: playableElements[playableElements.length - 1],
+      durationMs: survivorReflowDurationMs,
+      transitionSlackMs: dragRecoveryTransitionSlackMs,
+      scheduler: WINDOW_TIMER_SCHEDULER,
+      onSettled: (): void => {
+        survivorReflowEndHandleRef.current = null;
+        setIsSurvivorReflowAnimating(false);
+      },
+    });
     // Force the inverted transforms to paint before arming the transition, then
     // play every survivor to identity on the next frame (one rAF per batch).
     void viewport.getBoundingClientRect();
@@ -4273,16 +4296,15 @@ export const DynamicTilingRenderer = React.forwardRef<
     liveDragModeEnabled,
     survivorCoherentDipActive,
     dragRecoveryFrameDeadlineMs,
+    dragRecoveryTransitionSlackMs,
     viewportSize.width,
     viewportSize.height,
   ]);
-  // Clear the survivor-reflow clip-mask timer on unmount.
+  // Cancel the survivor-reflow clip-mask close guard (M2) on unmount.
   React.useEffect((): (() => void) => {
     return (): void => {
-      if (survivorReflowEndTimerRef.current != null) {
-        window.clearTimeout(survivorReflowEndTimerRef.current);
-        survivorReflowEndTimerRef.current = null;
-      }
+      survivorReflowEndHandleRef.current?.cancel();
+      survivorReflowEndHandleRef.current = null;
       for (const animation of survivorDipAnimationsRef.current) {
         animation.cancel();
       }
