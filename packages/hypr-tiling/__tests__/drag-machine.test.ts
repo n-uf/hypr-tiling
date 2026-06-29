@@ -29,6 +29,7 @@ import {
   shouldReresolveSeatedTarget,
   shouldPreserveSeatedTargetOnRelease,
 } from "../drag-machine";
+import { createDragWatchdog } from "../drag-recovery";
 import { collectGroups, findGroupContainingLeaf, findLeafById, groupLeaves, insertLeafAdjacent, readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../state";
 import type {
   DynamicDropAction,
@@ -235,6 +236,63 @@ describe("drag-machine — lifecycle transitions", (): void => {
     const settling: DragMachineState = dragMachineReducer(toDragging(), { type: "POINTER_UP", pointerId: 1 });
     const next: DragMachineState = dragMachineReducer(settling, pointerDown(2));
     expect(next.phase).toBe("armed");
+  });
+});
+
+describe("drag-machine — idle-watchdog force-reconcile (M3 → existing POINTER_CANCEL edge)", (): void => {
+  it("a watchdog expiry drives dragging → settling(cancel) → idle via POINTER_CANCEL (no new phase)", (): void => {
+    // Model the renderer wiring: the watchdog's onExpire dispatches the EXISTING
+    // POINTER_CANCEL event into the reducer. A drag that loses every terminal
+    // pointer event is force-reconciled to idle — the structural anti-stuck net
+    // for the one interruption class the enumerated edges did not previously
+    // cover (INV-R2), reusing the cancel edge rather than adding an FSM state.
+    let state: DragMachineState = toDragging();
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("C", "center", "swap") });
+
+    const scheduler: { setTimer: (cb: () => void, ms: number) => number; clearTimer: (h: number) => void } & {
+      fire: () => void;
+    } = (() => {
+      let pending: (() => void) | null = null;
+      return {
+        setTimer: (cb: () => void, _ms: number): number => {
+          pending = cb;
+          return 1;
+        },
+        clearTimer: (_h: number): void => {
+          pending = null;
+        },
+        fire: (): void => {
+          const cb: (() => void) | null = pending;
+          pending = null;
+          cb?.();
+        },
+      };
+    })();
+
+    let nowMs: number = 0;
+    const watchdog = createDragWatchdog({
+      maxIdleMs: 5100,
+      now: (): number => nowMs,
+      scheduler,
+      onExpire: (): void => {
+        state = dragMachineReducer(state, { type: "POINTER_CANCEL", pointerId: 1 });
+      },
+    });
+
+    watchdog.progress();
+    // No progress for longer than the idle deadline (monotonic), then the timer
+    // fires: the watchdog reconciles the wedged drag.
+    nowMs = 5100;
+    scheduler.fire();
+
+    expect(state.phase).toBe("settling");
+    if (state.phase === "settling") {
+      // Force-reconcile is always a CANCEL — never a half-committed state.
+      expect(state.outcome).toBe("cancel");
+      expect(state.resolvedTarget).toBeNull();
+    }
+    state = dragMachineReducer(state, { type: "SETTLE_DONE" });
+    expect(state.phase).toBe("idle");
   });
 });
 

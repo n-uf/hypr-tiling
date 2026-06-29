@@ -1,0 +1,366 @@
+import { describe, expect, it, jest } from "@jest/globals";
+import {
+  DRAG_RECOVERY_DEFAULT_FRAME_DEADLINE_MS,
+  DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS,
+  DRAG_RECOVERY_DEFAULT_TRANSITION_SLACK_MS,
+  DRAG_RECOVERY_MAX_DRAGGING_IDLE_HOP_MULTIPLE,
+  type CancelableHandle,
+  type FrameOrTimeoutScheduler,
+  type TransientDragStyleTarget,
+  type TransitionEndSource,
+  createDragWatchdog,
+  onTransitionSettled,
+  scheduleFrameOrTimeout,
+  stripTransientDragStyles,
+} from "../drag-recovery";
+
+/**
+ * Deterministic fake frame/timer scheduler + monotonic clock. The recovery
+ * primitives take an INJECTED scheduler (mirrors `createFrameCoalescer` +
+ * `FrameScheduler`), so the tests drive frames/timers explicitly rather than
+ * leaning on jest's global fake timers — every race is exercised by hand.
+ *
+ * The watchdog keeps exactly one armed timer at a time; `fireActiveTimer` /
+ * `fireActiveFrame` fire the most-recently-scheduled live handle, which is the
+ * one a real environment would deliver.
+ */
+interface FakeHandle {
+  id: number;
+  callback: () => void;
+  live: boolean;
+}
+
+class FakeScheduler implements FrameOrTimeoutScheduler {
+  private nextId: number = 1;
+  readonly timers: FakeHandle[] = [];
+  readonly frames: FakeHandle[] = [];
+
+  requestFrame = (callback: () => void): number => {
+    const id: number = this.nextId++;
+    this.frames.push({ id, callback, live: true });
+    return id;
+  };
+
+  cancelFrame = (handle: number): void => {
+    const frame: FakeHandle | undefined = this.frames.find((f: FakeHandle): boolean => f.id === handle);
+    if (frame != null) {
+      frame.live = false;
+    }
+  };
+
+  setTimer = (callback: () => void, _ms: number): number => {
+    const id: number = this.nextId++;
+    this.timers.push({ id, callback, live: true });
+    return id;
+  };
+
+  clearTimer = (handle: number): void => {
+    const timer: FakeHandle | undefined = this.timers.find((t: FakeHandle): boolean => t.id === handle);
+    if (timer != null) {
+      timer.live = false;
+    }
+  };
+
+  fireActiveFrame = (): void => {
+    const frame: FakeHandle | undefined = [...this.frames].reverse().find((f: FakeHandle): boolean => f.live);
+    if (frame != null) {
+      frame.live = false;
+      frame.callback();
+    }
+  };
+
+  fireActiveTimer = (): void => {
+    const timer: FakeHandle | undefined = [...this.timers].reverse().find((t: FakeHandle): boolean => t.live);
+    if (timer != null) {
+      timer.live = false;
+      timer.callback();
+    }
+  };
+
+  liveTimerCount = (): number => this.timers.filter((t: FakeHandle): boolean => t.live).length;
+  liveFrameCount = (): number => this.frames.filter((f: FakeHandle): boolean => f.live).length;
+}
+
+describe("drag-recovery — non-ad-hoc defaults (documented multiples)", (): void => {
+  it("maxDraggingIdleMs default is 30 × the 170ms baseline hop duration", (): void => {
+    expect(DRAG_RECOVERY_MAX_DRAGGING_IDLE_HOP_MULTIPLE).toBe(30);
+    expect(DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS).toBe(30 * 170);
+    expect(DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS).toBe(5100);
+  });
+
+  it("frameDeadlineMs default is ~2 frames and transitionSlackMs names the +60 slack", (): void => {
+    expect(DRAG_RECOVERY_DEFAULT_FRAME_DEADLINE_MS).toBe(32);
+    expect(DRAG_RECOVERY_DEFAULT_TRANSITION_SLACK_MS).toBe(60);
+  });
+});
+
+describe("drag-recovery — M1 scheduleFrameOrTimeout (rAF-with-timeout race, first-wins + idempotent)", (): void => {
+  it("runs the callback EXACTLY ONCE when the frame wins (timeout loser cancelled)", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const callback = jest.fn();
+    scheduleFrameOrTimeout(scheduler, 32, callback);
+
+    scheduler.fireActiveFrame();
+    expect(callback).toHaveBeenCalledTimes(1);
+    // The loser timer is cancelled, so firing it is a no-op (no double run).
+    expect(scheduler.liveTimerCount()).toBe(0);
+    scheduler.fireActiveTimer();
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs the callback EXACTLY ONCE when the timeout wins (starved frame fallback)", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const callback = jest.fn();
+    scheduleFrameOrTimeout(scheduler, 32, callback);
+
+    // Simulate a never-arriving rAF: the timeout fires first.
+    scheduler.fireActiveTimer();
+    expect(callback).toHaveBeenCalledTimes(1);
+    // The loser frame is cancelled, so a late resumed frame never double-runs.
+    expect(scheduler.liveFrameCount()).toBe(0);
+    scheduler.fireActiveFrame();
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancel() before either fires drops both handles and never runs the callback", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const callback = jest.fn();
+    const handle = scheduleFrameOrTimeout(scheduler, 32, callback);
+
+    handle.cancel();
+    expect(scheduler.liveTimerCount()).toBe(0);
+    expect(scheduler.liveFrameCount()).toBe(0);
+    scheduler.fireActiveFrame();
+    scheduler.fireActiveTimer();
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("cancel() after the run is a no-op (idempotent)", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const callback = jest.fn();
+    const handle = scheduleFrameOrTimeout(scheduler, 32, callback);
+
+    scheduler.fireActiveFrame();
+    handle.cancel();
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("drag-recovery — M3 createDragWatchdog (monotonic idle, re-arm on progress)", (): void => {
+  it("expires after maxIdleMs of inactivity and calls onExpire once", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    let nowMs: number = 0;
+    const onExpire = jest.fn();
+    const watchdog = createDragWatchdog({
+      maxIdleMs: 100,
+      now: (): number => nowMs,
+      scheduler,
+      onExpire,
+    });
+
+    watchdog.progress();
+    nowMs = 100;
+    scheduler.fireActiveTimer();
+    expect(onExpire).toHaveBeenCalledTimes(1);
+    // After expiry the watchdog disarms (no lingering timer).
+    expect(scheduler.liveTimerCount()).toBe(0);
+  });
+
+  it("re-arms (does NOT expire) when the timer fires but progress was recent (throttle-robust)", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    let nowMs: number = 0;
+    const onExpire = jest.fn();
+    const watchdog = createDragWatchdog({
+      maxIdleMs: 100,
+      now: (): number => nowMs,
+      scheduler,
+      onExpire,
+    });
+
+    watchdog.progress();
+    // A late/skewed timer fire that finds only 60ms of idle → re-arm, no expiry.
+    nowMs = 60;
+    scheduler.fireActiveTimer();
+    expect(onExpire).not.toHaveBeenCalled();
+    expect(scheduler.liveTimerCount()).toBe(1);
+
+    // The re-armed timer covers the remaining 40ms; fire it at the deadline.
+    nowMs = 100;
+    scheduler.fireActiveTimer();
+    expect(onExpire).toHaveBeenCalledTimes(1);
+  });
+
+  it("progress() resets the idle clock so a steadily-progressing drag never trips", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    let nowMs: number = 0;
+    const onExpire = jest.fn();
+    const watchdog = createDragWatchdog({
+      maxIdleMs: 100,
+      now: (): number => nowMs,
+      scheduler,
+      onExpire,
+    });
+
+    watchdog.progress();
+    nowMs = 90;
+    watchdog.progress();
+    // The first timer was cleared on re-arm; fire the live one at t=100: only
+    // 10ms idle since the last progress → re-arm, no expiry.
+    nowMs = 100;
+    scheduler.fireActiveTimer();
+    expect(onExpire).not.toHaveBeenCalled();
+  });
+
+  it("cancel() disarms the watchdog so a pending timer never expires", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    let nowMs: number = 0;
+    const onExpire = jest.fn();
+    const watchdog = createDragWatchdog({
+      maxIdleMs: 100,
+      now: (): number => nowMs,
+      scheduler,
+      onExpire,
+    });
+
+    watchdog.progress();
+    watchdog.cancel();
+    expect(scheduler.liveTimerCount()).toBe(0);
+    nowMs = 1000;
+    scheduler.fireActiveTimer();
+    expect(onExpire).not.toHaveBeenCalled();
+  });
+});
+
+/** A fake `transitionend` source recording listeners so the test can fire it. */
+class FakeTransitionEndSource implements TransitionEndSource {
+  private listeners: Array<() => void> = [];
+
+  addEventListener = (_type: "transitionend", listener: () => void): void => {
+    this.listeners.push(listener);
+  };
+
+  removeEventListener = (_type: "transitionend", listener: () => void): void => {
+    this.listeners = this.listeners.filter((l: () => void): boolean => l !== listener);
+  };
+
+  emit = (): void => {
+    for (const listener of [...this.listeners]) {
+      listener();
+    }
+  };
+
+  listenerCount = (): number => this.listeners.length;
+}
+
+describe("drag-recovery — M2 onTransitionSettled (transitionend OR duration+slack, whichever first)", (): void => {
+  it("settles on transitionend and detaches the timer + listener (idempotent)", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const target: FakeTransitionEndSource = new FakeTransitionEndSource();
+    const onSettled = jest.fn();
+    onTransitionSettled({ target, durationMs: 170, transitionSlackMs: 60, scheduler, onSettled });
+
+    target.emit();
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    expect(target.listenerCount()).toBe(0);
+    expect(scheduler.liveTimerCount()).toBe(0);
+    // A late timeout cannot double-settle.
+    scheduler.fireActiveTimer();
+    target.emit();
+    expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles via the timeout fallback when transitionend never fires (starvation backstop)", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const target: FakeTransitionEndSource = new FakeTransitionEndSource();
+    const onSettled = jest.fn();
+    onTransitionSettled({ target, durationMs: 170, transitionSlackMs: 60, scheduler, onSettled });
+
+    scheduler.fireActiveTimer();
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    expect(target.listenerCount()).toBe(0);
+  });
+
+  it("cancel() before completion never settles and detaches cleanly", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const target: FakeTransitionEndSource = new FakeTransitionEndSource();
+    const onSettled = jest.fn();
+    const handle = onTransitionSettled({ target, durationMs: 170, transitionSlackMs: 60, scheduler, onSettled });
+
+    handle.cancel();
+    expect(target.listenerCount()).toBe(0);
+    expect(scheduler.liveTimerCount()).toBe(0);
+    target.emit();
+    scheduler.fireActiveTimer();
+    expect(onSettled).not.toHaveBeenCalled();
+  });
+});
+
+/** A mutable style target mirroring a `CSSStyleDeclaration` subset. */
+function styleTarget(initial: Partial<TransientDragStyleTarget["style"]> = {}): TransientDragStyleTarget {
+  return {
+    style: {
+      transform: initial.transform ?? "none",
+      transition: initial.transition ?? "none",
+      transformOrigin: initial.transformOrigin ?? "",
+      willChange: initial.willChange ?? "auto",
+      contain: initial.contain ?? "",
+    },
+  };
+}
+
+describe("drag-recovery — M4 stripTransientDragStyles (idempotent teardown, every exit path)", (): void => {
+  it("clears transform/transition/transform-origin/will-change/contain on ghost + leaves", (): void => {
+    const ghost: TransientDragStyleTarget = styleTarget({
+      transform: "translate(40px, 10px) scale(0.9, 0.9)",
+      transition: "transform 170ms ease",
+      transformOrigin: "top left",
+      willChange: "transform",
+      contain: "paint",
+    });
+    const leaf: TransientDragStyleTarget = styleTarget({
+      transform: "translate(-12px, 0px)",
+      transition: "transform 170ms ease",
+    });
+
+    stripTransientDragStyles({ ghost, leaves: [leaf] });
+
+    expect(ghost.style.transform).toBe("none");
+    expect(ghost.style.transition).toBe("none");
+    expect(ghost.style.transformOrigin).toBe("");
+    expect(ghost.style.willChange).toBe("auto");
+    expect(ghost.style.contain).toBe("");
+    expect(leaf.style.transform).toBe("none");
+    expect(leaf.style.transition).toBe("none");
+  });
+
+  it("is idempotent — a second strip leaves the identity styles unchanged", (): void => {
+    const ghost: TransientDragStyleTarget = styleTarget({ transform: "scale(0.7, 0.7)" });
+    stripTransientDragStyles({ ghost, leaves: [] });
+    const afterFirst = { ...ghost.style };
+    stripTransientDragStyles({ ghost, leaves: [] });
+    expect(ghost.style).toEqual(afterFirst);
+  });
+
+  it("cancels tracked WAAPI animations + raced handles, skipping nulls", (): void => {
+    const animation: CancelableHandle = { cancel: jest.fn() };
+    const raced: CancelableHandle = { cancel: jest.fn() };
+    const ghost: TransientDragStyleTarget = styleTarget({ transform: "scale(0.7, 0.7)" });
+
+    stripTransientDragStyles({
+      ghost,
+      leaves: [null],
+      animations: [animation, null],
+      racedHandles: [raced, null],
+    });
+
+    expect(animation.cancel).toHaveBeenCalledTimes(1);
+    expect(raced.cancel).toHaveBeenCalledTimes(1);
+    expect(ghost.style.transform).toBe("none");
+  });
+
+  it("tolerates a null ghost (no in-flight ghost on this exit path)", (): void => {
+    const leaf: TransientDragStyleTarget = styleTarget({ transform: "translate(5px, 5px)" });
+    expect((): void => stripTransientDragStyles({ ghost: null, leaves: [leaf] })).not.toThrow();
+    expect(leaf.style.transform).toBe("none");
+  });
+});
