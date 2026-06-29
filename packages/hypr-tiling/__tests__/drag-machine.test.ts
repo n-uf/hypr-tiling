@@ -1,6 +1,8 @@
 import { describe, expect, it, jest } from "@jest/globals";
 import {
   DRAG_MACHINE_INITIAL_STATE,
+  activeDragSourceLeafId,
+  activeResolvedTarget,
   DRAG_PICKUP_THRESHOLD_PX,
   DRAG_TOUCH_SCROLL_ESCAPE_PX,
   DEFAULT_TOUCH_LONG_PRESS_MS,
@@ -20,6 +22,8 @@ import {
   isCommittableTarget,
   previousZoneSeed,
   resolveDragGhostSeatLeafId,
+  presentationDragSourceLeafId,
+  presentationResolvedTarget,
   resolveTouchArmedMove,
   shouldReserveDragSourceSlot,
   shouldReresolveSeatedTarget,
@@ -921,5 +925,37 @@ describe("drag-machine — release-time seated target preservation (gap release 
     if (state.phase === "settling") {
       expect(state.outcome).toBe("cancel");
     }
+  });
+});
+
+describe("drag-machine — presentation selectors extend through settling commit", (): void => {
+  const seatedSwap: DragResolvedTarget = makeTarget("B", "center", "swap");
+
+  it("presentationDragSourceLeafId holds source through settling commit", (): void => {
+    let state: DragMachineState = {
+      phase: "settling",
+      sourceLeafId: "A",
+      outcome: "commit",
+      resolvedTarget: seatedSwap,
+      fromFootprint: { left: 0, top: 0, width: 100, height: 100 },
+      toFootprint: { left: 0, top: 0, width: 100, height: 100 },
+    };
+    expect(presentationDragSourceLeafId(state)).toBe("A");
+    expect(activeDragSourceLeafId(state)).toBeNull();
+    state = { ...state, outcome: "cancel" };
+    expect(presentationDragSourceLeafId(state)).toBeNull();
+  });
+
+  it("presentationResolvedTarget holds target through settling commit", (): void => {
+    const state: DragMachineState = {
+      phase: "settling",
+      sourceLeafId: "A",
+      outcome: "commit",
+      resolvedTarget: seatedSwap,
+      fromFootprint: { left: 0, top: 0, width: 100, height: 100 },
+      toFootprint: { left: 0, top: 0, width: 100, height: 100 },
+    };
+    expect(presentationResolvedTarget(state)).toEqual(seatedSwap);
+    expect(activeResolvedTarget(state)).toBeNull();
   });
 });

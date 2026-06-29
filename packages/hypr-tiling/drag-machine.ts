@@ -708,3 +708,35 @@ export function activeDragSourceLeafId(state: DragMachineState): string | null {
 export function activeResolvedTarget(state: DragMachineState): DragResolvedTarget | null {
   return state.phase === "dragging" ? state.resolvedTarget : null;
 }
+
+/**
+ * Pickup-origin leaf for presentation gating. Extends through `settling` commit so
+ * hop-in reservation and empty-mode suppression do not flash off pre-commit.
+ */
+export function presentationDragSourceLeafId(
+  state: DragMachineState,
+): string | null {
+  if (state.phase === "dragging") {
+    return state.sourceLeafId;
+  }
+  if (state.phase === "settling" && state.outcome === "commit") {
+    return state.sourceLeafId;
+  }
+  return null;
+}
+
+/**
+ * Resolved target for presentation gating. Mirrors `activeResolvedTarget` but
+ * holds through `settling` commit for seat measurement continuity.
+ */
+export function presentationResolvedTarget(
+  state: DragMachineState,
+): DragResolvedTarget | null {
+  if (state.phase === "dragging") {
+    return state.resolvedTarget;
+  }
+  if (state.phase === "settling" && state.outcome === "commit") {
+    return state.resolvedTarget;
+  }
+  return null;
+}
