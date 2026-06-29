@@ -27,7 +27,7 @@ import {
   resolveTouchArmedMove,
   shouldReserveDragSourceSlot,
   shouldReresolveSeatedTarget,
-  shouldPreserveSeatedTargetOnRelease,
+  deriveCommittableSeat,
 } from "../drag-machine";
 import { createDragWatchdog } from "../drag-recovery";
 import { collectGroups, findGroupContainingLeaf, findLeafById, groupLeaves, insertLeafAdjacent, readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../state";
@@ -895,41 +895,47 @@ describe("drag-machine — fast drag-release commits at the release position (co
   });
 });
 
-describe("drag-machine — release-time seated target preservation (gap release regression)", (): void => {
+describe("drag-machine — committable-seat SSOT + atomic seated-release commit (dwell-then-release snap-back regression)", (): void => {
+  // The seated-then-release snap-back: a deliberate drag seats the dragged pane in
+  // a valid target slot (the ghost hops in and DWELLS there for multiple frames),
+  // then `pointerup` reverted the layout instead of committing. The renderer's
+  // RELEASE path used to RE-RESOLVE the drop target from the raw `pointerup`
+  // coordinates; that re-resolution could resolve `null` (cursor over a layout gap
+  // / off the gap-closed hit footprint) or a different target and clobber the
+  // seated committable target, so POINTER_UP settled as a cancel.
+  //
+  // Fix: the renderer captures the single authoritative committable seat
+  // synchronously on every processed sample via `deriveCommittableSeat`
+  // (`committableSeatRef`), and the release path commits THAT verbatim — it no
+  // longer re-resolves at release. POINTER_UP commits the seat (or cancels when it
+  // is `null`). These assertions pin both the capture rule and the resulting
+  // commit/cancel settle.
   const seatedSwap: DragResolvedTarget = makeTarget("C", "center", "swap");
 
-  it("preserves a committable seated target on release when fresh resolve is null", (): void => {
-    expect(
-      shouldPreserveSeatedTargetOnRelease(seatedSwap, null, "A", true),
-    ).toBe(true);
-    expect(
-      shouldPreserveSeatedTargetOnRelease(seatedSwap, null, "A", false),
-    ).toBe(false);
+  it("deriveCommittableSeat captures a committable swap / edge-insert / group-merge verbatim", (): void => {
+    expect(deriveCommittableSeat(seatedSwap, "A")).toBe(seatedSwap);
+    const edgeInsert: DragResolvedTarget = makeTarget("C", "right", "edge-insert");
+    expect(deriveCommittableSeat(edgeInsert, "A")).toBe(edgeInsert);
+    const groupMerge: DragResolvedTarget = makeTarget("C", "center", "group-merge");
+    expect(deriveCommittableSeat(groupMerge, "A")).toBe(groupMerge);
   });
 
-  it("preserves a committable seated target on release when fresh resolve is non-committable", (): void => {
-    expect(
-      shouldPreserveSeatedTargetOnRelease(
-        seatedSwap,
-        makeTarget("C", "center", "none"),
-        "A",
-        true,
-      ),
-    ).toBe(true);
+  it("deriveCommittableSeat returns null for null / non-committable / self-target (nothing to commit)", (): void => {
+    expect(deriveCommittableSeat(null, "A")).toBeNull();
+    expect(deriveCommittableSeat(makeTarget("C", "center", "none"), "A")).toBeNull();
+    // edge-insert with no resolved edge zone is non-committable.
+    const edgeNoZone: DragResolvedTarget = {
+      ...makeTarget("C", "center", "edge-insert"),
+      finalEdge: null,
+      selectedSplitZone: null,
+    };
+    expect(deriveCommittableSeat(edgeNoZone, "A")).toBeNull();
+    // self-target (source === target) is never committable.
+    expect(deriveCommittableSeat(makeTarget("A", "center", "swap"), "A")).toBeNull();
   });
 
-  it("does not preserve when release resolves a different committable target", (): void => {
-    expect(
-      shouldPreserveSeatedTargetOnRelease(
-        seatedSwap,
-        makeTarget("B", "center", "swap"),
-        "A",
-        true,
-      ),
-    ).toBe(false);
-  });
-
-  it("dragging with committable seated target: release-time null resolve still commits when target is preserved", (): void => {
+  it("dwell-then-release: the captured committable seat commits even though release-time re-resolution would have resolved null over a gap", (): void => {
+    // Pickup → threshold pickup → seat on a committable swap (the dwell).
     let state: DragMachineState = dragMachineReducer(
       DRAG_MACHINE_INITIAL_STATE,
       pointerDown(),
@@ -944,11 +950,18 @@ describe("drag-machine — release-time seated target preservation (gap release 
       pointerId: 1,
       resolvedTarget: seatedSwap,
     });
-    // Release sample over a gap would resolve null; renderer preserves seated.
+    // The seat the renderer captured at this dwell frame.
+    const committableSeat: DragResolvedTarget | null = deriveCommittableSeat(
+      activeResolvedTarget(state),
+      "A",
+    );
+    expect(committableSeat).toBe(seatedSwap);
+    // RELEASE: the renderer does NOT re-resolve the release coordinates (which over
+    // a gap would resolve null); it dispatches the captured committable seat.
     state = dragMachineReducer(state, {
       type: "TARGET_RESOLVED",
       pointerId: 1,
-      resolvedTarget: seatedSwap,
+      resolvedTarget: committableSeat,
     });
     state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
     expect(state.phase).toBe("settling");
@@ -958,7 +971,7 @@ describe("drag-machine — release-time seated target preservation (gap release 
     }
   });
 
-  it("mid-drag null target without release preservation settles as cancel", (): void => {
+  it("release over a genuinely non-committable position (no captured seat) settles as cancel", (): void => {
     let state: DragMachineState = dragMachineReducer(
       DRAG_MACHINE_INITIAL_STATE,
       pointerDown(),
@@ -968,15 +981,16 @@ describe("drag-machine — release-time seated target preservation (gap release 
       pointerId: 1,
       client: { x: 200, y: 200 },
     });
+    // The cursor is over a layout gap → the move policy clears the seat to null.
+    const committableSeat: DragResolvedTarget | null = deriveCommittableSeat(
+      null,
+      "A",
+    );
+    expect(committableSeat).toBeNull();
     state = dragMachineReducer(state, {
       type: "TARGET_RESOLVED",
       pointerId: 1,
-      resolvedTarget: seatedSwap,
-    });
-    state = dragMachineReducer(state, {
-      type: "TARGET_RESOLVED",
-      pointerId: 1,
-      resolvedTarget: null,
+      resolvedTarget: committableSeat,
     });
     state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
     expect(state.phase).toBe("settling");

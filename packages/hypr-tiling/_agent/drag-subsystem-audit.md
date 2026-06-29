@@ -190,7 +190,9 @@ pointermove (window, captured)
    ▼
 processPointerSample(client)                 [renderer input layer]
    │  resolvePointerTarget → DynamicDropState  (against STABLE hit footprints)
-   │  shouldReresolveSeatedTarget / shouldPreserveSeatedTargetOnRelease
+   │  shouldReresolveSeatedTarget   (move samples only — slot-commitment policy)
+   │  committableSeatRef ← deriveCommittableSeat(nextTarget)  (SSOT, every sample)
+   │  RELEASE sample: SKIP re-resolution, dispatch committableSeatRef verbatim
    ▼
 dispatchDrag(POINTER_MOVE / TARGET_RESOLVED) [coalesced ≤1 / animation frame]
    │
@@ -278,7 +280,7 @@ seat). Same rule, every surface.
 `presentationDragSourceLeafId`, `presentationResolvedTarget` (dragging **+
 settling-commit**); `deriveCandidateTree`, `resolveDragGhostSeatLeafId`,
 `isCommittableTarget`, `resolveCommitEdgeZone`, `shouldReserveDragSourceSlot`,
-`shouldReresolveSeatedTarget`, `shouldPreserveSeatedTargetOnRelease`,
+`shouldReresolveSeatedTarget`, `deriveCommittableSeat`,
 `previousZoneSeed`.
 
 ### 3.5 Verdict on the FSM: minimal + complete, KEEP AS-IS
@@ -385,7 +387,7 @@ hygiene gap, not a live bug.
 | I1 | Live mode: exactly ONE painted instance of the dragged pane (the ghost); its in-tree ghost-seat slot is a content-less reservation | `isGhostSeatReservation` → `render-reservation` overrides any `renderTile`; ghost is the only painted instance. Content-agnostic. | yes (`drag-presentation.test.ts`: exactly one reservation across surfaces, for `CONTENT` on AND off; `live-render-invariant.test.ts`) |
 | I1c | The CONTENT rule is uniform across all surfaces (in-tree, source slot, hop-in slot, ghost) and is the ONLY content delta | single pure `resolvePaneBodyRenderMode`; renderer + ghost shell both call it | yes (`drag-presentation.test.ts` (a)/(b)/(c)) |
 | I3 | Ghost seated rect == target seat rect (no drift) | seat-rect effect measures the reservation rect; body portal removes ancestor-frame drift | NOT directly tested (DOM measurement) |
-| I4 | Seated quick-release on a committable target commits there (incl. pointer-over-gap) | `shouldPreserveSeatedTargetOnRelease` | yes (`drag-machine.test.ts`) |
+| I4 | Seated release on a committable target commits there (incl. pointer-over-gap, AND incl. a deliberate multi-frame dwell-then-release) | `committableSeatRef` SSOT (renderer) written each sample via `deriveCommittableSeat`; release path commits it verbatim, never re-resolves | yes (`drag-machine.test.ts` — "committable-seat SSOT + atomic seated-release commit" describe) |
 | I5 | Fast flick with no painted dragging frame → instant commit, no origin→target glide | `shouldSnapSurvivorReflowOnSettleCommit` + same-task release resolve in input layer | yes (`fast-flick-survivor-reflow.test.ts`) |
 | I6 | Candidate tree == committed tree (no release-time jump) | both run `deriveCandidateTree` with identical args | yes (`live-render-invariant.test.ts`) |
 | I7 | When the ghost DOES paint a body (CONTENT on), it paints the live pane's rich `content` slot (not rows-only) | `buildDragPaneSnapshot` always captures `tile.content`; `renderDragPaneShell` paints it iff `isPaneContentVisible` (the uniform rule) | yes (`ghost-content-snapshot.test.ts`) |
@@ -456,7 +458,7 @@ once.
 | `8840952` coalescer release-resolve | resolve target on release before flush | **KEEP** | structural correctness for fast release |
 | `0ba901e` fast-flick survivor snap | `shouldSnapSurvivorReflowOnSettleCommit` + same-task inline resolve | **KEEP** | encodes I5; well-tested pure gate |
 | `72560e0` empty-mode hop-in reveal | `showInTreeHopIn`/`hopInLeafId` in-tree content reveal | **REMOVE** | reverted in product; left dead fields in the resolver struct + tests |
-| `7ed9307` seated-target preserve on gap release | `shouldPreserveSeatedTargetOnRelease` | **KEEP** | encodes I4; clean pure selector |
+| `7ed9307` seated-target preserve on gap release | `shouldPreserveSeatedTargetOnRelease` | **SUPERSEDED** | encoded I4 only for the gap-release sub-case by re-resolving release coords and comparing freshTarget-vs-seatedTarget; it could not catch the **dwell-then-release** case (see §8.1) because by release time the move-sample policy had already clobbered `current.resolvedTarget`. Replaced by the `committableSeatRef` SSOT + `deriveCommittableSeat`. |
 | `1c68c5f` presentation resolver | `resolveDragPresentation` + settling-commit selectors | **FOLD** | the SSOT idea is right; trim to consumed fields + absorb the chrome-zone decision |
 | `cc23956` wire policy + scoped seat + edge chrome guard | wired resolver into render branch; scoped seat measure; edge chrome | **FOLD + FIX** | keep the wiring; the scoped seat selector `[data-leaf-id] [data-drag-source-reservation]` never matched (reserved slot emits no `data-leaf-id`) → ghost never hopped; fixed by emitting `data-leaf-id` on the reserved wrapper (see §0.1) |
 
@@ -471,6 +473,79 @@ once.
 - `cc23956`'s edge-chrome guard was folded into `dropChromeZone` inside the
   resolver (the SSOT), so the chrome-zone decision no longer lives at the call
   site.
+
+---
+
+## 8.1 Dwell-then-release snap-back — diagnosis + committable-seat SSOT redesign
+
+### Symptom
+
+A deliberate (non-flick) drag seats the dragged pane in a valid target slot; the
+ghost hops in and DWELLS there for ~0.6 s (multiple painted frames) with the
+seat indicator centered, yet `pointerup` REVERTS the layout instead of
+committing the swap. Distinct from the fast-flick visual glide (`0ba901e`, I5)
+and the coalescer dropped-frame race (`8840952`).
+
+### Root cause — architectural, not a localized bug
+
+The commit/cancel outcome was derived from **release-time re-resolution of the
+raw `pointerup` coordinates**, not from a single authoritative record of the
+slot the user was shown hopped into. Two compounding seams in
+`dynamic-tiling-renderer.tsx`'s `processPointerSample` dragging branch:
+
+1. The release path ran the SAME `resolvePointerTarget(client.x, client.y, …)`
+   used by move samples, then dispatched the result. Over a layout gap or off
+   the **gap-closed** hit footprint (hit-testing runs on the source-removed
+   reflowed tree, which differs from the displayed candidate layout), the raw
+   release point can resolve `null` or a different, non-committable target.
+2. The `shouldPreserveSeatedTargetOnRelease` guard (`7ed9307`) tried to rescue
+   this by comparing the freshly-resolved release target against
+   `current.resolvedTarget` (the "seated" target). But `current.resolvedTarget`
+   is the FSM state read back through `dragStateRef`, and during a long dwell
+   the move-sample slot-commitment policy (`shouldReresolveSeatedTarget` →
+   `delta-responsive`) can already have re-resolved the seat to a different /
+   null target on a sub-pixel cursor drift BEFORE release. The guard's notion of
+   "seated" was therefore not guaranteed to be the committable slot last painted.
+
+Invariant violated: **I4 — a release while seated on a committable target must
+commit there.** There was no single source of truth for "the committable seat";
+the commit decision raced release-time re-resolution against a
+possibly-already-clobbered FSM target.
+
+### Redesign — `committableSeatRef` single source of truth + atomic release commit
+
+- `drag-machine.ts`: `shouldPreserveSeatedTargetOnRelease` (the re-resolve-and-
+  compare guard) is removed; replaced by the pure `deriveCommittableSeat(target,
+  sourceLeafId)` → returns the target verbatim iff `isCommittableTarget`, else
+  `null`. One rule, no release/move-sample branching.
+- `dynamic-tiling-renderer.tsx`: a renderer-scoped `committableSeatRef`
+  (`React.useRef<DynamicDropState | null>`) is written **synchronously on every
+  processed sample** (armed-promotion pickup, touch long-press promotion, and
+  each dragging move sample) to `deriveCommittableSeat(nextTarget, …)`. Being a
+  ref written in the sample task, it carries no passive-effect lag (unlike
+  `dragStateRef`). Cleared at settle.
+- The RELEASE sample short-circuits: it dispatches `POINTER_MOVE` (to land the
+  ghost at the release point) then `TARGET_RESOLVED` with `committableSeatRef`
+  **verbatim**, and returns early — it never re-resolves the release
+  coordinates. `POINTER_UP` then commits the seat (or cancels iff it is `null`,
+  i.e. the user genuinely dwelled over a non-committable position).
+
+This makes the commit atomic with respect to what was last painted: the slot the
+ghost visibly occupied IS the slot committed. FLIP direction is unaffected — it
+already derives from committed candidate data (I6), not transient transform
+state.
+
+### Invariant → test mapping (new)
+
+`drag-machine.test.ts` describe "committable-seat SSOT + atomic seated-release
+commit (dwell-then-release snap-back regression)":
+- `deriveCommittableSeat` captures committable swap / edge-insert / group-merge
+  verbatim; returns `null` for null / non-committable / edge-without-zone /
+  self-target.
+- dwell-then-release: the captured seat commits even though release-time
+  re-resolution would have resolved `null` over a gap (I4).
+- release over a genuinely non-committable position (no captured seat) settles
+  as cancel (I4 negative case — the SSOT does not over-commit).
 
 ---
 

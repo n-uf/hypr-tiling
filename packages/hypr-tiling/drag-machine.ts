@@ -414,28 +414,30 @@ export function shouldReresolveSeatedTarget(params: {
 }
 
 /**
- * Release-time slot preservation (Hyprland-style). When the ghost is seated on a
- * committable target, do not clobber it if release coords resolve null or a
- * non-committable target — a quick flick off the slot still commits the seated
- * drop. During move samples this returns false so the slot-commitment policy
- * governs re-aim.
+ * The single authoritative committable seat captured from a freshly-resolved
+ * target during `dragging`. Returns the target verbatim iff it is a committable
+ * drop for `sourceLeafId`, else `null`.
+ *
+ * The renderer mirrors this into a synchronous ref (`committableSeatRef`) on
+ * EVERY processed pointer sample, so the RELEASE path commits the exact seat the
+ * ghost was shown hopped into WITHOUT re-resolving the release coordinates.
+ * Release-time re-resolution is the snap-back hazard this closes: re-resolving
+ * the drop target from the raw `pointerup` coordinates can resolve `null` (the
+ * cursor is over a layout gap or off the gap-closed hit footprint) or a different
+ * target, clobbering the seated committable target, so `POINTER_UP` settles as a
+ * cancel and the deliberately-seated drop reverts. Because the ref is written
+ * synchronously in the same task as the move/release sample, it is also immune to
+ * the React passive-effect lag of the FSM-state mirror (`dragStateRef`).
+ *
+ * Pairs with `isCommittableTarget` (the commit predicate `dragMachineReducer`
+ * applies at `POINTER_UP`): `deriveCommittableSeat` is the capture rule, the
+ * latter is the settle predicate, and both read the same `DragResolvedTarget`.
  */
-export function shouldPreserveSeatedTargetOnRelease(
-  seatedTarget: DragResolvedTarget | null,
-  freshTarget: DragResolvedTarget | null,
+export function deriveCommittableSeat(
+  resolvedTarget: DragResolvedTarget | null,
   sourceLeafId: string,
-  isReleaseSample: boolean,
-): boolean {
-  if (!isReleaseSample || seatedTarget == null) {
-    return false;
-  }
-  if (!isCommittableTarget(seatedTarget, sourceLeafId)) {
-    return false;
-  }
-  if (freshTarget == null) {
-    return true;
-  }
-  return !isCommittableTarget(freshTarget, sourceLeafId);
+): DragResolvedTarget | null {
+  return isCommittableTarget(resolvedTarget, sourceLeafId) ? resolvedTarget : null;
 }
 
 /**

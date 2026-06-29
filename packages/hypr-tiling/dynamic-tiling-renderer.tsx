@@ -39,7 +39,7 @@ import {
   resolveDragGhostSeatLeafId,
   resolveTouchArmedMove,
   shouldReresolveSeatedTarget,
-  shouldPreserveSeatedTargetOnRelease,
+  deriveCommittableSeat,
   type DragMachinePoint,
   type DragMachineState,
   type DragPointerType,
@@ -3490,6 +3490,15 @@ export const DynamicTilingRenderer = React.forwardRef<
   // The cursor position captured when the current slot became seated — the
   // anchor the `delta-responsive` commitment policy measures re-aim travel from.
   const seatAnchorRef = React.useRef<DragMachinePoint | null>(null);
+  // The single authoritative committable seat — the slot the drop commits to,
+  // written synchronously on every processed pointer sample via
+  // `deriveCommittableSeat`. The RELEASE path commits THIS verbatim instead of
+  // re-resolving the drop target from the `pointerup` coordinates, so a seated
+  // committable drop can never be clobbered to a cancel by release-time
+  // re-resolution (over a gap / off the gap-closed hit footprint). Being a ref
+  // written in the sample task, it is also free of the passive-effect lag that
+  // `dragStateRef` carries. Cleared at settle. See `drag-machine.ts`.
+  const committableSeatRef = React.useRef<DynamicDropState | null>(null);
   // Survivor-reflow FLIP bookkeeping. `previousLeafRectsRef` holds each surviving
   // leaf's clean (transform-stripped) client rect from the previous commit — the
   // FLIP `First` for an at-rest reflow. Kept fresh on EVERY commit (even idle) so
@@ -5935,12 +5944,38 @@ export const DynamicTilingRenderer = React.forwardRef<
               isCommittableTarget(firstTarget, current.sourceLeafId)
                 ? { x: client.x, y: client.y }
                 : null;
+            committableSeatRef.current = deriveCommittableSeat(
+              firstTarget,
+              current.sourceLeafId,
+            );
             dispatchDrag({
               type: "TARGET_RESOLVED",
               pointerId: owningPointerId,
               resolvedTarget: firstTarget,
             });
           } else if (current.phase === "dragging") {
+            // RELEASE: commit the single authoritative committable seat atomically.
+            // Do NOT re-resolve the drop target from the release coordinates — a
+            // seated committable drop must not be clobbered to a cancel because the
+            // raw `pointerup` point resolves `null` (cursor over a layout gap / off
+            // the gap-closed hit footprint) or a different target. The seat ref is
+            // written synchronously on every move sample below, so it always holds
+            // the slot the user was shown hopped into; `POINTER_UP` then commits it
+            // (or cancels when it is `null`). This is the snap-back / seated-release
+            // fix — see `drag-machine.ts:deriveCommittableSeat`.
+            if (isReleaseSample) {
+              dispatchDrag({
+                type: "POINTER_MOVE",
+                pointerId: owningPointerId,
+                client,
+              });
+              dispatchDrag({
+                type: "TARGET_RESOLVED",
+                pointerId: owningPointerId,
+                resolvedTarget: committableSeatRef.current,
+              });
+              return;
+            }
             dispatchDrag({
               type: "POINTER_MOVE",
               pointerId: owningPointerId,
@@ -5963,15 +5998,6 @@ export const DynamicTilingRenderer = React.forwardRef<
             // hysteresis, so the two dampers never double-count.
             let nextTarget: DynamicDropState | null = freshTarget;
             if (
-              shouldPreserveSeatedTargetOnRelease(
-                seatedTarget,
-                freshTarget,
-                current.sourceLeafId,
-                isReleaseSample,
-              )
-            ) {
-              nextTarget = seatedTarget;
-            } else if (
               seatedTarget != null &&
               isCommittableTarget(seatedTarget, current.sourceLeafId)
             ) {
@@ -6006,6 +6032,12 @@ export const DynamicTilingRenderer = React.forwardRef<
             } else {
               seatAnchorRef.current = null;
             }
+            // Capture the committable seat synchronously so the RELEASE path
+            // commits it verbatim without re-resolving the release coordinates.
+            committableSeatRef.current = deriveCommittableSeat(
+              nextTarget,
+              current.sourceLeafId,
+            );
             dispatchDrag({
               type: "TARGET_RESOLVED",
               pointerId: owningPointerId,
@@ -6073,6 +6105,10 @@ export const DynamicTilingRenderer = React.forwardRef<
           isCommittableTarget(firstTarget, held.sourceLeafId)
             ? { x: held.originClient.x, y: held.originClient.y }
             : null;
+        committableSeatRef.current = deriveCommittableSeat(
+          firstTarget,
+          held.sourceLeafId,
+        );
         dispatchDrag({
           type: "TARGET_RESOLVED",
           pointerId: owningPointerId,
@@ -6246,6 +6282,7 @@ export const DynamicTilingRenderer = React.forwardRef<
     }
     dragSnapshotRef.current = null;
     seatAnchorRef.current = null;
+    committableSeatRef.current = null;
     setSeatFootprint(null);
     onLiveHitLogChange?.(null);
     didPaintDraggingFrameRef.current = false;
