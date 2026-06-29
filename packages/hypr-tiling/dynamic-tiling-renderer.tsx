@@ -49,6 +49,7 @@ import {
 import {
   isDragPresentationActive,
   resolveDragPresentation,
+  resolvePaneBodyRenderMode,
 } from "./drag-presentation";
 import type {
   DynamicDropIntentHitZoneDiagnostics,
@@ -707,7 +708,11 @@ export function resolveLeafDropPreviewForMode(
   return resolveLeafDropPreview(leafId, dragSourceLeafId, dropState);
 }
 
-export { isDragPresentationActive, resolveDragPresentation } from "./drag-presentation";
+export {
+  isDragPresentationActive,
+  resolveDragPresentation,
+  resolvePaneBodyRenderMode,
+} from "./drag-presentation";
 
 type DynamicSplitDividerRenderMode =
   | "render-divider-absent"
@@ -814,7 +819,9 @@ export function buildDragPaneSnapshot(
   tile: DynamicTile,
 ): DynamicDragPaneSnapshot {
   // Snapshot always comes from canonical tile payload, never from visibility
-  // presentation state (`render-placeholder` / `render-reservation`).
+  // presentation state (`render-empty` / `render-reservation`). Whether the
+  // ghost actually paints this captured content is decided later by the uniform
+  // CONTENT rule in `renderDragPaneShell`.
   return {
     tileId: tile.id,
     title: tile.title,
@@ -828,7 +835,15 @@ export function buildDragPaneSnapshot(
 function renderDragPaneShell(
   snapshot: DynamicDragPaneSnapshot,
   theme: TilingTheme,
+  isPaneContentVisible: boolean,
 ): React.ReactElement {
+  // The ghost is just another representation of a pane, so its body obeys the
+  // SAME content rule as an in-tree pane body: content visible → paint content;
+  // content hidden → empty body, frame + header chrome preserved. No
+  // drag-specific branch — `resolvePaneBodyRenderMode(false, …)` because the
+  // ghost is the single painted instance, never a ghost-seat reservation.
+  const shouldRenderGhostContent: boolean =
+    resolvePaneBodyRenderMode(false, isPaneContentVisible) === "render-content";
   return (
     <article
       className={cn(
@@ -871,18 +886,20 @@ function renderDragPaneShell(
           theme.ghost.bodyText,
         )}
       >
-        {snapshot.content != null
-          ? snapshot.content
-          : snapshot.rows.map(
-              (row: string, rowIndex: number): React.ReactElement => (
-                <div
-                  key={`${snapshot.tileId}-drag-row-${rowIndex}`}
-                  className="whitespace-pre-wrap break-words"
-                >
-                  {row}
-                </div>
-              ),
-            )}
+        {shouldRenderGhostContent
+          ? snapshot.content != null
+            ? snapshot.content
+            : snapshot.rows.map(
+                (row: string, rowIndex: number): React.ReactElement => (
+                  <div
+                    key={`${snapshot.tileId}-drag-row-${rowIndex}`}
+                    className="whitespace-pre-wrap break-words"
+                  >
+                    {row}
+                  </div>
+                ),
+              )
+          : null}
       </div>
     </article>
   );
@@ -1003,6 +1020,7 @@ function DragPaneOverlay({
   coherentDipActive,
   swapBounceMagnitude,
   prefersReducedMotion,
+  isPaneContentVisible,
 }: {
   dragVisualState: DynamicDragVisualState | null;
   dragHopDurationMs: number;
@@ -1011,6 +1029,7 @@ function DragPaneOverlay({
   coherentDipActive: boolean;
   swapBounceMagnitude: number;
   prefersReducedMotion: boolean;
+  isPaneContentVisible: boolean;
 }): React.ReactElement | null {
   const theme: TilingTheme = useTilingTheme();
   const nodeRef = React.useRef<HTMLDivElement | null>(null);
@@ -1254,7 +1273,11 @@ function DragPaneOverlay({
               : "transition-[opacity,box-shadow] duration-150",
           )}
         >
-          {renderDragPaneShell(dragVisualState.snapshot, theme)}
+          {renderDragPaneShell(
+            dragVisualState.snapshot,
+            theme,
+            isPaneContentVisible,
+          )}
         </div>
       </div>
     </OverlayPortal>
@@ -1498,8 +1521,10 @@ function DragCursorOverlay({
 
 function DragCancelOverlay({
   cancelVisualState,
+  isPaneContentVisible,
 }: {
   cancelVisualState: DynamicDragCancelVisualState | null;
+  isPaneContentVisible: boolean;
 }): React.ReactElement | null {
   const theme: TilingTheme = useTilingTheme();
   const [isAnimating, setIsAnimating] = React.useState<boolean>(false);
@@ -1549,7 +1574,11 @@ function DragCancelOverlay({
         aria-hidden
       >
         <div className="h-full w-full shadow-[0_18px_34px_rgba(2,6,23,0.5)]">
-          {renderDragPaneShell(cancelVisualState.snapshot, theme)}
+          {renderDragPaneShell(
+            cancelVisualState.snapshot,
+            theme,
+            isPaneContentVisible,
+          )}
         </div>
       </div>
     </OverlayPortal>
@@ -1878,7 +1907,6 @@ function PaneTitleBarControls({
 function DefaultDynamicTile({
   leafId,
   tile,
-  paneOrdinal,
   paneWidthPx,
   paneBodyRenderMode,
   isDragSource,
@@ -2203,19 +2231,7 @@ function DefaultDynamicTile({
                   ),
                 )}
           </React.Fragment>
-        ) : (
-          <div
-            key="pane-content-hidden"
-            className="flex h-full min-h-0 flex-col items-center justify-center text-center font-mono uppercase"
-          >
-            <div className="text-[11px] font-semibold tracking-[0.14em] text-slate-300">
-              Pane {paneOrdinal}
-            </div>
-            <div className="mt-1 text-[9px] tracking-[0.12em] text-slate-500">
-              content hidden
-            </div>
-          </div>
-        )}
+        ) : null}
       </div>
     </article>
   );
@@ -2406,13 +2422,10 @@ function buildDraggingLiveHitLogState(params: {
     params.leafFootprintsById.get(params.dragSourceLeafId) ?? null;
   const presentationFields: Pick<
     DynamicLiveHitLogState,
-    | "ghostSeatLeafId"
-    | "presentationDropAction"
-    | "suppressSourceContentInEmptyMode"
+    "ghostSeatLeafId" | "presentationDropAction"
   > = {
     ghostSeatLeafId: params.ghostSeatLeafId,
     presentationDropAction: params.dropState?.action ?? null,
-    suppressSourceContentInEmptyMode: true,
   };
 
   if (params.dropState == null) {
@@ -6302,10 +6315,11 @@ export const DynamicTilingRenderer = React.forwardRef<
           moveModeState != null && moveModeState.targetLeafId === node.id
             ? moveModeState.placement
             : null;
-        // Live mode: ghost-seat slot = hop-in reservation the single ghost fills.
-        // Preview mode keeps the literal pickup-origin dim affordance.
+        // Drag presentation is CONTENT-AGNOSTIC: the resolver decides the
+        // ghost-seat reservation + role flags purely from drag mechanics, with
+        // no reference to the CONTENT toggle. Live mode: ghost-seat slot = the
+        // content-less hop-in reservation the single ghost fills.
         const leafPresentation = resolveDragPresentation({
-          isPaneContentVisible,
           liveDragModeEnabled,
           dragPhase: dragState.phase,
           settlingOutcome: dragSettlingOutcome,
@@ -6323,8 +6337,14 @@ export const DynamicTilingRenderer = React.forwardRef<
           ? leafPresentation.isGhostSeatLeaf
           : leafPresentation.isPickupOriginLeaf &&
             dragState.phase === "dragging";
+        // The uniform pane-body rule: a ghost-seat reservation is a content-less
+        // seat (drag mechanic); every other slot honors the CONTENT toggle
+        // identically to a resting pane.
         const paneBodyRenderMode: DynamicPaneBodyRenderMode =
-          leafPresentation.paneBodyRenderMode;
+          resolvePaneBodyRenderMode(
+            leafPresentation.isGhostSeatReservation,
+            isPaneContentVisible,
+          );
         const isDropTargetLeaf: boolean =
           dropState?.leafId === node.id && dropState.action !== "none";
         // The drop-target chrome zone (edge-insert-vs-center already resolved in
@@ -7141,7 +7161,10 @@ export const DynamicTilingRenderer = React.forwardRef<
             }
           />
         ) : null}
-        <DragCancelOverlay cancelVisualState={cancelVisualState} />
+        <DragCancelOverlay
+          cancelVisualState={cancelVisualState}
+          isPaneContentVisible={isPaneContentVisible}
+        />
         <DragPaneOverlay
           dragVisualState={dragVisualState}
           dragHopDurationMs={ghostTransitDurationMs}
@@ -7157,6 +7180,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           })}
           swapBounceMagnitude={swapBounceMagnitude}
           prefersReducedMotion={prefersReducedMotion}
+          isPaneContentVisible={isPaneContentVisible}
         />
         {dragCursorEnabled ? (
           <DragCursorOverlay

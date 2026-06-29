@@ -1042,7 +1042,7 @@ export interface DynamicRenderTileArgs {
 export type DynamicLeafDropZone = "center" | "left" | "right" | "top" | "bottom";
 export type DynamicPaneBodyRenderMode =
   | "render-content"
-  | "render-placeholder"
+  | "render-empty"
   | "render-reservation";
 export type DynamicMovePlacement = "left" | "right" | "top" | "bottom";
 export type DynamicFocusDirection = "left" | "right" | "up" | "down";
@@ -1118,8 +1118,6 @@ export interface DynamicLiveHitLogState {
   ghostSeatLeafId?: string | null;
   /** Resolved drop action for the active hover target (observability). */
   presentationDropAction?: DynamicDropAction | null;
-  /** Whether pickup-origin content is suppressed in empty live drag. */
-  suppressSourceContentInEmptyMode?: boolean;
 }
 
 export interface DynamicPaneHitZoneCandidateDebugState {

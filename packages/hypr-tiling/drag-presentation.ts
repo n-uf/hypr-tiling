@@ -12,7 +12,6 @@ export type DragPresentationPhase = DragMachineState["phase"];
 export type DragSettlingOutcome = "commit" | "cancel" | null;
 
 export interface DragPresentationInput {
-  isPaneContentVisible: boolean;
   liveDragModeEnabled: boolean;
   dragPhase: DragPresentationPhase;
   settlingOutcome: DragSettlingOutcome;
@@ -29,11 +28,17 @@ export interface DragPresentationInput {
 }
 
 /**
- * The single presentation fact set every drag surface reads. Trimmed to ONLY
- * the fields a consumer reads — there is exactly one source for each decision:
+ * The single drag-presentation fact set every drag surface reads. This struct is
+ * CONTENT-AGNOSTIC: nothing here branches on `isPaneContentVisible`. Drag
+ * presentation is decided purely by drag mechanics (which leaf is the
+ * pickup-origin, which is the ghost-seat). Whether a pane body paints content is
+ * the separate, drag-independent CONTENT rule (`resolvePaneBodyRenderMode`),
+ * applied uniformly to every representation of a pane (in-tree, source slot,
+ * hop-in slot, ghost).
  *
- * - `paneBodyRenderMode` — what the leaf's body paints (content / placeholder /
- *   content-less reservation the ghost hops into).
+ * - `isGhostSeatReservation` — this leaf's body is the content-less seat the
+ *   single ghost hops into (the reservation drag mechanic). True only in live
+ *   mode for the ghost-seat leaf while the gesture is materially in flight.
  * - `isPickupOriginLeaf` / `isGhostSeatLeaf` — leaf-role flags the drag-source
  *   chrome reads.
  * - `dropChromeZone` — the zone the drop-target chrome renders, already
@@ -41,7 +46,7 @@ export interface DragPresentationInput {
  *   when this leaf is not a live drop target.
  */
 export interface DragPresentationMode {
-  paneBodyRenderMode: DynamicPaneBodyRenderMode;
+  isGhostSeatReservation: boolean;
   isPickupOriginLeaf: boolean;
   isGhostSeatLeaf: boolean;
   dropChromeZone: DynamicLeafDropZone | null;
@@ -90,10 +95,11 @@ function resolveDropChromeZone(input: DragPresentationInput): DynamicLeafDropZon
 }
 
 /**
- * Central resolver for drag presentation: per-leaf body render mode, the
+ * Central resolver for drag presentation: the ghost-seat reservation flag, the
  * pickup-origin / ghost-seat role flags, and the drop-target chrome zone. The
- * single source of truth consumed by every surface (the leaf body, the
- * drag-source chrome, the drop-target chrome).
+ * single source of truth consumed by every drag surface — and it is fully
+ * content-agnostic (no `isPaneContentVisible` input), so its output is identical
+ * whether pane content is shown or hidden.
  */
 export function resolveDragPresentation(
   input: DragPresentationInput,
@@ -108,28 +114,41 @@ export function resolveDragPresentation(
     input.ghostSeatLeafId != null && input.leafId === input.ghostSeatLeafId;
 
   // The ghost-seat slot reserves a content-less seat the single ghost hops into
-  // (live mode). The picked-up content lives ONLY in the ghost, so the seat slot
-  // never paints it — preserving the single-instance invariant.
-  const shouldRenderReservation: boolean =
+  // (live mode). The picked-up pane lives ONLY in the ghost, so the seat slot is
+  // never a second painted instance — preserving the single-instance invariant.
+  // This is a drag mechanic, decided without any reference to content state.
+  const isGhostSeatReservation: boolean =
     input.liveDragModeEnabled && isPresentationActive && isGhostSeatLeaf;
-  // Preview mode has no ghost, so the pickup-origin leaf reveals its own content
-  // in place even when global content is hidden (the inverse of live mode).
-  const isPreviewDragSourceReveal: boolean =
-    isPresentationActive && !input.liveDragModeEnabled && isPickupOriginLeaf;
-
-  let paneBodyRenderMode: DynamicPaneBodyRenderMode;
-  if (shouldRenderReservation) {
-    paneBodyRenderMode = "render-reservation";
-  } else if (input.isPaneContentVisible || isPreviewDragSourceReveal) {
-    paneBodyRenderMode = "render-content";
-  } else {
-    paneBodyRenderMode = "render-placeholder";
-  }
 
   return {
-    paneBodyRenderMode,
+    isGhostSeatReservation,
     isPickupOriginLeaf,
     isGhostSeatLeaf,
     dropChromeZone: resolveDropChromeZone(input),
   };
+}
+
+/**
+ * The ONE pane-body content rule, applied identically to every representation of
+ * a pane (in-tree pane at rest, drag source slot, hop-in / new slot, and the
+ * portaled drag ghost):
+ *
+ * - ghost-seat reservation → `render-reservation` (a content-less seat; a drag
+ *   mechanic, never carries content regardless of the CONTENT toggle).
+ * - otherwise the body honors the CONTENT toggle: `render-content` when content
+ *   is visible, `render-empty` when hidden (the pane frame + header chrome stay;
+ *   only the body is emptied — no placeholder text).
+ *
+ * `isGhostSeatReservation` is always `false` for the ghost (it is the single
+ * painted instance, never a seat), so the ghost simply paints content iff
+ * `isPaneContentVisible` — exactly like a resting in-tree pane.
+ */
+export function resolvePaneBodyRenderMode(
+  isGhostSeatReservation: boolean,
+  isPaneContentVisible: boolean,
+): DynamicPaneBodyRenderMode {
+  if (isGhostSeatReservation) {
+    return "render-reservation";
+  }
+  return isPaneContentVisible ? "render-content" : "render-empty";
 }

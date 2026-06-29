@@ -4,11 +4,82 @@ Scope: the live-drag rearrange pipeline of `@hypr-tiling` — the drag FSM
 (`drag-machine.ts`), geometry seams (`survivor-reflow.ts`, `ghost-transit.ts`,
 `leaf-geometry.ts`, `drop-intent-resolver.ts`), the presentation resolver
 (`drag-presentation.ts`), and the renderer orchestration that consumes them
-(`dynamic-tiling-renderer.tsx`). HEAD audited: `cc23956`.
+(`dynamic-tiling-renderer.tsx`).
 
 The audit was performed by reading the FSM / geometry modules in full and the
-7225-line renderer in targeted ranges around the drag / presentation / FLIP code
-paths (never the whole file at once).
+~7200-line renderer in targeted ranges around the drag / presentation / FLIP
+code paths (never the whole file at once).
+
+---
+
+## 0. CONTENT-AGNOSTIC DRAG CORRECTION (canonical model)
+
+> This section SUPERSEDES every content-conditioned drag rule that earlier
+> revisions of this doc taught (the "empty-mode" special-casing). It is the only
+> rule. Sections below have been brought into line with it; where an older
+> passage still describes content-branching drag, this section wins.
+
+The top-bar `CONTENT` checkbox (`isPaneContentVisible`) is a **simple,
+drag-INDEPENDENT toggle of whether a pane renders content INSIDE its body**:
+
+- `CONTENT` ON  → pane body renders its content.
+- `CONTENT` OFF → pane body renders **empty** (no content, no placeholder text),
+  but the pane **frame + header/title chrome stay shown**. Only the BODY is
+  emptied.
+
+This ONE rule is applied **uniformly to every representation of a pane**:
+in-tree panes at rest, the drag **source** slot, the **hop-in / ghost-seat**
+slot, AND the portaled drag **ghost**. It lives in exactly one pure function,
+`resolvePaneBodyRenderMode(isGhostSeatReservation, isPaneContentVisible)`:
+
+```
+resolvePaneBodyRenderMode(isGhostSeatReservation, isPaneContentVisible)
+   reservation  if isGhostSeatReservation         // drag mechanic, content-agnostic
+   content      if isPaneContentVisible            // the uniform CONTENT rule
+   empty        otherwise                          // frame+header kept, body empty
+```
+
+**Drag presentation is content-agnostic.** `resolveDragPresentation` has **no
+`isPaneContentVisible` input** — its output (the ghost-seat reservation flag, the
+pickup-origin / ghost-seat role flags, the drop chrome zone) is identical whether
+content is shown or hidden. The ghost, the source slot, and the ghost-seat
+(hop-in) slot behave **identically regardless of `CONTENT` state**; the only
+delta is whether the pane body happens to paint content — the same delta a
+resting pane already has, produced solely by `resolvePaneBodyRenderMode`.
+
+The **ghost body** honors `isPaneContentVisible` exactly like an in-tree pane
+body: `renderDragPaneShell` paints the captured snapshot content iff content is
+visible, else an empty-bodied ghost frame. There is NO drag-specific content
+branch anywhere.
+
+**Reservation mechanic kept (orthogonal to content).** The single portaled ghost
++ the content-less ghost-seat reservation it hops into is a **drag mechanic** —
+the "exactly one painted instance of the dragged pane" invariant. It is
+preserved unchanged; the reservation is content-less by drag mechanic (so the
+ghost is the only instance), and whatever content that single instance shows is
+governed solely by the uniform `CONTENT` rule.
+
+### Content-OFF body decision (flagged for the operator)
+
+When `CONTENT` is OFF the pane body renders **empty** — no content and no
+"CONTENT HIDDEN" / "Pane N" placeholder text — preserving the pane frame +
+header/title chrome. The header (title) is left as-is; only the BODY is emptied.
+If a labeled placeholder is wanted instead, that is a one-line change in
+`DefaultDynamicTile`'s body branch (and the matching ghost branch).
+
+### What was ROLLED BACK from the older content-conditioned model
+
+- "pickup-origin never shows content in empty mode" — removed.
+- "ghost is the sole content carrier in empty mode" — removed (ghost now follows
+  the uniform rule; in empty mode the ghost is an empty-bodied frame).
+- empty-mode hop-in content reveal — removed.
+- `isPreviewDragSourceReveal` (preview-mode empty content reveal) — removed;
+  preview-mode panes honor `CONTENT` uniformly like any pane.
+- the **I2 invariant** ("pickup-origin never paints content in empty live mode")
+  and all tests asserting content-checkbox-conditioned drag/ghost/source/hop-in
+  behavior — removed/replaced.
+- `resolveDragPresentation` no longer takes `isPaneContentVisible`.
+- the dead `suppressSourceContentInEmptyMode` hit-log telemetry field — removed.
 
 ---
 
@@ -94,24 +165,35 @@ dragMachineReducer  ──►  DragMachineState { phase:"dragging", resolvedTarg
    │        ▼
    │   DragPaneOverlay (the single ghost) — free-follow OR hop into seatFootprint
    │
-   └─► resolveDragPresentation(per leaf) ─► paneBodyRenderMode per slot
-            render-content | render-placeholder | render-reservation
+   └─► resolveDragPresentation(per leaf) ─► isGhostSeatReservation (drag mechanic)
+            │
+            ▼
+       resolvePaneBodyRenderMode(isGhostSeatReservation, isPaneContentVisible)
+            render-reservation | render-content | render-empty   (uniform rule)
 ```
 
-### 2.2 Presentation derivation (single leaf)
+### 2.2 Presentation derivation (single leaf) — content-agnostic
 
 ```
-resolveDragPresentation(input)            [drag-presentation.ts]
+resolveDragPresentation(input)            [drag-presentation.ts]  ← NO content input
    ├─ isDragPresentationActive(phase, settlingOutcome)   ← timing extension
-   ├─ isPickupOriginLeaf  = leafId === pickupOriginLeafId
-   ├─ isGhostSeatLeaf     = leafId === ghostSeatLeafId
-   ├─ shouldRenderReservation = live && active && isGhostSeatLeaf
-   ├─ isPreviewDragSourceReveal = active && !live && isPickupOriginLeaf
-   └─ paneBodyRenderMode:
-        reservation  if shouldRenderReservation
-        content      if isPaneContentVisible || isPreviewDragSourceReveal
-        placeholder  otherwise
+   ├─ isPickupOriginLeaf       = leafId === pickupOriginLeafId
+   ├─ isGhostSeatLeaf          = leafId === ghostSeatLeafId
+   ├─ isGhostSeatReservation   = live && active && isGhostSeatLeaf   ← drag mechanic
+   └─ dropChromeZone           = resolveDropChromeZone(input)
+
+resolvePaneBodyRenderMode(isGhostSeatReservation, isPaneContentVisible)  ← the ONE
+   reservation  if isGhostSeatReservation                content rule, applied at
+   content      if isPaneContentVisible                  every surface (in-tree
+   empty        otherwise                                pane, source slot, hop-in
+                                                          slot, AND the ghost)
 ```
+
+The renderer composes the two: the per-leaf branch calls
+`resolvePaneBodyRenderMode(leafPresentation.isGhostSeatReservation,
+isPaneContentVisible)`; the ghost shell calls
+`resolvePaneBodyRenderMode(false, isPaneContentVisible)` (the ghost is never a
+seat). Same rule, every surface.
 
 ---
 
@@ -188,93 +270,61 @@ containing block) is closed structurally by the body portal.
 
 ---
 
-## 5. The full presentation matrix
+## 5. The presentation matrix (content-agnostic)
 
-Cells give `paneBodyRenderMode` for the named surface. Inputs:
-`content` = `isPaneContentVisible`; `live` = `liveDragModeEnabled`. Phase is
-`dragging` unless noted. Surfaces: **origin** = pickup-origin leaf; **seat** =
-ghost-seat leaf (swap→target, edge-insert→source); **other** = uninvolved leaf.
+The matrix has TWO independent axes that were previously (wrongly) entangled:
 
-### 5.1 Live mode (`live = true`)
+1. **Drag-mechanic axis** — `resolveDragPresentation`, decided WITHOUT content.
+   Gives `isGhostSeatReservation` (+ role flags + chrome zone) per surface.
+2. **Content axis** — `resolvePaneBodyRenderMode`, the uniform `CONTENT` rule.
+   Maps `(isGhostSeatReservation, isPaneContentVisible)` → body render mode.
 
-| Scenario | content | origin | seat | other | Ghost | In tree? |
-|---|---|---|---|---|---|---|
-| swap | visible | reservation* | reservation | content | yes | origin gap-closed; seat=target reserved |
-| swap | empty | placeholder | reservation | placeholder | yes | as above |
-| edge-insert | visible | reservation | reservation* | content | yes | seat=origin (source rides in) |
-| edge-insert | empty | reservation | reservation* | placeholder | yes | seat=origin |
-| no target / gap | visible | (gap-closed: origin absent) | — | content | yes (free-follow) | origin removed from tree |
-| no target / gap | empty | (gap-closed: origin absent) | — | placeholder | yes (free-follow) | origin removed |
-| group-merge | visible | reservation* | reservation | content | yes | seat=target (member) |
-| settling-commit | either | held via `settlingCommitCandidate` | reservation (active extends) | per content | **none** (showGhost false) | committed tree held one frame |
-| settling-cancel | either | content/placeholder (layout restored) | — | per content | fly-back overlay | original layout |
+Inputs: `live` = `liveDragModeEnabled`. Phase is `dragging` unless noted.
+Surfaces: **origin** = pickup-origin leaf; **seat** = ghost-seat leaf
+(swap→target, edge-insert→source); **other** = uninvolved leaf.
 
-\* For swap, the **origin** leaf in the candidate tree carries the *displaced*
-target content and renders normally — it is the **seat** (target) leaf that is
-reserved. For edge-insert/group-merge the **origin** IS the seat. The "origin =
-reservation" cells above describe the *gap-closed* origin slot only when origin
-== seat; otherwise origin renders the displaced content. This conditional is the
-single most error-prone part of the matrix and is exactly what
-`resolveDragGhostSeatLeafId` exists to disambiguate.
+### 5.1 Drag-mechanic axis (live mode, `live = true`) — content NOT an input
 
-### 5.2 Preview mode (`live = false`)
+| Scenario | origin `isGhostSeatReservation` | seat `isGhostSeatReservation` | other | Ghost | In tree? |
+|---|---|---|---|---|---|
+| swap | false (gap-closed; carries displaced target content) | **true** | false | yes | origin gap-closed; seat=target reserved |
+| edge-insert | **true** (origin IS the seat) | **true** (= origin) | false | yes | seat=origin (source rides in) |
+| no target / gap | (gap-closed: origin absent) | — | false | yes (free-follow) | origin removed from tree |
+| group-merge | false | **true** | false | yes | seat=target (member) |
+| settling-commit | held via `settlingCommitCandidate` | **true** (active extends) | false | **none** | committed tree held one frame |
+| settling-cancel | false (layout restored) | — | false | fly-back overlay | original layout |
 
-| Scenario | content | origin | seat | other |
-|---|---|---|---|---|
-| any | visible | content (dim affordance) | content | content |
-| any | empty | **content** (preview reveal) | content | placeholder |
+For swap, the **origin** leaf in the candidate tree carries the *displaced*
+target content and is NOT a reservation — only the **seat** (target) is. For
+edge-insert/group-merge the **origin** IS the seat. `resolveDragGhostSeatLeafId`
+disambiguates which leaf is the seat. **None of this references content.**
 
-The empty-mode **preview reveal** (`isPreviewDragSourceReveal`) deliberately
-shows the origin's content while dragging in preview mode — this is the inverse
-of live mode and is correct (preview has no ghost to carry the content).
+Preview mode (`live = false`): no ghost, so `isGhostSeatReservation` is `false`
+for every surface — there are no reservations at all.
 
-### 5.3 Contradictions + redundant gates found
+### 5.2 Content axis — the uniform `resolvePaneBodyRenderMode` rule
 
-1. **DEAD output fields (redundant gates).** `resolveDragPresentation` returns
-   11 fields; only 4 are consumed by any production surface
-   (`paneBodyRenderMode`, `isGhostSeatLeaf`, `isPickupOriginLeaf`,
-   `preferEdgeInsertChrome`). The other 7 — `showGhost`, `showInTreeHopIn`,
-   `hopInLeafId`, `suppressSourceContentInEmptyMode`, `isActionZoneMismatch`,
-   and the two are referenced ONLY by `drag-presentation.test.ts`. Confirmed by
-   grep across the whole package. They are vestigial accretion from
-   `72560e0`/`1c68c5f`/`cc23956`.
-   - `showGhost` duplicates the ghost-visibility decision the renderer already
-     makes via `dragVisualState != null` (`phase === "dragging"`). Two sources
-     for one fact.
-   - `showInTreeHopIn` + `hopInLeafId` are the remnants of the reverted
-     `72560e0` "in-tree hop-in reveal" — never wired to a consumer.
-   - `suppressSourceContentInEmptyMode` is shadowed by the actual mechanism:
-     empty-mode origin suppression happens through
-     `paneBodyRenderMode === "render-placeholder"` (driven by
-     `isPaneContentVisible === false`), NOT by this flag. The flag is asserted
-     in tests but changes nothing at render time.
-   - `isActionZoneMismatch` is computed and folded into `preferEdgeInsertChrome`
-     internally; exposing it separately is redundant.
+Applied identically to EVERY surface (in-tree pane, source slot, hop-in slot,
+ghost), at both `live` modes:
 
-2. **Redundant second entry point.** `resolvePaneBodyRenderMode` re-wraps
-   `resolveDragPresentation` with synthetic leaf ids (`"slot"`/`"other"`). It is
-   imported by the renderer (line 51) and re-exported (line 712) but **never
-   called** by the render branch — that calls `resolveDragPresentation`
-   directly. It is alive only for `drag-presentation.test.ts` + the public API.
-   Two ways to compute the same render mode = the redundant gate the
-   architecture rule warns against.
+| `isGhostSeatReservation` | `isPaneContentVisible` | body render mode |
+|---|---|---|
+| true | (either) | `render-reservation` (content-less seat) |
+| false | true | `render-content` |
+| false | false | `render-empty` (frame+header kept, body empty) |
 
-3. **Tangled consumer ternary.** The `effectiveDropZone` derivation
-   (renderer 6333–6349) is a 4-deep nested ternary mixing
-   `preferEdgeInsertChrome`, `dropState.zone`, and `dropState.dominantEdge`.
-   The resolver claims to be the presentation SSOT but the chrome-zone decision
-   lives at the call site, not in the resolver. The SSOT boundary is leaky.
+The ghost passes `isGhostSeatReservation = false` (it is the single instance,
+never a seat), so the ghost paints content iff `isPaneContentVisible` — exactly
+like a resting pane. Content presence is the ONLY delta between `CONTENT` on and
+off, and it is the same delta a resting pane has.
 
-4. **Closed-union over-width.** `DynamicDropAction` includes
-   `split-container-insert`, which the drag resolver never produces and which
-   `deriveCandidateTree` / `resolveDragGhostSeatLeafId` / `isCommittableTarget`
-   silently treat as gap-close. Unreachable at the drag layer — a closed-union
-   hygiene gap, not a live bug.
+### 5.3 Remaining type-hygiene note
 
-No *behavioral* contradiction was found in the consumed cells — the matrix is
-correct where it is read. The defect is **over-derivation**: the SSOT emits a
-wide struct, half of which is dead, while the one decision that should live in
-it (chrome zone) is computed at the call site.
+**Closed-union over-width.** `DynamicDropAction` includes
+`split-container-insert`, which the drag resolver never produces and which
+`deriveCandidateTree` / `resolveDragGhostSeatLeafId` / `isCommittableTarget`
+silently treat as gap-close. Unreachable at the drag layer — a closed-union
+hygiene gap, not a live bug.
 
 ---
 
@@ -282,19 +332,22 @@ it (chrome zone) is computed at the call site.
 
 | # | Invariant | Enforced by | Tested |
 |---|---|---|---|
-| I1 | Live mode: exactly ONE visible dragged-content instance (the ghost) | `shouldReserveDragSourceSlot` + `render-reservation` overrides any `renderTile`; ghost is the only content painter | partial (pure layer: `drag-presentation.test.ts`, `live-render-invariant.test.ts`) |
-| I2 | Empty mode: pickup-origin leaf NEVER shows dragged content | origin slot resolves to `render-placeholder` (gap-closed) or `render-reservation` (when origin==seat); never `render-content` while `live && !content` | partial |
+| I1 | Live mode: exactly ONE painted instance of the dragged pane (the ghost); its in-tree ghost-seat slot is a content-less reservation | `isGhostSeatReservation` → `render-reservation` overrides any `renderTile`; ghost is the only painted instance. Content-agnostic. | yes (`drag-presentation.test.ts`: exactly one reservation across surfaces, for `CONTENT` on AND off; `live-render-invariant.test.ts`) |
+| I1c | The CONTENT rule is uniform across all surfaces (in-tree, source slot, hop-in slot, ghost) and is the ONLY content delta | single pure `resolvePaneBodyRenderMode`; renderer + ghost shell both call it | yes (`drag-presentation.test.ts` (a)/(b)/(c)) |
 | I3 | Ghost seated rect == target seat rect (no drift) | seat-rect effect measures the reservation rect; body portal removes ancestor-frame drift | NOT directly tested (DOM measurement) |
 | I4 | Seated quick-release on a committable target commits there (incl. pointer-over-gap) | `shouldPreserveSeatedTargetOnRelease` | yes (`drag-machine.test.ts`) |
 | I5 | Fast flick with no painted dragging frame → instant commit, no origin→target glide | `shouldSnapSurvivorReflowOnSettleCommit` + same-task release resolve in input layer | yes (`fast-flick-survivor-reflow.test.ts`) |
 | I6 | Candidate tree == committed tree (no release-time jump) | both run `deriveCandidateTree` with identical args | yes (`live-render-invariant.test.ts`) |
-| I7 | Ghost content == live pane content (rich `content` slot, not rows-only) | `buildDragPaneSnapshot` captures `tile.content` | yes (`ghost-content-snapshot.test.ts`) |
+| I7 | When the ghost DOES paint a body (CONTENT on), it paints the live pane's rich `content` slot (not rows-only) | `buildDragPaneSnapshot` always captures `tile.content`; `renderDragPaneShell` paints it iff `isPaneContentVisible` (the uniform rule) | yes (`ghost-content-snapshot.test.ts`) |
 
-Gaps: I1/I2/I3 have NO test that exercises the resolver as a **single source
-consumed by every surface** — i.e. a test asserting that for a fixed
-`(content, action, phase)` the per-surface render modes are mutually consistent
-(exactly one content painter; origin never content in empty live). The current
-`drag-presentation.test.ts` checks fields in isolation, including the dead ones.
+Note: the snapshot ALWAYS captures the content slot regardless of the `CONTENT`
+toggle (sourcing is content-agnostic); whether the ghost renders that content is
+the uniform `CONTENT` rule applied to the ghost shell. When `CONTENT` is off the
+ghost is an empty-bodied frame, matching every in-tree pane.
+
+Gap: I3 (ghost seated rect == target seat rect) has NO direct test (it is a DOM
+`getBoundingClientRect` measurement). I1 / I1c are now pinned at the resolver +
+uniform-rule layer (`drag-presentation.test.ts`).
 
 ---
 
@@ -326,12 +379,12 @@ consumed by every surface** — i.e. a test asserting that for a fixed
    over-patch smell.
 
 4. **Ghost disappearance on commit frame.** During `settling+commit`,
-   `showGhost`/`dragVisualState` are false/null (ghost gone) while the seat
-   reservation is still painted content-less for one frame, covered by the fact
-   that the committed layout lands same-frame and the reservation slot becomes
-   real content. This works in practice but is the fragile seam: it depends on
-   React applying `onLayoutChange` synchronously enough that no empty-reservation
-   frame is visible. No test guards it.
+   `dragVisualState` is null (ghost gone) while the seat reservation is still
+   painted content-less for one frame, covered by the fact that the committed
+   layout lands same-frame and the reservation slot becomes a real pane (whose
+   body then follows the uniform `CONTENT` rule). This works in practice but is
+   the fragile seam: it depends on React applying `onLayoutChange` synchronously
+   enough that no empty-reservation frame is visible. No test guards it.
 
 5. **Seat measure is a layout effect** keyed on the resolve triple +
    `displayLayout` + viewport (NOT per cursor move). Runs after candidate DOM
@@ -357,66 +410,56 @@ once.
 | `1c68c5f` presentation resolver | `resolveDragPresentation` + settling-commit selectors | **FOLD** | the SSOT idea is right; trim to consumed fields + absorb the chrome-zone decision |
 | `cc23956` wire policy + scoped seat + edge chrome guard | wired resolver into render branch; scoped seat measure; edge chrome | **FOLD** | keep the wiring; move the edge-chrome ternary into the resolver |
 
-### Patches that fight each other
+### Patches that fought each other (now resolved)
 
-- `72560e0` (hop-in reveal) vs the single-instance invariant: the reveal would
-  paint in-tree content while the ghost also paints it → two instances. It was
-  reverted in behavior but its **output fields survived** in
-  `DragPresentationMode` and are still asserted by tests, so the test suite now
-  pins dead behavior. This is the clearest "patches fighting" residue.
-- `cc23956`'s edge-chrome guard (`preferEdgeInsertChrome`) computes
-  `isActionZoneMismatch` inside the resolver AND re-derives the same zone logic
-  in the renderer ternary — the guard is half in the SSOT, half at the call
+- `72560e0` (hop-in reveal) and the broader "empty-mode" content special-casing
+  fought the single-instance + content-toggle semantics: they conditioned
+  drag/ghost/source/hop-in presentation on `isPaneContentVisible`. This entire
+  class of branching was **rolled back** in the content-agnostic correction
+  (§0). Drag presentation no longer reads content; the body-content decision is
+  the uniform `resolvePaneBodyRenderMode` rule applied at every surface.
+- `cc23956`'s edge-chrome guard was folded into `dropChromeZone` inside the
+  resolver (the SSOT), so the chrome-zone decision no longer lives at the call
   site.
 
 ---
 
-## 9. Verdict — TARGETED REFACTOR (not ground-up redesign)
+## 9. Verdict — content-agnostic drag (correction landed)
 
 The FSM, candidate-tree core, and all five geometry seams are principled,
-minimal, and well-tested. A ground-up redesign would be destructive
-over-build: there is no structural defect in the core to justify it. The prior
-subagent's read ("FSM/candidate core solid, presentation over-patched") is
-confirmed independently here.
+minimal, and well-tested, and were left **untouched** by this correction. The
+work was confined to the drag **presentation** layer.
 
-The defect is localized to **`drag-presentation.ts` + its two call sites**: the
-SSOT struct is over-derived (7 of 11 fields dead), has a redundant second entry
-point, and leaks its one genuinely-needed decision (chrome zone) to the
-renderer's tangled ternary.
+### What the correction did
 
-### Concrete delta (the refactor)
+1. **`resolveDragPresentation` is now content-agnostic.** Removed
+   `isPaneContentVisible` from `DragPresentationInput`. Its output is
+   `{ isGhostSeatReservation, isPickupOriginLeaf, isGhostSeatLeaf, dropChromeZone }`
+   — pure drag mechanics, identical whether content is shown or hidden.
+2. **One uniform body-content rule.** `resolvePaneBodyRenderMode(
+   isGhostSeatReservation, isPaneContentVisible)` is the single function that
+   maps to `render-reservation` / `render-content` / `render-empty`. The
+   renderer's per-leaf branch and the ghost shell BOTH call it — same rule, every
+   surface (in-tree pane, source slot, hop-in slot, ghost).
+3. **Ghost honors `CONTENT`.** `renderDragPaneShell` takes `isPaneContentVisible`
+   and paints the captured snapshot content iff visible, else an empty-bodied
+   ghost frame — no drag-specific branch.
+4. **Content-OFF body is empty** (no content, no placeholder/"content hidden"
+   text), frame + header chrome preserved. Renamed the body mode
+   `render-placeholder` → `render-empty` to match.
+5. **Removed dead/contradictory state.** `isPreviewDragSourceReveal`,
+   the `suppressSourceContentInEmptyMode` hit-log telemetry field, and the I2
+   invariant + its tests are gone. The reservation + single-portaled-ghost
+   mechanism and the "exactly one painted instance" invariant are KEPT (a drag
+   mechanic, orthogonal to content).
+6. **Tests** assert: (a) drag presentation identical for `CONTENT` on vs off;
+   (b) ghost honors `CONTENT`; (c) the no-double-paint single-reservation
+   invariant; the seated quick-release / fast-flick / candidate==commit suites
+   (`drag-machine.test.ts`, `fast-flick-survivor-reflow.test.ts`,
+   `live-render-invariant.test.ts`) are content-independent and unchanged.
 
-1. **Collapse `DragPresentationMode` to consumed fields only**:
-   `paneBodyRenderMode`, `isPickupOriginLeaf`, `isGhostSeatLeaf`, and a new
-   typed `dropChromeZone: DynamicLeafDropZone | null` that absorbs the
-   `effectiveDropZone` ternary (renderer 6333–6349). Remove `showGhost`,
-   `showInTreeHopIn`, `hopInLeafId`, `suppressSourceContentInEmptyMode`,
-   `isActionZoneMismatch`, `preferEdgeInsertChrome` from the output (fold the
-   last into `dropChromeZone`).
-2. **Remove `resolvePaneBodyRenderMode`** (the legacy adapter) — make
-   `resolveDragPresentation` the single entry point. Migrate its test cases onto
-   `resolveDragPresentation`.
-3. **Name the settling-commit presentation phase once.** Introduce a typed
-   `DragPresentationPhase` selector (`"inactive" | "active"` derived from
-   `isDragPresentationActive`) consumed by the resolver, the seat effect, and
-   the settling-commit hold — so the concept lives in one place instead of three
-   ad-hoc `phase === "settling" && outcome === "commit"` checks.
-4. **Encode the invariants as resolver-level tests** (§6 gaps): for each
-   `(content, action, phase)` assert the per-surface render-mode tuple satisfies
-   I1 (exactly one content painter) and I2 (origin never content in empty live).
-5. **Type hygiene**: keep `split-container-insert` out of the drag path or add
-   an explicit exhaustive `never` guard so the unreachable union member is
-   documented at compile time.
+### Remaining type-hygiene follow-up (not blocking)
 
-Net: ~remove 7 dead fields + 1 dead function, +1 typed field, +1 phase
-selector, +1 invariant test file. No change to the FSM, candidate tree, or
-geometry seams. Behavior at every consumed cell of the §5 matrix is preserved.
-
-### Scope guard
-
-This audit found the work is **confined to the drag presentation layer**. No
-need to extend into the FSM, geometry, or unrelated renderer areas. The product
-rules (single-instance ghost, empty-mode origin suppression, seated quick
-release, fast-flick instant commit, no seat drift) are already satisfied by the
-core; the refactor makes them *legible and test-pinned* rather than changing
-them.
+`split-container-insert` stays in `DynamicDropAction` though the drag resolver
+never produces it — an explicit exhaustive `never` guard would document the
+unreachable union member at compile time. Tracked, not done here.
