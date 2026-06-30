@@ -36,6 +36,7 @@ export type { TilingProjectedLandingOverlay, TilingProjectedLandingSubject } fro
  * unit-tested directly.
  */
 
+/** @internal */
 export const PLACEMENT_BY_DROP_ZONE: Record<TilingEdgeZone, TilingMovePlacement> = {
   left: "left",
   right: "right",
@@ -46,6 +47,7 @@ export const PLACEMENT_BY_DROP_ZONE: Record<TilingEdgeZone, TilingMovePlacement>
 /**
  * Project the post-drop layout tree using the exact reducers used at commit
  * time (`swapLeafTiles` / `insertLeafAdjacent`), so overlay geometry == result.
+ * @internal
  */
 export function resolveProjectedDropLayout(
   layout: TilingLayoutNode,
@@ -191,6 +193,7 @@ function resolveInsertLandingOverlays(
  * Resolve the projected landing overlays for the current drag/drop state, keyed
  * by the subject taxonomy. Footprints are derived from `projectedLayout` (the
  * actual post-drop reducer tree), so what is drawn equals what will commit.
+ * @internal
  */
 export function resolveProjectedLandingOverlays(
   layout: TilingLayoutNode,

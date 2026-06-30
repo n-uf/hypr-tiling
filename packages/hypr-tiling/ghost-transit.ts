@@ -16,7 +16,7 @@
 
 import type { TilingDropAction } from "./types";
 
-/** A measured client-coordinate rect (the subset of `DOMRect` the morph needs). */
+/** A measured client-coordinate rect (the subset of `DOMRect` the morph needs). @internal */
 export interface GhostRect {
   readonly left: number;
   readonly top: number;
@@ -24,7 +24,7 @@ export interface GhostRect {
   readonly height: number;
 }
 
-/** A client-coordinate point (a pointer-anchor offset within the ghost box). */
+/** A client-coordinate point (a pointer-anchor offset within the ghost box). @internal */
 export interface GhostPoint {
   readonly x: number;
   readonly y: number;
@@ -34,6 +34,7 @@ export interface GhostPoint {
  * The FLIP morph transform applied to the ghost: `translate(tx, ty) scale(sx,
  * sy)` with `transform-origin: top left`, which paints a node laid out at `last`
  * back at `first`. Playing it to identity eases the node to `last`.
+ * @internal
  */
 export interface GhostMorphTransform {
   readonly tx: number;
@@ -42,21 +43,26 @@ export interface GhostMorphTransform {
   readonly sy: number;
 }
 
-/** Min / max / default for the ghost pickup scale (percent of the source bbox). */
+/** Min / max / default for the ghost pickup scale (percent of the source bbox). @internal */
 export const GHOST_PICKUP_SCALE_MIN_PERCENT: number = 10;
+/** @internal */
 export const GHOST_PICKUP_SCALE_MAX_PERCENT: number = 150;
+/** @internal */
 export const DEFAULT_GHOST_PICKUP_SCALE_PERCENT: number = 90;
 
-/** Sub-pixel translate / scale no-op gates (match the survivor + current-hop epsilons). */
+/** Sub-pixel translate / scale no-op gates (match the survivor + current-hop epsilons). @internal */
 export const GHOST_MORPH_TRANSLATE_EPSILON_PX: number = 0.5;
+/** @internal */
 export const GHOST_MORPH_SCALE_EPSILON: number = 0.002;
 
-/** Mid-transit scale both swap boxes dip to so crossing paths never visually collide. */
+/** Mid-transit scale both swap boxes dip to so crossing paths never visually collide. @internal */
 export const COHERENT_TRANSIT_MID_SCALE: number = 0.7;
 
-/** Min / max / default for the swap-landing bounce magnitude (percent of full overshoot). */
+/** Min / max / default for the swap-landing bounce magnitude (percent of full overshoot). @internal */
 export const SWAP_BOUNCE_MIN_PERCENT: number = 0;
+/** @internal */
 export const SWAP_BOUNCE_MAX_PERCENT: number = 100;
+/** @internal */
 export const DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT: number = 0;
 
 /**
@@ -64,22 +70,23 @@ export const DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT: number = 0;
  * overshoot (the curve reduces to easeOutCubic); larger `s` overshoots further
  * past the landing before settling. `3` gives a pronounced — but still bounded —
  * bounce at 100 %.
+ * @internal
  */
 export const SWAP_BOUNCE_MAX_OVERSHOOT: number = 3;
 
-/** Sample count for `buildBounceEasingCss` (resolution of the `linear()` curve). */
+/** Sample count for `buildBounceEasingCss` (resolution of the `linear()` curve). @internal */
 export const SWAP_BOUNCE_SAMPLE_COUNT: number = 20;
 
-/** Fraction of the hop after which the magnetic ease snaps into the slot (last ~15%). */
+/** Fraction of the hop after which the magnetic ease snaps into the slot (last ~15%). @internal */
 export const MAGNETIC_EASE_SPLIT: number = 0.85;
 
 /** Distance fraction covered by the end of the magnetic decel segment (the rest snaps in). */
 const MAGNETIC_EASE_SPLIT_VALUE: number = 0.8;
 
-/** Default sample count for `buildLinearEasingCss` (resolution of the `linear()` curve). */
+/** Default sample count for `buildLinearEasingCss` (resolution of the `linear()` curve). @internal */
 export const MAGNETIC_EASE_SAMPLE_COUNT: number = 16;
 
-/** Clamp a pickup-scale percent into `[10, 150]`; `NaN` collapses to the default. */
+/** Clamp a pickup-scale percent into `[10, 150]`; `NaN` collapses to the default. @internal */
 export function clampGhostPickupScalePercent(percent: number): number {
   if (Number.isNaN(percent)) {
     return DEFAULT_GHOST_PICKUP_SCALE_PERCENT;
@@ -87,12 +94,12 @@ export function clampGhostPickupScalePercent(percent: number): number {
   return Math.min(Math.max(percent, GHOST_PICKUP_SCALE_MIN_PERCENT), GHOST_PICKUP_SCALE_MAX_PERCENT);
 }
 
-/** The clamped pickup-scale percent as a unit factor (e.g. `90` → `0.9`). */
+/** The clamped pickup-scale percent as a unit factor (e.g. `90` → `0.9`). @internal */
 export function ghostPickupScaleFactor(percent: number): number {
   return clampGhostPickupScalePercent(percent) / 100;
 }
 
-/** Clamp a swap-bounce magnitude percent into `[0, 100]`; `NaN` collapses to the default. */
+/** Clamp a swap-bounce magnitude percent into `[0, 100]`; `NaN` collapses to the default. @internal */
 export function clampSwapBounceMagnitudePercent(percent: number): number {
   if (Number.isNaN(percent)) {
     return DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT;
@@ -104,6 +111,7 @@ export function clampSwapBounceMagnitudePercent(percent: number): number {
  * The easeOutBack overshoot coefficient for a bounce magnitude percent. `0 %`
  * → `0` (no overshoot, the ease reduces to easeOutCubic); `100 %` →
  * `SWAP_BOUNCE_MAX_OVERSHOOT`. Linear in the clamped percent.
+ * @internal
  */
 export function swapBounceOvershoot(percent: number): number {
   return (clampSwapBounceMagnitudePercent(percent) / 100) * SWAP_BOUNCE_MAX_OVERSHOOT;
@@ -117,6 +125,7 @@ export function swapBounceOvershoot(percent: number): number {
  * at `percent = 0` it is the monotonic easeOutCubic (no bounce). Used as the
  * settle easing for the ghost seated hop-in and the survivor reflow when a
  * bounce magnitude is dialed in.
+ * @internal
  */
 export function bounceEaseProgress(t: number, percent: number): number {
   if (t <= 0) {
@@ -136,6 +145,7 @@ export function bounceEaseProgress(t: number, percent: number): number {
  * an overshoot whose value exceeds `1` then returns, so the sampled `linear()`
  * curve carries the bounce to the compositor (same technique as the magnetic
  * ease). Endpoints are pinned `0` / `1`.
+ * @internal
  */
 export function buildBounceEasingCss(
   percent: number,
@@ -149,7 +159,7 @@ export function buildBounceEasingCss(
   return `linear(${points.join(", ")})`;
 }
 
-/** A rect with no positive area cannot be a morph source or target. */
+/** A rect with no positive area cannot be a morph source or target. @internal */
 export function isDegenerateGhostRect(rect: GhostRect): boolean {
   return rect.width <= 0 || rect.height <= 0;
 }
@@ -159,6 +169,7 @@ export function isDegenerateGhostRect(rect: GhostRect): boolean {
  * ABOUT THE GRAB POINT, so the grabbed content stays under the cursor. With the
  * grab offset `(gx, gy)` inside the source box, scaling by `f` about that point
  * leaves the grab point fixed: `left' = left + gx·(1 − f)`, `width' = width·f`.
+ * @internal
  */
 export function deriveGhostPickupBox(
   activeFootprint: GhostRect,
@@ -180,6 +191,7 @@ export function deriveGhostPickupBox(
  * at `first`, or `null` when the move + resize are both below the epsilons (no
  * visible motion → caller skips arming a transition). Mirrors
  * `deriveSurvivorFlipTransform` with First/Last named for the ghost.
+ * @internal
  */
 export function deriveGhostMorphTransform(
   first: GhostRect,
@@ -227,6 +239,7 @@ export function deriveGhostMorphTransform(
  *
  * Cross-ref: `_agent/single-instance-hop-in-drag-design.md` §4.1 (the FLIP First
  * "measured BEFORE the new base is applied" rule this restores).
+ * @internal
  */
 export function resolveGhostHopFirstRect(params: {
   previousBaseRect: GhostRect | null;
@@ -254,6 +267,7 @@ function easeInCubic(v: number): number {
  * (accelerating ease-in to `1`). The last segment's average speed exceeds the
  * approach's average speed — the "click into the slot" pull. Endpoints are
  * pinned `progress(0) = 0`, `progress(1) = 1`; monotonic non-decreasing.
+ * @internal
  */
 export function magneticEaseProgress(t: number, split: number = MAGNETIC_EASE_SPLIT): number {
   if (t <= 0) {
@@ -274,6 +288,7 @@ export function magneticEaseProgress(t: number, split: number = MAGNETIC_EASE_SP
  * `sampleCount + 1` evenly-spaced points. CSS single cubic-beziers cannot
  * express the two-segment magnetic ease, so the sampled `linear()` curve carries
  * it to the compositor. Evergreen-engine feature (the showcase package target).
+ * @internal
  */
 export function buildLinearEasingCss(sampleCount: number = MAGNETIC_EASE_SAMPLE_COUNT): string {
   const points: string[] = [];
@@ -296,6 +311,7 @@ export function buildLinearEasingCss(sampleCount: number = MAGNETIC_EASE_SAMPLE_
  * duration. With split (unlinked) speeds the two shrink-windows desynchronize
  * and the boxes can collide mid-cross, so the dip is suppressed unless the two
  * speeds resolve to equal timing. See `_agent/animation-controls-design.md` §3.
+ * @internal
  */
 export function shouldApplyCoherentTransitDip(params: {
   enabled: boolean;
@@ -314,6 +330,7 @@ export function shouldApplyCoherentTransitDip(params: {
  * (`t ∈ {0, 1}`) and `midScale` at mid-transit (`t = 0.5`), symmetric — both
  * moving boxes shrink toward `midScale` as they cross then grow back into place,
  * so even if the straight-line paths intersect the shrunk boxes do not collide.
+ * @internal
  */
 export function coherentDipScaleAt(t: number, midScale: number = COHERENT_TRANSIT_MID_SCALE): number {
   const clampedT: number = Math.min(Math.max(t, 0), 1);

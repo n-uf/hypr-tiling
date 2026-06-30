@@ -32,11 +32,12 @@ const GAP_FREE_UNIT_CONFIG: TilingLayoutConfig = {
   handleSizePx: 0,
 };
 
+/** @internal */
 export interface TilingLeafFootprint extends TilingPaneFootprint {
   leafId: string;
 }
 
-/** Edge-rect (`right`/`bottom` instead of `width`/`height`) for directional neighbor search. */
+/** Edge-rect (`right`/`bottom` instead of `width`/`height`) for directional neighbor search. @internal */
 export interface LeafRect {
   leafId: string;
   left: number;
@@ -96,7 +97,7 @@ function collectStaticAlongFootprints(
 const MASTER_RATIO_MIN: number = 0.05;
 const MASTER_RATIO_MAX: number = 0.95;
 
-/** Resolved master/stack parameters for a `layoutMode: "master"` split. */
+/** Resolved master/stack parameters for a `layoutMode: "master"` split. @internal */
 export interface MasterStackParams {
   /** Number of slots in the master area, clamped to `[1, slotCount]`. */
   count: number;
@@ -119,6 +120,7 @@ function clampMasterRatio(value: number): number {
  * descendant slots out as a FLAT list (the Hyprland master layout is a flat
  * window list, not a tree). The binary structure still defines slot membership +
  * order + identity and the reducers still operate on it.
+ * @internal
  */
 export function collectMasterSlots(node: TilingLayoutNode): ReadonlyArray<TilingLayoutNode> {
   if (node.kind === "leaf" || node.kind === "group") {
@@ -132,6 +134,7 @@ export function collectMasterSlots(node: TilingLayoutNode): ReadonlyArray<Tiling
  * (and the id the renderer focuses / hit-tests). A leaf is itself; a split slot
  * (should never occur — slots are flattened to non-splits) falls back to its
  * first descendant leaf. Phase-3b: a group resolves to its active member id.
+ * @internal
  */
 export function slotRepresentativeLeafId(node: TilingLayoutNode): string {
   if (node.kind === "leaf") {
@@ -143,7 +146,7 @@ export function slotRepresentativeLeafId(node: TilingLayoutNode): string {
   return slotRepresentativeLeafId(node.first);
 }
 
-/** Resolve a master split's parameters, clamping count to the available slots. */
+/** Resolve a master split's parameters, clamping count to the available slots. @internal */
 export function resolveMasterParams(node: TilingSplitNode, slotCount: number): MasterStackParams {
   const requestedCount: number = Math.round(node.masterCount ?? 1);
   const maxCount: number = Math.max(slotCount, 1);
@@ -200,6 +203,7 @@ function layoutSlotsAlong(
  *   height), members stacked HORIZONTALLY within each area.
  * - no stack (`slots.length <= count`) → all slots fill the container, stacked
  *   along the orientation's cross axis.
+ * @internal
  */
 export function resolveMasterStackFootprints(
   slots: ReadonlyArray<TilingLayoutNode>,
@@ -253,6 +257,7 @@ export function resolveMasterStackFootprints(
   ];
 }
 
+/** @internal */
 export function collectLeafFootprints(
   node: TilingLayoutNode,
   left: number,
@@ -360,6 +365,7 @@ export function collectLeafFootprints(
  * overlap), so it needs neither gaps nor static-px sizing (a px pin cannot fit a
  * 1-unit container, so the static arm falls through to ratio — identical to the
  * deleted `state.ts:collectLeafRects` for every structurally-valid tree).
+ * @internal
  */
 export function collectNormalizedLeafRects(node: TilingLayoutNode): ReadonlyArray<LeafRect> {
   return collectLeafFootprints(node, 0, 0, 1, 1, GAP_FREE_UNIT_CONFIG).map(
@@ -373,6 +379,7 @@ export function collectNormalizedLeafRects(node: TilingLayoutNode): ReadonlyArra
   );
 }
 
+/** @internal */
 export function footprintsByLeafId(
   footprints: ReadonlyArray<TilingLeafFootprint>,
 ): ReadonlyMap<string, TilingPaneFootprint> {
@@ -391,6 +398,7 @@ export function footprintsByLeafId(
 
 const FOOTPRINT_DELTA_EPSILON_PX: number = 0.5;
 
+/** @internal */
 export function isFootprintChanged(previous: TilingPaneFootprint, next: TilingPaneFootprint): boolean {
   return (
     Math.abs(previous.left - next.left) > FOOTPRINT_DELTA_EPSILON_PX ||

@@ -1345,9 +1345,11 @@ export interface TilingPaneFootprint {
  *   source's old cell); a pure insert/move produces no `target` overlay.
  * - `successor` — the source's former sibling subtree, promoted into the
  *   source's VACATED cell on an insert/move as it absorbs the released space.
+ * @internal
  */
 export type TilingProjectedLandingSubject = "source" | "target" | "successor";
 
+/** @internal */
 export interface TilingProjectedLandingOverlay {
   subject: TilingProjectedLandingSubject;
   leafId: string;

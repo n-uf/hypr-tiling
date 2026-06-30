@@ -24,6 +24,7 @@ import type {
  * and unit-tested — it is no longer embedded in the React component.
  */
 
+/** @internal */
 export interface DropZoneEvaluation {
   isValid: boolean;
   rejectionReason: string | null;
@@ -34,6 +35,7 @@ export interface DropZoneEvaluation {
  * split target at/above the per-pane minimum? Consumes the canonical
  * static-aware `collectLeafFootprints`, so the projected footprints next to a
  * pinned static pane are correct.
+ * @internal
  */
 export function projectedLeafFitsConstraints(
   projectedLayout: TilingLayoutNode,
@@ -64,6 +66,7 @@ export function projectedLeafFitsConstraints(
   return footprintRespectsMin(sourceFootprint) && footprintRespectsMin(targetFootprint);
 }
 
+/** @internal */
 export function evaluateEdgeInsertCandidate({
   candidateZone,
   layout,
@@ -137,6 +140,7 @@ export function evaluateEdgeInsertCandidate({
   };
 }
 
+/** @internal */
 export function evaluateZoneCandidate({
   zone,
   layout,
@@ -217,6 +221,7 @@ function childMakesSplitUnresolvable(node: TilingLayoutNode, axis: TilingSplitAx
  * subtree stays fully rearrangeable. This is the per-subtree refinement — a
  * pinned "fixed-size pane + flexible rest" dashboard keeps drag live in the
  * flexible regions instead of freezing the whole layout.
+ * @internal
  */
 export function collectStaticGatedLeafIds(layout: TilingLayoutNode): ReadonlySet<string> {
   const gated = new Set<string>();

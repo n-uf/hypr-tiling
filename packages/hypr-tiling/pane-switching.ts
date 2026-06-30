@@ -177,6 +177,7 @@ export function matchKeyChord(event: TilingKeyboardEventLike, chord: ResolvedTil
  * `event.code` is what makes the jump family work on macOS, where `Alt+1`
  * produces a glyph in `event.key` (e.g. `"¡"`) but always `"Digit1"` in
  * `event.code`.
+ * @internal
  */
 export function matchJumpToPaneNumber(
   event: TilingKeyboardEventLike,
@@ -320,7 +321,7 @@ export function directionToPlacement(direction: TilingFocusDirection): TilingMov
   return "bottom";
 }
 
-/** Next index with wraparound. `currentIndex < 0` → first index. */
+/** Next index with wraparound. `currentIndex < 0` → first index. @internal */
 export function cycleNextIndex(currentIndex: number, count: number): number {
   if (count <= 0) {
     return -1;
@@ -331,7 +332,7 @@ export function cycleNextIndex(currentIndex: number, count: number): number {
   return (currentIndex + 1) % count;
 }
 
-/** Previous index with wraparound. `currentIndex < 0` → last index. */
+/** Previous index with wraparound. `currentIndex < 0` → last index. @internal */
 export function cyclePreviousIndex(currentIndex: number, count: number): number {
   if (count <= 0) {
     return -1;
@@ -345,6 +346,7 @@ export function cyclePreviousIndex(currentIndex: number, count: number): number 
 /**
  * Map a 1-based pane number to a 0-based index. Out-of-range (or non-integer)
  * requests are a no-op (return `null`) — NOT clamped to the nearest pane.
+ * @internal
  */
 export function jumpToPaneIndex(paneNumber: number, count: number): number | null {
   if (!Number.isInteger(paneNumber)) {
@@ -476,6 +478,7 @@ export function commitPaneSwitcher(state: TilingPaneSwitcherState): string {
  * Whether the switcher should commit given the post-keyup modifier state: it
  * commits as soon as ANY of the modifiers it was opened under is no longer
  * held. (Default flow: opened under Alt → commits when Alt is released.)
+ * @internal
  */
 export function isSwitcherHoldReleased(
   event: TilingKeyboardModifierState,
