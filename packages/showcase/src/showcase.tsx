@@ -1,13 +1,9 @@
 "use client";
 
 import {
-  ANIMATION_CONTROL_DEFAULTS,
   DEFAULT_DRAG_HOP_EASING,
   DEFAULT_TILING_LAYOUT_CONFIG,
-  TILING_OBSERVABILITY_COLOR_DEFAULTS,
-  TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
   TilingRenderer,
-  TilingObservabilityPanel,
   collectSplitNodes,
   findLeafByDirection,
   readLeafNodeIds,
@@ -30,9 +26,15 @@ import {
   type ResolvedTilingKeymap,
   type TilingCommand,
   type TilingCommandHandle,
-  type TilingObservabilityLedgerEntry,
   type TilingThemeId,
 } from "@n-uf/hypr-tiling";
+import {
+  ANIMATION_CONTROL_DEFAULTS,
+  TILING_OBSERVABILITY_COLOR_DEFAULTS,
+  TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
+  TilingObservabilityPanel,
+  type TilingObservabilityLedgerEntry,
+} from "@n-uf/hypr-tiling/devtools";
 import * as React from "react";
 import {
   resolveShowcasePaneContent,

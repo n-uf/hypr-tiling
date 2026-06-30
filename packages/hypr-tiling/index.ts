@@ -5,8 +5,6 @@ export {
   DRAG_ANIMATION_SPEED_MAX_PERCENT,
   DRAG_ANIMATION_SPEED_MIN_PERCENT,
   DEFAULT_TILING_LAYOUT_CONFIG,
-  TILING_OBSERVABILITY_COLOR_DEFAULTS,
-  TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
   INSTANT_DRAG_DURATION_MS,
   dragSpeedsAtParity,
   tileOrderByLeafId,
@@ -34,11 +32,6 @@ export {
   type TilingThemeRootTokens,
   type TilingThemeTopBarTokens,
 } from "./theme";
-export {
-  ANIMATION_CONTROL_DEFAULTS,
-  TilingObservabilityPanel,
-  type TilingObservabilityLedgerEntry,
-} from "./tiling-observability-panel";
 export { TILING_DROP_INTENT_CONFIG } from "./drop-intent-resolver";
 export {
   commandRequiredCapability,
@@ -216,6 +209,10 @@ export type {
   TilingTileAccentSwatch,
   TilingRendererProps,
   TilingLiveHitLogState,
+  TilingLiveHitEdgeDebugState,
+  TilingViewportCursorState,
+  TilingPaneHitZoneOverlayDebugState,
+  TilingPaneHitZoneCandidateDebugState,
   ResolvedTilingInteractionCapabilities,
   ResolvedTilingKeyChord,
   ResolvedTilingKeyChordModifiers,
