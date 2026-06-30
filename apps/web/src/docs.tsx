@@ -17,8 +17,8 @@ export const PACKAGE_NAME: string = "@n-uf/hypr-tiling";
 // Canonical homepage base. The redesigned docs homepage lives at the site root;
 // the full interactive showcase lives at its own `/showcase` sub-route (a
 // client-only surface, not part of this prerendered SEO mirror).
-export const SITE_URL: string = "https://n-uf.com/";
-export const SHOWCASE_URL: string = "https://n-uf.com/showcase";
+export const SITE_URL: string = "https://hypr-tiling.n-uf.com/";
+export const SHOWCASE_URL: string = "https://hypr-tiling.n-uf.com/showcase";
 export const REPO_URL: string = "https://github.com/n-uf/hypr-tiling";
 
 export const PAGE_TITLE: string = "hypr-tiling — dynamic tiling for React";
