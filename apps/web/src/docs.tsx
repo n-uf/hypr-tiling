@@ -6,13 +6,22 @@ import type { DynamicTileAccent } from "@n-uf/hypr-tiling";
 // page and (b) into the prerendered HTML for crawlers / LLM fetchers. Plain-text
 // mirrors used by `<meta>`, JSON-LD, and `llms.txt` live alongside the JSX so
 // the quotable copy stays consistent across every surface.
+//
+// Typography system (the "mosaic" identity): Fraunces (display serif) for the
+// wordmark + section headings, Inter for body at a comfortable 1.7 measure,
+// JetBrains Mono for eyebrows / code / keys. A single gold (amber) accent is the
+// only chrome color, applied sparingly — eyebrows, the heading tick, links, and
+// inline code.
 
 export const PACKAGE_NAME: string = "@n-uf/hypr-tiling";
-export const SITE_URL: string = "https://hypr-tiling.n-uf.dev";
+// Canonical homepage base. The redesigned docs homepage lives at the site root;
+// the full interactive showcase lives at its own `/showcase` sub-route (a
+// client-only surface, not part of this prerendered SEO mirror).
+export const SITE_URL: string = "https://n-uf.com/";
+export const SHOWCASE_URL: string = "https://n-uf.com/showcase";
 export const REPO_URL: string = "https://github.com/n-uf/hypr-tiling";
 
-export const PAGE_TITLE: string =
-  "hypr-tiling — dynamic tiling for React";
+export const PAGE_TITLE: string = "hypr-tiling — dynamic tiling for React";
 
 // One canonical sentence an LLM can quote verbatim.
 export const CANONICAL_DESCRIPTION: string =
@@ -56,12 +65,12 @@ export const FEATURE_FACTS: ReadonlyArray<FeatureFact> = [
   {
     term: "Full keyboard control",
     detail:
-      "Directional focus, a pane switcher (cycle / jump / overlay), maximize, keyboard move-mode, and master/group commands — all behind a remappable keymap.",
+      "Directional focus, a pane switcher (cycle / jump / overlay), maximize, keyboard move-mode, and master/group commands — all behind a remappable keymap and a typed command API.",
   },
   {
     term: "Theming engine",
     detail:
-      "Two built-in themes (neon-terminal, clean-flat), eight accent hues, a theme provider with hooks, and live theme switching with no remount.",
+      "Built-in themes, eight accent hues, a theme provider with hooks, and live theme switching with no remount. This page ships a bespoke mosaic theme.",
   },
   {
     term: "Self-healing drag recovery",
@@ -79,23 +88,76 @@ interface DocPaneSpec {
   readonly content: React.ReactNode;
 }
 
-function SectionLead({ children }: { children: React.ReactNode }): React.ReactElement {
+// --- Mosaic typography primitives -----------------------------------------
+
+function Eyebrow({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
-    <p className="text-[13px] leading-relaxed text-slate-200">{children}</p>
+    <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-amber-300/80">
+      {children}
+    </span>
+  );
+}
+
+// Section heading: Fraunces display serif preceded by a short gold tick — the
+// coherent form vocabulary marker used across every pane (no icons).
+function SectionHeading({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <div className="flex items-center gap-2.5">
+      <span
+        aria-hidden
+        className="h-3.5 w-[2px] shrink-0 rounded-full bg-amber-300/70"
+      />
+      <h2 className="font-display text-[20px] font-medium leading-tight tracking-[-0.01em] text-stone-50">
+        {children}
+      </h2>
+    </div>
+  );
+}
+
+function SectionLead({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <p className="max-w-[62ch] text-[13px] leading-[1.7] text-stone-300/90">
+      {children}
+    </p>
   );
 }
 
 function Code({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
-    <code className="rounded bg-slate-800/80 px-1 py-0.5 font-mono text-[12px] text-cyan-200">
+    <code className="rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 font-mono text-[12px] text-amber-200/90">
       {children}
     </code>
   );
 }
 
+function Link({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <a
+      href={href}
+      className="text-amber-200 underline decoration-amber-400/40 underline-offset-[3px] transition-colors hover:text-amber-100 hover:decoration-amber-300/70"
+    >
+      {children}
+    </a>
+  );
+}
+
 function Pre({ children }: { children: string }): React.ReactElement {
   return (
-    <pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 font-mono text-[12px] leading-relaxed text-slate-100">
+    <pre className="overflow-x-auto rounded-md border border-white/[0.08] bg-[#0a0b0d] p-3.5 font-mono text-[12px] leading-relaxed text-stone-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       <code>{children}</code>
     </pre>
   );
@@ -136,48 +198,51 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
   {
     id: "intro",
     title: "hypr-tiling",
-    accent: "cyan",
+    accent: "amber",
     summary:
       "Dynamic tiling for React. A recursive split-tree renderer for runtime-rearrangeable, resizable panes.",
     content: (
-      <div className="flex flex-col gap-3">
-        <h1 className="text-xl font-semibold tracking-tight text-slate-50">
-          Dynamic tiling for React
-        </h1>
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-3">
+          <Eyebrow>dynamic tiling · for react</Eyebrow>
+          <h1 className="font-display text-[clamp(2rem,3.4vw,2.9rem)] font-medium leading-[1.02] tracking-[-0.015em] text-stone-50">
+            Rearrange the interface,{" "}
+            <em className="font-display italic text-amber-200/90">at runtime.</em>
+          </h1>
+        </div>
         <SectionLead>{CANONICAL_DESCRIPTION}</SectionLead>
         <SectionLead>
-          Reach for it when users need to rearrange dense, multi-panel screens
-          at runtime — IDE-like tools, trading and operator consoles, analytics
-          dashboards — while your app keeps strict, controlled ownership of the
-          layout state.
+          Reach for it where users live inside dense, multi-panel screens —
+          IDE-like tools, trading and operator consoles, analytics dashboards —
+          and your app keeps strict, controlled ownership of the layout state.
         </SectionLead>
-        <p className="text-[12px] leading-relaxed text-slate-400">
-          This page is itself a hypr-tiling layout: every section below is a
-          pane you can focus, drag, resize, and maximize. Grab a pane header to
-          rearrange it.
+        <p className="max-w-[62ch] border-l-2 border-amber-300/30 pl-3 text-[12px] leading-[1.6] text-stone-400">
+          This page <em className="not-italic text-stone-200">is</em> a
+          hypr-tiling layout. Every section is a real pane: focus it, drag its
+          header, resize the dividers, maximize it — or drive it from the live
+          controls pane.
         </p>
       </div>
     ),
   },
   {
     id: "install",
-    title: "install & integrate",
-    accent: "emerald",
+    title: "install",
+    accent: "amber",
     summary:
       "Install with pnpm add @n-uf/hypr-tiling react react-dom. React 19 peer deps. Render DynamicTilingRenderer with controlled layout state.",
     content: (
-      <div className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold text-slate-50">
-          Install &amp; integrate
-        </h2>
+      <div className="flex flex-col gap-4">
+        <SectionHeading>Install &amp; integrate</SectionHeading>
         <SectionLead>
-          Install the scoped package and its React peers. The library targets{" "}
+          Add the scoped package and its React peers. The library targets{" "}
           <Code>react</Code> and <Code>react-dom</Code> version 19.
         </SectionLead>
         <Pre>{INSTALL_SNIPPET}</Pre>
         <SectionLead>
           The renderer is a controlled component: you own the layout tree in
-          state and apply every change it reports through <Code>onLayoutChange</Code>.
+          state and apply every change it reports through{" "}
+          <Code>onLayoutChange</Code>.
         </SectionLead>
         <Pre>{INTEGRATION_EXAMPLE}</Pre>
       </div>
@@ -186,88 +251,85 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
   {
     id: "features",
     title: "features",
-    accent: "violet",
-    summary: FEATURE_FACTS.map((f: FeatureFact): string => f.term).join(", ") + ".",
+    accent: "amber",
+    summary:
+      FEATURE_FACTS.map((f: FeatureFact): string => f.term).join(", ") + ".",
     content: (
-      <div className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold text-slate-50">Features</h2>
-        <dl className="flex flex-col gap-2.5">
-          {FEATURE_FACTS.map((fact: FeatureFact): React.ReactElement => (
-            <div key={fact.term} className="flex flex-col gap-0.5">
-              <dt className="text-[13px] font-semibold text-slate-100">
-                {fact.term}
-              </dt>
-              <dd className="text-[12px] leading-relaxed text-slate-300">
-                {fact.detail}
-              </dd>
-            </div>
-          ))}
+      <div className="flex flex-col gap-4">
+        <SectionHeading>Features</SectionHeading>
+        <dl className="flex flex-col divide-y divide-white/[0.05]">
+          {FEATURE_FACTS.map(
+            (fact: FeatureFact): React.ReactElement => (
+              <div
+                key={fact.term}
+                className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0"
+              >
+                <dt className="text-[13px] font-medium text-stone-100">
+                  {fact.term}
+                </dt>
+                <dd className="max-w-[60ch] text-[12px] leading-[1.6] text-stone-400">
+                  {fact.detail}
+                </dd>
+              </div>
+            ),
+          )}
         </dl>
       </div>
     ),
   },
   {
     id: "model",
-    title: "what & why",
+    title: "model & kudos",
     accent: "amber",
     summary:
       "The layout is a serialisable split-tree you own in state; the renderer projects it to pixels and reports edits. Inspired by the Hyprland Wayland compositor.",
     content: (
-      <div className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold text-slate-50">What &amp; why</h2>
+      <div className="flex flex-col gap-4">
+        <SectionHeading>The model</SectionHeading>
         <SectionLead>
           A layout is a plain, serialisable tree: <Code>leaf</Code> nodes hold a
           tile, <Code>split</Code> nodes divide space along an axis by a ratio,
-          and <Code>group</Code> nodes stack leaves behind tabs. You hold that
+          and <Code>group</Code> nodes stack leaves behind tabs. You hold the
           tree in state; the renderer projects it to pixels, runs the
-          interaction, and reports every edit back. Nothing about the layout is
-          hidden inside the component — it is yours to persist, diff, and
-          restore.
+          interaction, and reports every edit back — nothing is hidden inside the
+          component. It is yours to persist, diff, and restore.
         </SectionLead>
-        <h3 className="text-[13px] font-semibold text-slate-100">
+        <h3 className="font-display text-[15px] font-medium text-stone-100">
           Kudos to Hyprland
         </h3>
         <SectionLead>
           The interaction model is inspired by{" "}
-          <a
-            href="https://hypr.land"
-            className="text-cyan-300 underline decoration-cyan-500/40 underline-offset-2 hover:text-cyan-200"
-          >
-            Hyprland
-          </a>
-          , the dynamic-tiling Wayland compositor, and its tiling-first
-          philosophy: detach-and-drop movement, master/stack layouts, and
-          keyboard-driven focus. Kudos to its maintainers and contributors for
-          advancing modern tiling workflow design.
+          <Link href="https://hypr.land">Hyprland</Link>, the dynamic-tiling
+          Wayland compositor, and its tiling-first philosophy: detach-and-drop
+          movement, master/stack layouts, and keyboard-driven focus. Kudos to
+          its maintainers and contributors for advancing modern tiling workflow
+          design.
         </SectionLead>
       </div>
     ),
   },
   {
     id: "discoverability",
-    title: "seo & llm friendly",
-    accent: "sky",
+    title: "seo + llm",
+    accent: "amber",
     summary:
       "Panes emit real semantic DOM (headings, paragraphs, lists), not canvas. Prerendered to static HTML so crawlers and LLM fetchers read the content without executing JS.",
     content: (
-      <div className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold text-slate-50">
-          SEO &amp; LLM friendly
-        </h2>
+      <div className="flex flex-col gap-4">
+        <SectionHeading>SEO &amp; LLM friendly</SectionHeading>
         <SectionLead>
-          Tiling does not have to cost you discoverability. Every pane body is
-          real semantic markup — headings, paragraphs, lists, code — emitted
-          into the document, not painted onto a canvas or hidden behind a
-          transform. All panes render at once, so unfocused sections stay in the
-          DOM.
+          Tiling does not have to cost discoverability. Every pane body is real
+          semantic markup — headings, paragraphs, lists, code — emitted into the
+          document, never painted onto a canvas or hidden behind a transform.
+          All panes render at once, so unfocused sections stay in the DOM.
         </SectionLead>
         <SectionLead>
           Because the content lives in the DOM, it prerenders. This homepage
           ships its full text in the initial static HTML, with the interactive
-          tiling layered on as progressive enhancement — so search crawlers and
-          LLM assistants that fetch and cite docs read the real content even
-          without running JavaScript. A <Code>/llms.txt</Code> mirror is served
-          for the same reason.
+          tiling layered on as progressive enhancement — so crawlers and LLM
+          assistants that fetch and cite docs read the real content without
+          running JavaScript. A <Code>/llms.txt</Code> mirror is served for the
+          same reason.
         </SectionLead>
       </div>
     ),
@@ -282,6 +344,7 @@ export function buildLlmsTxt(): string {
   lines.push(`> ${CANONICAL_DESCRIPTION}`);
   lines.push("");
   lines.push(`Homepage: ${SITE_URL}`);
+  lines.push(`Showcase: ${SHOWCASE_URL}`);
   lines.push(`Repository: ${REPO_URL}`);
   lines.push(`Install: ${INSTALL_SNIPPET}`);
   lines.push("");

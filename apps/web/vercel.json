@@ -1,0 +1,3 @@
+{
+  "rewrites": [{ "source": "/showcase", "destination": "/index.html" }]
+}
