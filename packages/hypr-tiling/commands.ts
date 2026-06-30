@@ -104,6 +104,19 @@ export function isCommandEnabled(command: TilingCommand, gates: TilingCommandGat
 }
 
 /**
+ * The command a tab-strip TAB double-click dispatches to toggle THAT tab's leaf
+ * maximize/restore. Targets the tab's `leafId` explicitly (not the focused
+ * pane), so the outcome is independent of which pane currently holds focus, and
+ * routes through the SAME `toggle-maximize` command the `Alt+Enter` keybinding
+ * dispatches — the pointer and keyboard paths converge on one maximize state.
+ * Capability gating (`maximizeEnabled` via `isCommandEnabled`) still applies at
+ * dispatch, so the double-click is a safe no-op when maximize is disabled.
+ */
+export function tabDoubleClickMaximizeCommand(leafId: string): TilingCommand {
+  return { kind: "toggle-maximize", leafId };
+}
+
+/**
  * Bridge an internal fixed-keymap `TilingKeyboardAction` to the public command
  * set. The default keymap path resolves an action via `matchKeymapAction`, then
  * runs it through this bridge so it reaches the same `dispatchCommand` router the

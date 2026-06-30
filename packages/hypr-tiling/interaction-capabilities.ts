@@ -55,6 +55,7 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
     showTabStrip: true,
     showContentToggle: true,
     showSwitcherOverlay: true,
+    tabDoubleClickMaximize: true,
   },
   paneTitleBarControls: { sizing: true, acquireSpace: true },
   dropHitZoneGeometry: {
@@ -208,6 +209,9 @@ export function resolveInteractionCapabilities(
       showSwitcherOverlay:
         capabilities?.paneSwitching?.showSwitcherOverlay
         ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.paneSwitching.showSwitcherOverlay,
+      tabDoubleClickMaximize:
+        capabilities?.paneSwitching?.tabDoubleClickMaximize
+        ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.paneSwitching.tabDoubleClickMaximize,
     },
     paneTitleBarControls: {
       sizing:

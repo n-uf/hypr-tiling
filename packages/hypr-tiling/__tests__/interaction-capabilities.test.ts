@@ -36,6 +36,7 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
     showTabStrip: true,
     showContentToggle: true,
     showSwitcherOverlay: true,
+    tabDoubleClickMaximize: true,
   },
   paneTitleBarControls: { sizing: true, acquireSpace: true },
   dropHitZoneGeometry: {
@@ -223,6 +224,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
         showTabStrip: true,
         showContentToggle: true,
         showSwitcherOverlay: true,
+        tabDoubleClickMaximize: true,
       },
     });
     expect(resolveInteractionCapabilities({ paneSwitching: { showTabStrip: false } })).toEqual({
@@ -232,6 +234,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
         showTabStrip: false,
         showContentToggle: true,
         showSwitcherOverlay: true,
+        tabDoubleClickMaximize: true,
       },
     });
     expect(resolveInteractionCapabilities({ paneSwitching: { showContentToggle: false } })).toEqual({
@@ -241,6 +244,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
         showTabStrip: true,
         showContentToggle: false,
         showSwitcherOverlay: true,
+        tabDoubleClickMaximize: true,
       },
     });
     expect(resolveInteractionCapabilities({ paneSwitching: { showSwitcherOverlay: false } })).toEqual({
@@ -250,8 +254,35 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
         showTabStrip: true,
         showContentToggle: true,
         showSwitcherOverlay: false,
+        tabDoubleClickMaximize: true,
       },
     });
+  });
+
+  it("defaults tabDoubleClickMaximize to true (tab double-click maximizes out of the box)", (): void => {
+    expect(resolveInteractionCapabilities(undefined).paneSwitching.tabDoubleClickMaximize).toBe(true);
+    expect(resolveInteractionCapabilities({}).paneSwitching.tabDoubleClickMaximize).toBe(true);
+  });
+
+  it("preserves an explicit tabDoubleClickMaximize false (opt out of tab double-click maximize)", (): void => {
+    expect(
+      resolveInteractionCapabilities({ paneSwitching: { tabDoubleClickMaximize: false } }),
+    ).toEqual({
+      ...RESOLVED_DEFAULTS,
+      paneSwitching: {
+        enable: true,
+        showTabStrip: true,
+        showContentToggle: true,
+        showSwitcherOverlay: true,
+        tabDoubleClickMaximize: false,
+      },
+    });
+  });
+
+  it("preserves an explicit tabDoubleClickMaximize true (idempotent with the default)", (): void => {
+    expect(resolveInteractionCapabilities({ paneSwitching: { tabDoubleClickMaximize: true } })).toEqual(
+      RESOLVED_DEFAULTS,
+    );
   });
 
   it("applies a top-level keymap override (code-based)", (): void => {

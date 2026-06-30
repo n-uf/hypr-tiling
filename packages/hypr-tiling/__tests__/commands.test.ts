@@ -3,8 +3,10 @@ import {
   commandRequiredCapability,
   isCommandEnabled,
   keyboardActionToCommand,
+  tabDoubleClickMaximizeCommand,
 } from "../commands";
 import type { TilingCommandGates } from "../commands";
+import { resolveMaximizeToggle } from "../pane-switching";
 import type { TilingCommand, TilingKeyboardAction } from "../types";
 
 /**
@@ -128,6 +130,42 @@ describe("isCommandEnabled (gate evaluation)", (): void => {
     expect(isCommandEnabled({ kind: "cycle-layout-mode" }, onlyLayout)).toBe(true);
     expect(isCommandEnabled({ kind: "adjust-master-ratio", delta: 0.05 }, onlyLayout)).toBe(true);
     expect(isCommandEnabled({ kind: "cycle-layout-mode" }, ALL_DISABLED)).toBe(false);
+  });
+});
+
+describe("tabDoubleClickMaximizeCommand (tab double-click → maximize toggle)", (): void => {
+  it("builds a toggle-maximize command targeting the tab's leaf explicitly", (): void => {
+    expect(tabDoubleClickMaximizeCommand("b")).toEqual({ kind: "toggle-maximize", leafId: "b" });
+  });
+
+  it("is gated by maximizeEnabled (no-op when maximize is disabled)", (): void => {
+    expect(isCommandEnabled(tabDoubleClickMaximizeCommand("b"), ALL_ENABLED)).toBe(true);
+    const maximizeOff: TilingCommandGates = { ...ALL_ENABLED, maximizeEnabled: false };
+    expect(isCommandEnabled(tabDoubleClickMaximizeCommand("b"), maximizeOff)).toBe(false);
+  });
+
+  it("a tab double-click maximizes the leaf, and a second double-click restores it", (): void => {
+    // Models the renderer's dispatch path: each tab double-click dispatches
+    // `tabDoubleClickMaximizeCommand(leafId)` → the `toggle-maximize` arm folds
+    // the maximized-leaf state through `resolveMaximizeToggle(current, leafId)`.
+    const command: TilingCommand = tabDoubleClickMaximizeCommand("b");
+    expect(command.kind === "toggle-maximize" && command.leafId).toBe("b");
+
+    // First double-click: nothing maximized → leaf "b" maximizes.
+    const afterFirst: string | null = resolveMaximizeToggle(null, "b");
+    expect(afterFirst).toBe("b");
+
+    // Second double-click on the same tab: the maximized leaf restores.
+    const afterSecond: string | null = resolveMaximizeToggle(afterFirst, "b");
+    expect(afterSecond).toBeNull();
+  });
+
+  it("targets the tab's own leaf regardless of which pane is focused (converges with Alt+Enter)", (): void => {
+    // The keyboard `toggle-maximize` (no leafId) falls back to the focused leaf;
+    // the tab double-click pins the leaf explicitly, so double-clicking tab "c"
+    // while "a" is maximized maximizes "c" (not the focused pane).
+    expect(tabDoubleClickMaximizeCommand("c")).toEqual({ kind: "toggle-maximize", leafId: "c" });
+    expect(resolveMaximizeToggle("a", "c")).toBe("c");
   });
 });
 

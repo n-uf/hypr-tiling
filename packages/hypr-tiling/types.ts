@@ -568,6 +568,18 @@ export interface TilingPaneSwitchingCapability {
    */
   showSwitcherOverlay?: boolean;
   /**
+   * Toggle a pane's maximize/restore state when its TAB in the tab strip is
+   * double-clicked. Default `true`. The double-click dispatches the SAME
+   * `toggle-maximize` command (targeting the tab's leaf) the `Alt+Enter`
+   * keybinding dispatches, so the two converge on one maximize state — a
+   * double-click maximizes, a second double-click (or `Alt+Enter`, or `Escape`)
+   * restores. Single-click tab activation is unaffected. Also gated by the
+   * `maximize` capability: with `maximize.enable: false` the double-click is a
+   * no-op even when this is `true`. Set `false` to opt out (single-click tab
+   * activation only).
+   */
+  tabDoubleClickMaximize?: boolean;
+  /**
    * Per-capability keybinding overrides for `previousPane` / `nextPane` /
    * `jumpToPane`. These take precedence over the top-level `keymap`.
    */
@@ -609,6 +621,7 @@ export interface ResolvedTilingPaneSwitchingCapability {
   showTabStrip: boolean;
   showContentToggle: boolean;
   showSwitcherOverlay: boolean;
+  tabDoubleClickMaximize: boolean;
 }
 
 /**

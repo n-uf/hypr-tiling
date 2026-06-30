@@ -15,6 +15,7 @@ import {
 import {
   isCommandEnabled,
   keyboardActionToCommand,
+  tabDoubleClickMaximizeCommand,
   type TilingCommandGates,
 } from "./commands";
 import {
@@ -3021,6 +3022,7 @@ function PaneTabStrip({
   accentPicker,
   themePicker,
   onSelect,
+  onTabDoubleClickMaximize,
   onPaneContentVisibilityChange,
 }: {
   tabs: ReadonlyArray<PaneTabDescriptor>;
@@ -3031,6 +3033,15 @@ function PaneTabStrip({
   accentPicker: PaneTabStripAccentPicker | null;
   themePicker: PaneTabStripThemePicker | null;
   onSelect: (leafId: string) => void;
+  /**
+   * Toggle the tab's leaf maximize on a double-click of the tab, or `null` when
+   * the `tabDoubleClickMaximize` capability (or `maximize`) is disabled — in
+   * which case no double-click handler is wired and single-click activation is
+   * the only tab behavior. A real `onDoubleClick` (`dblclick`) handler is used
+   * so the single-click activation (`onSelect`) is never the surface that fires
+   * the toggle.
+   */
+  onTabDoubleClickMaximize: ((leafId: string) => void) | null;
   onPaneContentVisibilityChange: (nextVisible: boolean) => void;
 }): React.ReactElement {
   const theme: TilingTheme = useTilingTheme();
@@ -3136,6 +3147,11 @@ function PaneTabStrip({
                 aria-selected={isActive}
                 title={`focus pane ${tab.leafId} (Alt+${tabIndex + 1})`}
                 onClick={(): void => onSelect(tab.leafId)}
+                onDoubleClick={
+                  onTabDoubleClickMaximize != null
+                    ? (): void => onTabDoubleClickMaximize(tab.leafId)
+                    : undefined
+                }
                 className={cn(
                   theme.topBar.tabBase,
                   isActive
@@ -3433,6 +3449,14 @@ export const DynamicTilingRenderer = React.forwardRef<
   const showSwitcherOverlay: boolean =
     isPaneSwitchingEnabled &&
     interactionCapabilities.paneSwitching.showSwitcherOverlay;
+  // Double-click a tab to toggle its leaf's maximize. Gated by BOTH the
+  // pane-switching `tabDoubleClickMaximize` opt-out AND the `maximize`
+  // capability (a tab cannot maximize when maximize itself is disabled). The
+  // dispatch is routed through `dispatchCommand` so it converges with the
+  // `Alt+Enter` keybinding on one maximize state.
+  const tabDoubleClickMaximizeEnabled: boolean =
+    isMaximizeEnabled &&
+    interactionCapabilities.paneSwitching.tabDoubleClickMaximize;
   const keymap: ResolvedTilingKeymap = interactionCapabilities.keymap;
   // Any divider resize is enabled unless the resize capability is `"none"`; the
   // per-axis filter (`isResizeAxisEnabled`) still applies to a SPECIFIC split at
@@ -7371,6 +7395,13 @@ export const DynamicTilingRenderer = React.forwardRef<
             accentPicker={tabStripAccentPicker}
             themePicker={tabStripThemePicker}
             onSelect={activateLeaf}
+            onTabDoubleClickMaximize={
+              tabDoubleClickMaximizeEnabled
+                ? (leafId: string): void => {
+                    dispatchCommand(tabDoubleClickMaximizeCommand(leafId));
+                  }
+                : null
+            }
             onPaneContentVisibilityChange={setIsPaneContentVisible}
           />
         </div>
