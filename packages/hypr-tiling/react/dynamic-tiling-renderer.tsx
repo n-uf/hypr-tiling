@@ -112,13 +112,13 @@ import {
   scheduleFrameOrTimeout,
   stripTransientDragStyles,
   type DragWatchdog,
-  type FrameOrTimeoutScheduler,
   type RacedFrameHandle,
-  type TimerScheduler,
   type TransformSettleGuardHandle,
   type TransitionSettledHandle,
   type TransientDragStyleTarget,
 } from "../core/drag-recovery";
+import type { SchedulerPort } from "../core/scheduler-port";
+import { createWindowSchedulerPort } from "./window-scheduler-port";
 import {
   isResizeAxisEnabled,
   resolveInteractionCapabilities,
@@ -352,28 +352,17 @@ export function resolveDragAnimationDurationMs(speedPercent: number): number {
 }
 
 /**
- * `window`-backed frame + timer scheduler for the drag-recovery primitives
- * (`scheduleFrameOrTimeout` M1). Defined at module scope (stable identity) so it
- * never re-arms an effect; `window` is referenced only inside the closures, so
- * the constant is SSR-safe (the closures run only in a browser, inside effects).
+ * The single `window`-backed {@link SchedulerPort} the renderer drives every
+ * frame/timer/clock through (M1 rAF-with-timeout race, M2/M3 timer watchdog +
+ * transition-settle, the rAF coalescer, the idle-watchdog clock). Created at
+ * module scope (stable identity) so it never re-arms an effect; `window` is
+ * referenced only inside the port closures, so it is SSR-safe (the closures run
+ * only in a browser, inside effects). A `SchedulerPort` is structurally
+ * assignable to `FrameOrTimeoutScheduler` and `TimerScheduler`, so it is passed
+ * directly to the drag-recovery primitives; `FrameScheduler`'s `request`/`cancel`
+ * are bridged to `requestFrame`/`cancelFrame` at the coalescer call-site.
  */
-const WINDOW_FRAME_OR_TIMEOUT_SCHEDULER: FrameOrTimeoutScheduler = {
-  requestFrame: (callback: () => void): number => window.requestAnimationFrame(callback),
-  cancelFrame: (handle: number): void => window.cancelAnimationFrame(handle),
-  setTimer: (callback: () => void, ms: number): number => window.setTimeout(callback, ms),
-  clearTimer: (handle: number): void => window.clearTimeout(handle),
-};
-
-/** `window`-backed timer scheduler for the drag idle watchdog (M3). */
-const WINDOW_TIMER_SCHEDULER: TimerScheduler = {
-  setTimer: (callback: () => void, ms: number): number => window.setTimeout(callback, ms),
-  clearTimer: (handle: number): void => window.clearTimeout(handle),
-};
-
-/** Monotonic clock for the idle watchdog — `performance.now()` where available. */
-function monotonicNow(): number {
-  return typeof performance !== "undefined" ? performance.now() : Date.now();
-}
+const WINDOW_SCHEDULER_PORT: SchedulerPort = createWindowSchedulerPort();
 
 /** Duration the drag-motion timings collapse to when `dragAnimationEnabled` is `false`. */
 export const INSTANT_DRAG_DURATION_MS: number = 1;
@@ -1303,7 +1292,7 @@ function DragPaneOverlay({
     // (background-tab rAF suspension / CPU throttle) still writes the transition
     // — the ghost can never freeze at its inverted First.
     rafRef.current = scheduleFrameOrTimeout(
-      WINDOW_FRAME_OR_TIMEOUT_SCHEDULER,
+      WINDOW_SCHEDULER_PORT,
       frameDeadlineMs,
       (): void => {
         node.style.transition = `transform ${dragHopDurationMs}ms ${easing}`;
@@ -4415,7 +4404,7 @@ export const TilingRenderer = React.forwardRef<
       target: playableElements[playableElements.length - 1],
       durationMs: survivorReflowDurationMs,
       transitionSlackMs: dragRecoveryTransitionSlackMs,
-      scheduler: WINDOW_TIMER_SCHEDULER,
+      scheduler: WINDOW_SCHEDULER_PORT,
       onSettled: (): void => {
         survivorReflowEndHandleRef.current = null;
         setIsSurvivorReflowAnimating(false);
@@ -4447,7 +4436,7 @@ export const TilingRenderer = React.forwardRef<
         ),
       durationMs: survivorReflowDurationMs,
       transitionSlackMs: dragRecoveryTransitionSlackMs,
-      scheduler: WINDOW_TIMER_SCHEDULER,
+      scheduler: WINDOW_SCHEDULER_PORT,
       forceSettle: (): void => {
         survivorTransformSettleGuardRef.current = null;
         stripSurvivorTransientStyles();
@@ -4462,7 +4451,7 @@ export const TilingRenderer = React.forwardRef<
     // while still transformed).
     survivorFlipRafRef.current?.cancel();
     survivorFlipRafRef.current = scheduleFrameOrTimeout(
-      WINDOW_FRAME_OR_TIMEOUT_SCHEDULER,
+      WINDOW_SCHEDULER_PORT,
       dragRecoveryFrameDeadlineMs,
       (): void => {
       if (survivorCoherentDipActive) {
@@ -6430,8 +6419,8 @@ export const TilingRenderer = React.forwardRef<
     // any pending frame so it can never fire after the drag has settled.
     const coalescer: FrameCoalescer<DragMachinePoint> =
       createFrameCoalescer<DragMachinePoint>(processPointerSample, {
-        request: window.requestAnimationFrame.bind(window),
-        cancel: window.cancelAnimationFrame.bind(window),
+        request: WINDOW_SCHEDULER_PORT.requestFrame,
+        cancel: WINDOW_SCHEDULER_PORT.cancelFrame,
       });
 
     // Touch long-press pickup timer. Armed once when a TOUCH press enters
@@ -6782,8 +6771,8 @@ export const TilingRenderer = React.forwardRef<
     }
     const watchdog: DragWatchdog = createDragWatchdog({
       maxIdleMs: dragRecoveryMaxIdleMs,
-      now: monotonicNow,
-      scheduler: WINDOW_TIMER_SCHEDULER,
+      now: WINDOW_SCHEDULER_PORT.now,
+      scheduler: WINDOW_SCHEDULER_PORT,
       onExpire: (): void => {
         // Self-heal cancel is for the genuinely-stuck case ONLY. Suppress it
         // when a release commit is latched OR a committable seat exists for the
