@@ -118,6 +118,16 @@ export const USE_CASES: ReadonlyArray<UseCase> = [
     detail:
       "Query, results, and trace panes rearranged on the fly while chasing an incident.",
   },
+  {
+    term: "Web terminals & consoles",
+    detail:
+      "Browser-based shells, multiplexed sessions, and live log streams split and resized Hyprland-style — the tiling homage made literal, in the terminal.",
+  },
+  {
+    term: "Realtime trading terminals",
+    detail:
+      "Bloomberg-style desks — live charts, order books, watchlists, and order entry packed into dense panes that stream and rearrange in realtime.",
+  },
 ];
 
 interface DocPaneSpec {
