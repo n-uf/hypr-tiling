@@ -196,6 +196,15 @@ function Code({ children }: { children: React.ReactNode }): React.ReactElement {
   );
 }
 
+// A link styled in the mosaic accent. External destinations (absolute
+// `http(s)://` URLs to another origin) open in a new tab with
+// `rel="noopener noreferrer"`; same-site hrefs (e.g. `/showcase`, hash
+// anchors) stay in the current tab. Classification is by destination so the
+// behavior is centralized here rather than repeated per anchor.
+function isExternalHref(href: string): boolean {
+  return /^https?:\/\//i.test(href);
+}
+
 function Link({
   href,
   children,
@@ -203,9 +212,13 @@ function Link({
   href: string;
   children: React.ReactNode;
 }): React.ReactElement {
+  const external: boolean = isExternalHref(href);
   return (
     <a
       href={href}
+      {...(external
+        ? { target: "_blank", rel: "noopener noreferrer" }
+        : {})}
       className="text-amber-200 underline decoration-amber-400/40 underline-offset-[3px] transition-colors hover:text-amber-100 hover:decoration-amber-300/70"
     >
       {children}
