@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/hypr-tiling-logo.png" alt="hypr-tiling" width="180" />
+</p>
+
 # hypr-tiling — dynamic tiling for React
 
 `@n-uf/hypr-tiling` is a dynamic tiling layout engine for React: a recursive
