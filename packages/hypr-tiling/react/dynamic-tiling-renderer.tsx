@@ -35,25 +35,20 @@ import {
   createFrameCoalescer,
   deriveCandidateTree,
   dragMachineReducer,
-  hasCrossedPickupThreshold,
   isCommittableTarget,
   previousZoneSeed,
   resolveDragCommitFocusLeafId,
   resolveDragGhostSeatLeafId,
-  resolveTouchArmedMove,
-  shouldReresolveSeatedTarget,
-  deriveCommittableSeat,
-  foldCommittableSeatFallback,
-  resolveReleaseCommitSeat,
   shouldSuppressCompetingCancel,
-  EMPTY_COMMITTABLE_SEAT_FALLBACK,
-  type CommittableSeatFallback,
   type DragMachinePoint,
   type DragMachineState,
   type DragPointerType,
   type FrameCoalescer,
-  type TouchArmedMoveResolution,
 } from "../core/drag-machine";
+import {
+  type DragInputDriver,
+  createDragInputDriver,
+} from "../core/input-driver";
 import {
   isDragPresentationActive,
   resolveDragPresentation,
@@ -3837,35 +3832,12 @@ export const TilingRenderer = React.forwardRef<
   // cursor (no target) or when the slot is off-screen/degenerate (§10 clamp).
   const [seatFootprint, setSeatFootprint] =
     React.useState<TilingPaneFootprint | null>(null);
-  // The cursor position captured when the current slot became seated — the
-  // anchor the `delta-responsive` commitment policy measures re-aim travel from.
-  const seatAnchorRef = React.useRef<DragMachinePoint | null>(null);
-  // The single authoritative committable seat — the slot the drop commits to,
-  // written synchronously on every processed pointer sample via
-  // `deriveCommittableSeat`. The RELEASE path commits THIS verbatim instead of
-  // re-resolving the drop target from the `pointerup` coordinates, so a seated
-  // committable drop can never be clobbered to a cancel by release-time
-  // re-resolution (over a gap / off the gap-closed hit footprint). Being a ref
-  // written in the sample task, it is also free of the passive-effect lag that
-  // `dragStateRef` carries. Cleared at settle. See `drag-machine.ts`.
-  const committableSeatRef = React.useRef<TilingDropState | null>(null);
-  // Decaying "last committable seat" fallback for the release latch. The final
-  // processed move can transiently clear `committableSeatRef` to null (a
-  // sub-pixel / footprint-edge jitter at release); this carries the most-recent
-  // NON-NULL committable seat so `resolveReleaseCommitSeat` can still commit the
-  // slot the user dwelled on. It DECAYS on a sustained null run so a genuine
-  // leave (cursor travelled off all targets and held) correctly cancels. Reset
-  // at settle. See `drag-machine.ts:foldCommittableSeatFallback`.
-  const committableSeatFallbackRef = React.useRef<CommittableSeatFallback>(
-    EMPTY_COMMITTABLE_SEAT_FALLBACK,
-  );
-  // The commit seat LATCHED synchronously at the very start of `handlePointerUp`,
-  // before any dispatch/microtask. While non-null a release commit is in flight,
-  // so every competing cancel source (M3 watchdog `onExpire`,
-  // `lostpointercapture`, `blur`, `visibilitychange`) NO-OPs
-  // (`shouldSuppressCompetingCancel`) and cannot revert the seated drop under
-  // frame starvation / first-terminal-event-wins. Cleared at settle.
-  const releaseCommitLatchedRef = React.useRef<TilingDropState | null>(null);
+  // The seat/latch cluster (seat anchor, the single authoritative committable
+  // seat, the decaying last-committable-seat fallback, and the synchronously
+  // latched release commit) is OWNED by the framework-free drag input driver
+  // (`core/input-driver.ts`), created below once `resolvePointerTarget` exists.
+  // The renderer reads `inputDriver.committableSeat` / `.releaseCommitLatched`
+  // for competing-cancel suppression and calls `inputDriver.reset()` at settle.
   // The live M3 idle-watchdog handle, mirrored into a ref so `handlePointerMove`
   // can input-GROUND it (re-arm on raw pointer input, not only on effect re-runs)
   // and `handlePointerUp` can cancel it SYNCHRONOUSLY outside the effect cleanup,
@@ -6268,6 +6240,47 @@ export const TilingRenderer = React.forwardRef<
       measurementPort,
     ],
   );
+  // Mirror the latest `resolvePointerTarget` into a ref so the once-created
+  // input driver always resolves through the LIVE callback (its identity churns
+  // as `layout` / `viewportSize` / capabilities change) without re-creating the
+  // driver and losing the in-flight seat/latch state.
+  const resolvePointerTargetRef = React.useRef(resolvePointerTarget);
+  resolvePointerTargetRef.current = resolvePointerTarget;
+
+  // The framework-free FSM input driver: it owns the seat/latch cluster and runs
+  // the lifted `processPointerSample` + release-latch pipeline. Created ONCE (so
+  // the cluster survives the pointer effect's per-drag re-subscribes) with a host
+  // whose methods read live refs / the stable dispatch — so it never goes stale.
+  const inputDriverRef = React.useRef<DragInputDriver | null>(null);
+  if (inputDriverRef.current == null) {
+    inputDriverRef.current = createDragInputDriver({
+      getState: (): DragMachineState => dragStateRef.current,
+      dispatch: dispatchDrag,
+      resolveTarget: (
+        clientX: number,
+        clientY: number,
+        sourceLeafId: string,
+        previousTarget: TilingDropState | null,
+      ): TilingDropState | null =>
+        resolvePointerTargetRef.current(clientX, clientY, sourceLeafId, previousTarget),
+      capturePointer: (pointerId: number): void => {
+        const rootElement: HTMLDivElement | null = rootRef.current;
+        if (rootElement?.setPointerCapture != null) {
+          try {
+            rootElement.setPointerCapture(pointerId);
+            capturedPointerIdRef.current = pointerId;
+          } catch {
+            // Capture is best-effort; window listeners still receive events.
+          }
+        }
+      },
+      getSlotCommitment: () => ({
+        mode: slotCommitmentRef.current.mode,
+        reresolveDeltaPx: slotCommitmentRef.current.reresolveDeltaPx,
+      }),
+    });
+  }
+  const inputDriver: DragInputDriver = inputDriverRef.current;
 
   // The drag input layer. Active for the WHOLE armed/dragging lifetime. The
   // captured pointer (on the STABLE root, not a candidate-tree tile that
@@ -6289,192 +6302,16 @@ export const TilingRenderer = React.forwardRef<
     }
     const owningPointerId: number = activeDragPointerId;
 
-    // Resolve one pointer sample into FSM events: promote `armed → dragging`
-    // once the pickup threshold is crossed and resolve the drop target for the
-    // current cursor position. Extracted (not inlined into the coalescer) so the
-    // RELEASE path can run it SYNCHRONOUSLY from the raw `pointerup` coords — a
-    // fast flick releases in the same task as its `pointermove`s, before the rAF
+    // The per-sample pipeline (promote `armed → dragging` past the pickup
+    // threshold, resolve the drop target, apply the slot-commitment re-aim
+    // damper, mirror the committable seat + decaying fallback) and the release
+    // latch are owned by the framework-free `inputDriver`
+    // (`core/input-driver.ts`). The RELEASE path runs `processPointerSample`
+    // SYNCHRONOUSLY from the raw `pointerup` coords (`isReleaseSample`) — a fast
+    // flick releases in the same task as its `pointermove`s, before the rAF
     // coalescer flushes, so without a synchronous release-time resolve the FSM
     // would still be `armed` (or hold a stale target) and POINTER_UP would
     // settle as a click/cancel, reverting the pane to its origin.
-    const processPointerSample = (
-      client: DragMachinePoint,
-      isReleaseSample: boolean = false,
-    ): void => {
-      {
-          const current: DragMachineState = dragStateRef.current;
-          if (current.phase === "armed") {
-            if (current.touchDrag) {
-              // Touch must disambiguate before capture. A pre-long-press scroll-axis
-              // flick is released to the page: forward the move so the reducer drops
-              // to idle, and take NO capture (capturing then idling would leak the
-              // capture, since the settle path only releases on `settling`). A
-              // sub-threshold hold keeps armed (the long-press timer still runs). A
-              // non-scroll threshold crossing is a deliberate pickup → fall through
-              // to capture + promote.
-              const resolution: TouchArmedMoveResolution =
-                resolveTouchArmedMove({
-                  origin: current.originClient,
-                  client,
-                  longPressSatisfied: false,
-                });
-              if (resolution === "scroll-escape") {
-                dispatchDrag({
-                  type: "POINTER_MOVE",
-                  pointerId: owningPointerId,
-                  client,
-                });
-                return;
-              }
-              if (resolution === "hold") {
-                return;
-              }
-            } else if (
-              !hasCrossedPickupThreshold(current.originClient, client)
-            ) {
-              return;
-            }
-            // Threshold crossed (mouse/pen) or a deliberate touch pickup → take
-            // capture on the stable root, then promote to dragging and resolve the
-            // first target.
-            const rootElement: HTMLDivElement | null = rootRef.current;
-            if (rootElement?.setPointerCapture != null) {
-              try {
-                rootElement.setPointerCapture(owningPointerId);
-                capturedPointerIdRef.current = owningPointerId;
-              } catch {
-                // Capture is best-effort; window listeners still receive events.
-              }
-            }
-            dispatchDrag({
-              type: "POINTER_MOVE",
-              pointerId: owningPointerId,
-              client,
-            });
-            const firstTarget: TilingDropState | null = resolvePointerTarget(
-              client.x,
-              client.y,
-              current.sourceLeafId,
-              null,
-            );
-            seatAnchorRef.current =
-              firstTarget != null &&
-              isCommittableTarget(firstTarget, current.sourceLeafId)
-                ? { x: client.x, y: client.y }
-                : null;
-            committableSeatRef.current = deriveCommittableSeat(
-              firstTarget,
-              current.sourceLeafId,
-            );
-            committableSeatFallbackRef.current = foldCommittableSeatFallback(
-              committableSeatFallbackRef.current,
-              committableSeatRef.current,
-            );
-            dispatchDrag({
-              type: "TARGET_RESOLVED",
-              pointerId: owningPointerId,
-              resolvedTarget: firstTarget,
-            });
-          } else if (current.phase === "dragging") {
-            // RELEASE: commit the single authoritative committable seat atomically.
-            // Do NOT re-resolve the drop target from the release coordinates — a
-            // seated committable drop must not be clobbered to a cancel because the
-            // raw `pointerup` point resolves `null` (cursor over a layout gap / off
-            // the gap-closed hit footprint) or a different target. The seat ref is
-            // written synchronously on every move sample below, so it always holds
-            // the slot the user was shown hopped into; `POINTER_UP` then commits it
-            // (or cancels when it is `null`). This is the snap-back / seated-release
-            // fix — see `drag-machine.ts:deriveCommittableSeat`.
-            if (isReleaseSample) {
-              dispatchDrag({
-                type: "POINTER_MOVE",
-                pointerId: owningPointerId,
-                client,
-              });
-              dispatchDrag({
-                type: "TARGET_RESOLVED",
-                pointerId: owningPointerId,
-                resolvedTarget: committableSeatRef.current,
-              });
-              return;
-            }
-            dispatchDrag({
-              type: "POINTER_MOVE",
-              pointerId: owningPointerId,
-              client,
-            });
-            const freshTarget: TilingDropState | null = resolvePointerTarget(
-              client.x,
-              client.y,
-              current.sourceLeafId,
-              current.resolvedTarget,
-            );
-            const seatedTarget: TilingDropState | null =
-              current.resolvedTarget;
-            // Slot-commitment policy: once the ghost has hopped into a seated slot,
-            // hold it (no retarget) until the policy says re-resolve. `zone-exit-hold`
-            // holds until the cursor leaves the seated pane; `delta-responsive`
-            // (default) re-aims once the cursor travels beyond the delta from the
-            // seat anchor. The delta gates WHETHER to re-run resolution (a coarse
-            // re-aim gate) — it is NOT fed into `resolveDropIntent`'s zone
-            // hysteresis, so the two dampers never double-count.
-            let nextTarget: TilingDropState | null = freshTarget;
-            if (
-              seatedTarget != null &&
-              isCommittableTarget(seatedTarget, current.sourceLeafId)
-            ) {
-              const cursorWithinSeatedFootprint: boolean =
-                freshTarget != null &&
-                freshTarget.leafId === seatedTarget.leafId;
-              const reresolve: boolean = shouldReresolveSeatedTarget({
-                mode: slotCommitmentRef.current.mode,
-                seatAnchor: seatAnchorRef.current ?? client,
-                currentClient: client,
-                reresolveDeltaPx: slotCommitmentRef.current.reresolveDeltaPx,
-                cursorWithinSeatedFootprint,
-              });
-              if (!reresolve) {
-                nextTarget = seatedTarget;
-              }
-            }
-            // Re-anchor the seat on a (re)seat onto a committable target; clear it
-            // when no slot is seated so the next seat re-anchors fresh.
-            if (
-              nextTarget != null &&
-              isCommittableTarget(nextTarget, current.sourceLeafId)
-            ) {
-              const isNewSeat: boolean =
-                seatedTarget == null ||
-                seatedTarget.leafId !== nextTarget.leafId ||
-                seatedTarget.zone !== nextTarget.zone ||
-                seatedTarget.action !== nextTarget.action;
-              if (isNewSeat) {
-                seatAnchorRef.current = { x: client.x, y: client.y };
-              }
-            } else {
-              seatAnchorRef.current = null;
-            }
-            // Capture the committable seat synchronously so the RELEASE path
-            // commits it verbatim without re-resolving the release coordinates.
-            committableSeatRef.current = deriveCommittableSeat(
-              nextTarget,
-              current.sourceLeafId,
-            );
-            // Track the decaying last-committable-seat fallback so the release
-            // latch survives a transient final-move clear but cancels on a
-            // genuine leave. See `foldCommittableSeatFallback`.
-            committableSeatFallbackRef.current = foldCommittableSeatFallback(
-              committableSeatFallbackRef.current,
-              committableSeatRef.current,
-            );
-            dispatchDrag({
-              type: "TARGET_RESOLVED",
-              pointerId: owningPointerId,
-              resolvedTarget: nextTarget,
-            });
-          }
-      }
-    };
 
     // rAF coalescer: raw `pointermove` coords are buffered and processed at most
     // once per frame (latest wins), decoupling the input frame from the render
@@ -6482,10 +6319,15 @@ export const TilingRenderer = React.forwardRef<
     // candidate-tree recomputes within one frame. `.cancel()` on teardown drops
     // any pending frame so it can never fire after the drag has settled.
     const coalescer: FrameCoalescer<DragMachinePoint> =
-      createFrameCoalescer<DragMachinePoint>(processPointerSample, {
-        request: WINDOW_SCHEDULER_PORT.requestFrame,
-        cancel: WINDOW_SCHEDULER_PORT.cancelFrame,
-      });
+      createFrameCoalescer<DragMachinePoint>(
+        (payload: DragMachinePoint): void => {
+          inputDriver.processPointerSample(payload);
+        },
+        {
+          request: WINDOW_SCHEDULER_PORT.requestFrame,
+          cancel: WINDOW_SCHEDULER_PORT.cancelFrame,
+        },
+      );
 
     // Touch long-press pickup timer. Armed once when a TOUCH press enters
     // `armed`; the held finger becomes a drag when it fires (mouse/pen never arm
@@ -6523,30 +6365,13 @@ export const TilingRenderer = React.forwardRef<
           }
         }
         dispatchDrag({ type: "LONG_PRESS", pointerId: owningPointerId });
-        const firstTarget: TilingDropState | null = resolvePointerTarget(
-          held.originClient.x,
-          held.originClient.y,
+        // The first-target resolution + seat capture is the SAME tail the
+        // threshold-pickup promotion runs — owned by the input driver.
+        inputDriver.captureInitialTarget(
           held.sourceLeafId,
-          null,
+          { x: held.originClient.x, y: held.originClient.y },
+          owningPointerId,
         );
-        seatAnchorRef.current =
-          firstTarget != null &&
-          isCommittableTarget(firstTarget, held.sourceLeafId)
-            ? { x: held.originClient.x, y: held.originClient.y }
-            : null;
-        committableSeatRef.current = deriveCommittableSeat(
-          firstTarget,
-          held.sourceLeafId,
-        );
-        committableSeatFallbackRef.current = foldCommittableSeatFallback(
-          committableSeatFallbackRef.current,
-          committableSeatRef.current,
-        );
-        dispatchDrag({
-          type: "TARGET_RESOLVED",
-          pointerId: owningPointerId,
-          resolvedTarget: firstTarget,
-        });
       }, touchLongPressMsRef.current);
     }
 
@@ -6577,22 +6402,14 @@ export const TilingRenderer = React.forwardRef<
       // Cancels first, so nothing races the latch.
       coalescer.cancel();
       watchdogRef.current?.cancel();
-      // Latch the seat the release will commit: the seat captured on the final
-      // processed sample, falling back to the most-recent-non-null committable
-      // seat (`committableSeatFallbackRef`) so a transient sub-pixel / gap-hit
-      // clear on the FINAL move does not null the commit. The fallback has
-      // already DECAYED to null on a genuine leave (cursor travelled off all
-      // targets and held), so a release after leaving every target still cancels
-      // — no false commit. Written back into `committableSeatRef` so the release
-      // sample dispatches the latched seat verbatim, and held in
-      // `releaseCommitLatchedRef` so any late cancel no-ops
-      // (`shouldSuppressCompetingCancel`) and cannot override the commit.
-      const latchedSeat: TilingDropState | null = resolveReleaseCommitSeat(
-        committableSeatRef.current,
-        committableSeatFallbackRef.current,
-      );
-      releaseCommitLatchedRef.current = latchedSeat;
-      committableSeatRef.current = latchedSeat;
+      // Latch the seat the release will commit (the driver folds the final
+      // processed sample with the decaying last-committable-seat fallback, so a
+      // transient sub-pixel / gap-hit clear on the FINAL move does not null the
+      // commit while a genuine leave still cancels). The driver writes the
+      // latched seat back into its `committableSeat` (so the release sample
+      // dispatches it verbatim) and into `releaseCommitLatched` (so any late
+      // cancel no-ops via `shouldSuppressCompetingCancel`).
+      inputDriver.latchRelease();
       // Release-time synchronous resolve. A fast drag-release fires its
       // `pointermove`s and this `pointerup` within a single task, before the rAF
       // coalescer has a chance to flush — so the buffered sample (which both
@@ -6612,7 +6429,10 @@ export const TilingRenderer = React.forwardRef<
           releaseState.phase === "dragging") &&
         releaseState.touchDrag;
       if (!releaseIsTouch) {
-        processPointerSample({ x: event.clientX, y: event.clientY }, true);
+        inputDriver.processPointerSample(
+          { x: event.clientX, y: event.clientY },
+          true,
+        );
       }
       dispatchDrag({ type: "POINTER_UP", pointerId: owningPointerId });
     };
@@ -6633,8 +6453,8 @@ export const TilingRenderer = React.forwardRef<
       // exists; otherwise it is a genuine capture theft → cancel.
       if (
         shouldSuppressCompetingCancel(
-          releaseCommitLatchedRef.current,
-          committableSeatRef.current,
+          inputDriver.releaseCommitLatched,
+          inputDriver.committableSeat,
         )
       ) {
         return;
@@ -6653,8 +6473,8 @@ export const TilingRenderer = React.forwardRef<
       // always-honored explicit cancel.
       if (
         shouldSuppressCompetingCancel(
-          releaseCommitLatchedRef.current,
-          committableSeatRef.current,
+          inputDriver.releaseCommitLatched,
+          inputDriver.committableSeat,
         )
       ) {
         return;
@@ -6672,8 +6492,8 @@ export const TilingRenderer = React.forwardRef<
         // seat exists (the seat's release, even while hidden, still commits).
         if (
           shouldSuppressCompetingCancel(
-            releaseCommitLatchedRef.current,
-            committableSeatRef.current,
+            inputDriver.releaseCommitLatched,
+            inputDriver.committableSeat,
           )
         ) {
           return;
@@ -6796,11 +6616,9 @@ export const TilingRenderer = React.forwardRef<
       });
     }
     dragSnapshotRef.current = null;
-    seatAnchorRef.current = null;
-    committableSeatRef.current = null;
-    // Reset the commit-latch + decaying fallback so the next drag starts clean.
-    committableSeatFallbackRef.current = EMPTY_COMMITTABLE_SEAT_FALLBACK;
-    releaseCommitLatchedRef.current = null;
+    // Reset the seat/latch cluster (seat anchor, committable seat, decaying
+    // fallback, latched release commit) so the next drag starts clean.
+    inputDriver.reset();
     setSeatFootprint(null);
     onLiveHitLogChange?.(null);
     didPaintDraggingFrameRef.current = false;
@@ -6845,8 +6663,8 @@ export const TilingRenderer = React.forwardRef<
         // its release will commit. See `shouldSuppressCompetingCancel`.
         if (
           shouldSuppressCompetingCancel(
-            releaseCommitLatchedRef.current,
-            committableSeatRef.current,
+            inputDriver.releaseCommitLatched,
+            inputDriver.committableSeat,
           )
         ) {
           return;
