@@ -6,7 +6,9 @@
   "license": "PolyForm-Perimeter-1.0.0",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && vite build --ssr src/entry-server.tsx --outDir dist-server && node prerender.mjs",
+    "build:client": "vite build",
+    "prerender": "node prerender.mjs",
     "typecheck": "tsc --project tsconfig.json",
     "preview": "vite preview"
   },
