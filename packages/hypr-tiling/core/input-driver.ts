@@ -14,7 +14,22 @@ import {
   resolveReleaseCommitSeat,
   resolveTouchArmedMove,
   shouldReresolveSeatedTarget,
+  shouldSuppressCompetingCancel,
 } from "./drag-machine";
+
+/**
+ * Watchdog-arming policy (lifted from the renderer's M3 watchdog effect): the
+ * idle watchdog is armed iff drag-recovery is enabled AND the FSM is in a phase
+ * a stall could strand (`armed` / `dragging`). `idle` / `settling` never arm it
+ * (there is no in-flight interaction to self-heal). Pure so the host effect's
+ * arming gate is unit-testable without a timer.
+ */
+export function shouldArmIdleWatchdog(
+  phase: DragMachineState["phase"],
+  dragRecoveryEnabled: boolean,
+): boolean {
+  return dragRecoveryEnabled && (phase === "armed" || phase === "dragging");
+}
 
 /**
  * The slot-commitment knobs the driver consults while a slot is seated — the
@@ -91,6 +106,16 @@ export interface DragInputDriver {
   ): void;
   latchRelease(): DragResolvedTarget | null;
   reset(): void;
+  /**
+   * Whether a COMPETING cancel source (the M3 watchdog `onExpire`,
+   * `lostpointercapture`, `blur`, `visibilitychange`) should be allowed to
+   * dispatch its cancel — the single arbiter the host wires ALL four sources
+   * through. `false` (suppress) iff a release commit is latched OR a committable
+   * seat currently exists; `true` (dispatch the cancel) only in the
+   * genuinely-stuck case (no latch AND no seat). Centralizes the suppression
+   * decision so no cancel source can special-case itself out of the policy.
+   */
+  shouldDispatchCompetingCancel(): boolean;
   readonly committableSeat: DragResolvedTarget | null;
   readonly releaseCommitLatched: DragResolvedTarget | null;
   readonly seatAnchor: DragMachinePoint | null;
@@ -278,11 +303,15 @@ export function createDragInputDriver(host: DragInputDriverHost): DragInputDrive
     releaseCommitLatched = null;
   };
 
+  const shouldDispatchCompetingCancel = (): boolean =>
+    !shouldSuppressCompetingCancel(releaseCommitLatched, committableSeat);
+
   return {
     processPointerSample,
     captureInitialTarget,
     latchRelease,
     reset,
+    shouldDispatchCompetingCancel,
     get committableSeat(): DragResolvedTarget | null {
       return committableSeat;
     },

@@ -39,7 +39,6 @@ import {
   previousZoneSeed,
   resolveDragCommitFocusLeafId,
   resolveDragGhostSeatLeafId,
-  shouldSuppressCompetingCancel,
   type DragMachinePoint,
   type DragMachineState,
   type DragPointerType,
@@ -48,6 +47,7 @@ import {
 import {
   type DragInputDriver,
   createDragInputDriver,
+  shouldArmIdleWatchdog,
 } from "../core/input-driver";
 import {
   isDragPresentationActive,
@@ -6449,14 +6449,9 @@ export const TilingRenderer = React.forwardRef<
       // Fix A — competing-cancel suppression. Capture loss (DOM unmount mid-drag,
       // devtools, OS gesture, a transient re-capture) normally cancels, but it
       // must NOT revert a release already in flight or a seated committable drop
-      // — those commit. Suppress iff a commit is latched or a committable seat
-      // exists; otherwise it is a genuine capture theft → cancel.
-      if (
-        shouldSuppressCompetingCancel(
-          inputDriver.releaseCommitLatched,
-          inputDriver.committableSeat,
-        )
-      ) {
+      // — those commit. The driver's arbiter dispatches the cancel only in the
+      // genuinely-stuck case (no latch AND no committable seat).
+      if (!inputDriver.shouldDispatchCompetingCancel()) {
         return;
       }
       dispatchDrag({ type: "POINTER_CANCEL", pointerId: owningPointerId });
@@ -6468,15 +6463,10 @@ export const TilingRenderer = React.forwardRef<
     };
     const handleBlur = (): void => {
       // A blur that races a release / arrives while a committable seat is seated
-      // must not clobber the commit (first-terminal-event-wins). Suppress iff a
-      // commit is latched or a committable seat exists; an Escape is a separate,
-      // always-honored explicit cancel.
-      if (
-        shouldSuppressCompetingCancel(
-          inputDriver.releaseCommitLatched,
-          inputDriver.committableSeat,
-        )
-      ) {
+      // must not clobber the commit (first-terminal-event-wins). The driver's
+      // arbiter suppresses the cancel iff a commit is latched or a committable
+      // seat exists; an Escape is a separate, always-honored explicit cancel.
+      if (!inputDriver.shouldDispatchCompetingCancel()) {
         return;
       }
       dispatchDrag({ type: "BLUR" });
@@ -6488,14 +6478,10 @@ export const TilingRenderer = React.forwardRef<
         // the tab is shown again (INV-R4). The cancel side effect plus this strip
         // are both idempotent with the settle teardown. But a hide that races a
         // release / arrives on a seated committable drop must not clobber the
-        // commit — suppress the cancel iff a commit is latched or a committable
-        // seat exists (the seat's release, even while hidden, still commits).
-        if (
-          shouldSuppressCompetingCancel(
-            inputDriver.releaseCommitLatched,
-            inputDriver.committableSeat,
-          )
-        ) {
+        // commit — the driver's arbiter suppresses the cancel iff a commit is
+        // latched or a committable seat exists (the seat's release, even while
+        // hidden, still commits).
+        if (!inputDriver.shouldDispatchCompetingCancel()) {
           return;
         }
         dispatchDrag({ type: "VISIBILITY_HIDDEN" });
@@ -6645,10 +6631,9 @@ export const TilingRenderer = React.forwardRef<
   // by the `dragRecovery.enable` capability; the monotonic `now` guard makes the
   // expiry robust to timer coalescing/throttling.
   React.useEffect((): undefined | (() => void) => {
-    if (!isDragRecoveryEnabled) {
-      return undefined;
-    }
-    if (dragState.phase !== "armed" && dragState.phase !== "dragging") {
+    // Arming policy lifted to core: arm iff drag-recovery is enabled AND the FSM
+    // is in a phase a stall could strand (`armed` / `dragging`).
+    if (!shouldArmIdleWatchdog(dragState.phase, isDragRecoveryEnabled)) {
       return undefined;
     }
     const watchdog: DragWatchdog = createDragWatchdog({
@@ -6656,17 +6641,12 @@ export const TilingRenderer = React.forwardRef<
       now: WINDOW_SCHEDULER_PORT.now,
       scheduler: WINDOW_SCHEDULER_PORT,
       onExpire: (): void => {
-        // Self-heal cancel is for the genuinely-stuck case ONLY. Suppress it
-        // when a release commit is latched OR a committable seat exists for the
-        // pointer — a frame-starved drag that is moving (input-grounded via
-        // `handlePointerMove`) or seated must not be reverted by the watchdog;
-        // its release will commit. See `shouldSuppressCompetingCancel`.
-        if (
-          shouldSuppressCompetingCancel(
-            inputDriver.releaseCommitLatched,
-            inputDriver.committableSeat,
-          )
-        ) {
+        // Self-heal cancel is for the genuinely-stuck case ONLY — a frame-starved
+        // drag that is moving (input-grounded via `handlePointerMove`) or seated
+        // must not be reverted by the watchdog; its release will commit. The
+        // driver's arbiter dispatches the cancel only when no commit is latched
+        // AND no committable seat exists.
+        if (!inputDriver.shouldDispatchCompetingCancel()) {
           return;
         }
         dispatchDrag({ type: "POINTER_CANCEL" });
