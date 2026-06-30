@@ -5537,17 +5537,21 @@ export const DynamicTilingRenderer = React.forwardRef<
   // command, then clear the selection — but ONLY on a successful group (the
   // router returns `true`). Reuses the SAME router as the keyboard `Alt+G` /
   // imperative `dispatch` path; the grouping capability gate still applies.
-  const groupMultiSelection = React.useCallback((): void => {
+  const groupMultiSelection = React.useCallback((): boolean => {
     if (!isMultiSelectGroupingEnabled) {
-      return;
+      return false;
     }
-    const command = resolveMultiSelectGroupCommand(multiSelectedLeafIdsRef.current);
+    const command: TilingCommand | null = resolveMultiSelectGroupCommand(
+      multiSelectedLeafIdsRef.current,
+    );
     if (command == null) {
-      return;
+      return false;
     }
     if (dispatchCommand(command)) {
       clearMultiSelection();
+      return true;
     }
+    return false;
   }, [clearMultiSelection, dispatchCommand, isMultiSelectGroupingEnabled]);
 
   // Prune the multi-selection whenever a selected pane leaves the outer-slot
@@ -5759,6 +5763,21 @@ export const DynamicTilingRenderer = React.forwardRef<
         }
         return;
       }
+      // Alt+G (`toggle-group`) is rebound to the multi-selection grouping action
+      // whenever the feature is live: it folds the CURRENTLY multi-selected
+      // panes into one tabbed group via the SAME `group-leaves` path the header
+      // Group button uses (`groupMultiSelection`), then clears the selection.
+      // With an empty selection it is a deliberate NO-OP — it does NOT fall back
+      // to the legacy focused+neighbor `toggle-group`. When the feature is off
+      // (`multiSelectGrouping` / `grouping` disabled) it falls through to the
+      // legacy command below, so consumers without multi-select grouping keep
+      // their original Alt+G toggle.
+      if (action.kind === "toggle-group" && isMultiSelectGroupingEnabled) {
+        if (groupMultiSelection()) {
+          preventDefault();
+        }
+        return;
+      }
       // Every other fixed-keymap action bridges to a command and routes through
       // the SAME router (no duplicated action logic). `preventDefault` only
       // fires when the command produced an effect, preserving browser-grace for
@@ -5783,6 +5802,8 @@ export const DynamicTilingRenderer = React.forwardRef<
       keymap,
       leafIds,
       clearMultiSelection,
+      isMultiSelectGroupingEnabled,
+      groupMultiSelection,
     ],
   );
 
@@ -7061,7 +7082,24 @@ export const DynamicTilingRenderer = React.forwardRef<
             toggleMultiSelect(node.id);
           },
           onGroupMultiSelection: groupMultiSelection,
-          onFocus: (): void => {
+          onFocus: (event?: React.SyntheticEvent<HTMLElement>): void => {
+            // Header-control guard: when a multi-selection is active and DOM
+            // focus moves to a header CONTROL button (the Group button, the
+            // maximize button), do NOTHING — neither clear the selection nor
+            // re-focus. A button takes focus on pointer-down, so its `focusin`
+            // bubbles to this article `onFocus` BEFORE the button's own `click`
+            // is delivered. Clearing the selection here re-renders and UNMOUNTS
+            // the Group button (its `isMultiSelected` guard flips false), so the
+            // pending click never lands `onGroupMultiSelection` — the "Group
+            // button seems to have no trigger" defect. The control's effect
+            // lives in its own `onClick`, so swallowing this focus is inert.
+            if (
+              multiSelectedLeafIdsRef.current.size > 0 &&
+              event?.target instanceof Element &&
+              event.target.closest("button") != null
+            ) {
+              return;
+            }
             // A plain click / keyboard focus establishes a single focus, which
             // supersedes (and clears) any in-progress multi-selection. The
             // Cmd/Ctrl+click path never reaches here — it is intercepted in the

@@ -1141,7 +1141,14 @@ export interface DynamicRenderTileArgs {
   paneHitZoneDebug: DynamicPaneHitZoneOverlayDebugState | null;
   observabilityColors: DynamicObservabilityColorConfig;
   observabilityColorEnables: DynamicObservabilityColorEnableConfig;
-  onFocus: () => void;
+  /**
+   * Establish single focus on this pane (and clear any in-progress
+   * multi-selection). Wire to the pane root's `onFocus`. The renderer reads the
+   * focus event's `target`: when a multi-selection is active and focus landed on
+   * a header CONTROL button (Group / maximize), it is a no-op, so a click on the
+   * Group button is not nullified by the button stealing focus first.
+   */
+  onFocus: (event?: React.SyntheticEvent<HTMLElement>) => void;
   /**
    * Whether the Cmd/Ctrl+click header multi-selection feature is live
    * (`paneSwitching.multiSelectGrouping` AND the `grouping` capability). When

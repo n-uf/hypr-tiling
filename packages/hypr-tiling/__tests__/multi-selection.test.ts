@@ -7,7 +7,14 @@ import {
   resolveMultiSelectGroupCommand,
   toggleLeafMultiSelection,
 } from "../multi-selection";
-import { findGroupById, groupLeaves, readGroupMemberIds, readLeafNodeIds } from "../state";
+import {
+  collectGroups,
+  findGroupById,
+  groupLeaves,
+  isStructurallyValidLayout,
+  readGroupMemberIds,
+  readLeafNodeIds,
+} from "../state";
 import type {
   DynamicGroupNode,
   DynamicLayoutNode,
@@ -36,9 +43,38 @@ function hsplit(
   return { kind: "split", id, axis: "horizontal", ratio: 0.5, first, second };
 }
 
+function vsplit(
+  id: string,
+  first: DynamicLayoutNode,
+  second: DynamicLayoutNode,
+): DynamicSplitNode {
+  return { kind: "split", id, axis: "vertical", ratio: 0.5, first, second };
+}
+
 // A 3-leaf right-leaning dwindle tree: split(a, split(b, c)).
 function threeLeafTree(): DynamicSplitNode {
   return hsplit("root", leaf("a"), hsplit("inner", leaf("b"), leaf("c")));
+}
+
+// Mirrors the homepage `INITIAL_LAYOUT` shape (apps/web/src/page.tsx): a nested
+// split tree where the candidate group members `features` and `install` live in
+// DIFFERENT branches (features under `mid`, install under `far`). This is the
+// cross-branch case the reproduction screenshot exercised (03 FEATURES + 05
+// INSTALL), not a toy adjacent pair.
+function homepageTree(): DynamicSplitNode {
+  return hsplit(
+    "root",
+    vsplit("intro-col", leaf("intro"), leaf("usecases")),
+    hsplit(
+      "right",
+      vsplit("mid", leaf("features"), leaf("model")),
+      vsplit(
+        "far",
+        leaf("install"),
+        hsplit("far-bottom", leaf("discoverability"), leaf("controls")),
+      ),
+    ),
+  );
 }
 
 describe("isMultiSelectModifierActive (plain vs Cmd/Ctrl click discriminator)", (): void => {
@@ -154,6 +190,44 @@ describe("resolveMultiSelectGroupCommand (reuse the existing group-leaves op)", 
     const group: DynamicGroupNode | null = findGroupById(grouped, "group-a");
     expect(group).not.toBeNull();
     expect(readGroupMemberIds(grouped).slice().sort()).toEqual(["a", "b"]);
+  });
+
+  it("RESULT: folds a cross-branch homepage selection into exactly ONE group of exactly those members", (): void => {
+    // The reproduction case: two NON-adjacent homepage panes in different
+    // branches (`features` under `mid`, `install` under `far`). The Group
+    // button's command, run through the reused `groupLeaves` op, must produce a
+    // SINGLE group node whose members are EXACTLY the selection (anchor first,
+    // active) — not merely a tree that differs from the input. The other five
+    // panes stay ungrouped outer leaves.
+    const command = resolveMultiSelectGroupCommand(
+      new Set<string>(["features", "install"]),
+    );
+    if (command == null || command.kind !== "group-leaves") {
+      throw new Error("expected a group-leaves command");
+    }
+    const grouped: DynamicLayoutNode = groupLeaves(homepageTree(), command.leafIds);
+
+    // Exactly ONE group in the whole tree.
+    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(grouped);
+    expect(groups.length).toBe(1);
+
+    // That group holds EXACTLY the two selected leaves, in selection order, with
+    // the anchor (`features`) active — i.e. a usable two-tab stack.
+    const group: DynamicGroupNode = groups[0];
+    expect(group.members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+      "features",
+      "install",
+    ]);
+    expect(group.activeMemberId).toBe("features");
+
+    // The remaining five panes survive as ungrouped outer leaves; the outer-slot
+    // view shows the group's active member (`features`) plus the untouched four.
+    const outerIds: ReadonlyArray<string> = readLeafNodeIds(grouped);
+    expect(outerIds.slice().sort()).toEqual(
+      ["controls", "discoverability", "features", "intro", "model", "usecases"].sort(),
+    );
+    expect(outerIds).not.toContain("install");
+    expect(isStructurallyValidLayout(grouped)).toBe(true);
   });
 
   it("models the post-group prune: a non-active member folded into the group leaves the outer slot set", (): void => {
