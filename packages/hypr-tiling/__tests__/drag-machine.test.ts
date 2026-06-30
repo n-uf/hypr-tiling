@@ -28,6 +28,11 @@ import {
   shouldReserveDragSourceSlot,
   shouldReresolveSeatedTarget,
   deriveCommittableSeat,
+  foldCommittableSeatFallback,
+  resolveReleaseCommitSeat,
+  shouldSuppressCompetingCancel,
+  EMPTY_COMMITTABLE_SEAT_FALLBACK,
+  type CommittableSeatFallback,
 } from "../drag-machine";
 import { createDragWatchdog } from "../drag-recovery";
 import { collectGroups, findGroupContainingLeaf, findLeafById, groupLeaves, insertLeafAdjacent, readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../state";
@@ -1071,5 +1076,186 @@ describe("drag-machine — presentation selectors extend through settling commit
     };
     expect(presentationResolvedTarget(state)).toEqual(seatedSwap);
     expect(activeResolvedTarget(state)).toBeNull();
+  });
+});
+
+describe("drag-machine — commit latch wins over competing cancel (throttling snap-back race)", (): void => {
+  // The throttling snap-back: a pane seats correctly during the drag but SNAPS
+  // BACK on release, intermittently. Two race surfaces beyond the (already-fixed)
+  // committable-seat SSOT: (1) under rAF starvation the M3 watchdog / a competing
+  // cancel source (`lostpointercapture` / `blur` / `visibilitychange`) reaches
+  // `dragging` before the release commit and reverts the layout
+  // (first-terminal-event-wins); (2) the FINAL coalesced move can transiently
+  // clear `committableSeatRef` to null right before release, so the release
+  // commits null → cancel. Fix A latches the commit seat at `pointerup` and
+  // no-ops competing cancels; the decaying fallback closes the transient-clear
+  // tertiary. These pin the pure logic behind that wiring.
+  const seatC: DragResolvedTarget = makeTarget("C", "center", "swap");
+  const seatB: DragResolvedTarget = makeTarget("B", "center", "swap");
+
+  describe("foldCommittableSeatFallback — decaying last-committable-seat fallback", (): void => {
+    it("a non-null seat refreshes the fallback and resets the null run", (): void => {
+      const folded: CommittableSeatFallback = foldCommittableSeatFallback(
+        { lastCommittableSeat: seatB, consecutiveNullSeats: 1 },
+        seatC,
+      );
+      expect(folded.lastCommittableSeat).toBe(seatC);
+      expect(folded.consecutiveNullSeats).toBe(0);
+    });
+
+    it("a SINGLE null seat preserves the fallback (transient final-move clear)", (): void => {
+      const folded: CommittableSeatFallback = foldCommittableSeatFallback(
+        { lastCommittableSeat: seatC, consecutiveNullSeats: 0 },
+        null,
+      );
+      expect(folded.lastCommittableSeat).toBe(seatC);
+      expect(folded.consecutiveNullSeats).toBe(1);
+    });
+
+    it("a SUSTAINED null run (>= 2) drops the fallback (genuine leave → no stale commit)", (): void => {
+      let fallback: CommittableSeatFallback = { lastCommittableSeat: seatC, consecutiveNullSeats: 0 };
+      fallback = foldCommittableSeatFallback(fallback, null); // 1st null — transient, kept
+      expect(fallback.lastCommittableSeat).toBe(seatC);
+      fallback = foldCommittableSeatFallback(fallback, null); // 2nd null — sustained, dropped
+      expect(fallback.lastCommittableSeat).toBeNull();
+      expect(fallback.consecutiveNullSeats).toBe(2);
+    });
+  });
+
+  describe("resolveReleaseCommitSeat — the seat the release latches", (): void => {
+    it("prefers the live seat captured on the final sample", (): void => {
+      expect(
+        resolveReleaseCommitSeat(seatC, { lastCommittableSeat: seatB, consecutiveNullSeats: 0 }),
+      ).toBe(seatC);
+    });
+
+    it("falls back to the last committable seat when the final move transiently cleared it", (): void => {
+      expect(
+        resolveReleaseCommitSeat(null, { lastCommittableSeat: seatC, consecutiveNullSeats: 1 }),
+      ).toBe(seatC);
+    });
+
+    it("stays null when there was never a committable seat (fallback empty → release cancels)", (): void => {
+      expect(resolveReleaseCommitSeat(null, EMPTY_COMMITTABLE_SEAT_FALLBACK)).toBeNull();
+    });
+  });
+
+  describe("shouldSuppressCompetingCancel — self-heal only for the genuinely-stuck case", (): void => {
+    it("suppresses a competing cancel while a release commit is latched", (): void => {
+      expect(shouldSuppressCompetingCancel(seatC, null)).toBe(true);
+    });
+
+    it("suppresses a competing cancel while a committable seat exists for the pointer", (): void => {
+      expect(shouldSuppressCompetingCancel(null, seatC)).toBe(true);
+    });
+
+    it("does NOT suppress when there is no latch and no committable seat (genuinely stuck → self-heal)", (): void => {
+      expect(shouldSuppressCompetingCancel(null, null)).toBe(false);
+    });
+  });
+
+  // The renderer gates every competing cancel source (M3 watchdog `onExpire`,
+  // `lostpointercapture`, `blur`, `visibilitychange`) behind
+  // `shouldSuppressCompetingCancel`. This models that gate against the reducer:
+  // a suppressed cancel is simply not dispatched, so the FSM stays `dragging` and
+  // the subsequent `POINTER_UP` commits.
+  function competingCancel(
+    state: DragMachineState,
+    releaseCommitLatched: DragResolvedTarget | null,
+    committableSeat: DragResolvedTarget | null,
+  ): DragMachineState {
+    if (shouldSuppressCompetingCancel(releaseCommitLatched, committableSeat)) {
+      return state;
+    }
+    return dragMachineReducer(state, { type: "POINTER_CANCEL", pointerId: 1 });
+  }
+
+  it("(assertion 1) a cancel (watchdog onExpire / lostpointercapture / blur) AFTER a commit is latched does NOT revert — commit wins", (): void => {
+    let state: DragMachineState = toDragging();
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: seatC });
+    // Release latches the committable seat (live seat present, fallback irrelevant).
+    const latched: DragResolvedTarget | null = resolveReleaseCommitSeat(
+      seatC,
+      foldCommittableSeatFallback(EMPTY_COMMITTABLE_SEAT_FALLBACK, seatC),
+    );
+    expect(latched).toBe(seatC);
+    // A competing cancel arrives in the same task — suppressed, FSM untouched.
+    state = competingCancel(state, latched, seatC);
+    expect(state.phase).toBe("dragging");
+    // POINTER_UP then commits the latched seat.
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: latched });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase).toBe("settling");
+    if (state.phase === "settling") {
+      expect(state.outcome).toBe("commit");
+      expect(state.resolvedTarget?.leafId).toBe("C");
+    }
+  });
+
+  it("the same cancel WITHOUT a latch (no committable seat) DOES revert — self-heal preserved for the stuck case", (): void => {
+    let state: DragMachineState = toDragging();
+    // No committable seat ever resolved; a genuine stuck-drag cancel must revert.
+    state = competingCancel(state, null, null);
+    expect(state.phase).toBe("settling");
+    if (state.phase === "settling") {
+      expect(state.outcome).toBe("cancel");
+    }
+  });
+
+  it("(assertion 3) a final move that transiently clears the seat still commits the last committable seat on release", (): void => {
+    let fallback: CommittableSeatFallback = EMPTY_COMMITTABLE_SEAT_FALLBACK;
+    // Dwell sample: seated on a committable swap.
+    let liveSeat: DragResolvedTarget | null = deriveCommittableSeat(seatC, "A");
+    fallback = foldCommittableSeatFallback(fallback, liveSeat);
+    expect(liveSeat).toBe(seatC);
+    // FINAL move: a sub-pixel/footprint-edge jitter resolves null → seat cleared.
+    liveSeat = deriveCommittableSeat(null, "A");
+    fallback = foldCommittableSeatFallback(fallback, liveSeat);
+    expect(liveSeat).toBeNull();
+    // Release latch falls back to the dwelled seat (single transient clear kept).
+    const latched: DragResolvedTarget | null = resolveReleaseCommitSeat(liveSeat, fallback);
+    expect(latched).toBe(seatC);
+    // FSM commits the latched seat.
+    let state: DragMachineState = toDragging();
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: latched });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase).toBe("settling");
+    if (state.phase === "settling") {
+      expect(state.outcome).toBe("commit");
+      expect(state.resolvedTarget?.leafId).toBe("C");
+    }
+  });
+
+  it("a SUSTAINED leave (cursor left all targets and held) decays the fallback → release cancels (no stale commit)", (): void => {
+    let fallback: CommittableSeatFallback = EMPTY_COMMITTABLE_SEAT_FALLBACK;
+    fallback = foldCommittableSeatFallback(fallback, deriveCommittableSeat(seatC, "A")); // seated
+    fallback = foldCommittableSeatFallback(fallback, deriveCommittableSeat(null, "A")); // left (1)
+    fallback = foldCommittableSeatFallback(fallback, deriveCommittableSeat(null, "A")); // still off (2) → decay
+    const latched: DragResolvedTarget | null = resolveReleaseCommitSeat(null, fallback);
+    expect(latched).toBeNull();
+    let state: DragMachineState = toDragging();
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: latched });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase === "settling" && state.outcome).toBe("cancel");
+  });
+
+  it("(assertion 4) with NO committable seat ever, release still cancels (no false commit)", (): void => {
+    let fallback: CommittableSeatFallback = EMPTY_COMMITTABLE_SEAT_FALLBACK;
+    // Every sample resolved a non-committable position (free-following over gaps).
+    fallback = foldCommittableSeatFallback(fallback, deriveCommittableSeat(null, "A"));
+    fallback = foldCommittableSeatFallback(fallback, deriveCommittableSeat(makeTarget("A", "center", "swap"), "A")); // self-target → null
+    const latched: DragResolvedTarget | null = resolveReleaseCommitSeat(
+      deriveCommittableSeat(null, "A"),
+      fallback,
+    );
+    expect(latched).toBeNull();
+    expect(shouldSuppressCompetingCancel(latched, null)).toBe(false);
+    let state: DragMachineState = toDragging();
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: latched });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase).toBe("settling");
+    if (state.phase === "settling") {
+      expect(state.outcome).toBe("cancel");
+    }
   });
 });

@@ -43,6 +43,11 @@ import {
   resolveTouchArmedMove,
   shouldReresolveSeatedTarget,
   deriveCommittableSeat,
+  foldCommittableSeatFallback,
+  resolveReleaseCommitSeat,
+  shouldSuppressCompetingCancel,
+  EMPTY_COMMITTABLE_SEAT_FALLBACK,
+  type CommittableSeatFallback,
   type DragMachinePoint,
   type DragMachineState,
   type DragPointerType,
@@ -3574,6 +3579,29 @@ export const DynamicTilingRenderer = React.forwardRef<
   // written in the sample task, it is also free of the passive-effect lag that
   // `dragStateRef` carries. Cleared at settle. See `drag-machine.ts`.
   const committableSeatRef = React.useRef<DynamicDropState | null>(null);
+  // Decaying "last committable seat" fallback for the release latch. The final
+  // processed move can transiently clear `committableSeatRef` to null (a
+  // sub-pixel / footprint-edge jitter at release); this carries the most-recent
+  // NON-NULL committable seat so `resolveReleaseCommitSeat` can still commit the
+  // slot the user dwelled on. It DECAYS on a sustained null run so a genuine
+  // leave (cursor travelled off all targets and held) correctly cancels. Reset
+  // at settle. See `drag-machine.ts:foldCommittableSeatFallback`.
+  const committableSeatFallbackRef = React.useRef<CommittableSeatFallback>(
+    EMPTY_COMMITTABLE_SEAT_FALLBACK,
+  );
+  // The commit seat LATCHED synchronously at the very start of `handlePointerUp`,
+  // before any dispatch/microtask. While non-null a release commit is in flight,
+  // so every competing cancel source (M3 watchdog `onExpire`,
+  // `lostpointercapture`, `blur`, `visibilitychange`) NO-OPs
+  // (`shouldSuppressCompetingCancel`) and cannot revert the seated drop under
+  // frame starvation / first-terminal-event-wins. Cleared at settle.
+  const releaseCommitLatchedRef = React.useRef<DynamicDropState | null>(null);
+  // The live M3 idle-watchdog handle, mirrored into a ref so `handlePointerMove`
+  // can input-GROUND it (re-arm on raw pointer input, not only on effect re-runs)
+  // and `handlePointerUp` can cancel it SYNCHRONOUSLY outside the effect cleanup,
+  // before any competing cancel can fire. Owned by the watchdog effect; null when
+  // no drag is in flight.
+  const watchdogRef = React.useRef<DragWatchdog | null>(null);
   // Survivor-reflow FLIP bookkeeping. `previousLeafRectsRef` holds each surviving
   // leaf's clean (transform-stripped) client rect from the previous commit — the
   // FLIP `First` for an at-rest reflow. Kept fresh on EVERY commit (even idle) so
@@ -6037,6 +6065,10 @@ export const DynamicTilingRenderer = React.forwardRef<
               firstTarget,
               current.sourceLeafId,
             );
+            committableSeatFallbackRef.current = foldCommittableSeatFallback(
+              committableSeatFallbackRef.current,
+              committableSeatRef.current,
+            );
             dispatchDrag({
               type: "TARGET_RESOLVED",
               pointerId: owningPointerId,
@@ -6127,6 +6159,13 @@ export const DynamicTilingRenderer = React.forwardRef<
               nextTarget,
               current.sourceLeafId,
             );
+            // Track the decaying last-committable-seat fallback so the release
+            // latch survives a transient final-move clear but cancels on a
+            // genuine leave. See `foldCommittableSeatFallback`.
+            committableSeatFallbackRef.current = foldCommittableSeatFallback(
+              committableSeatFallbackRef.current,
+              committableSeatRef.current,
+            );
             dispatchDrag({
               type: "TARGET_RESOLVED",
               pointerId: owningPointerId,
@@ -6198,6 +6237,10 @@ export const DynamicTilingRenderer = React.forwardRef<
           firstTarget,
           held.sourceLeafId,
         );
+        committableSeatFallbackRef.current = foldCommittableSeatFallback(
+          committableSeatFallbackRef.current,
+          committableSeatRef.current,
+        );
         dispatchDrag({
           type: "TARGET_RESOLVED",
           pointerId: owningPointerId,
@@ -6210,35 +6253,65 @@ export const DynamicTilingRenderer = React.forwardRef<
       if (event.pointerId !== owningPointerId) {
         return;
       }
+      // Fix B — input-ground the M3 watchdog: re-arm it from RAW pointer input,
+      // not only from the `dragState`-keyed effect re-runs. Under CPU throttling
+      // the rAF coalescer can fail to flush for longer than the idle budget while
+      // pointermoves still arrive; without this the idle deadline would expire and
+      // cancel a LIVE drag. `progress()` is cheap (clear + re-arm one timer) and
+      // single-armed, so feeding it every raw move keeps a moving-but-frame-
+      // starved drag alive — the watchdog now trips only when input genuinely
+      // stops. Cheap no-op before the watchdog effect has armed (ref null).
+      watchdogRef.current?.progress();
       coalescer.schedule({ x: event.clientX, y: event.clientY });
     };
     const handlePointerUp = (event: PointerEvent): void => {
       if (event.pointerId !== owningPointerId) {
         return;
       }
+      // Fix A — commit latch (core). SYNCHRONOUSLY, before any dispatch /
+      // microtask / animation frame can run, disarm BOTH timing sources that
+      // could otherwise fire a competing POINTER_CANCEL after we have committed
+      // to this release: the rAF coalescer (a buffered move that would re-resolve
+      // post-settle) and the M3 watchdog (its `onExpire` dispatches a cancel).
+      // Cancels first, so nothing races the latch.
+      coalescer.cancel();
+      watchdogRef.current?.cancel();
+      // Latch the seat the release will commit: the seat captured on the final
+      // processed sample, falling back to the most-recent-non-null committable
+      // seat (`committableSeatFallbackRef`) so a transient sub-pixel / gap-hit
+      // clear on the FINAL move does not null the commit. The fallback has
+      // already DECAYED to null on a genuine leave (cursor travelled off all
+      // targets and held), so a release after leaving every target still cancels
+      // — no false commit. Written back into `committableSeatRef` so the release
+      // sample dispatches the latched seat verbatim, and held in
+      // `releaseCommitLatchedRef` so any late cancel no-ops
+      // (`shouldSuppressCompetingCancel`) and cannot override the commit.
+      const latchedSeat: DynamicDropState | null = resolveReleaseCommitSeat(
+        committableSeatRef.current,
+        committableSeatFallbackRef.current,
+      );
+      releaseCommitLatchedRef.current = latchedSeat;
+      committableSeatRef.current = latchedSeat;
       // Release-time synchronous resolve. A fast drag-release fires its
       // `pointermove`s and this `pointerup` within a single task, before the rAF
       // coalescer has a chance to flush — so the buffered sample (which both
       // promotes `armed → dragging` AND resolves the drop target) would be
       // dropped by `coalescer.cancel()` on teardown, leaving the FSM in `armed`
       // (or holding a stale target). POINTER_UP would then settle as a
-      // click/cancel and the pane snaps back to its origin. Cancel the buffered
-      // frame and process the RELEASE pointer position inline so the reducer
-      // queue becomes POINTER_MOVE → TARGET_RESOLVED → POINTER_UP and the drop
-      // commits to the slot under the pointer at release time. Touch is exempt:
-      // a finger never reaches `dragging` without the long-press timer, so a
-      // pre-pickup tap-release must stay a click (no synchronous promote).
+      // click/cancel and the pane snaps back to its origin. Process the RELEASE
+      // pointer position inline (the coalescer is already cancelled above) so the
+      // reducer queue becomes POINTER_MOVE → TARGET_RESOLVED(latched seat) →
+      // POINTER_UP and the drop commits to the latched slot. Touch is exempt: a
+      // finger never reaches `dragging` without the long-press timer, so a
+      // pre-pickup tap-release must stay a click (no synchronous promote); a
+      // touch drag commits from the FSM `resolvedTarget` at POINTER_UP.
       const releaseState: DragMachineState = dragStateRef.current;
       const releaseIsTouch: boolean =
         (releaseState.phase === "armed" ||
           releaseState.phase === "dragging") &&
         releaseState.touchDrag;
       if (!releaseIsTouch) {
-        coalescer.cancel();
-        processPointerSample(
-          { x: event.clientX, y: event.clientY },
-          true,
-        );
+        processPointerSample({ x: event.clientX, y: event.clientY }, true);
       }
       dispatchDrag({ type: "POINTER_UP", pointerId: owningPointerId });
     };
@@ -6252,7 +6325,19 @@ export const DynamicTilingRenderer = React.forwardRef<
       if (event.pointerId !== owningPointerId) {
         return;
       }
-      // Capture stolen (DOM unmount mid-drag, devtools, OS gesture) → cancel.
+      // Fix A — competing-cancel suppression. Capture loss (DOM unmount mid-drag,
+      // devtools, OS gesture, a transient re-capture) normally cancels, but it
+      // must NOT revert a release already in flight or a seated committable drop
+      // — those commit. Suppress iff a commit is latched or a committable seat
+      // exists; otherwise it is a genuine capture theft → cancel.
+      if (
+        shouldSuppressCompetingCancel(
+          releaseCommitLatchedRef.current,
+          committableSeatRef.current,
+        )
+      ) {
+        return;
+      }
       dispatchDrag({ type: "POINTER_CANCEL", pointerId: owningPointerId });
     };
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -6261,6 +6346,18 @@ export const DynamicTilingRenderer = React.forwardRef<
       }
     };
     const handleBlur = (): void => {
+      // A blur that races a release / arrives while a committable seat is seated
+      // must not clobber the commit (first-terminal-event-wins). Suppress iff a
+      // commit is latched or a committable seat exists; an Escape is a separate,
+      // always-honored explicit cancel.
+      if (
+        shouldSuppressCompetingCancel(
+          releaseCommitLatchedRef.current,
+          committableSeatRef.current,
+        )
+      ) {
+        return;
+      }
       dispatchDrag({ type: "BLUR" });
     };
     const handleVisibilityChange = (): void => {
@@ -6268,7 +6365,18 @@ export const DynamicTilingRenderer = React.forwardRef<
         // M5 reconcile: a tab hidden mid-drag cancels through the existing edge,
         // and any transient FLIP styles are stripped so the leaves are clean when
         // the tab is shown again (INV-R4). The cancel side effect plus this strip
-        // are both idempotent with the settle teardown.
+        // are both idempotent with the settle teardown. But a hide that races a
+        // release / arrives on a seated committable drop must not clobber the
+        // commit — suppress the cancel iff a commit is latched or a committable
+        // seat exists (the seat's release, even while hidden, still commits).
+        if (
+          shouldSuppressCompetingCancel(
+            releaseCommitLatchedRef.current,
+            committableSeatRef.current,
+          )
+        ) {
+          return;
+        }
         dispatchDrag({ type: "VISIBILITY_HIDDEN" });
         stripSurvivorTransientStyles();
       }
@@ -6384,6 +6492,9 @@ export const DynamicTilingRenderer = React.forwardRef<
     dragSnapshotRef.current = null;
     seatAnchorRef.current = null;
     committableSeatRef.current = null;
+    // Reset the commit-latch + decaying fallback so the next drag starts clean.
+    committableSeatFallbackRef.current = EMPTY_COMMITTABLE_SEAT_FALLBACK;
+    releaseCommitLatchedRef.current = null;
     setSeatFootprint(null);
     onLiveHitLogChange?.(null);
     didPaintDraggingFrameRef.current = false;
@@ -6421,13 +6532,32 @@ export const DynamicTilingRenderer = React.forwardRef<
       now: monotonicNow,
       scheduler: WINDOW_TIMER_SCHEDULER,
       onExpire: (): void => {
+        // Self-heal cancel is for the genuinely-stuck case ONLY. Suppress it
+        // when a release commit is latched OR a committable seat exists for the
+        // pointer — a frame-starved drag that is moving (input-grounded via
+        // `handlePointerMove`) or seated must not be reverted by the watchdog;
+        // its release will commit. See `shouldSuppressCompetingCancel`.
+        if (
+          shouldSuppressCompetingCancel(
+            releaseCommitLatchedRef.current,
+            committableSeatRef.current,
+          )
+        ) {
+          return;
+        }
         dispatchDrag({ type: "POINTER_CANCEL" });
         stripSurvivorTransientStyles();
       },
     });
+    // Mirror the live handle so raw pointer input can re-arm it (Fix B,
+    // input-grounded) and the release path can cancel it synchronously (Fix A).
+    watchdogRef.current = watchdog;
     watchdog.progress();
     return (): void => {
       watchdog.cancel();
+      if (watchdogRef.current === watchdog) {
+        watchdogRef.current = null;
+      }
     };
   }, [
     dragState,

@@ -549,6 +549,104 @@ commit (dwell-then-release snap-back regression)":
 
 ---
 
+## 8.2 Throttling snap-back — commit latch + input-grounded watchdog
+
+### Symptom
+
+A pane seats correctly during the drag but SNAPS BACK on mouse release,
+intermittently, with no correlation to user behavior. Distinct from §8.1: the
+committable-seat SSOT (`committableSeatRef`) is correct but **insufficient** —
+this is a RACE/TIMING defect under rAF starvation / CPU throttling, not a
+release-time re-resolve bug.
+
+### Root cause — three race surfaces around the release
+
+1. **M3 watchdog cancels a LIVE drag under rAF starvation.** The watchdog was
+   re-armed (`progress()`) only by the M3 `useEffect` re-running on `dragState`
+   changes — i.e. driven by the rAF coalescer flushing. Under CPU throttling the
+   coalescer can fail to flush for ≥ `maxDraggingIdleMs` (≈5100ms) while raw
+   `pointermove`s still arrive, so the monotonic idle budget expires and
+   `onExpire` fires `POINTER_CANCEL` on a drag the user is actively moving.
+2. **Competing cancel sources bypass commit (first-terminal-event-wins).**
+   `lostpointercapture`, `blur`, `visibilitychange` each dispatched a cancel with
+   no commit awareness; whichever terminal event reached `dragging` first won, so
+   a transient capture loss / focus change at release reverted a seated drop.
+3. **Last-move clears the seat (tertiary).** The final coalesced move can
+   re-resolve to a non-committable position (sub-pixel / footprint-edge jitter)
+   and null `committableSeatRef` right before release, so the release dispatched
+   `TARGET_RESOLVED(null)` → cancel.
+
+Invariant exposure: **a committed-as-of-the-last-painted-frame seat must win
+over any late/competing cancel; the watchdog must measure REAL input idleness,
+not frame-flush idleness.**
+
+### Fix A — commit latch at `pointerup` + competing-cancel suppression (core)
+
+Pure logic in `drag-machine.ts`:
+
+- `resolveReleaseCommitSeat(currentSeat, fallback)` — the seat the release
+  latches: the live seat captured on the final sample, else the decaying
+  last-committable-seat fallback (tertiary close), else `null` (correct cancel).
+- `shouldSuppressCompetingCancel(releaseCommitLatched, committableSeat)` — `true`
+  iff a release commit is latched OR a committable seat exists; the watchdog's
+  self-heal cancel survives ONLY the genuinely-stuck case (no latch AND no seat).
+- `foldCommittableSeatFallback(prev, currentSeat)` + `CommittableSeatFallback` —
+  the DECAYING fallback: a single null seat (transient final-move clear)
+  preserves the prior seat; a sustained null run (`SUSTAINED_NULL_SEAT_THRESHOLD`
+  = 2) drops it so a genuine leave cancels (no stale commit).
+
+Renderer wiring (`dynamic-tiling-renderer.tsx`):
+
+- `watchdogRef` holds the live M3 handle so `handlePointerUp` cancels it
+  SYNCHRONOUSLY (outside the effect cleanup). At the very start of
+  `handlePointerUp`: `coalescer.cancel()` then `watchdogRef.current?.cancel()`,
+  then latch `releaseCommitLatchedRef` = `resolveReleaseCommitSeat(...)` and write
+  it back into `committableSeatRef` so the release sample dispatches the latched
+  seat verbatim — not a ref a trailing callback could mutate.
+- The watchdog `onExpire`, `handleLostPointerCapture`, `handleBlur`,
+  `handleVisibilityChange` cancel paths each NO-OP when
+  `shouldSuppressCompetingCancel` is true. (`pointercancel` and `Escape` are NOT
+  suppressed — a genuine hard cancel / explicit user cancel always reverts.)
+- `committableSeatFallbackRef` is folded on every processed sample; both it and
+  `releaseCommitLatchedRef` reset at settle.
+
+### Fix B — input-grounded watchdog (hardening)
+
+`handlePointerMove` calls `watchdogRef.current?.progress()` from RAW pointer
+input (in addition to the effect re-runs), so a moving-but-frame-starved drag
+keeps the watchdog alive; it trips only when input genuinely stops. `progress()`
+is single-armed and cheap (clear + re-arm one timer).
+
+### Invariant → test mapping (new) — INV-R5
+
+`drag-machine.test.ts` describe "commit latch wins over competing cancel
+(throttling snap-back race)":
+- `foldCommittableSeatFallback` decay (refresh / single-null kept / sustained-null
+  dropped); `resolveReleaseCommitSeat` (prefer live / fallback on transient clear
+  / null when empty); `shouldSuppressCompetingCancel` truth table.
+- (1) a cancel after a commit is latched is suppressed → commit wins; the same
+  cancel WITHOUT a latch (no seat) still reverts (self-heal preserved).
+- (3) a final move that transiently clears the seat still commits the last
+  committable seat; a sustained leave decays the fallback → cancel.
+- (4) with no committable seat ever, release cancels (no false commit).
+
+`drag-recovery.test.ts` describe "M3 watchdog input-grounded keep-alive (Fix B)":
+- (2) raw pointer-move `progress()` keeps a frame-starved drag alive (wall time
+  past the idle budget, no expiry while moves arrive) and expires only after
+  input stops; each `progress()` keeps exactly one armed timer.
+
+### Residual edge (intentional)
+
+A drag holding a committable seat whose `pointerup` is NEVER delivered AND whose
+tab is hidden is left `dragging` (the watchdog self-heal is suppressed while a
+seat exists, by design — Fix A prioritizes commit over self-heal). In practice
+`pointerup` fires even while hidden (window listener stays live) and a fresh
+`POINTER_DOWN` preempts a residual drag, so this is a pathological-only wedge,
+not a snap-back. Genuine hard cancels (`pointercancel`) and `Escape` are never
+suppressed.
+
+---
+
 ## 9. Verdict — content-agnostic drag (correction landed)
 
 The FSM, candidate-tree core, and all five geometry seams are principled,
@@ -695,6 +793,7 @@ All four edits were re-anchored on **symbols** (not line numbers) since
 | INV-R2 | An `armed`/`dragging` drag idle (monotonic) past `maxDraggingIdleMs` force-reconciles to `idle` with capture released | M3 watchdog → existing `POINTER_CANCEL` edge | `drag-recovery.test.ts` (expiry after `maxIdleMs`, re-arm on `progress()`, never trips when progress recent); `drag-machine.test.ts` (watchdog-driven `POINTER_CANCEL` drives `dragging → settling(cancel) → idle`); `drag-recovery-dom.test.ts` (jsdom: a never-arriving `pointerup` self-heals the harnessed drag to `idle`, and a late fire after progress re-arms instead of tripping) |
 | INV-R3 | Each FLIP play-to-identity write runs **exactly once and always** | M1 first-wins race + idempotent single run | `drag-recovery.test.ts` (M1 fires once whether the rAF or the timeout wins; `cancel()` drops both); `drag-recovery-dom.test.ts` (jsdom: rAF-starved survivor still reaches identity; a late frame after the timeout-won play is a no-op — no transform thrash) |
 | INV-R4 | A hidden→shown tab leaves the FSM `idle` with styles stripped | M5: `visibilitychange` hidden → `VISIBILITY_HIDDEN` (existing cancel edge) + M4 | covered by the FSM `VISIBILITY_HIDDEN` cancel edge (`drag-machine.test.ts`) + M4 idempotence (`drag-recovery.test.ts`); live manual repro: `_agent/drag-recovery-cdp-throttle.md` §5 (CDP `Page.setWebLifecycleState` hidden→active under CPU throttle) |
+| INV-R5 | A latched release commit / seated committable drop WINS over any competing cancel (M3 `onExpire`, `lostpointercapture`, `blur`, `visibilitychange`); the watchdog measures REAL input idleness, not frame-flush idleness | Fix A: synchronous `watchdog.cancel()` + `releaseCommitLatchedRef` at `pointerup`, `shouldSuppressCompetingCancel` gating every competing cancel, decaying `committableSeatFallbackRef` for the last-move-clears-seat tertiary. Fix B: `handlePointerMove` → `watchdog.progress()` (input-grounded) | `drag-machine.test.ts` ("commit latch wins over competing cancel": latch-suppresses-cancel, transient-clear-still-commits, sustained-leave-cancels, never-committable-cancels); `drag-recovery.test.ts` ("input-grounded keep-alive": raw-move progress keeps a frame-starved drag alive, trips only after input stops, single-armed). See §8.2. |
 
 INV-R1..INV-R4 also have a LIVE manual validation recipe under CPU throttling +
 frame starvation + mid-drag tab-hide + long-task injection at

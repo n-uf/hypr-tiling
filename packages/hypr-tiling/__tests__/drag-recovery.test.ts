@@ -231,6 +231,74 @@ describe("drag-recovery — M3 createDragWatchdog (monotonic idle, re-arm on pro
   });
 });
 
+describe("drag-recovery — M3 watchdog input-grounded keep-alive (Fix B: raw pointer move re-arms)", (): void => {
+  // Fix B: the renderer's `handlePointerMove` calls `watchdog.progress()` from
+  // RAW pointer input, not only from the `dragState`-keyed effect re-runs. Under
+  // CPU throttling the rAF coalescer can fail to flush for longer than the idle
+  // budget (so the effect never re-runs to re-arm) while `pointermove`s still
+  // arrive — without input-grounding the watchdog would expire and cancel a LIVE
+  // drag. With it, a moving-but-frame-starved drag stays alive and the watchdog
+  // trips ONLY once input genuinely stops. The renderer wiring is one line
+  // (`watchdogRef.current?.progress()`); this asserts the mechanism it relies on.
+
+  it("(assertion 2) raw pointer-move progress() keeps a frame-starved drag alive; expires only after input stops", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    let nowMs: number = 0;
+    const onExpire = jest.fn();
+    const realWatchdog = createDragWatchdog({
+      maxIdleMs: 100,
+      now: (): number => nowMs,
+      scheduler,
+      onExpire,
+    });
+    // Spy mirror of the renderer's `watchdogRef.current?.progress()` call, so the
+    // test asserts progress is invoked PER raw pointer move (input-grounded).
+    const progress = jest.fn(realWatchdog.progress);
+    const onRawPointerMove = (clientNowMs: number): void => {
+      nowMs = clientNowMs;
+      progress();
+    };
+
+    realWatchdog.progress(); // initial arm on entering `dragging`
+
+    // rAF is starved (the coalescer never flushes → no effect-driven re-arm), but
+    // raw pointermoves keep arriving every 80ms — each re-arms the watchdog. Wall
+    // time (240ms) is well past the 100ms idle budget, yet the drag is alive.
+    onRawPointerMove(80);
+    onRawPointerMove(160);
+    onRawPointerMove(240);
+    expect(progress).toHaveBeenCalledTimes(3); // invoked on every raw move
+    // A late/starved timer fire finds only 60ms idle since the last move → re-arm.
+    nowMs = 300;
+    scheduler.fireActiveTimer();
+    expect(onExpire).not.toHaveBeenCalled();
+
+    // Input STOPS. Now the idle clock runs out and the watchdog self-heals.
+    nowMs = 340; // 100ms since the last progress at t=240
+    scheduler.fireActiveTimer();
+    expect(onExpire).toHaveBeenCalledTimes(1);
+  });
+
+  it("each progress() keeps exactly one armed timer (cheap single-arm, no double-arm)", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    let nowMs: number = 0;
+    const watchdog = createDragWatchdog({
+      maxIdleMs: 100,
+      now: (): number => nowMs,
+      scheduler,
+      onExpire: jest.fn(),
+    });
+
+    watchdog.progress();
+    expect(scheduler.liveTimerCount()).toBe(1);
+    for (const t of [20, 40, 60, 80]) {
+      nowMs = t;
+      watchdog.progress();
+      expect(scheduler.liveTimerCount()).toBe(1);
+    }
+  });
+});
+
 /** A fake `transitionend` source recording listeners so the test can fire it. */
 class FakeTransitionEndSource implements TransitionEndSource {
   private listeners: Array<() => void> = [];

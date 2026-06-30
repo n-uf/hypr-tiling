@@ -480,6 +480,100 @@ export function deriveCommittableSeat(
 }
 
 /**
+ * The "last committable seat" fallback the release latch falls back to when the
+ * FINAL processed move transiently clears the live `committableSeatRef`. It
+ * carries the most-recent NON-NULL committable seat AND a run-length of
+ * consecutive null seats since, so the fallback can DECAY: a single null
+ * (a sub-pixel / footprint-edge jitter clear on the very last move) preserves
+ * the seat, but a SUSTAINED null run (the user genuinely travelled off all
+ * targets and held there) drops it so the release correctly cancels.
+ */
+export interface CommittableSeatFallback {
+  lastCommittableSeat: DragResolvedTarget | null;
+  consecutiveNullSeats: number;
+}
+
+/** The pristine fallback at pickup / settle — no seat, no null run. */
+export const EMPTY_COMMITTABLE_SEAT_FALLBACK: CommittableSeatFallback = {
+  lastCommittableSeat: null,
+  consecutiveNullSeats: 0,
+};
+
+/**
+ * Consecutive null-seat samples that classify a seat clear as a GENUINE leave
+ * (vs a single transient final-move clear). A value of 2 means: the first null
+ * after a committable seat is treated as transient (the fallback survives, so a
+ * release on the very next sample still commits the seat the user dwelled on),
+ * but a second consecutive null is a sustained leave and the fallback is dropped.
+ */
+export const SUSTAINED_NULL_SEAT_THRESHOLD: number = 2;
+
+/**
+ * Fold a freshly-captured committable seat into the fallback. A non-null seat
+ * both refreshes `lastCommittableSeat` and resets the null run. A null seat
+ * increments the run; once it reaches `sustainedNullThreshold` the fallback is
+ * dropped (genuine leave), otherwise the prior seat is preserved (transient
+ * clear). Pure + total so the renderer can mirror it into a single ref per
+ * processed sample and the release latch reads a trustworthy fallback.
+ */
+export function foldCommittableSeatFallback(
+  previous: CommittableSeatFallback,
+  currentSeat: DragResolvedTarget | null,
+  sustainedNullThreshold: number = SUSTAINED_NULL_SEAT_THRESHOLD,
+): CommittableSeatFallback {
+  if (currentSeat != null) {
+    return { lastCommittableSeat: currentSeat, consecutiveNullSeats: 0 };
+  }
+  const consecutiveNullSeats: number = previous.consecutiveNullSeats + 1;
+  if (consecutiveNullSeats >= sustainedNullThreshold) {
+    return { lastCommittableSeat: null, consecutiveNullSeats };
+  }
+  return {
+    lastCommittableSeat: previous.lastCommittableSeat,
+    consecutiveNullSeats,
+  };
+}
+
+/**
+ * The committable seat to LATCH at `pointerup` — the heart of the commit-latch
+ * snap-back fix. Prefers the seat captured on the final processed sample
+ * (`currentSeat`); if that sample transiently cleared the seat to `null`, falls
+ * back to the most-recent-non-null committable seat tracked across the drag
+ * (`fallback.lastCommittableSeat`). When the user genuinely left all targets the
+ * fallback has already decayed to `null` (see `foldCommittableSeatFallback`), so
+ * the latch stays `null` and the release correctly cancels — no false commit.
+ *
+ * Once the renderer latches this value at the START of `handlePointerUp`, any
+ * later cancel source (M3 watchdog expiry, `lostpointercapture`, `blur`,
+ * `visibilitychange`) must NO-OP (`shouldSuppressCompetingCancel`), so a
+ * frame-starved / first-terminal-event-wins cancel cannot override the commit.
+ */
+export function resolveReleaseCommitSeat(
+  currentSeat: DragResolvedTarget | null,
+  fallback: CommittableSeatFallback,
+): DragResolvedTarget | null {
+  return currentSeat ?? fallback.lastCommittableSeat;
+}
+
+/**
+ * Whether a COMPETING cancel source must be suppressed because a commit is in
+ * flight. The M3 watchdog's self-heal `onExpire`, `lostpointercapture`, `blur`,
+ * and `visibilitychange` all dispatch a cancel with no commit awareness; under
+ * frame starvation any of them can reach `dragging` before the release commit
+ * and revert a deliberately-seated drop (first-terminal-event-wins). The cancel
+ * is suppressed iff a release commit has been LATCHED (`releaseCommitLatched`)
+ * OR a committable seat currently exists for the pointer (`committableSeat`) —
+ * the watchdog's self-heal cancel survives ONLY the genuinely-stuck case (no
+ * latch AND no committable seat), exactly where reverting to `idle` is correct.
+ */
+export function shouldSuppressCompetingCancel(
+  releaseCommitLatched: DragResolvedTarget | null,
+  committableSeat: DragResolvedTarget | null,
+): boolean {
+  return releaseCommitLatched != null || committableSeat != null;
+}
+
+/**
  * The hysteresis seed (`previousZone`) for re-resolving intent over a target —
  * the prior resolved zone IFF the prior target is the same leaf, else `null`.
  * Subsumes the old `stableDropStateRef`: the FSM's `resolvedTarget` IS the stable
