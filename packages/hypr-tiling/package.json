@@ -15,7 +15,7 @@
     "dashboard",
     "hyprland"
   ],
-  "license": "PolyForm-Perimeter-1.0.0",
+  "license": "LicenseRef-PolyForm-Perimeter-1.0.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/n-uf/hypr-tiling.git"

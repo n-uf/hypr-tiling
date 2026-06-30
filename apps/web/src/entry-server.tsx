@@ -53,8 +53,7 @@ function structuredData(): StructuredDataGraph {
         programmingLanguage: "TypeScript",
         runtimePlatform: "React",
         url: SITE_URL,
-        license:
-          "https://github.com/polyformproject/polyform-licenses/blob/1.0.0/PolyForm-Perimeter-1.0.0.md",
+        license: "https://polyformproject.org/licenses/perimeter/1.0.1",
       },
       {
         "@type": "SoftwareApplication",

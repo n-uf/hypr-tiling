@@ -3,7 +3,7 @@
   "version": "26.6.1",
   "private": false,
   "description": "Showcase package for hypr-tiling.",
-  "license": "PolyForm-Perimeter-1.0.0",
+  "license": "LicenseRef-PolyForm-Perimeter-1.0.1",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
