@@ -1,6 +1,6 @@
 {
   "name": "@n-uf/hypr-tiling",
-  "version": "26.6.2",
+  "version": "26.6.4",
   "private": false,
   "description": "Dynamic tiling for React: a recursive split-tree renderer for drag/drop, resizable, keyboard-controlled panes — inspired by Hyprland.",
   "keywords": [

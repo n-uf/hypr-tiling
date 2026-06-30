@@ -50,6 +50,7 @@ import {
   dragSourceReservationSelector,
   isDragPresentationActive,
   resolveDragPresentation,
+  resolveInitialPaneContentVisible,
   resolvePaneBodyRenderMode,
 } from "./drag-presentation";
 import type {
@@ -748,6 +749,7 @@ export function resolveLeafDropPreviewForMode(
 export {
   isDragPresentationActive,
   resolveDragPresentation,
+  resolveInitialPaneContentVisible,
   resolvePaneBodyRenderMode,
 } from "./drag-presentation";
 
@@ -3418,8 +3420,14 @@ export const DynamicTilingRenderer = React.forwardRef<
     interactionCapabilities.paneSwitching.showTabStrip;
   const showContentToggle: boolean =
     interactionCapabilities.paneSwitching.showContentToggle;
+  // Single source of truth for pane-content visibility. When the toggle control
+  // is suppressed (`showContentToggle === false`), the embedding owns content
+  // and there is no control to flip it, so content is treated as visible by
+  // default — seated tiles AND the drag ghost share this one flag, so the ghost
+  // body matches the in-tree body. When the toggle is shown, the legacy default
+  // (content off until the checkbox is flipped) is preserved.
   const [isPaneContentVisible, setIsPaneContentVisible] =
-    React.useState<boolean>(false);
+    React.useState<boolean>(resolveInitialPaneContentVisible(showContentToggle));
   const isMasterLayoutEnabled: boolean = interactionCapabilities.masterLayout;
   const isGroupingEnabled: boolean = interactionCapabilities.grouping;
   const showSwitcherOverlay: boolean =

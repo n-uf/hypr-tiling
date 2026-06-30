@@ -173,3 +173,25 @@ export function resolvePaneBodyRenderMode(
   }
   return isPaneContentVisible ? "render-content" : "render-empty";
 }
+
+/**
+ * The initial value of the renderer's `isPaneContentVisible` state, derived from
+ * whether the content toggle is shown — the single source of truth for the
+ * default content visibility.
+ *
+ * - toggle shown (`showContentToggle === true`) → default `false` (legacy: the
+ *   body stays empty until the user flips the checkbox).
+ * - toggle suppressed (`showContentToggle === false`) → default `true`. The
+ *   embedding owns content and there is no control to flip; treating content as
+ *   visible by default means seated tiles AND the drag ghost share one flag, so
+ *   the ghost body matches the in-tree body (and the prerendered HTML keeps its
+ *   content at rest — SEO intact).
+ *
+ * Ghost-seat reservation slots are unaffected: they render empty via
+ * `resolvePaneBodyRenderMode` regardless of this flag.
+ */
+export function resolveInitialPaneContentVisible(
+  showContentToggle: boolean,
+): boolean {
+  return !showContentToggle;
+}

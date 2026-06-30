@@ -1,13 +1,16 @@
 import * as React from "react";
 import type { DynamicRenderTileArgs } from "@n-uf/hypr-tiling";
 
-// Custom pane renderer for the homepage ("mosaic" identity). The library's
-// default tile keeps its body empty until an in-renderer toggle is flipped,
-// which would leave the prerendered HTML contentless — so the homepage supplies
-// its own tile that always paints the documentation content. The renderer still
-// owns layout, splits, resize, drag mechanics, focus, and keyboard control;
-// this component only paints one pane's chrome + content and forwards the
-// drag/focus handles.
+// Custom pane renderer for the homepage ("mosaic" identity). The body honors
+// the renderer's canonical `paneBodyRenderMode` (the single source of truth
+// shared by every drag surface), so the in-tree pane and the drag ghost paint
+// identically and the ghost is never an empty-bodied shell. Because the homepage
+// suppresses the content toggle (`paneSwitching.showContentToggle: false`), the
+// renderer pins content-visible by default, so `render-content` resolves at rest
+// — the prerendered HTML still carries the documentation content (SEO intact).
+// The renderer still owns layout, splits, resize, drag mechanics, focus, and
+// keyboard control; this component only paints one pane's chrome + content and
+// forwards the drag/focus handles.
 //
 // Form vocabulary: a flat matte ink surface (no glass blur), a hairline rim, a
 // monospace workspace ordinal (01, 02, …) echoing a tiling-WM workspace index,
@@ -102,7 +105,7 @@ export function DocTile(args: DynamicRenderTileArgs): React.ReactElement {
         ) : null}
       </header>
       <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
-        {args.tile.content}
+        {args.paneBodyRenderMode === "render-content" ? args.tile.content : null}
       </div>
     </article>
   );

@@ -2,6 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 import {
   isDragPresentationActive,
   resolveDragPresentation,
+  resolveInitialPaneContentVisible,
   resolvePaneBodyRenderMode,
   type DragPresentationInput,
   type DragPresentationMode,
@@ -325,5 +326,65 @@ describe("(c) single painted instance — exactly one ghost-seat reservation", (
       ghostSeatLeafId: SEAT,
     });
     expect(reservationCount(modes)).toBe(0);
+  });
+});
+
+/**
+ * (d) Default content visibility derived from the content toggle — the
+ * single-source-of-truth default that makes the drag ghost match the seated body
+ * for embeddings that suppress the toggle (e.g. the docs/SEO homepage).
+ */
+describe("(d) initial pane-content visibility from showContentToggle", (): void => {
+  it("toggle shown ⇒ content default off (legacy: empty until flipped)", (): void => {
+    expect(resolveInitialPaneContentVisible(true)).toBe(false);
+  });
+
+  it("toggle suppressed ⇒ content default on (embedding owns content)", (): void => {
+    expect(resolveInitialPaneContentVisible(false)).toBe(true);
+  });
+
+  it("showContentToggle:false ⇒ ghost AND seated body resolve render-content; reservation stays empty", (): void => {
+    // The homepage embedding: `paneSwitching.showContentToggle: false` pins the
+    // initial content-visible flag true via the single source of truth, so the
+    // SAME flag drives every surface.
+    const contentVisible: boolean = resolveInitialPaneContentVisible(false);
+    expect(contentVisible).toBe(true);
+
+    const ORIGIN = "A";
+    const SEAT = "B";
+    const base = {
+      liveDragModeEnabled: true,
+      dragPhase: "dragging" as const,
+      settlingOutcome: null,
+      pickupOriginLeafId: ORIGIN,
+      ghostSeatLeafId: SEAT,
+      dropAction: "swap" as const,
+      dropZone: "center" as const,
+      dropDominantEdge: null,
+    };
+    const seatPresentation = resolveDragPresentation({ ...base, leafId: SEAT });
+    const originPresentation = resolveDragPresentation({ ...base, leafId: ORIGIN });
+
+    // The ghost-seat reservation slot stays empty (a drag mechanic, independent
+    // of the content flag).
+    expect(
+      resolvePaneBodyRenderMode(
+        seatPresentation.isGhostSeatReservation,
+        contentVisible,
+      ),
+    ).toBe("render-reservation");
+
+    // The seated origin pane AND the ghost (never a reservation) paint content,
+    // so the ghost body matches the in-tree body — no empty-bodied ghost.
+    expect(
+      resolvePaneBodyRenderMode(
+        originPresentation.isGhostSeatReservation,
+        contentVisible,
+      ),
+    ).toBe("render-content");
+    // The ghost calls resolvePaneBodyRenderMode(false, contentVisible).
+    expect(resolvePaneBodyRenderMode(false, contentVisible)).toBe(
+      "render-content",
+    );
   });
 });

@@ -547,8 +547,14 @@ export interface TilingPaneSwitchingCapability {
    * toggle that flips the default-tile body between content and empty). Default
    * `true`. Set `false` to suppress the control for embeddings that always paint
    * their own content via a custom `renderTile` (e.g. a docs/SEO surface), where
-   * the toggle is inert chrome. Only the control is hidden; pane-content
-   * visibility stays at its current value.
+   * the toggle is inert chrome. Suppressing the toggle hands content ownership to
+   * the embedding: pane-content is treated as VISIBLE by default
+   * (`isPaneContentVisible` initializes `true`) for ALL drag surfaces — in-tree
+   * panes, the source slot, the hop-in slot, and the portaled drag ghost — so the
+   * ghost body matches the seated body. With no control rendered, the flag cannot
+   * be flipped off, so this default holds for the lifetime of the embedding.
+   * (Ghost-seat reservation slots still render empty — that is a drag mechanic
+   * resolved by `resolvePaneBodyRenderMode`, independent of this flag.)
    */
   showContentToggle?: boolean;
   /**
