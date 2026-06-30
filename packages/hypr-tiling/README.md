@@ -102,6 +102,12 @@ rearrange them as the work demands:
   to fit the task at hand.
 - **Observability & log explorers** — query, results, and trace panes rearranged
   on the fly while chasing an incident.
+- **Web terminals & consoles** — browser-based shells, multiplexed sessions, and
+  live log streams split and resized Hyprland-style — the tiling homage made
+  literal, in the terminal.
+- **Realtime trading terminals** — Bloomberg-style desks: live charts, order
+  books, watchlists, and order entry packed into dense panes that stream and
+  rearrange in realtime.
 
 ## Links
 
