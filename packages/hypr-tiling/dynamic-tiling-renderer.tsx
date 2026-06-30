@@ -194,6 +194,13 @@ import {
   updateSplitRatio,
 } from "./state";
 import {
+  canGroupMultiSelection,
+  isMultiSelectModifierActive,
+  pruneMultiSelection,
+  resolveMultiSelectGroupCommand,
+  toggleLeafMultiSelection,
+} from "./multi-selection";
+import {
   deriveSurvivorFlipTransform,
   resolveSurvivorFlipFirst,
   shouldAnimateSurvivorReflow,
@@ -2025,6 +2032,11 @@ function DefaultDynamicTile({
   isHoveringDropCandidate,
   isInvalidDrop,
   onFocus,
+  isMultiSelectGroupingEnabled,
+  isMultiSelected,
+  canGroupMultiSelection: canGroupMultiSelectionNow,
+  onToggleMultiSelect,
+  onGroupMultiSelection,
   dropIntentDebugPath,
   dropIntentDebugAction,
   onHandlePointerDown,
@@ -2033,6 +2045,9 @@ function DefaultDynamicTile({
 }: DynamicRenderTileArgs): React.ReactElement {
   const theme: TilingTheme = useTilingTheme();
   const isNarrowHeader: boolean = paneWidthPx < 430;
+  // A selected pane offers the Group control once the selection is groupable
+  // (≥2 selected AND `group-leaves` would change the layout).
+  const showGroupButton: boolean = isMultiSelected && canGroupMultiSelectionNow;
   const hideSubtitle: boolean = paneWidthPx < 340;
   const shouldRenderPaneContent: boolean =
     paneBodyRenderMode === "render-content";
@@ -2230,6 +2245,20 @@ function DefaultDynamicTile({
       ) : null}
       <header
         onPointerDown={onHandlePointerDown}
+        onClick={(event: React.MouseEvent<HTMLElement>): void => {
+          // Cmd/Ctrl+click toggles this pane's multi-selection membership
+          // WITHOUT changing focus. Stop propagation so the article-level
+          // `onClick={onFocus}` (which clears the selection + focuses) never
+          // runs. A plain click falls through to the article handler unchanged.
+          if (
+            isMultiSelectGroupingEnabled &&
+            isMultiSelectModifierActive(event)
+          ) {
+            event.stopPropagation();
+            event.preventDefault();
+            onToggleMultiSelect();
+          }
+        }}
         style={isRearrangeEnabled ? { touchAction: "none" } : undefined}
         className={cn(
           theme.paneHeader.base,
@@ -2237,6 +2266,7 @@ function DefaultDynamicTile({
             ? "cursor-grab active:cursor-grabbing"
             : "cursor-default",
           isFocused ? theme.paneHeader.focused : "",
+          isMultiSelected ? theme.paneHeader.selected : "",
         )}
       >
         <div className="min-w-0 text-left">
@@ -2262,6 +2292,43 @@ function DefaultDynamicTile({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
+          {isMultiSelected ? (
+            <span
+              aria-label={`pane ${leafId} selected`}
+              title="selected (Cmd/Ctrl+click to deselect)"
+              className={cn(
+                "flex shrink-0 items-center justify-center rounded-md border font-mono leading-none",
+                isNarrowHeader ? "h-4 w-4 text-[10px]" : "h-5 w-5 text-[11px]",
+                theme.paneHeader.selectedBadge,
+              )}
+            >
+              <span aria-hidden>{"\u2713"}</span>
+            </span>
+          ) : null}
+          {showGroupButton ? (
+            <button
+              type="button"
+              draggable={false}
+              title="group selected panes into a tabbed group"
+              aria-label={`group ${leafId} with the selected panes`}
+              onPointerDown={(
+                event: React.PointerEvent<HTMLButtonElement>,
+              ): void => {
+                event.stopPropagation();
+              }}
+              onClick={(event: React.MouseEvent<HTMLButtonElement>): void => {
+                event.stopPropagation();
+                onGroupMultiSelection();
+              }}
+              className={cn(
+                "flex shrink-0 items-center justify-center rounded-md border font-mono uppercase leading-none tracking-[0.1em] transition-colors",
+                isNarrowHeader ? "h-4 px-1.5 text-[9px]" : "h-5 px-2 text-[10px]",
+                theme.paneHeader.controlActive,
+              )}
+            >
+              {isNarrowHeader ? "GRP" : "GROUP"}
+            </button>
+          ) : null}
           {isMaximizeEnabled ? (
             <button
               type="button"
@@ -3480,6 +3547,12 @@ export const DynamicTilingRenderer = React.forwardRef<
     React.useState<boolean>(resolveInitialPaneContentVisible(showContentToggle));
   const isMasterLayoutEnabled: boolean = interactionCapabilities.masterLayout;
   const isGroupingEnabled: boolean = interactionCapabilities.grouping;
+  // Cmd/Ctrl+click header multi-select → group. Gated by its own opt-out flag
+  // AND the `grouping` capability (the whole point is to reach `group-leaves`),
+  // so with grouping off the Group control is suppressed and a modified header
+  // click degrades to a plain click.
+  const isMultiSelectGroupingEnabled: boolean =
+    interactionCapabilities.paneSwitching.multiSelectGrouping && isGroupingEnabled;
   const showSwitcherOverlay: boolean =
     isPaneSwitchingEnabled &&
     interactionCapabilities.paneSwitching.showSwitcherOverlay;
@@ -3691,6 +3764,17 @@ export const DynamicTilingRenderer = React.forwardRef<
   const [moveModeState, setMoveModeState] =
     React.useState<TilingMoveModeState | null>(null);
   const moveModeStateRef = React.useRef<TilingMoveModeState | null>(null);
+  // Cmd/Ctrl+click header multi-selection set (HT — paneSwitching.multiSelectGrouping).
+  // Insertion order is the group-member order (first-selected = group-leaves
+  // anchor). Mirrored to a ref so the document keydown listener (Escape) and the
+  // header pointer handlers can clear it without re-subscribing.
+  const [multiSelectedLeafIds, setMultiSelectedLeafIds] = React.useState<
+    ReadonlySet<string>
+  >(() => new Set<string>());
+  const multiSelectedLeafIdsRef = React.useRef<ReadonlySet<string>>(
+    multiSelectedLeafIds,
+  );
+  multiSelectedLeafIdsRef.current = multiSelectedLeafIds;
   // MRU focus history (HT-NAV-MRU-FOCUS-TOGGLE). A ref, not state: pushing on
   // every focus change must not re-render, and the `focus-current-or-last`
   // command reads the latest synchronously at dispatch time. Pruned against the
@@ -4816,6 +4900,29 @@ export const DynamicTilingRenderer = React.forwardRef<
     [isFocusSelectionEnabled, onFocusedLeafChange],
   );
 
+  // Empty the multi-selection. A no-op (same reference) when already empty so a
+  // clear-on-every-interaction wiring never schedules a pointless re-render.
+  const clearMultiSelection = React.useCallback((): void => {
+    setMultiSelectedLeafIds((current: ReadonlySet<string>): ReadonlySet<string> =>
+      current.size === 0 ? current : new Set<string>(),
+    );
+  }, []);
+
+  // Toggle one pane in/out of the multi-selection set (Cmd/Ctrl+click). A no-op
+  // when the feature is disabled. Does NOT touch focus — multi-selection and the
+  // single-focus pane are orthogonal.
+  const toggleMultiSelect = React.useCallback(
+    (leafId: string): void => {
+      if (!isMultiSelectGroupingEnabled) {
+        return;
+      }
+      setMultiSelectedLeafIds((current: ReadonlySet<string>): ReadonlySet<string> =>
+        toggleLeafMultiSelection(current, leafId),
+      );
+    },
+    [isMultiSelectGroupingEnabled],
+  );
+
   const setMaximizedLeaf = React.useCallback(
     (nextLeafId: string | null): void => {
       if (!isMaximizeEnabled) {
@@ -5366,6 +5473,44 @@ export const DynamicTilingRenderer = React.forwardRef<
     ],
   );
 
+  // Whether the current multi-selection can be folded into one group right now
+  // (≥2 selected AND `group-leaves` would change the layout under the grouping
+  // op's anchor/sibling constraint). Drives whether the selected panes offer the
+  // Group control. Recomputes only when the layout, the selection, or the
+  // feature gate changes.
+  const canGroupMultiSelectionNow: boolean = React.useMemo(
+    (): boolean =>
+      isMultiSelectGroupingEnabled &&
+      canGroupMultiSelection(layout, multiSelectedLeafIds),
+    [isMultiSelectGroupingEnabled, layout, multiSelectedLeafIds],
+  );
+
+  // Fold the multi-selection into one group via the EXISTING `group-leaves`
+  // command, then clear the selection — but ONLY on a successful group (the
+  // router returns `true`). Reuses the SAME router as the keyboard `Alt+G` /
+  // imperative `dispatch` path; the grouping capability gate still applies.
+  const groupMultiSelection = React.useCallback((): void => {
+    if (!isMultiSelectGroupingEnabled) {
+      return;
+    }
+    const command = resolveMultiSelectGroupCommand(multiSelectedLeafIdsRef.current);
+    if (command == null) {
+      return;
+    }
+    if (dispatchCommand(command)) {
+      clearMultiSelection();
+    }
+  }, [clearMultiSelection, dispatchCommand, isMultiSelectGroupingEnabled]);
+
+  // Prune the multi-selection whenever a selected pane leaves the outer-slot
+  // leaf set (e.g. it was grouped away, removed, or folded into a group), so a
+  // vanished pane never lingers selected or re-highlights if its id reappears.
+  React.useEffect((): void => {
+    setMultiSelectedLeafIds((current: ReadonlySet<string>): ReadonlySet<string> =>
+      pruneMultiSelection(current, leafIds),
+    );
+  }, [leafIds]);
+
   // Public imperative handle (HT-API-COMMAND-KEYBOARD-SURFACE half A): a consumer
   // holds a `ref` and drives the tiler programmatically (the Hyprland `dispatch`
   // analog). It routes through the SAME `dispatchCommand` router the keyboard
@@ -5444,6 +5589,17 @@ export const DynamicTilingRenderer = React.forwardRef<
           preventDefault();
           aimMoveMode(moveAction.direction);
         }
+        return;
+      }
+      // Multi-selection is a transient mode: Escape cancels it (and consumes the
+      // press) before the general keymap path, so a stray selection clears
+      // without also triggering an unrelated Escape binding (e.g. restore).
+      if (
+        event.code === "Escape" &&
+        multiSelectedLeafIdsRef.current.size > 0
+      ) {
+        preventDefault();
+        clearMultiSelection();
         return;
       }
       // Public binding registry (HT-API-COMMAND-KEYBOARD-SURFACE half B), highest
@@ -5578,6 +5734,7 @@ export const DynamicTilingRenderer = React.forwardRef<
       showSwitcherOverlay,
       keymap,
       leafIds,
+      clearMultiSelection,
     ],
   );
 
@@ -6844,7 +7001,20 @@ export const DynamicTilingRenderer = React.forwardRef<
             : null,
           observabilityColors,
           observabilityColorEnables,
+          isMultiSelectGroupingEnabled,
+          isMultiSelected: multiSelectedLeafIds.has(node.id),
+          canGroupMultiSelection: canGroupMultiSelectionNow,
+          onToggleMultiSelect: (): void => {
+            toggleMultiSelect(node.id);
+          },
+          onGroupMultiSelection: groupMultiSelection,
           onFocus: (): void => {
+            // A plain click / keyboard focus establishes a single focus, which
+            // supersedes (and clears) any in-progress multi-selection. The
+            // Cmd/Ctrl+click path never reaches here — it is intercepted in the
+            // header click handler (stopPropagation) and the pointer-down gate
+            // (preventDefault blocks the native focus).
+            clearMultiSelection();
             setFocusedLeaf(node.id);
           },
           // Pointer-Events pickup on the drag handle (the title-bar grip). Capture
@@ -6854,6 +7024,28 @@ export const DynamicTilingRenderer = React.forwardRef<
           onHandlePointerDown: (
             event: React.PointerEvent<HTMLElement>,
           ): void => {
+            // Cmd/Ctrl+click on the header is a multi-select TOGGLE (handled in
+            // the header `onClick`), not a drag pickup or focus change. Block the
+            // native focus + text selection here so the click never establishes a
+            // single focus (which would clear the selection). Works regardless of
+            // drag eligibility, so a non-rearrangeable pane is still selectable.
+            // Skipped for embedded interactive controls so their own click/focus
+            // behavior is untouched.
+            if (
+              isMultiSelectGroupingEnabled &&
+              isMultiSelectModifierActive(event)
+            ) {
+              const modifierPressTarget: EventTarget | null = event.target;
+              const isModifierInteractiveControl: boolean =
+                modifierPressTarget instanceof Element &&
+                modifierPressTarget.closest(
+                  'button, a, input, textarea, select, [role="button"]',
+                ) != null;
+              if (!isModifierInteractiveControl) {
+                event.preventDefault();
+              }
+              return;
+            }
             // Per-leaf gate: a statically-gated pane (a static pane itself, or a
             // leaf in an unpinned-static subtree) is not a drag source.
             if (!isLeafRearrangeEligible(node.id)) {
@@ -6895,6 +7087,9 @@ export const DynamicTilingRenderer = React.forwardRef<
                 window.getSelection()?.removeAllRanges();
               }
             }
+            // A plain (no-modifier) header press starts a drag pickup and/or
+            // establishes a single focus — both supersede the multi-selection.
+            clearMultiSelection();
             setFocusedLeaf(node.id);
             setCancelVisualState(null);
             onLiveHitLogChange?.(null);
@@ -7513,6 +7708,12 @@ export const DynamicTilingRenderer = React.forwardRef<
       tiles,
       dispatchCommand,
       isGroupingEnabled,
+      isMultiSelectGroupingEnabled,
+      multiSelectedLeafIds,
+      canGroupMultiSelectionNow,
+      toggleMultiSelect,
+      groupMultiSelection,
+      clearMultiSelection,
       layout,
       setGroupTabStripRef,
       isPaneContentVisible,

@@ -37,6 +37,7 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
     showContentToggle: true,
     showSwitcherOverlay: true,
     tabDoubleClickMaximize: true,
+    multiSelectGrouping: true,
   },
   paneTitleBarControls: { sizing: true, acquireSpace: true },
   dropHitZoneGeometry: {
@@ -225,6 +226,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
         showContentToggle: true,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: true,
+        multiSelectGrouping: true,
       },
     });
     expect(resolveInteractionCapabilities({ paneSwitching: { showTabStrip: false } })).toEqual({
@@ -235,6 +237,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
         showContentToggle: true,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: true,
+        multiSelectGrouping: true,
       },
     });
     expect(resolveInteractionCapabilities({ paneSwitching: { showContentToggle: false } })).toEqual({
@@ -245,6 +248,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
         showContentToggle: false,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: true,
+        multiSelectGrouping: true,
       },
     });
     expect(resolveInteractionCapabilities({ paneSwitching: { showSwitcherOverlay: false } })).toEqual({
@@ -255,6 +259,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
         showContentToggle: true,
         showSwitcherOverlay: false,
         tabDoubleClickMaximize: true,
+        multiSelectGrouping: true,
       },
     });
   });
@@ -275,6 +280,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
         showContentToggle: true,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: false,
+        multiSelectGrouping: true,
       },
     });
   });
@@ -283,6 +289,43 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     expect(resolveInteractionCapabilities({ paneSwitching: { tabDoubleClickMaximize: true } })).toEqual(
       RESOLVED_DEFAULTS,
     );
+  });
+
+  it("defaults multiSelectGrouping to true (Cmd/Ctrl+click header multi-select on out of the box)", (): void => {
+    expect(resolveInteractionCapabilities(undefined).paneSwitching.multiSelectGrouping).toBe(true);
+    expect(resolveInteractionCapabilities({}).paneSwitching.multiSelectGrouping).toBe(true);
+  });
+
+  it("preserves an explicit multiSelectGrouping false (opt out of header multi-select grouping)", (): void => {
+    expect(
+      resolveInteractionCapabilities({ paneSwitching: { multiSelectGrouping: false } }),
+    ).toEqual({
+      ...RESOLVED_DEFAULTS,
+      paneSwitching: {
+        enable: true,
+        showTabStrip: true,
+        showContentToggle: true,
+        showSwitcherOverlay: true,
+        tabDoubleClickMaximize: true,
+        multiSelectGrouping: false,
+      },
+    });
+  });
+
+  it("preserves an explicit multiSelectGrouping true (idempotent with the default)", (): void => {
+    expect(resolveInteractionCapabilities({ paneSwitching: { multiSelectGrouping: true } })).toEqual(
+      RESOLVED_DEFAULTS,
+    );
+  });
+
+  it("keeps multiSelectGrouping defaulted on even when pane switching is disabled", (): void => {
+    // The flag is independent of `paneSwitching.enable` (the renderer ANDs it
+    // with the `grouping` capability, not with `enable`), so an explicit
+    // pane-switching disable still resolves multiSelectGrouping to its default.
+    expect(
+      resolveInteractionCapabilities({ paneSwitching: { enable: false } }).paneSwitching
+        .multiSelectGrouping,
+    ).toBe(true);
   });
 
   it("applies a top-level keymap override (code-based)", (): void => {

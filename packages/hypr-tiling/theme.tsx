@@ -105,6 +105,18 @@ export interface TilingThemePaneHeaderTokens {
   readonly controlIdle: string;
   /** Active/pressed header control button. */
   readonly controlActive: string;
+  /**
+   * Additive header classes when the pane is part of the Cmd/Ctrl+click
+   * multi-selection set. Deliberately NEUTRAL (no accent) so it never collides
+   * with the accent focus frame — multi-selection and focus are orthogonal
+   * states a pane can hold simultaneously.
+   */
+  readonly selected: string;
+  /**
+   * The small neutral "selected" check affordance rendered in the header of a
+   * multi-selected pane. Neutral tone, distinct from any accent control.
+   */
+  readonly selectedBadge: string;
 }
 
 /** Drag-ghost shell — the lifted, portaled copy of the dragged pane. */
@@ -425,6 +437,8 @@ const NEON_TERMINAL_THEME: TilingTheme = {
       "border-white/20 bg-slate-950/70 text-slate-300 hover:border-cyan-200/35 hover:bg-cyan-400/10 hover:text-cyan-50",
     controlActive:
       "border-cyan-100/60 bg-cyan-400/15 text-cyan-50 shadow-[0_0_8px_rgba(34,211,238,0.20)]",
+    selected: "outline-dashed outline-1 -outline-offset-2 outline-slate-300/50",
+    selectedBadge: "border border-slate-300/40 bg-slate-200/10 text-slate-200",
   },
   ghost: {
     surface:
@@ -512,6 +526,8 @@ const CLEAN_FLAT_THEME: TilingTheme = {
     controlIdle:
       "border-slate-700 bg-slate-800/60 text-slate-400 hover:border-slate-500 hover:bg-slate-700/60 hover:text-slate-100",
     controlActive: "border-slate-400/60 bg-slate-600/40 text-slate-100",
+    selected: "outline-dashed outline-1 -outline-offset-2 outline-slate-400/60",
+    selectedBadge: "border border-slate-400/50 bg-slate-600/40 text-slate-100",
   },
   ghost: {
     surface:
@@ -597,6 +613,8 @@ const MOSAIC_THEME: TilingTheme = {
     controlIdle:
       "border-white/[0.12] bg-white/[0.03] text-stone-400 hover:border-amber-300/40 hover:bg-amber-300/10 hover:text-amber-100",
     controlActive: "border-amber-200/55 bg-amber-300/15 text-amber-50",
+    selected: "outline-dashed outline-1 -outline-offset-2 outline-stone-300/45",
+    selectedBadge: "border border-stone-300/40 bg-stone-200/10 text-stone-200",
   },
   ghost: {
     surface:

@@ -580,6 +580,21 @@ export interface TilingPaneSwitchingCapability {
    */
   tabDoubleClickMaximize?: boolean;
   /**
+   * Cmd/Ctrl+click a pane HEADER to toggle that pane into a multi-selection set,
+   * then group the selected panes into one tabbed group via the existing
+   * `group-leaves` command. Default `true`. A plain (no-modifier) header click
+   * keeps its normal focus/drag-pickup behavior; only `metaKey` (macOS) /
+   * `ctrlKey` (Windows/Linux) presses participate in multi-selection. When `≥2`
+   * groupable panes are selected, a "Group" control appears in each selected
+   * pane's header; clicking it dispatches `group-leaves` and clears the
+   * selection. The selection also clears on Escape, on a drag pickup, and on a
+   * plain click that establishes a single focus. When `false`, Cmd/Ctrl+click and
+   * the Group control are no-ops. The grouping itself is independently gated by
+   * the `grouping` capability — with grouping disabled the Group control is
+   * suppressed (the multi-select dispatch is a safe no-op).
+   */
+  multiSelectGrouping?: boolean;
+  /**
    * Per-capability keybinding overrides for `previousPane` / `nextPane` /
    * `jumpToPane`. These take precedence over the top-level `keymap`.
    */
@@ -622,6 +637,7 @@ export interface ResolvedTilingPaneSwitchingCapability {
   showContentToggle: boolean;
   showSwitcherOverlay: boolean;
   tabDoubleClickMaximize: boolean;
+  multiSelectGrouping: boolean;
 }
 
 /**
@@ -1126,6 +1142,33 @@ export interface DynamicRenderTileArgs {
   observabilityColors: DynamicObservabilityColorConfig;
   observabilityColorEnables: DynamicObservabilityColorEnableConfig;
   onFocus: () => void;
+  /**
+   * Whether the Cmd/Ctrl+click header multi-selection feature is live
+   * (`paneSwitching.multiSelectGrouping` AND the `grouping` capability). When
+   * `false`, the header click handler must treat a modified click as a plain
+   * click and never render the Group control.
+   */
+  isMultiSelectGroupingEnabled: boolean;
+  /** Whether THIS pane is currently a member of the multi-selection set. */
+  isMultiSelected: boolean;
+  /**
+   * Whether the current multi-selection (`≥2` panes) can be folded into one
+   * group right now — i.e. `group-leaves` would change the layout under the
+   * existing grouping constraint (the anchor pane must be a placeable slot, not
+   * already a group member). Drives whether the Group control is offered on the
+   * selected panes; `false` hides it rather than offering a no-op.
+   */
+  canGroupMultiSelection: boolean;
+  /**
+   * Toggle THIS pane in/out of the multi-selection set. Wire to a
+   * Cmd/Ctrl+click on the pane header. Does not change focus.
+   */
+  onToggleMultiSelect: () => void;
+  /**
+   * Group the currently multi-selected panes into one tabbed group via the
+   * `group-leaves` command, then clear the selection. Wire to the Group control.
+   */
+  onGroupMultiSelection: () => void;
   /**
    * Pointer-Events drag pickup on the pane's drag handle (the title-bar grip).
    * Wire this to the handle's `onPointerDown`; the renderer arms the drag FSM,

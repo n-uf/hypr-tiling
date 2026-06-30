@@ -56,6 +56,7 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
     showContentToggle: true,
     showSwitcherOverlay: true,
     tabDoubleClickMaximize: true,
+    multiSelectGrouping: true,
   },
   paneTitleBarControls: { sizing: true, acquireSpace: true },
   dropHitZoneGeometry: {
@@ -212,6 +213,9 @@ export function resolveInteractionCapabilities(
       tabDoubleClickMaximize:
         capabilities?.paneSwitching?.tabDoubleClickMaximize
         ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.paneSwitching.tabDoubleClickMaximize,
+      multiSelectGrouping:
+        capabilities?.paneSwitching?.multiSelectGrouping
+        ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.paneSwitching.multiSelectGrouping,
     },
     paneTitleBarControls: {
       sizing:

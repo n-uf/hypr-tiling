@@ -48,6 +48,15 @@ export {
 } from "./commands";
 export { defaultKeyBindings, matchKeyBinding } from "./keybindings";
 export {
+  MULTI_SELECT_GROUP_MIN_MEMBERS,
+  canGroupMultiSelection,
+  isMultiSelectModifierActive,
+  pruneMultiSelection,
+  resolveMultiSelectGroupCommand,
+  toggleLeafMultiSelection,
+  type MultiSelectModifierState,
+} from "./multi-selection";
+export {
   EMPTY_FOCUS_HISTORY,
   FOCUS_HISTORY_DEFAULT_LIMIT,
   pruneFocusHistory,
