@@ -99,6 +99,20 @@ Assertion helper — read the live recovery state from the page via
 
 ```js
 // Evaluated in the page. Returns the residual-transform + FSM-idle proof.
+//
+// CRITICAL — assert on the COMPUTED transform, NOT inline. The seated mid-FLIP
+// hang (INV-R6) strands a survivor with inline `transform: "none"` (the M1
+// play-to-identity write landed) while its COMPUTED transform is still a
+// non-identity matrix (a stalled compositor transition) OR with inline at the
+// inverted First (a stranded WAAPI `fill:none` dip). An inline-gated filter
+// (`s.inlineTransform !== "none" && …`) FALSE-NEGATIVES the CSS-transition
+// variant — the inline `"none"` short-circuits the AND before the computed
+// check ever runs. The clean test is purely on COMPUTED transform: identity is
+// exactly `"none"` or the identity matrix; anything else is a residual.
+function isComputedTransformIdentity(t) {
+  return t === "none" || t === "matrix(1, 0, 0, 1, 0, 0)";
+}
+
 function snapshotRecoveryState() {
   const leaves = Array.from(document.querySelectorAll("[data-leaf-id]"));
   const nonIdentity = leaves
@@ -107,14 +121,10 @@ function snapshotRecoveryState() {
       transform: getComputedStyle(el).transform,
       inlineTransform: el.style.transform,
     }))
-    // computed "none" or the identity matrix both count as clean
-    .filter(
-      (s) =>
-        s.inlineTransform !== "" &&
-        s.inlineTransform !== "none" &&
-        s.transform !== "none" &&
-        s.transform !== "matrix(1, 0, 0, 1, 0, 0)",
-    );
+    // Residual iff the COMPUTED transform is non-identity — independent of what
+    // the inline transform reads. This catches the seated mid-FLIP stall that
+    // the prior inline-AND filter missed.
+    .filter((s) => !isComputedTransformIdentity(s.transform));
   // The renderer exposes no global FSM handle; infer idle from the absence of
   // the dragging-only DOM markers (ghost overlay + select-none gate). Adjust the
   // selectors if the markup changes.
@@ -125,7 +135,7 @@ function snapshotRecoveryState() {
 }
 ```
 
-INV proof = `residualTransforms.length === 0` (INV-R1/R2/R4) **and**
+INV proof = `residualTransforms.length === 0` (INV-R1/R2/R4/R6) **and**
 `ghostOverlayCount === 0` (INV-R3, no live drag in flight) after each scenario
 settles.
 
@@ -203,23 +213,58 @@ or ghost at its inverted `First`.
 
 ---
 
-## 6. Scenario C — pure rAF starvation on the survivor reflow (INV-R1/R2)
+## 6. Scenario C — pure rAF starvation on the survivor reflow (INV-R1/R2/R6)
 
-Isolates M1: throttle hard (`rate: 20`), perform a fast seated swap that commits,
-and confirm the survivors do not remain frozen at their inverted `First` even when
-the compositor frame that would write play-to-identity is starved past the
-`frameDeadlineMs` backstop.
+Isolates M1 + the M2b transform-settle guard: throttle hard (`rate: 20`), perform
+a fast seated swap that commits, and confirm the survivors do not remain frozen at
+their inverted `First` even when the compositor frame that would write
+play-to-identity is starved past the `frameDeadlineMs` backstop, AND that no
+survivor is stranded with a non-identity COMPUTED transform after the slack window.
 
 1. `Emulation.setCPUThrottlingRate { rate: 20 }`.
 2. Press → quick move into an adjacent seat → release (Scenario A steps 2–5,
    minimal moves, no long task).
 3. Immediately snapshot, then snapshot again after
    `survivorReflowDurationMs + transitionSlackMs`.
-   - **Expected:** both snapshots converge to `residualTransforms` empty. If the
-     FIRST snapshot shows a survivor still transformed but the SECOND is clean,
-     that is the M1 timeout backstop doing its job (the starved frame never
-     arrived; the timer wrote identity). A residual transform that PERSISTS in the
-     second snapshot is an INV-R1 regression.
+   - **Expected:** both snapshots converge to `residualTransforms` empty (the
+     filter now keys on COMPUTED transform — `getComputedStyle(el).transform !==
+     "none" && !== "matrix(1, 0, 0, 1, 0, 0)"` — so it catches a survivor whose
+     inline reads `"none"` but whose compositor transition is still mid-flight,
+     the exact case the prior inline-gated helper false-negatived). If the FIRST
+     snapshot shows a survivor still transformed but the SECOND is clean, that is
+     the M1 timeout backstop + the M2b guard doing their job. A non-identity
+     COMPUTED transform that PERSISTS in the second snapshot is an INV-R1/INV-R6
+     regression.
+
+### 6b. Scenario C2 — SEATED mid-FLIP stall with a committable seat held (INV-R6)
+
+The hang the M2b guard exists for: a live `dragging` state with a committable
+seat latched + a STATIONARY pointer (no new reflow batch), where the survivor
+reflow's compositor transition stalls under throttle. Fix A
+(`shouldSuppressCompetingCancel`) deliberately removes the M3 watchdog's strip
+path while a seat is latched, so WITHOUT the M2b guard there is no force-strip
+until `pointerup`/settle → the pane appears frozen mid-move. The M2b guard
+force-settles the stuck COMPUTED transform within the slack window WITHOUT a
+`POINTER_CANCEL` / FSM transition / snap-back.
+
+1. `Emulation.setCPUThrottlingRate { rate: 20 }`.
+2. Press on the `OVERVIEW` header → move past pickup into an adjacent seat in a
+   few steps so a committable seat is latched (watch the seat indicator), then
+   HOLD the pointer stationary (NO release, NO further moves — no new reflow
+   batch is derived).
+3. Snapshot immediately, then again after `survivorReflowDurationMs +
+   transitionSlackMs` (the M2b guard's window) — still WITHOUT releasing.
+   - **Expected:** the SECOND snapshot has `residualTransforms` empty (the M2b
+     guard read the survivors' non-identity COMPUTED transform past the slack
+     window and force-stripped to identity) WHILE the drag is still live —
+     `ghostOverlayCount` is still `> 0` (the seat is held; the FSM did NOT snap
+     back to idle). This is the no-snap-back proof: the visual is settled but the
+     seated drop is intact.
+4. Now release at the seat: `Input.dispatchMouseEvent { type: "mouseReleased",
+   … }`. The seated drop COMMITS (the M2b force-settle never cleared the
+   committable seat). A residual non-identity COMPUTED transform in step 3's
+   second snapshot, OR a snap-back to idle (`ghostOverlayCount === 0`) before the
+   release, is an INV-R6 regression.
 
 ---
 
@@ -242,8 +287,11 @@ rm -rf /tmp/hypr-cdp/profile
 | A (dropped) | `pointerup` never dispatched | M3 idle watchdog → `POINTER_CANCEL` | INV-R3 |
 | B | `Page.setWebLifecycleState hidden→active` mid-drag | M5 visibility reconcile + M4 strip | INV-R4 |
 | C | hard throttle, starved play-to-identity frame | M1 rAF-with-timeout race | INV-R1 / INV-R2 |
+| C2 | hard throttle, SEATED stall, pointer held (no release) | M2b transform-settle guard (computed-transform force-settle, no snap-back) | INV-R6 |
 
-If any scenario leaves a non-identity inline `transform` on a `[data-leaf-id]`
-element after settle, or leaves `ghostOverlayCount > 0` (a live ghost with no
-in-flight drag), the corresponding mitigation has regressed — capture the
-`snapshotRecoveryState` output and the throttle `rate` for the report.
+If any scenario leaves a non-identity COMPUTED `transform` on a `[data-leaf-id]`
+element after settle (Scenario C2: after the slack window, even mid-drag), or
+leaves `ghostOverlayCount > 0` (a live ghost with no in-flight drag — except
+Scenario C2 step 3, where a held seat keeps the drag deliberately live), the
+corresponding mitigation has regressed — capture the `snapshotRecoveryState`
+output and the throttle `rate` for the report.

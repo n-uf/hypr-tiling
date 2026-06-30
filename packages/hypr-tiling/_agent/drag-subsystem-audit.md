@@ -783,7 +783,33 @@ All four edits were re-anchored on **symbols** (not line numbers) since
    coherent-dip mode (WAAPI, no `transitionend`) the timeout backstop closes it —
    identical to the historical `+60`. This is the gap-closure that wires M2 (it
    was implemented + unit-tested but previously unconsumed) and reads the resolved
-   `transitionSlackMs` capability (previously resolved but unread).
+   `transitionSlackMs` capability (previously resolved but unread). The `onSettled`
+   now ALSO runs `stripSurvivorTransientStyles()` so the normal (non-throttled)
+   settle path guarantees transform teardown too — idempotent with the M2b guard
+   (#6) + the settle-phase strip.
+6. **Survivor transform-settle self-heal via M2b** (survivor-reflow effect): the
+   `survivorTransformSettleGuardRef = armTransformSettleGuard({ readComputed
+   Transforms: () => playableElements.map(el => getComputedStyle(el).transform),
+   durationMs: survivorReflowDurationMs, transitionSlackMs, scheduler:
+   WINDOW_TIMER_SCHEDULER, forceSettle: () => stripSurvivorTransientStyles() })`,
+   armed right after M2, cancelled + re-armed per reflow batch (mirrors M2) and on
+   unmount + settle teardown. Closes the **seated mid-FLIP transform-completion /
+   teardown gap**: M1 guarantees the play-to-identity *write* (inline → `"none"`),
+   but the compositor transition that animates to identity can stall under
+   throttle (inline `"none"`, COMPUTED still mid-flight) — or a WAAPI coherent dip
+   can strand (`fill:none` leaves inline at the inverted First, no `onfinish`) —
+   and Fix A (`shouldSuppressCompetingCancel`) deliberately removes the M3
+   watchdog's strip path while a committable seat is latched, so nothing
+   force-settles the stuck visual until `pointerup`/settle. M2b fires past the
+   slack window, reads the COMPUTED transform (the only signal that distinguishes
+   a stalled transition from a settled one), and force-strips to identity ONLY if
+   non-identity — **even when `committableSeatRef` is set**. It is DISTINCT from
+   the M3 watchdog: NO `POINTER_CANCEL`, NO FSM transition, NO snap-back — its
+   surface is a single `forceSettle` callback (no cancel-dispatch channel), so it
+   can never revert a seated drop. The COMPUTED-transform check also means it
+   never fights a legitimate in-flight transition (which has reached identity by
+   the deadline), and it is idempotent with the M2 mask-close strip + the
+   settle-phase strip.
 
 ### 10.4 Invariants → tests
 
@@ -794,13 +820,18 @@ All four edits were re-anchored on **symbols** (not line numbers) since
 | INV-R3 | Each FLIP play-to-identity write runs **exactly once and always** | M1 first-wins race + idempotent single run | `drag-recovery.test.ts` (M1 fires once whether the rAF or the timeout wins; `cancel()` drops both); `drag-recovery-dom.test.ts` (jsdom: rAF-starved survivor still reaches identity; a late frame after the timeout-won play is a no-op — no transform thrash) |
 | INV-R4 | A hidden→shown tab leaves the FSM `idle` with styles stripped | M5: `visibilitychange` hidden → `VISIBILITY_HIDDEN` (existing cancel edge) + M4 | covered by the FSM `VISIBILITY_HIDDEN` cancel edge (`drag-machine.test.ts`) + M4 idempotence (`drag-recovery.test.ts`); live manual repro: `_agent/drag-recovery-cdp-throttle.md` §5 (CDP `Page.setWebLifecycleState` hidden→active under CPU throttle) |
 | INV-R5 | A latched release commit / seated committable drop WINS over any competing cancel (M3 `onExpire`, `lostpointercapture`, `blur`, `visibilitychange`); the watchdog measures REAL input idleness, not frame-flush idleness | Fix A: synchronous `watchdog.cancel()` + `releaseCommitLatchedRef` at `pointerup`, `shouldSuppressCompetingCancel` gating every competing cancel, decaying `committableSeatFallbackRef` for the last-move-clears-seat tertiary. Fix B: `handlePointerMove` → `watchdog.progress()` (input-grounded) | `drag-machine.test.ts` ("commit latch wins over competing cancel": latch-suppresses-cancel, transient-clear-still-commits, sustained-leave-cancels, never-committable-cancels); `drag-recovery.test.ts` ("input-grounded keep-alive": raw-move progress keeps a frame-starved drag alive, trips only after input stops, single-armed). See §8.2. |
+| INV-R6 | A seated mid-FLIP survivor whose COMPUTED transform is stuck non-identity past `survivorReflowDurationMs + transitionSlackMs` (a stalled compositor transition with inline already `"none"`, or a stranded WAAPI `fill:none` dip) is FORCE-SETTLED to its committed identity box WITHIN the slack window — WITHOUT any FSM cancel / snap-back, EVEN while a committable seat is latched (where Fix A removes the M3 strip path) | M2b: `armTransformSettleGuard` armed per reflow batch after M1, reading COMPUTED transform (not inline); `forceSettle` → `stripSurvivorTransientStyles` (idempotent with the M2 mask-close strip + settle strip); single `forceSettle` surface, no cancel-dispatch channel → structurally cannot snap back | `drag-recovery.test.ts` ("M2b armTransformSettleGuard": force-settles a non-identity computed transform past the slack window, does NOT fight a settled transition, cancels on batch re-arm, idempotent, no cancel/FSM channel); `drag-recovery-dom.test.ts` ("M2b transform-settle self-heal": real `[data-leaf-id]` element force-stripped + tracked dip cancelled WITHOUT a phase change, no-op once legitimately settled, idempotent with a settle strip, stale guard cancelled on re-arm); live manual repro: `_agent/drag-recovery-cdp-throttle.md` §6b (Scenario C2: seated stall under throttle, pointer held). |
 
-INV-R1..INV-R4 also have a LIVE manual validation recipe under CPU throttling +
-frame starvation + mid-drag tab-hide + long-task injection at
+INV-R1..INV-R4 + INV-R6 also have a LIVE manual validation recipe under CPU
+throttling + frame starvation + mid-drag tab-hide + long-task injection at
 `_agent/drag-recovery-cdp-throttle.md` (headless-Chrome `Emulation.setCPUThrottlingRate`
 + `Input.dispatchMouseEvent` + `Page.setWebLifecycleState`), for confirming the
 WIRED renderer behavior against a real compositor that neither the `node`
-unit-tests nor the jsdom integration test can reproduce.
+unit-tests nor the jsdom integration test can reproduce. The recipe's
+`snapshotRecoveryState` helper now asserts on the COMPUTED transform (not inline)
+— the inline-gated filter false-negatived the seated mid-FLIP stall (INV-R6),
+where inline reads `"none"` but the compositor transition is still mid-flight;
+Scenario C2 exercises the seated-stall-with-held-seat case end-to-end.
 
 > jsdom scoping note: `drag-recovery-dom.test.ts` does NOT mount the full
 > `DynamicTilingRenderer` — under jsdom `viewportSize` (from `ResizeObserver`) and

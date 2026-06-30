@@ -106,6 +106,7 @@ import {
   type GhostRect,
 } from "./ghost-transit";
 import {
+  armTransformSettleGuard,
   createDragWatchdog,
   onTransitionSettled,
   scheduleFrameOrTimeout,
@@ -114,6 +115,7 @@ import {
   type FrameOrTimeoutScheduler,
   type RacedFrameHandle,
   type TimerScheduler,
+  type TransformSettleGuardHandle,
   type TransitionSettledHandle,
   type TransientDragStyleTarget,
 } from "./drag-recovery";
@@ -2111,8 +2113,10 @@ function DefaultDynamicTile({
         // Drop-affordance rings. The hover-target / resolved-target highlight
         // (which reused the accent focus color) is intentionally GONE — during a
         // drag the only focus affordance is the dragged ghost + its seat, and the
-        // destination is shown by the ghost hop-in. Only the faint dashed
-        // eligibility hint and the rose invalid-drop ring remain.
+        // destination is shown by the ghost hop-in. Only the rose invalid-drop
+        // ring remains (the faint dashed eligibility hint was removed in
+        // `773dcff`; `resolvePaneDropAffordanceClasses` now emits the
+        // invalid-drop ring alone).
         resolvePaneDropAffordanceClasses(theme, {
           isDropEligible,
           isHoveringDropCandidate,
@@ -3708,6 +3712,15 @@ export const DynamicTilingRenderer = React.forwardRef<
   const survivorReflowEndHandleRef = React.useRef<TransitionSettledHandle | null>(
     null,
   );
+  // M2b transform-settle self-heal handle for the survivor batch (Fix 2):
+  // force-strips a survivor whose COMPUTED transform is still non-identity past
+  // the `duration + transitionSlackMs` slack window (a stalled compositor
+  // transition or a stranded WAAPI dip) — even while a committable seat is
+  // latched, where M3's strip is suppressed (Fix A). Distinct from the M3 FSM
+  // watchdog: NO `POINTER_CANCEL` / FSM transition / snap-back. Cancelable +
+  // re-armed per reflow batch.
+  const survivorTransformSettleGuardRef =
+    React.useRef<TransformSettleGuardHandle | null>(null);
   // M4 idempotent transient-style teardown for the survivor leaves: clear any
   // residual FLIP transform/transition on every `[data-leaf-id]` element and
   // cancel the tracked WAAPI dips + the raced play handle. Safe to call on every
@@ -4404,6 +4417,38 @@ export const DynamicTilingRenderer = React.forwardRef<
       onSettled: (): void => {
         survivorReflowEndHandleRef.current = null;
         setIsSurvivorReflowAnimating(false);
+        // Normal (non-throttled) settle path transform teardown: on the
+        // survivor `transitionend` (or the timeout backstop) also strip the
+        // batch's transient transform/transition, so the happy path guarantees
+        // teardown too — not only the M2b stuck-transition guard. Idempotent
+        // with the M2b guard + the settle-phase strip: clearing an
+        // already-identity element to identity is a no-op.
+        stripSurvivorTransientStyles();
+      },
+    });
+    // M2b (Fix 2): arm the stuck-transition transform-settle self-heal for this
+    // batch. If a survivor's COMPUTED transform is still non-identity past the
+    // slack window — a stalled CSS transition (inline already `"none"`) or a
+    // stranded WAAPI coherent dip (inline still the inverted First, no
+    // `onfinish`) — force-strip the survivors to identity, EVEN WHEN a
+    // committable seat is latched. NO `POINTER_CANCEL` / FSM transition /
+    // snap-back (distinct from M3): it only snaps the stuck visual to its final
+    // committed box. Cancel + re-arm per batch so a superseding reflow disarms
+    // this stale guard.
+    survivorTransformSettleGuardRef.current?.cancel();
+    const guardedElements: ReadonlyArray<HTMLElement> = playableElements;
+    survivorTransformSettleGuardRef.current = armTransformSettleGuard({
+      readComputedTransforms: (): ReadonlyArray<string> =>
+        guardedElements.map(
+          (element: HTMLElement): string =>
+            window.getComputedStyle(element).transform,
+        ),
+      durationMs: survivorReflowDurationMs,
+      transitionSlackMs: dragRecoveryTransitionSlackMs,
+      scheduler: WINDOW_TIMER_SCHEDULER,
+      forceSettle: (): void => {
+        survivorTransformSettleGuardRef.current = null;
+        stripSurvivorTransientStyles();
       },
     });
     // Force the inverted transforms to paint before arming the transition, then
@@ -4479,11 +4524,14 @@ export const DynamicTilingRenderer = React.forwardRef<
     viewportSize.width,
     viewportSize.height,
   ]);
-  // Cancel the survivor-reflow clip-mask close guard (M2) on unmount.
+  // Cancel the survivor-reflow clip-mask close guard (M2) + the M2b
+  // transform-settle self-heal guard on unmount.
   React.useEffect((): (() => void) => {
     return (): void => {
       survivorReflowEndHandleRef.current?.cancel();
       survivorReflowEndHandleRef.current = null;
+      survivorTransformSettleGuardRef.current?.cancel();
+      survivorTransformSettleGuardRef.current = null;
       for (const animation of survivorDipAnimationsRef.current) {
         animation.cancel();
       }
@@ -6605,7 +6653,12 @@ export const DynamicTilingRenderer = React.forwardRef<
     // survivors + cancel tracked dips/raced handles on the settle edge, so once
     // the FSM reaches `idle` no `[data-leaf-id]` element retains a non-identity
     // inline transform (INV-R1). On commit the subsequent layout change re-arms a
-    // fresh survivor reflow; on cancel the leaves stay at identity.
+    // fresh survivor reflow; on cancel the leaves stay at identity. Disarm the
+    // M2b stuck-transition guard too — its force-settle is subsumed by this
+    // strip; cancelling drops the lingering timer (a stale fire would read
+    // identity and no-op anyway).
+    survivorTransformSettleGuardRef.current?.cancel();
+    survivorTransformSettleGuardRef.current = null;
     stripSurvivorTransientStyles();
 
     const committedTree: DynamicLayoutNode | null =

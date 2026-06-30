@@ -235,6 +235,112 @@ export function onTransitionSettled(params: {
 }
 
 /**
+ * The two strings a transform-free element's `getComputedStyle(el).transform`
+ * resolves to: `"none"` (the element has no transform box) and the identity
+ * matrix (a transform that composes to identity). Anything else is a LIVE or
+ * STRANDED non-identity transform. Used by M2b's stuck-transition discriminator
+ * — checking COMPUTED transform (not inline) is the only way to tell a stalled
+ * compositor transition (inline already `"none"`, computed still mid-flight)
+ * from a genuinely-settled element.
+ */
+export const IDENTITY_COMPUTED_TRANSFORMS: ReadonlyArray<string> = [
+  "none",
+  "matrix(1, 0, 0, 1, 0, 0)",
+];
+
+/** TRUE iff a `getComputedStyle(el).transform` string composes to identity. */
+export function isComputedTransformIdentity(computedTransform: string): boolean {
+  return IDENTITY_COMPUTED_TRANSFORMS.includes(computedTransform);
+}
+
+/** A cancelable, run-at-most-once transform-settle guard handle (M2b). */
+export interface TransformSettleGuardHandle {
+  /** Disarm the guard if it has not yet fired. Idempotent. */
+  cancel: () => void;
+}
+
+/**
+ * M2b — stuck-transition transform-settle self-heal (fixes the seated mid-FLIP
+ * transform-completion / teardown gap).
+ *
+ * A survivor-reflow FLIP arms its play-to-identity write via M1 (inline
+ * `transform` → `"none"`), but the COMPOSITOR transition that animates from the
+ * inverted First to that identity can stall under CPU throttle / a starved
+ * compositor — or, in WAAPI coherent-dip mode, the dip can stall before its
+ * `onfinish` pins identity. In both cases the element's INLINE transform reads
+ * settled (`"none"` for a CSS transition, the inverted First for a `fill:none`
+ * dip) while its COMPUTED transform is still non-identity, so the pane appears
+ * frozen mid-move. The M3 idle watchdog cannot recover this while a committable
+ * seat is latched (Fix A's `shouldSuppressCompetingCancel` deliberately removes
+ * the watchdog's strip path so a seated drop is never snapped back).
+ *
+ * This guard closes that gap WITHOUT reopening the snap-back race: it is
+ * DISTINCT from the M3 FSM watchdog — it issues NO `POINTER_CANCEL`, NO FSM
+ * transition, NO snap-back — it ONLY force-settles the stuck visual to its final
+ * committed box. It arms a single timer at `durationMs + transitionSlackMs`
+ * (the same slack window M2's mask-close uses); when the timer fires it reads
+ * each tracked element's COMPUTED transform and, IFF any is still non-identity,
+ * runs `forceSettle` (the renderer's idempotent transient-style strip, which
+ * cancels the tracked WAAPI dips then clears the inline transforms to identity).
+ *
+ * Because it only fires after the slack window AND only acts on a non-identity
+ * COMPUTED transform, it never fights a legitimate in-flight transition (which
+ * has reached identity by then). Cancel + re-arm per reflow batch (a superseding
+ * batch disarms the stale guard, exactly like M1/M2), and idempotent with the M2
+ * mask-close strip + the settle-phase strip — `forceSettle` clearing an
+ * already-identity element is a no-op.
+ */
+export function armTransformSettleGuard(params: {
+  readComputedTransforms: () => ReadonlyArray<string>;
+  durationMs: number;
+  transitionSlackMs: number;
+  scheduler: TimerScheduler;
+  forceSettle: () => void;
+}): TransformSettleGuardHandle {
+  let hasFired: boolean = false;
+  let timerHandle: number | null = null;
+
+  const clearPending = (): void => {
+    if (timerHandle != null) {
+      params.scheduler.clearTimer(timerHandle);
+      timerHandle = null;
+    }
+  };
+
+  const fireOnce = (): void => {
+    if (hasFired) {
+      return;
+    }
+    hasFired = true;
+    clearPending();
+    const stranded: boolean = params
+      .readComputedTransforms()
+      .some(
+        (computedTransform: string): boolean =>
+          !isComputedTransformIdentity(computedTransform),
+      );
+    if (stranded) {
+      params.forceSettle();
+    }
+  };
+
+  timerHandle = params.scheduler.setTimer(
+    fireOnce,
+    params.durationMs + params.transitionSlackMs,
+  );
+
+  return {
+    cancel: (): void => {
+      if (hasFired) {
+        return;
+      }
+      hasFired = true;
+      clearPending();
+    },
+  };
+}
+
+/**
  * M3 — drag idle watchdog (fixes V4, the central self-healing gap). The
  * imperative handle the renderer drives from its drag-phase effect.
  */

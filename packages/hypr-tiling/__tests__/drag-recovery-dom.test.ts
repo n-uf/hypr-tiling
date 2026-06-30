@@ -23,15 +23,19 @@
  * verified by typecheck + the existing renderer effects; this asserts the
  * primitive→DOM contract end-to-end.
  */
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import * as React from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import {
+  armTransformSettleGuard,
   createDragWatchdog,
   scheduleFrameOrTimeout,
   stripTransientDragStyles,
+  type CancelableHandle,
   type DragWatchdog,
   type FrameOrTimeoutScheduler,
+  type TimerScheduler,
+  type TransformSettleGuardHandle,
 } from "../drag-recovery";
 
 /**
@@ -206,6 +210,81 @@ function M3WatchdogHarness(props: {
   });
 }
 
+/**
+ * M2b harness — mirrors the renderer's survivor-reflow wiring of
+ * `armTransformSettleGuard` (Fix 2). A survivor leaf is left carrying a
+ * non-identity transform while the FSM stays `dragging` with a committable seat
+ * latched (modeled by `data-phase="dragging"` held FIXED — the guard must NOT
+ * change it, proving no snap-back). The guard reads the leaf's COMPUTED
+ * transform; if non-identity past the slack window it force-strips via the same
+ * `stripTransientDragStyles` the renderer wires (which also cancels a tracked
+ * WAAPI dip). `requestAnimationFrame`/`transitionend` never fire (the stall),
+ * so ONLY the guard's timeout backstop can resolve the leaf to identity.
+ *
+ * In jsdom `getComputedStyle(el).transform` echoes the inline transform string,
+ * so a leaf whose inline transform is the inverted First (the WAAPI `fill:none`
+ * stranded-dip case) reads non-identity — the divergence the guard keys on. The
+ * CSS-transition stall (inline `"none"`, computed still mid-flight) cannot be
+ * reproduced in jsdom and is covered by the pure `drag-recovery.test.ts`.
+ */
+function M2bTransformSettleHarness(props: {
+  scheduler: TimerScheduler;
+  durationMs: number;
+  transitionSlackMs: number;
+  dipAnimation: CancelableHandle;
+  guardRef: { current: TransformSettleGuardHandle | null };
+  rearmKey: number;
+}): React.ReactElement {
+  const leafRef = React.useRef<HTMLDivElement | null>(null);
+  const [phase] = React.useState<"dragging">("dragging");
+
+  React.useLayoutEffect((): (() => void) => {
+    const element: HTMLDivElement | null = leafRef.current;
+    if (element == null) {
+      return (): void => undefined;
+    }
+    // Stranded mid-FLIP: inline transform is the inverted First (the WAAPI
+    // dip's `fill:none` base) — the M1 play / dip `onfinish` that would pin
+    // identity never landed.
+    element.style.transformOrigin = "top left";
+    element.style.transform = INVERTED_FIRST_TRANSFORM;
+    element.style.transition = "transform 170ms linear";
+    props.guardRef.current?.cancel();
+    props.guardRef.current = armTransformSettleGuard({
+      readComputedTransforms: (): ReadonlyArray<string> => [
+        window.getComputedStyle(element).transform,
+      ],
+      durationMs: props.durationMs,
+      transitionSlackMs: props.transitionSlackMs,
+      scheduler: props.scheduler,
+      forceSettle: (): void => {
+        props.guardRef.current = null;
+        stripTransientDragStyles({
+          ghost: null,
+          leaves: [element],
+          animations: [props.dipAnimation],
+        });
+      },
+    });
+    return (): void => {
+      props.guardRef.current?.cancel();
+    };
+  }, [
+    props.scheduler,
+    props.durationMs,
+    props.transitionSlackMs,
+    props.dipAnimation,
+    props.guardRef,
+    props.rearmKey,
+  ]);
+
+  return React.createElement("div", {
+    "data-leaf-id": "A",
+    "data-phase": phase,
+    ref: leafRef,
+  });
+}
+
 function leafElement(container: HTMLElement): HTMLElement {
   const element: HTMLElement | null =
     container.querySelector<HTMLElement>('[data-leaf-id="A"]');
@@ -320,5 +399,159 @@ describe("drag-recovery DOM layer — M3 idle watchdog recovers a never-arriving
     expect(leaf.style.transform).toBe(INVERTED_FIRST_TRANSFORM);
     // The watchdog re-armed for the remaining idle budget.
     expect(scheduler.liveTimerCount()).toBe(1);
+  });
+});
+
+describe("drag-recovery DOM layer — M2b transform-settle self-heal force-settles a seated mid-FLIP stall (no snap-back)", (): void => {
+  const DURATION_MS: number = 170;
+  const SLACK_MS: number = 60;
+
+  it("force-strips a survivor whose computed transform is still non-identity past the slack window, WITHOUT a phase change", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const dipAnimation: CancelableHandle = { cancel: jest.fn() };
+    const guardRef: { current: TransformSettleGuardHandle | null } = {
+      current: null,
+    };
+    const { container } = render(
+      React.createElement(M2bTransformSettleHarness, {
+        scheduler,
+        durationMs: DURATION_MS,
+        transitionSlackMs: SLACK_MS,
+        dipAnimation,
+        guardRef,
+        rearmKey: 0,
+      }),
+    );
+    const leaf: HTMLElement = leafElement(container);
+
+    // Seated mid-FLIP: the leaf is stranded non-identity, FSM still `dragging`
+    // (a committable seat is latched — M3's strip is suppressed here).
+    expect(leaf.style.transform).toBe(INVERTED_FIRST_TRANSFORM);
+    expect(leaf.getAttribute("data-phase")).toBe("dragging");
+    expect(scheduler.liveTimerCount()).toBe(1);
+
+    // The compositor transition stalls; only the guard timeout backstop fires.
+    act((): void => {
+      scheduler.fireActiveTimer();
+    });
+
+    // The stuck visual is snapped to its committed (identity) box…
+    expect(leaf.style.transform).toBe("none");
+    expect(leaf.style.transition).toBe("none");
+    // …the stranded WAAPI dip is cancelled (M4 semantics)…
+    expect(dipAnimation.cancel).toHaveBeenCalledTimes(1);
+    // …and the FSM is UNTOUCHED — no snap-back, the drag stays `dragging`.
+    expect(leaf.getAttribute("data-phase")).toBe("dragging");
+  });
+
+  it("does NOT force-strip once the leaf has legitimately settled (computed identity by the deadline)", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const dipAnimation: CancelableHandle = { cancel: jest.fn() };
+    const guardRef: { current: TransformSettleGuardHandle | null } = {
+      current: null,
+    };
+    const { container } = render(
+      React.createElement(M2bTransformSettleHarness, {
+        scheduler,
+        durationMs: DURATION_MS,
+        transitionSlackMs: SLACK_MS,
+        dipAnimation,
+        guardRef,
+        rearmKey: 0,
+      }),
+    );
+    const leaf: HTMLElement = leafElement(container);
+
+    // The transition legitimately completes before the guard fires (computed
+    // → identity). The guard must not fight a healthy animation.
+    act((): void => {
+      leaf.style.transform = "none";
+    });
+    act((): void => {
+      scheduler.fireActiveTimer();
+    });
+    expect(dipAnimation.cancel).not.toHaveBeenCalled();
+    expect(leaf.style.transform).toBe("none");
+  });
+
+  it("is idempotent with a settle-phase strip — a guard fire after the strip leaves identity unchanged", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const dipAnimation: CancelableHandle = { cancel: jest.fn() };
+    const guardRef: { current: TransformSettleGuardHandle | null } = {
+      current: null,
+    };
+    const { container } = render(
+      React.createElement(M2bTransformSettleHarness, {
+        scheduler,
+        durationMs: DURATION_MS,
+        transitionSlackMs: SLACK_MS,
+        dipAnimation,
+        guardRef,
+        rearmKey: 0,
+      }),
+    );
+    const leaf: HTMLElement = leafElement(container);
+
+    // The settle teardown's strip runs FIRST (as it would on the settle edge),
+    // taking the leaf to identity.
+    act((): void => {
+      stripTransientDragStyles({ ghost: null, leaves: [leaf] });
+    });
+    expect(leaf.style.transform).toBe("none");
+
+    // The guard timer then fires: computed is already identity → no force-strip,
+    // no double teardown, no thrash.
+    act((): void => {
+      scheduler.fireActiveTimer();
+    });
+    expect(leaf.style.transform).toBe("none");
+    expect(dipAnimation.cancel).not.toHaveBeenCalled();
+  });
+
+  it("cancels the stale guard on a reflow-batch re-arm (the superseded timer never strips)", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const dipAnimation: CancelableHandle = { cancel: jest.fn() };
+    const guardRef: { current: TransformSettleGuardHandle | null } = {
+      current: null,
+    };
+    const { container, rerender } = render(
+      React.createElement(M2bTransformSettleHarness, {
+        scheduler,
+        durationMs: DURATION_MS,
+        transitionSlackMs: SLACK_MS,
+        dipAnimation,
+        guardRef,
+        rearmKey: 0,
+      }),
+    );
+    const leaf: HTMLElement = leafElement(container);
+    expect(scheduler.liveTimerCount()).toBe(1);
+
+    // A superseding reflow batch re-runs the effect (new `rearmKey`): the stale
+    // guard is cancelled and a fresh one armed — exactly one live timer.
+    act((): void => {
+      rerender(
+        React.createElement(M2bTransformSettleHarness, {
+          scheduler,
+          durationMs: DURATION_MS,
+          transitionSlackMs: SLACK_MS,
+          dipAnimation,
+          guardRef,
+          rearmKey: 1,
+        }),
+      );
+    });
+    expect(scheduler.liveTimerCount()).toBe(1);
+
+    // Firing the ORIGINAL (now-cancelled) timer is a no-op; only the live
+    // re-armed guard governs the leaf.
+    act((): void => {
+      scheduler.timers[0].live = true;
+      scheduler.timers[0].callback();
+    });
+    // The stale fire did not strip (the leaf re-painted its inverted First on
+    // re-arm and the cancelled guard cannot touch it).
+    expect(leaf.style.transform).toBe(INVERTED_FIRST_TRANSFORM);
+    expect(dipAnimation.cancel).not.toHaveBeenCalled();
   });
 });

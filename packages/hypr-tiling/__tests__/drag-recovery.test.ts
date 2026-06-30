@@ -4,11 +4,14 @@ import {
   DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS,
   DRAG_RECOVERY_DEFAULT_TRANSITION_SLACK_MS,
   DRAG_RECOVERY_MAX_DRAGGING_IDLE_HOP_MULTIPLE,
+  IDENTITY_COMPUTED_TRANSFORMS,
   type CancelableHandle,
   type FrameOrTimeoutScheduler,
   type TransientDragStyleTarget,
   type TransitionEndSource,
+  armTransformSettleGuard,
   createDragWatchdog,
+  isComputedTransformIdentity,
   onTransitionSettled,
   scheduleFrameOrTimeout,
   stripTransientDragStyles,
@@ -360,6 +363,151 @@ describe("drag-recovery — M2 onTransitionSettled (transitionend OR duration+sl
     target.emit();
     scheduler.fireActiveTimer();
     expect(onSettled).not.toHaveBeenCalled();
+  });
+});
+
+describe("drag-recovery — isComputedTransformIdentity (computed-transform discriminator)", (): void => {
+  it("treats both 'none' and the identity matrix as identity", (): void => {
+    expect(IDENTITY_COMPUTED_TRANSFORMS).toEqual([
+      "none",
+      "matrix(1, 0, 0, 1, 0, 0)",
+    ]);
+    expect(isComputedTransformIdentity("none")).toBe(true);
+    expect(isComputedTransformIdentity("matrix(1, 0, 0, 1, 0, 0)")).toBe(true);
+  });
+
+  it("treats any non-identity computed matrix as non-identity (the stuck case)", (): void => {
+    // The exact false-negative the inline-only check missed: inline is "none"
+    // but the COMPUTED transform is still a mid-flight translate.
+    expect(isComputedTransformIdentity("matrix(1, 0, 0, 1, 40, 30)")).toBe(false);
+    expect(isComputedTransformIdentity("matrix(0.5, 0, 0, 0.5, 0, 0)")).toBe(false);
+    expect(
+      isComputedTransformIdentity("matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 12, 8, 0, 1)"),
+    ).toBe(false);
+  });
+});
+
+describe("drag-recovery — M2b armTransformSettleGuard (seated mid-FLIP self-heal, no snap-back)", (): void => {
+  it("force-settles when a COMPUTED transform is still non-identity past the slack window", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const forceSettle = jest.fn();
+    // Inline reads settled ("none") but computed is a stalled mid-flight matrix
+    // — the exact seated mid-FLIP hang.
+    armTransformSettleGuard({
+      readComputedTransforms: (): ReadonlyArray<string> => [
+        "matrix(1, 0, 0, 1, 40, 30)",
+      ],
+      durationMs: 170,
+      transitionSlackMs: 60,
+      scheduler,
+      forceSettle,
+    });
+
+    // Fires at duration + slack (230ms).
+    scheduler.fireActiveTimer();
+    expect(forceSettle).toHaveBeenCalledTimes(1);
+    // No lingering timer after it fires.
+    expect(scheduler.liveTimerCount()).toBe(0);
+  });
+
+  it("does NOT force-settle a legitimately-settled transition (computed already identity)", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const forceSettle = jest.fn();
+    let computed: string = "matrix(1, 0, 0, 1, 40, 30)";
+    armTransformSettleGuard({
+      readComputedTransforms: (): ReadonlyArray<string> => [computed],
+      durationMs: 170,
+      transitionSlackMs: 60,
+      scheduler,
+      forceSettle,
+    });
+
+    // By the time the guard fires, the transition has legitimately reached
+    // identity — it must not fight a healthy animation.
+    computed = "matrix(1, 0, 0, 1, 0, 0)";
+    scheduler.fireActiveTimer();
+    expect(forceSettle).not.toHaveBeenCalled();
+  });
+
+  it("only acts on the stuck element when SOME of a batch is non-identity", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const forceSettle = jest.fn();
+    armTransformSettleGuard({
+      readComputedTransforms: (): ReadonlyArray<string> => [
+        "none",
+        "matrix(1, 0, 0, 1, 0, 0)",
+        "matrix(0.5, 0, 0, 0.5, 12, 0)",
+      ],
+      durationMs: 170,
+      transitionSlackMs: 60,
+      scheduler,
+      forceSettle,
+    });
+
+    scheduler.fireActiveTimer();
+    expect(forceSettle).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancel() before the slack window disarms the guard (batch re-arm / supersede)", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const forceSettle = jest.fn();
+    const readComputedTransforms = jest.fn(
+      (): ReadonlyArray<string> => ["matrix(1, 0, 0, 1, 40, 30)"],
+    );
+    const handle = armTransformSettleGuard({
+      readComputedTransforms,
+      durationMs: 170,
+      transitionSlackMs: 60,
+      scheduler,
+      forceSettle,
+    });
+
+    // A superseding reflow batch cancels the stale guard before it fires.
+    handle.cancel();
+    expect(scheduler.liveTimerCount()).toBe(0);
+    scheduler.fireActiveTimer();
+    // The computed transform is never even consulted, and no force-settle runs.
+    expect(readComputedTransforms).not.toHaveBeenCalled();
+    expect(forceSettle).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent — a second timer fire after force-settle does not re-run", (): void => {
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const forceSettle = jest.fn();
+    armTransformSettleGuard({
+      readComputedTransforms: (): ReadonlyArray<string> => [
+        "matrix(1, 0, 0, 1, 40, 30)",
+      ],
+      durationMs: 170,
+      transitionSlackMs: 60,
+      scheduler,
+      forceSettle,
+    });
+
+    scheduler.fireActiveTimer();
+    scheduler.fireActiveTimer();
+    expect(forceSettle).toHaveBeenCalledTimes(1);
+  });
+
+  it("issues NO cancel/FSM signal — its ONLY effect is the force-settle (no snap-back)", (): void => {
+    // Structural no-snap-back proof: the guard's surface is a single
+    // `forceSettle` callback (the renderer wires it to the idempotent transform
+    // strip). There is NO `onExpire` / cancel-dispatch channel, so it can never
+    // drive a `POINTER_CANCEL` / FSM transition the way the M3 watchdog does.
+    const scheduler: FakeScheduler = new FakeScheduler();
+    const forceSettle = jest.fn();
+    const handle = armTransformSettleGuard({
+      readComputedTransforms: (): ReadonlyArray<string> => [
+        "matrix(1, 0, 0, 1, 40, 30)",
+      ],
+      durationMs: 170,
+      transitionSlackMs: 60,
+      scheduler,
+      forceSettle,
+    });
+    expect(Object.keys(handle)).toEqual(["cancel"]);
+    scheduler.fireActiveTimer();
+    expect(forceSettle).toHaveBeenCalledTimes(1);
   });
 });
 
