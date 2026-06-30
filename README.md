@@ -119,6 +119,37 @@ export function Workspace(): JSX.Element {
 - **Animation choreography** — FLIP survivor reflow, ghost transit, swap bounce,
   easing knobs, and `prefers-reduced-motion` support.
 
+## Roadmap
+
+Where hypr-tiling is headed. These are **planned** directions, not shipped
+features today — the library currently renders to the DOM and ships a React
+adapter only. The items below describe where the project is going:
+
+- **Framework-agnostic core** — a dependency-free vanilla TypeScript core so the
+  tiling engine runs without any framework: the layout tree, the drag/FLIP state
+  machine, and the self-healing recovery logic decoupled from React, ready to
+  drive any view layer.
+- **First-class adapters for every major framework** — React ships today;
+  planned official adapters for Vue, Svelte, Solid, Angular, and standard Web
+  Components, each a thin binding over the same vanilla core so behavior stays
+  identical across frameworks.
+- **Canvas rendering backend** — an optional canvas / GPU-accelerated render path
+  for very high pane counts and animation-heavy scenes where DOM reflow is the
+  bottleneck; the semantic DOM path stays the default and canvas is opt-in for
+  density.
+- **Rust + WebAssembly core** — porting the hot layout, drag, and geometry math
+  to a Rust → WebAssembly core for deterministic, high-frame-rate behavior,
+  unlocking more window-manager-like UX: virtual workspaces, snap zones,
+  persistent session layouts, fully keyboard-driven tiling, and
+  per-monitor-style multi-viewport arrangements.
+
+## Contributing
+
+hypr-tiling is built in the open and welcomes collaboration — framework
+adapters, rendering backends, bug reports, and ideas from the roadmap above are
+all welcome. To get involved, email
+[metelin@gmail.com](mailto:metelin@gmail.com).
+
 ## SEO & LLM discoverability
 
 Pane content is real semantic DOM — headings, paragraphs, lists, code — emitted

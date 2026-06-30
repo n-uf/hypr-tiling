@@ -31,9 +31,10 @@ const LAYOUT_CONFIG: DynamicLayoutConfig = {
 // Composition: a master-stack reading of the docs, dogfooding the lib's own
 // master/stack idea. A wide "master" hero column on the left carries the
 // positioning copy over the use-cases pane (what it is, then what it's for); the
-// right region is a two-column stack — features over the model/kudos note, and
-// the install/integration column over a bottom row that pairs the SEO note with
-// the live controls. A leaf id mirrors its tile id (one tile per pane).
+// right region is a two-column stack — features over the model/kudos note and
+// the roadmap pane, and the install/integration column over a bottom row that
+// pairs the SEO note with the live controls. A leaf id mirrors its tile id (one
+// tile per pane).
 const INITIAL_LAYOUT: DynamicLayoutNode = {
   kind: "split",
   id: "root",
@@ -56,9 +57,16 @@ const INITIAL_LAYOUT: DynamicLayoutNode = {
       kind: "split",
       id: "mid",
       axis: "vertical",
-      ratio: 0.58,
+      ratio: 0.44,
       first: { kind: "leaf", id: "features", tileId: "features" },
-      second: { kind: "leaf", id: "model", tileId: "model" },
+      second: {
+        kind: "split",
+        id: "mid-stack",
+        axis: "vertical",
+        ratio: 0.5,
+        first: { kind: "leaf", id: "model", tileId: "model" },
+        second: { kind: "leaf", id: "roadmap", tileId: "roadmap" },
+      },
     },
     second: {
       kind: "split",

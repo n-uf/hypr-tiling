@@ -137,6 +137,39 @@ export const USE_CASES: ReadonlyArray<UseCase> = [
   },
 ];
 
+interface RoadmapItem {
+  readonly term: string;
+  readonly detail: string;
+}
+
+// Planned directions — explicitly NOT shipped today. The library currently
+// renders to the DOM and ships a React adapter only; everything below is on the
+// roadmap. Kept in sync with the `## Roadmap` section in both READMEs. The
+// framing copy (the pane lead) makes the planned-vs-current distinction
+// unmissable so the page never misrepresents today's capabilities.
+export const ROADMAP_ITEMS: ReadonlyArray<RoadmapItem> = [
+  {
+    term: "Framework-agnostic core",
+    detail:
+      "A dependency-free vanilla TypeScript core so the tiling engine runs without any framework — the layout tree, the drag/FLIP state machine, and the self-healing recovery logic decoupled from React, ready to drive any view layer.",
+  },
+  {
+    term: "First-class adapters for every major framework",
+    detail:
+      "React ships today; planned official adapters for Vue, Svelte, Solid, Angular, and standard Web Components, each a thin binding over the same vanilla core so behavior stays identical across frameworks.",
+  },
+  {
+    term: "Canvas rendering backend",
+    detail:
+      "An optional canvas / GPU-accelerated render path for very high pane counts and animation-heavy scenes where DOM reflow is the bottleneck. The semantic DOM path stays the default; canvas is opt-in for density.",
+  },
+  {
+    term: "Rust + WebAssembly core",
+    detail:
+      "Porting the hot layout, drag, and geometry math to a Rust \u2192 WebAssembly core for deterministic, high-frame-rate behavior — unlocking more window-manager-like UX: virtual workspaces, snap zones, persistent session layouts, fully keyboard-driven tiling, and per-monitor-style multi-viewport arrangements.",
+  },
+];
+
 interface DocPaneSpec {
   readonly id: string;
   readonly title: string;
@@ -293,7 +326,16 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
           header, resize the dividers, maximize it — or drive it from the live
           controls pane.
         </p>
-        <footer className="mt-auto border-t border-white/[0.08] pt-3 text-[11px] leading-[1.5] text-stone-500">
+        <div className="mt-auto flex flex-col gap-1.5 border-t border-white/[0.08] pt-3">
+          <Eyebrow>contributing</Eyebrow>
+          <p className="max-w-[62ch] text-[12px] leading-[1.6] text-stone-400">
+            hypr-tiling is built in the open and welcomes collaboration —
+            framework adapters, rendering backends, bug reports, and ideas from
+            the roadmap. To get involved, reach out at{" "}
+            <Link href="mailto:metelin@gmail.com">metelin@gmail.com</Link>.
+          </p>
+        </div>
+        <footer className="border-t border-white/[0.08] pt-3 text-[11px] leading-[1.5] text-stone-500">
           <Link href={LICENSE_URL}>{LICENSE_NAME}</Link> · source-available ·
           free commercial use · no competing use
         </footer>
@@ -386,6 +428,42 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     ),
   },
   {
+    id: "roadmap",
+    title: "roadmap",
+    accent: "amber",
+    summary:
+      "Planned, not-yet-shipped directions: a framework-agnostic vanilla core, first-class adapters for Vue/Svelte/Solid/Angular/Web Components, an optional canvas rendering backend, and a Rust + WebAssembly core with more window-manager-like UX (virtual workspaces, snap zones, persistent layouts).",
+    content: (
+      <div className="flex flex-col gap-4">
+        <SectionHeading>Roadmap</SectionHeading>
+        <SectionLead>
+          Where hypr-tiling is headed. These are{" "}
+          <em className="not-italic text-stone-200">planned</em> directions, not
+          shipped features today — the library currently renders to the DOM and
+          ships a React adapter only. The items below describe where the project
+          is going.
+        </SectionLead>
+        <ul className="flex flex-col divide-y divide-white/[0.05]">
+          {ROADMAP_ITEMS.map(
+            (item: RoadmapItem): React.ReactElement => (
+              <li
+                key={item.term}
+                className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0"
+              >
+                <span className="text-[13px] font-medium text-stone-100">
+                  {item.term}
+                </span>
+                <span className="max-w-[60ch] text-[12px] leading-[1.6] text-stone-400">
+                  {item.detail}
+                </span>
+              </li>
+            ),
+          )}
+        </ul>
+      </div>
+    ),
+  },
+  {
     id: "model",
     title: "model & kudos",
     accent: "amber",
@@ -468,6 +546,18 @@ export function buildLlmsTxt(): string {
   for (const fact of FEATURE_FACTS) {
     lines.push(`- ${fact.term}: ${fact.detail}`);
   }
+  lines.push("");
+  lines.push("## Roadmap (planned, not yet shipped)");
+  lines.push("");
+  for (const item of ROADMAP_ITEMS) {
+    lines.push(`- ${item.term}: ${item.detail}`);
+  }
+  lines.push("");
+  lines.push("## Contributing");
+  lines.push("");
+  lines.push(
+    "hypr-tiling welcomes collaboration — framework adapters, rendering backends, bug reports, and roadmap ideas. To get involved, email metelin@gmail.com.",
+  );
   lines.push("");
   return lines.join("\n");
 }
