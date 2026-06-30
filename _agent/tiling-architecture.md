@@ -67,7 +67,7 @@ The renderer composes these pure functions and keeps transient UI state (hover, 
 ### Minimal integration
 
 ```tsx
-import { DynamicTilingRenderer, type DynamicLayoutNode, type DynamicTile } from "hypr-tiling";
+import { DynamicTilingRenderer, type DynamicLayoutNode, type DynamicTile } from "@n-uf/hypr-tiling";
 import { useMemo, useState } from "react";
 
 export function ExampleTilingHost(): JSX.Element {

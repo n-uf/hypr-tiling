@@ -168,7 +168,7 @@ import {
   DynamicTilingRenderer,
   TILING_THEMES,
   type TilingThemeId,
-} from "hypr-tiling";
+} from "@n-uf/hypr-tiling";
 
 const [themeId, setThemeId] = React.useState<TilingThemeId>("clean-flat");
 
@@ -188,7 +188,7 @@ TILING_THEMES.map((t) => ({ id: t.id, label: t.label }));
 Read the active theme inside a custom `renderTile`:
 
 ```tsx
-import { useTilingTheme } from "hypr-tiling";
+import { useTilingTheme } from "@n-uf/hypr-tiling";
 
 function MyTile() {
   const theme = useTilingTheme();

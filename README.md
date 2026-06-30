@@ -18,13 +18,13 @@ Kudos to the Hyprland maintainers and contributors for advancing modern Linux co
 ## Package install
 
 ```bash
-pnpm add hypr-tiling react react-dom
+pnpm add @n-uf/hypr-tiling react react-dom
 ```
 
 ## Minimal renderer usage
 
 ```tsx
-import { DynamicTilingRenderer, type DynamicLayoutConfig, type DynamicLayoutNode, type DynamicTile } from "hypr-tiling";
+import { DynamicTilingRenderer, type DynamicLayoutConfig, type DynamicLayoutNode, type DynamicTile } from "@n-uf/hypr-tiling";
 
 const layout: DynamicLayoutNode = {
   kind: "split",
