@@ -54,6 +54,21 @@ pnpm add @n-uf/hypr-tiling react react-dom
 
 `react` and `react-dom` are peer dependencies (version `^19`).
 
+The package **ships no CSS** — the renderer emits Tailwind utility class strings,
+so you must register it in your Tailwind `content` glob or the component renders
+unstyled:
+
+```js
+// tailwind.config.js
+content: [
+  "./src/**/*.{js,ts,jsx,tsx}",
+  "./node_modules/@n-uf/hypr-tiling/dist/**/*.{js,mjs}",
+];
+```
+
+See the [package README](packages/hypr-tiling/README.md) for the Tailwind v4
+`@source` form and the full programmatic layout API.
+
 ## Integrate
 
 The renderer is a **controlled component**: you own the layout tree in state and

@@ -28,6 +28,35 @@ yarn add @n-uf/hypr-tiling react react-dom
 
 `react` and `react-dom` are peer dependencies (version `^19`).
 
+### Tailwind content requirement
+
+This package **ships no CSS**. The renderer styles itself by emitting Tailwind
+utility class strings (via `clsx` + `tailwind-merge`) — those classes only
+resolve to real styles if Tailwind scans this package's built output and
+generates the matching CSS. If you do not register the package in your Tailwind
+`content` glob, the component renders **completely unstyled**.
+
+Add `@n-uf/hypr-tiling` to your Tailwind `content` configuration:
+
+```js
+// tailwind.config.js
+export default {
+  content: [
+    "./src/**/*.{js,ts,jsx,tsx}",
+    "./node_modules/@n-uf/hypr-tiling/dist/**/*.{js,mjs}",
+  ],
+  // ...
+};
+```
+
+For Tailwind v4 (CSS-first config), declare the same path as a source in your
+stylesheet:
+
+```css
+@import "tailwindcss";
+@source "../node_modules/@n-uf/hypr-tiling/dist/**/*.{js,mjs}";
+```
+
 ## Quick start
 
 The renderer is a **controlled component**: you own the layout tree in state and
@@ -69,6 +98,44 @@ export function Workspace(): JSX.Element {
   );
 }
 ```
+
+## Programmatic layout API
+
+Because you own the layout tree, you can mutate it from your own code — not just
+through drag/keyboard interaction. The package exports a set of pure layout
+reducers (each takes a layout node and returns a new one, never mutating in
+place) as supported public API. Use these to script layout changes, build custom
+commands, or restore persisted arrangements:
+
+| Reducer | Purpose |
+| --- | --- |
+| `findLeafById` | Locate a leaf node within the tree by its id. |
+| `insertLeafAdjacent` | Insert a new leaf next to an existing one along an axis. |
+| `moveLeafToRoot` | Detach a leaf and re-seat it against the layout root. |
+| `moveLeafToSplitContainer` | Move a leaf into a target split container. |
+| `swapLeafTiles` | Exchange the tiles occupying two leaves. |
+| `removeLeafTile` | Remove a leaf and collapse its parent split. |
+| `updateSplitRatio` | Set the ratio of a binary split. |
+| `toggleSplitAxis` | Flip a split between horizontal and vertical. |
+| `setLeafSizing` | Set a leaf's sizing mode (static pixel extent vs. flexible). |
+| `groupLeaves` | Collapse several leaves into one stacked/tabbed group. |
+| `ungroupNode` | Expand a group back into individual leaves. |
+| `collectGroups` | Enumerate the group nodes in a layout. |
+| `isStructurallyValidLayout` | Validate a layout tree's structural invariants. |
+
+All reducers are re-exported from the package root:
+
+```ts
+import {
+  findLeafById,
+  insertLeafAdjacent,
+  swapLeafTiles,
+  isStructurallyValidLayout,
+} from "@n-uf/hypr-tiling";
+```
+
+Other layout-tree helpers are exported for advanced/internal use, but the
+reducers above are the stable, documented surface for application code.
 
 ## Features
 
