@@ -1,5 +1,8 @@
 import * as React from "react";
-import type { DynamicRenderTileArgs } from "@n-uf/hypr-tiling";
+import {
+  isMultiSelectModifierActive,
+  type DynamicRenderTileArgs,
+} from "@n-uf/hypr-tiling";
 
 // Custom pane renderer for the homepage ("mosaic" identity). The body honors
 // the renderer's canonical `paneBodyRenderMode` (the single source of truth
@@ -59,10 +62,29 @@ export function DocTile(args: DynamicRenderTileArgs): React.ReactElement {
     >
       <header
         onPointerDown={args.onHandlePointerDown}
+        onClick={(event: React.MouseEvent<HTMLElement>): void => {
+          // Cmd/Ctrl+click toggles this pane's multi-selection membership
+          // WITHOUT changing focus. The renderer's `onHandlePointerDown` already
+          // `preventDefault`s the modified press, so native focus never fires and
+          // `onFocus` (which would clear the selection) never runs — the toggle is
+          // preserved. A plain click falls through to the article focus unchanged.
+          if (
+            args.isMultiSelectGroupingEnabled &&
+            isMultiSelectModifierActive(event)
+          ) {
+            event.stopPropagation();
+            event.preventDefault();
+            args.onToggleMultiSelect();
+          }
+        }}
         className={`flex shrink-0 cursor-grab touch-none select-none items-center justify-between gap-2 border-b px-3.5 py-2 transition-colors active:cursor-grabbing ${
           args.isFocused
             ? "border-b-amber-300/25 bg-amber-300/[0.04]"
             : "border-b-white/[0.06] bg-white/[0.012]"
+        } ${
+          args.isMultiSelected
+            ? "outline-dashed outline-1 -outline-offset-2 outline-stone-300/55 bg-stone-300/[0.05]"
+            : ""
         }`}
       >
         <span className="flex min-w-0 items-center gap-2.5">
@@ -84,25 +106,55 @@ export function DocTile(args: DynamicRenderTileArgs): React.ReactElement {
             </span>
           ) : null}
         </span>
-        {args.isMaximizeEnabled ? (
-          <button
-            type="button"
-            onPointerDown={(
-              event: React.PointerEvent<HTMLButtonElement>,
-            ): void => {
-              event.stopPropagation();
-            }}
-            onClick={(event: React.MouseEvent<HTMLButtonElement>): void => {
-              event.stopPropagation();
-              args.onToggleMaximize();
-            }}
-            aria-label={args.isMaximized ? "restore pane" : "maximize pane"}
-            title={args.isMaximized ? "restore pane (Esc)" : "maximize pane"}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-white/[0.12] bg-white/[0.02] font-mono text-[11px] leading-none text-stone-400 transition-colors hover:border-amber-300/45 hover:bg-amber-300/10 hover:text-amber-100"
-          >
-            <span aria-hidden>{args.isMaximized ? "\u2715" : "\u2922"}</span>
-          </button>
-        ) : null}
+        <span className="flex shrink-0 items-center gap-1.5">
+          {args.isMultiSelected ? (
+            <span
+              aria-label={`pane ${args.leafId} selected`}
+              title="selected (Cmd/Ctrl+click to deselect)"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-stone-300/45 bg-stone-300/[0.08] font-mono text-[11px] leading-none text-stone-200"
+            >
+              <span aria-hidden>{"\u2713"}</span>
+            </span>
+          ) : null}
+          {args.isMultiSelected && args.canGroupMultiSelection ? (
+            <button
+              type="button"
+              onPointerDown={(
+                event: React.PointerEvent<HTMLButtonElement>,
+              ): void => {
+                event.stopPropagation();
+              }}
+              onClick={(event: React.MouseEvent<HTMLButtonElement>): void => {
+                event.stopPropagation();
+                args.onGroupMultiSelection();
+              }}
+              aria-label={`group ${args.leafId} with the selected panes`}
+              title="group selected panes into a tabbed group"
+              className="flex h-6 shrink-0 items-center justify-center rounded-md border border-amber-300/45 bg-amber-300/10 px-2 font-mono text-[10px] uppercase leading-none tracking-[0.12em] text-amber-100 transition-colors hover:border-amber-300/70 hover:bg-amber-300/20"
+            >
+              Group
+            </button>
+          ) : null}
+          {args.isMaximizeEnabled ? (
+            <button
+              type="button"
+              onPointerDown={(
+                event: React.PointerEvent<HTMLButtonElement>,
+              ): void => {
+                event.stopPropagation();
+              }}
+              onClick={(event: React.MouseEvent<HTMLButtonElement>): void => {
+                event.stopPropagation();
+                args.onToggleMaximize();
+              }}
+              aria-label={args.isMaximized ? "restore pane" : "maximize pane"}
+              title={args.isMaximized ? "restore pane (Esc)" : "maximize pane"}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-white/[0.12] bg-white/[0.02] font-mono text-[11px] leading-none text-stone-400 transition-colors hover:border-amber-300/45 hover:bg-amber-300/10 hover:text-amber-100"
+            >
+              <span aria-hidden>{args.isMaximized ? "\u2715" : "\u2922"}</span>
+            </button>
+          ) : null}
+        </span>
       </header>
       <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
         {args.paneBodyRenderMode === "render-content" ? args.tile.content : null}
