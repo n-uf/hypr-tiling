@@ -39,7 +39,7 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsup index.ts --format esm,cjs --dts --clean --external react --external react-dom",
+    "build": "tsup",
     "check": "pnpm typecheck && pnpm test",
     "prepublishOnly": "pnpm build",
     "release": "if [ \"$npm_config_nobump\" = \"true\" ]; then npm publish --access public; else node ./scripts/calendar-version-bump.mjs --apply && npm publish --access public; fi",
