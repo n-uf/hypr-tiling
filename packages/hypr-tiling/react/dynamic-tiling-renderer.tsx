@@ -87,12 +87,10 @@ import {
   buildBounceEasingCss,
   buildLinearEasingCss,
   clampSwapBounceMagnitudePercent,
-  coherentDipScaleAt,
   deriveGhostMorphTransform,
   deriveGhostPickupBox,
   ghostPickupScaleFactor,
   isDegenerateGhostRect,
-  magneticEaseProgress,
   resolveGhostHopFirstRect,
   shouldApplyCoherentTransitDip,
   type GhostMorphTransform,
@@ -100,21 +98,25 @@ import {
   type GhostRect,
 } from "../core/ghost-transit";
 import {
-  armTransformSettleGuard,
   createDragWatchdog,
-  onTransitionSettled,
   scheduleFrameOrTimeout,
   stripTransientDragStyles,
   type DragWatchdog,
   type RacedFrameHandle,
-  type TransformSettleGuardHandle,
-  type TransitionSettledHandle,
-  type TransientDragStyleTarget,
 } from "../core/drag-recovery";
 import type { SchedulerPort } from "../core/scheduler-port";
 import { createWindowSchedulerPort } from "./window-scheduler-port";
 import type { MeasurementPort } from "../core/measurement-port";
 import { createDomMeasurementPort } from "./dom-measurement-port";
+import type { PointerCapturePort } from "../core/pointer-capture-port";
+import { createDomPointerCapturePort } from "./dom-pointer-capture-port";
+import type { StyleApplierPort } from "../core/style-applier-port";
+import { createDomStyleApplierPort } from "./dom-style-applier-port";
+import {
+  buildCoherentDipKeyframes,
+  createSurvivorFlipScheduler,
+  type SurvivorFlipScheduler,
+} from "../core/flip-scheduler";
 import {
   isResizeAxisEnabled,
   resolveInteractionCapabilities,
@@ -200,9 +202,6 @@ import {
   toggleLeafMultiSelection,
 } from "../core/multi-selection";
 import {
-  deriveSurvivorFlipTransform,
-  resolveSurvivorFlipFirst,
-  shouldAnimateSurvivorReflow,
   shouldSnapSurvivorReflowOnSettleCommit,
   type SurvivorRect,
 } from "../core/survivor-reflow";
@@ -426,45 +425,6 @@ const DRAG_CANCEL_ANIMATION_MS: number = 220;
  * `DRAG_HOP_EASING`). See `ghost-transit.ts` §5.
  */
 const GHOST_MAGNETIC_HOP_EASING: string = buildLinearEasingCss();
-/** Keyframe sample count for the coherent-transit swap dip (mid-transit shrink). */
-const COHERENT_TRANSIT_KEYFRAME_SAMPLES: number = 12;
-
-/**
- * Build the Web-Animations keyframes for a coherent-transit (swap) morph: the
- * FLIP invert→identity transform with the mid-transit dip composed on so the box
- * shrinks toward `~70%` about its own center as it travels, then grows back.
- * Motion progress is eased by `magneticEaseProgress`; the dip uses
- * `coherentDipScaleAt`. Both moving boxes (ghost + swap survivor) use this so
- * they shrink and grow in lockstep and never visually collide mid-cross.
- */
-function buildCoherentDipKeyframes(
-  invert: GhostMorphTransform,
-  lastWidth: number,
-  lastHeight: number,
-  sampleCount: number = COHERENT_TRANSIT_KEYFRAME_SAMPLES,
-): Keyframe[] {
-  const frames: Keyframe[] = [];
-  for (let index: number = 0; index <= sampleCount; index += 1) {
-    const progress: number = index / sampleCount;
-    const eased: number = magneticEaseProgress(progress);
-    const flipTx: number = invert.tx * (1 - eased);
-    const flipTy: number = invert.ty * (1 - eased);
-    const flipSx: number = invert.sx + (1 - invert.sx) * eased;
-    const flipSy: number = invert.sy + (1 - invert.sy) * eased;
-    const dip: number = coherentDipScaleAt(progress);
-    const scaleX: number = flipSx * dip;
-    const scaleY: number = flipSy * dip;
-    // Re-center the dip about the (flip-interpolated) box center, expressed in
-    // the node's top-left transform frame so it composes with the FLIP.
-    const transX: number = flipTx + (lastWidth * flipSx * (1 - dip)) / 2;
-    const transY: number = flipTy + (lastHeight * flipSy * (1 - dip)) / 2;
-    frames.push({
-      offset: progress,
-      transform: `translate(${transX}px, ${transY}px) scale(${scaleX}, ${scaleY})`,
-    });
-  }
-  return frames;
-}
 const PROJECTED_OVERLAY_Z_INDEX_BASE: number = 80;
 const PROJECTED_OVERLAY_Z_INDEX_OFFSET: number = 1;
 const DRAG_CANCEL_OVERLAY_Z_INDEX: number = 219;
@@ -1443,7 +1403,7 @@ function DragPaneOverlay({
         invert,
         last.width,
         last.height,
-      );
+      ) as unknown as Keyframe[];
       const animation: Animation = node.animate(keyframes, {
         duration: dragHopDurationMs,
         easing: "linear",
@@ -3844,23 +3804,8 @@ export const TilingRenderer = React.forwardRef<
   // before any competing cancel can fire. Owned by the watchdog effect; null when
   // no drag is in flight.
   const watchdogRef = React.useRef<DragWatchdog | null>(null);
-  // Survivor-reflow FLIP bookkeeping. `previousLeafRectsRef` holds each surviving
-  // leaf's clean (transform-stripped) client rect from the previous commit — the
-  // FLIP `First` for an at-rest reflow. Kept fresh on EVERY commit (even idle) so
-  // the first pickup reflow has a valid First. `survivorFlipRafRef` is the single
-  // play-frame handle (one rAF per reflow batch).
-  const previousLeafRectsRef = React.useRef<Map<string, SurvivorRect>>(
-    new Map(),
-  );
   /** TRUE once a survivor-reflow layout effect has run with `phase === "dragging"`. */
   const didPaintDraggingFrameRef = React.useRef<boolean>(false);
-  // The single play-frame handle (one per reflow batch) — an M1 raced
-  // (rAF-or-timeout) handle so a starved frame cannot freeze the survivors at
-  // their inverted First.
-  const survivorFlipRafRef = React.useRef<RacedFrameHandle | null>(null);
-  // In-flight coherent-transit (swap) survivor dip animations (Web Animations),
-  // tracked so a re-derived reflow batch can cancel them before re-measuring.
-  const survivorDipAnimationsRef = React.useRef<Animation[]>([]);
   // While survivors are gliding, the structural layout containers (section /
   // split-child / leaf wrapper) switch from `overflow-hidden` to
   // `overflow-visible` so a transformed survivor is not clipped by its own slot
@@ -3870,44 +3815,40 @@ export const TilingRenderer = React.forwardRef<
   // sized to the reflow duration so the clip mask returns once the glide lands.
   const [isSurvivorReflowAnimating, setIsSurvivorReflowAnimating] =
     React.useState<boolean>(false);
-  // M2 transition-completion handle for the clip-mask close (replaces the bare
-  // `setTimeout(survivorReflowDurationMs + 60)`): closes the mask on the survivor
-  // `transitionend` OR the `duration + transitionSlackMs` starvation backstop,
-  // whichever first. Cancelable + re-armed per reflow batch.
-  const survivorReflowEndHandleRef = React.useRef<TransitionSettledHandle | null>(
-    null,
+  // The WRITE-half DOM seam over the survivor `[data-leaf-id]` elements (the
+  // read-only counterpart is `MeasurementPort`) and the root-bound pointer-
+  // capture seam. Both are ref-backed and stable — created once.
+  const styleApplierPort: StyleApplierPort = React.useMemo(
+    (): StyleApplierPort => createDomStyleApplierPort(viewportRef),
+    [],
   );
-  // M2b transform-settle self-heal handle for the survivor batch (Fix 2):
-  // force-strips a survivor whose COMPUTED transform is still non-identity past
-  // the `duration + transitionSlackMs` slack window (a stalled compositor
-  // transition or a stranded WAAPI dip) — even while a committable seat is
-  // latched, where M3's strip is suppressed (Fix A). Distinct from the M3 FSM
-  // watchdog: NO `POINTER_CANCEL` / FSM transition / snap-back. Cancelable +
-  // re-armed per reflow batch.
-  const survivorTransformSettleGuardRef =
-    React.useRef<TransformSettleGuardHandle | null>(null);
-  // M4 idempotent transient-style teardown for the survivor leaves: clear any
-  // residual FLIP transform/transition on every `[data-leaf-id]` element and
-  // cancel the tracked WAAPI dips + the raced play handle. Safe to call on every
-  // exit path (settle teardown, watchdog expiry, visibilitychange reconcile) —
-  // clearing to identity and cancelling a finished handle are both no-ops. The
-  // ghost node is owned by `DragPaneOverlay` (cleaned up by its own effect on
-  // unmount), so it is not reachable here and is intentionally `null`.
-  const stripSurvivorTransientStyles = React.useCallback((): void => {
-    const viewport: HTMLDivElement | null = viewportRef.current;
-    const leaves: TransientDragStyleTarget[] =
-      viewport == null
-        ? []
-        : Array.from(viewport.querySelectorAll<HTMLElement>("[data-leaf-id]"));
-    stripTransientDragStyles({
-      ghost: null,
-      leaves,
-      animations: survivorDipAnimationsRef.current,
-      racedHandles: survivorFlipRafRef.current == null ? [] : [survivorFlipRafRef.current],
+  const pointerCapturePort: PointerCapturePort = React.useMemo(
+    (): PointerCapturePort => createDomPointerCapturePort(rootRef),
+    [],
+  );
+  // The framework-free survivor-FLIP scheduler owns the recorded-First map + the
+  // scheduling-handle cluster (M1 play-race / M2 transition-settle / M2b
+  // transform-settle guard / tracked dips) and runs the arming decisions through
+  // the `StyleApplierPort`. Created ONCE (held in a ref) so the cluster survives
+  // the layout effect's per-commit re-runs, exactly like the refs it replaces.
+  const flipSchedulerRef = React.useRef<SurvivorFlipScheduler | null>(null);
+  if (flipSchedulerRef.current == null) {
+    flipSchedulerRef.current = createSurvivorFlipScheduler({
+      styleApplier: styleApplierPort,
+      scheduler: WINDOW_SCHEDULER_PORT,
+      onReflowAnimatingChange: setIsSurvivorReflowAnimating,
     });
-    survivorDipAnimationsRef.current = [];
-    survivorFlipRafRef.current = null;
-  }, []);
+  }
+  const flipScheduler: SurvivorFlipScheduler = flipSchedulerRef.current;
+  // M4 idempotent transient-style teardown for the survivor leaves — the stable
+  // callback every exit path (settle teardown, watchdog expiry, visibilitychange
+  // reconcile) calls. Delegates to the scheduler's idempotent strip: clear any
+  // residual FLIP transform/transition on every `[data-leaf-id]` element and
+  // cancel the tracked WAAPI dips + the raced play handle. Identity-stable (the
+  // scheduler is a stable ref), so the pointer-effect dep set never churns.
+  const stripSurvivorTransientStyles = React.useCallback((): void => {
+    flipScheduler.stripTransient();
+  }, [flipScheduler]);
   // Selectors off the single FSM state — the renderer reads these exactly where
   // it used to read the old useState slots.
   const dragSourceLeafId: string | null = activeDragSourceLeafId(dragState);
@@ -4396,13 +4337,16 @@ export const TilingRenderer = React.forwardRef<
   // `position: fixed` sibling (never a `[data-leaf-id]` element) and carries its
   // own hop FLIP, so the single-instance invariant is preserved.
   React.useLayoutEffect((): (() => void) | void => {
-    const viewport: HTMLDivElement | null = viewportRef.current;
-    if (viewport == null) {
+    // Clamp boundary = the host container's visible region intersected with the
+    // window, so a survivor scrolled out of the host (or off the window) is
+    // snapped, never tweened across a large off-screen offset (§10). `null` when
+    // the viewport is unmounted — the scheduler then preserves the recorded
+    // First rects and does nothing (the historical `viewport == null` return).
+    const clampViewport: SurvivorRect | null =
+      styleApplierPort.measureClampViewport();
+    if (clampViewport == null) {
       return;
     }
-    const leafElements: ReadonlyArray<HTMLElement> = Array.from(
-      viewport.querySelectorAll<HTMLElement>("[data-leaf-id]"),
-    );
     if (dragState.phase === "dragging") {
       didPaintDraggingFrameRef.current = true;
     }
@@ -4419,235 +4363,25 @@ export const TilingRenderer = React.forwardRef<
     if (!playReflow) {
       didPaintDraggingFrameRef.current = false;
     }
-    // Clamp boundary = the host container's visible region intersected with the
-    // window, so a survivor scrolled out of the host (or off the window) is
-    // snapped, never tweened across a large off-screen offset (§10).
-    const viewportDomRect: DOMRect = viewport.getBoundingClientRect();
-    const clampLeft: number = Math.max(viewportDomRect.left, 0);
-    const clampTop: number = Math.max(viewportDomRect.top, 0);
-    const clampRight: number = Math.min(
-      viewportDomRect.right,
-      typeof window === "undefined" ? viewportDomRect.right : window.innerWidth,
-    );
-    const clampBottom: number = Math.min(
-      viewportDomRect.bottom,
-      typeof window === "undefined"
-        ? viewportDomRect.bottom
-        : window.innerHeight,
-    );
-    const clampViewport: SurvivorRect = {
-      left: clampLeft,
-      top: clampTop,
-      width: Math.max(0, clampRight - clampLeft),
-      height: Math.max(0, clampBottom - clampTop),
-    };
-    // Cancel any in-flight swap-dip animations before re-measuring so a
-    // re-derived reflow batch never stacks two animations on a survivor.
-    for (const animation of survivorDipAnimationsRef.current) {
-      animation.cancel();
-    }
-    survivorDipAnimationsRef.current = [];
-    const nextLeafRects = new Map<string, SurvivorRect>();
-    const playableElements: HTMLElement[] = [];
-    const playableDipPlans: Array<{
-      element: HTMLElement;
-      invert: GhostMorphTransform;
-      lastWidth: number;
-      lastHeight: number;
-    }> = [];
-    for (const element of leafElements) {
-      const leafId: string | undefined = element.dataset.leafId;
-      if (leafId == null) {
-        continue;
-      }
-      if (!playReflow || snapSettleCommit) {
-        // Not animating (no drag in flight / drag fully over / fast-flick
-        // settle-commit snap): force-strip any leftover inline
-        // transform/transition so a leaf can NEVER be left floating — e.g. a
-        // coherent-dip WAAPI cancelled mid-flight reverts the node to its
-        // pre-animate inverted transform (`fill: none`), which would otherwise
-        // persist as a hanging, offset pane. Stripping first also makes the
-        // recorded resting rect the true committed box (a clean next-pickup
-        // First baseline). The fast-flick snap path uses this branch so a
-        // same-task release never arms a source-origin FLIP tween.
-        element.style.transition = "none";
-        element.style.transform = "none";
-        const restingRect: DOMRect = element.getBoundingClientRect();
-        nextLeafRects.set(leafId, {
-          left: restingRect.left,
-          top: restingRect.top,
-          width: restingRect.width,
-          height: restingRect.height,
-        });
-        continue;
-      }
-      // First (interruptible): the live transformed box if mid-flight, else the
-      // recorded pre-reflow rect. Read BEFORE the transform is stripped so an
-      // in-flight glide retargets smoothly.
-      const hasInFlightTransform: boolean =
-        window.getComputedStyle(element).transform !== "none";
-      const liveDomRect: DOMRect = element.getBoundingClientRect();
-      const liveVisualRect: SurvivorRect = {
-        left: liveDomRect.left,
-        top: liveDomRect.top,
-        width: liveDomRect.width,
-        height: liveDomRect.height,
-      };
-      // Strip any prior transform so the committed (Last) box is read clean.
-      element.style.transition = "none";
-      element.style.transform = "none";
-      const lastDomRect: DOMRect = element.getBoundingClientRect();
-      const last: SurvivorRect = {
-        left: lastDomRect.left,
-        top: lastDomRect.top,
-        width: lastDomRect.width,
-        height: lastDomRect.height,
-      };
-      nextLeafRects.set(leafId, last);
-      const first: SurvivorRect | null = resolveSurvivorFlipFirst({
-        recordedPreReflowRect: previousLeafRectsRef.current.get(leafId) ?? null,
-        liveVisualRect,
-        hasInFlightTransform,
-      });
-      if (first == null) {
-        continue;
-      }
-      if (!shouldAnimateSurvivorReflow(first, last, clampViewport)) {
-        continue;
-      }
-      const transform = deriveSurvivorFlipTransform(first, last);
-      if (transform == null) {
-        continue;
-      }
-      element.style.transformOrigin = "top left";
-      element.style.transform = `translate(${transform.dx}px, ${transform.dy}px) scale(${transform.sx}, ${transform.sy})`;
-      playableElements.push(element);
-      playableDipPlans.push({
-        element,
-        invert: {
-          tx: transform.dx,
-          ty: transform.dy,
-          sx: transform.sx,
-          sy: transform.sy,
-        },
-        lastWidth: last.width,
-        lastHeight: last.height,
-      });
-    }
-    previousLeafRectsRef.current = nextLeafRects;
-    if (playableElements.length === 0) {
-      return;
-    }
-    // Open the clip mask (overflow-visible) for the glide, and (re)arm the M2
-    // transition-completion guard to close it once the glide lands — on the
-    // representative survivor's `transitionend` OR the
-    // `survivorReflowDurationMs + transitionSlackMs` starvation backstop,
-    // whichever first. Re-armed (cancel + re-arm) on every reflow batch so a
-    // rapid open/close keeps the mask open for the whole sequence + tail. In
-    // coherent-dip mode the survivors use WAAPI (no `transitionend`), so the
-    // timeout backstop closes the mask — identical to the historical `+60` timer.
-    setIsSurvivorReflowAnimating(true);
-    survivorReflowEndHandleRef.current?.cancel();
-    survivorReflowEndHandleRef.current = onTransitionSettled({
-      target: playableElements[playableElements.length - 1],
+    // Run one reflow batch through the framework-free scheduler: it measures
+    // First/Last + applies the invert via the `StyleApplierPort`, then arms M2 /
+    // M2b / M1 in the exact historical order (or, on the record-only / snap path,
+    // just records clean rects + strips inline styles).
+    flipScheduler.reflow({
+      playReflow,
+      snapSettleCommit,
+      clampViewport,
+      coherentDipActive: survivorCoherentDipActive,
       durationMs: survivorReflowDurationMs,
       transitionSlackMs: dragRecoveryTransitionSlackMs,
-      scheduler: WINDOW_SCHEDULER_PORT,
-      onSettled: (): void => {
-        survivorReflowEndHandleRef.current = null;
-        setIsSurvivorReflowAnimating(false);
-        // Normal (non-throttled) settle path transform teardown: on the
-        // survivor `transitionend` (or the timeout backstop) also strip the
-        // batch's transient transform/transition, so the happy path guarantees
-        // teardown too — not only the M2b stuck-transition guard. Idempotent
-        // with the M2b guard + the settle-phase strip: clearing an
-        // already-identity element to identity is a no-op.
-        stripSurvivorTransientStyles();
-      },
+      frameDeadlineMs: dragRecoveryFrameDeadlineMs,
+      swapBounceMagnitude,
+      resolvedReflowEasing,
     });
-    // M2b (Fix 2): arm the stuck-transition transform-settle self-heal for this
-    // batch. If a survivor's COMPUTED transform is still non-identity past the
-    // slack window — a stalled CSS transition (inline already `"none"`) or a
-    // stranded WAAPI coherent dip (inline still the inverted First, no
-    // `onfinish`) — force-strip the survivors to identity, EVEN WHEN a
-    // committable seat is latched. NO `POINTER_CANCEL` / FSM transition /
-    // snap-back (distinct from M3): it only snaps the stuck visual to its final
-    // committed box. Cancel + re-arm per batch so a superseding reflow disarms
-    // this stale guard.
-    survivorTransformSettleGuardRef.current?.cancel();
-    const guardedElements: ReadonlyArray<HTMLElement> = playableElements;
-    survivorTransformSettleGuardRef.current = armTransformSettleGuard({
-      readComputedTransforms: (): ReadonlyArray<string> =>
-        guardedElements.map(
-          (element: HTMLElement): string =>
-            window.getComputedStyle(element).transform,
-        ),
-      durationMs: survivorReflowDurationMs,
-      transitionSlackMs: dragRecoveryTransitionSlackMs,
-      scheduler: WINDOW_SCHEDULER_PORT,
-      forceSettle: (): void => {
-        survivorTransformSettleGuardRef.current = null;
-        stripSurvivorTransientStyles();
-      },
-    });
-    // Force the inverted transforms to paint before arming the transition, then
-    // play every survivor to identity on the next frame (one rAF per batch).
-    void viewport.getBoundingClientRect();
-    // M1: race the play-to-identity write against a timeout so a starved frame
-    // never leaves the survivors frozen at their inverted First (the timer-only
-    // mask-close at `survivorReflowDurationMs + 60` would otherwise re-clip them
-    // while still transformed).
-    survivorFlipRafRef.current?.cancel();
-    survivorFlipRafRef.current = scheduleFrameOrTimeout(
-      WINDOW_SCHEDULER_PORT,
-      dragRecoveryFrameDeadlineMs,
-      (): void => {
-      if (survivorCoherentDipActive) {
-        // Coherent transit: keyframe each survivor with the mid-reflow dip so it
-        // shrinks + grows in lockstep with the ghost (no mid-cross collision).
-        // `fill: none` reverts to the inline style on finish, so onfinish pins
-        // the resting identity transform.
-        const dipAnimations: Animation[] = [];
-        for (const plan of playableDipPlans) {
-          const keyframes: Keyframe[] = buildCoherentDipKeyframes(
-            plan.invert,
-            plan.lastWidth,
-            plan.lastHeight,
-          );
-          const animation: Animation = plan.element.animate(keyframes, {
-            duration: survivorReflowDurationMs,
-            easing: "linear",
-            fill: "none",
-          });
-          const target: HTMLElement = plan.element;
-          // M4: pin the resting identity transform through the shared
-          // transient-style stripper so a dip that finishes after a mid-flight
-          // cancel still lands clean (idempotent with the settle/watchdog
-          // teardown that may have already run).
-          animation.onfinish = (): void => {
-            stripTransientDragStyles({ ghost: null, leaves: [target] });
-          };
-          dipAnimations.push(animation);
-        }
-        survivorDipAnimationsRef.current = dipAnimations;
-        return;
-      }
-      // Standard settle: a dialed-in bounce magnitude substitutes an easeOutBack
-      // overshoot (the displaced/affected panes land with a bounce); magnitude 0
-      // keeps the historical reflow easing. Per-element, so it is valid under
-      // non-parity (split) speeds.
-      const reflowEasing: string =
-        swapBounceMagnitude > 0
-          ? buildBounceEasingCss(swapBounceMagnitude)
-          : resolvedReflowEasing;
-      for (const element of playableElements) {
-        element.style.transition = `transform ${survivorReflowDurationMs}ms ${reflowEasing}`;
-        element.style.transform = "none";
-      }
-    });
+    // Cancel a pending M1 play-frame when the effect re-runs / unmounts mid-flight
+    // (idempotent — a no-op when no frame is pending).
     return (): void => {
-      survivorFlipRafRef.current?.cancel();
-      survivorFlipRafRef.current = null;
+      flipScheduler.cancelPlayFrame();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -4664,19 +4398,12 @@ export const TilingRenderer = React.forwardRef<
     viewportSize.height,
   ]);
   // Cancel the survivor-reflow clip-mask close guard (M2) + the M2b
-  // transform-settle self-heal guard on unmount.
+  // transform-settle self-heal guard + tracked dips on unmount.
   React.useEffect((): (() => void) => {
     return (): void => {
-      survivorReflowEndHandleRef.current?.cancel();
-      survivorReflowEndHandleRef.current = null;
-      survivorTransformSettleGuardRef.current?.cancel();
-      survivorTransformSettleGuardRef.current = null;
-      for (const animation of survivorDipAnimationsRef.current) {
-        animation.cancel();
-      }
-      survivorDipAnimationsRef.current = [];
+      flipScheduler.dispose();
     };
-  }, []);
+  }, [flipScheduler]);
   // Hit-test footprints for pointer-capture target resolution. In live mode the
   // displayed base is the gap-closed tree (source detached), so resolve against
   // THOSE positions (stable per source — derived once on pickup, never from the
@@ -6264,14 +5991,10 @@ export const TilingRenderer = React.forwardRef<
       ): TilingDropState | null =>
         resolvePointerTargetRef.current(clientX, clientY, sourceLeafId, previousTarget),
       capturePointer: (pointerId: number): void => {
-        const rootElement: HTMLDivElement | null = rootRef.current;
-        if (rootElement?.setPointerCapture != null) {
-          try {
-            rootElement.setPointerCapture(pointerId);
-            capturedPointerIdRef.current = pointerId;
-          } catch {
-            // Capture is best-effort; window listeners still receive events.
-          }
+        // Mirror the captured-id bookkeeping only when the (best-effort) root
+        // capture actually ran — the port swallows a thrown/absent capture.
+        if (pointerCapturePort.capture(pointerId)) {
+          capturedPointerIdRef.current = pointerId;
         }
       },
       getSlotCommitment: () => ({
@@ -6355,14 +6078,8 @@ export const TilingRenderer = React.forwardRef<
         // (the finger is still down), promote to dragging, and resolve the first
         // target at the held position (over the source pane → null; the ghost
         // free-follows until the finger moves onto another pane).
-        const rootElement: HTMLDivElement | null = rootRef.current;
-        if (rootElement?.setPointerCapture != null) {
-          try {
-            rootElement.setPointerCapture(owningPointerId);
-            capturedPointerIdRef.current = owningPointerId;
-          } catch {
-            // Capture is best-effort; window listeners still receive events.
-          }
+        if (pointerCapturePort.capture(owningPointerId)) {
+          capturedPointerIdRef.current = owningPointerId;
         }
         dispatchDrag({ type: "LONG_PRESS", pointerId: owningPointerId });
         // The first-target resolution + seat capture is the SAME tail the
@@ -6536,19 +6253,11 @@ export const TilingRenderer = React.forwardRef<
     if (dragState.phase !== "settling") {
       return;
     }
-    const rootElement: HTMLDivElement | null = rootRef.current;
+    // Release pointer capture on the stable root (only when it actually holds
+    // capture for this pointer — the port guards on `hasPointerCapture`).
     const owningPointerId: number | null = capturedPointerIdRef.current;
-    if (
-      rootElement != null &&
-      owningPointerId != null &&
-      rootElement.releasePointerCapture != null &&
-      rootElement.hasPointerCapture?.(owningPointerId)
-    ) {
-      try {
-        rootElement.releasePointerCapture(owningPointerId);
-      } catch {
-        // Already released.
-      }
+    if (owningPointerId != null) {
+      pointerCapturePort.release(owningPointerId);
     }
     capturedPointerIdRef.current = null;
     // M4 backstop: strip any residual FLIP transform/transition from the
@@ -6559,8 +6268,7 @@ export const TilingRenderer = React.forwardRef<
     // M2b stuck-transition guard too — its force-settle is subsumed by this
     // strip; cancelling drops the lingering timer (a stale fire would read
     // identity and no-op anyway).
-    survivorTransformSettleGuardRef.current?.cancel();
-    survivorTransformSettleGuardRef.current = null;
+    flipScheduler.cancelTransformSettleGuard();
     stripSurvivorTransientStyles();
 
     const committedTree: TilingLayoutNode | null =
