@@ -23,7 +23,7 @@
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
-    "hypr-tiling": "workspace:*"
+    "@n-uf/hypr-tiling": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19",

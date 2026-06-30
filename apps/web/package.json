@@ -11,7 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "hypr-tiling": "workspace:*",
+    "@n-uf/hypr-tiling": "workspace:*",
     "hypr-tiling-showcase": "workspace:*",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
