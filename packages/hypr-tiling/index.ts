@@ -1,4 +1,4 @@
-export { TilingRenderer } from "./dynamic-tiling-renderer";
+export { TilingRenderer } from "./react/dynamic-tiling-renderer";
 export {
   BASELINE_DRAG_HOP_DURATION_MS,
   DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
@@ -9,7 +9,7 @@ export {
   dragSpeedsAtParity,
   tileOrderByLeafId,
   resolveDragAnimationDurationMs,
-} from "./dynamic-tiling-renderer";
+} from "./react/dynamic-tiling-renderer";
 export {
   DEFAULT_TILE_ACCENT,
   DEFAULT_TILING_THEME_ID,
@@ -31,15 +31,15 @@ export {
   type TilingThemePaneShellTokens,
   type TilingThemeRootTokens,
   type TilingThemeTopBarTokens,
-} from "./theme";
-export { TILING_DROP_INTENT_CONFIG } from "./drop-intent-resolver";
+} from "./react/theme";
+export { TILING_DROP_INTENT_CONFIG } from "./core/drop-intent-resolver";
 export {
   commandRequiredCapability,
   isCommandEnabled,
   keyboardActionToCommand,
   type TilingCommandGates,
-} from "./commands";
-export { defaultKeyBindings, matchKeyBinding } from "./keybindings";
+} from "./core/commands";
+export { defaultKeyBindings, matchKeyBinding } from "./core/keybindings";
 export {
   MULTI_SELECT_GROUP_MIN_MEMBERS,
   canGroupMultiSelection,
@@ -49,7 +49,7 @@ export {
   resolveMultiSelectGroupHost,
   toggleLeafMultiSelection,
   type MultiSelectModifierState,
-} from "./multi-selection";
+} from "./core/multi-selection";
 export {
   EMPTY_FOCUS_HISTORY,
   FOCUS_HISTORY_DEFAULT_LIMIT,
@@ -57,13 +57,13 @@ export {
   pushFocusHistory,
   resolveFocusCurrentOrLast,
   type FocusHistory,
-} from "./focus-history";
+} from "./core/focus-history";
 export {
   DEFAULT_DRAG_HOP_EASING,
   DEFAULT_DRAG_REFLOW_EASING,
   isCssEasing,
   resolveDragEasing,
-} from "./drag-easing";
+} from "./core/drag-easing";
 export {
   clampCursorPointToViewport,
   resolveDragCursorPresentation,
@@ -72,13 +72,13 @@ export {
   type DragCursorPresentation,
   type DragCursorTone,
   type DragCursorViewportBounds,
-} from "./drag-cursor";
+} from "./core/drag-cursor";
 export {
   TILING_DASHBOARD_PRESET,
   TILING_INTERACTION_CAPABILITY_DEFAULTS,
   isResizeAxisEnabled,
   resolveInteractionCapabilities,
-} from "./interaction-capabilities";
+} from "./core/interaction-capabilities";
 export {
   crossAxisDimension,
   isStaticAlongSplitAxis,
@@ -94,7 +94,7 @@ export {
   type FlexibleRatioChild,
   type SplitBoundaryStaticFlags,
   type SplitChildMainSizing,
-} from "./pane-sizing";
+} from "./core/pane-sizing";
 export {
   TILING_KEYMAP_DEFAULTS,
   advancePaneSwitcher,
@@ -111,7 +111,7 @@ export {
   resolveMaximizeToggle,
   type TilingKeymapActionGuards,
   type TilingPaneCycleDirection,
-} from "./pane-switching";
+} from "./core/pane-switching";
 export {
   collectGroups,
   collectSplitNodes,
@@ -130,7 +130,7 @@ export {
   toggleSplitAxis,
   ungroupNode,
   updateSplitRatio,
-} from "./state";
+} from "./core/state";
 export type {
   TilingDropAction,
   TilingDropIntentDebugState,
@@ -191,4 +191,4 @@ export type {
   TilingResizeCapability,
   TilingSlotCommitmentCapability,
   TilingSlotCommitmentMode,
-} from "./types";
+} from "./core/types";

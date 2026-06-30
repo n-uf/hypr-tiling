@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
-import { readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../state";
-import { resolveLiveDisplayLayout } from "../dynamic-tiling-renderer";
+import { readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../core/state";
+import { resolveLiveDisplayLayout } from "../react/dynamic-tiling-renderer";
 import {
   DRAG_MACHINE_INITIAL_STATE,
   deriveCandidateTree,
@@ -8,9 +8,9 @@ import {
   type DragMachineEvent,
   type DragMachineState,
   type DragResolvedTarget,
-} from "../drag-machine";
-import type { TilingDropIntentState } from "../drop-intent-resolver";
-import type { TilingLayoutNode, TilingLeafDropZone, TilingLeafNode, TilingSplitNode } from "../types";
+} from "../core/drag-machine";
+import type { TilingDropIntentState } from "../core/drop-intent-resolver";
+import type { TilingLayoutNode, TilingLeafDropZone, TilingLeafNode, TilingSplitNode } from "../core/types";
 
 function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };

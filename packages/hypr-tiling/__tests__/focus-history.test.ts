@@ -5,8 +5,8 @@ import {
   pruneFocusHistory,
   pushFocusHistory,
   resolveFocusCurrentOrLast,
-} from "../focus-history";
-import type { FocusHistory } from "../focus-history";
+} from "../core/focus-history";
+import type { FocusHistory } from "../core/focus-history";
 
 /**
  * Pure unit coverage for the MRU focus model (HT-NAV-MRU-FOCUS-TOGGLE): the

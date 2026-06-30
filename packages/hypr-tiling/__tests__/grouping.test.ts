@@ -14,19 +14,19 @@ import {
   removeMemberFromGroup,
   setActiveGroupMember,
   ungroupNode,
-} from "../state";
-import type { TilingGrowConstraints } from "../state";
-import { collectLeafFootprints } from "../leaf-geometry";
-import type { TilingLeafFootprint } from "../leaf-geometry";
-import { resolveProjectedDropLayout } from "../projected-layout";
-import { buildGroupTabStripMergeIntent, resolveDropIntent } from "../drop-intent-resolver";
+} from "../core/state";
+import type { TilingGrowConstraints } from "../core/state";
+import { collectLeafFootprints } from "../core/leaf-geometry";
+import type { TilingLeafFootprint } from "../core/leaf-geometry";
+import { resolveProjectedDropLayout } from "../core/projected-layout";
+import { buildGroupTabStripMergeIntent, resolveDropIntent } from "../core/drop-intent-resolver";
 import type {
   TilingDropIntentState,
   TilingZoneGeometryConfig,
-} from "../drop-intent-resolver";
-import { commandRequiredCapability, keyboardActionToCommand } from "../commands";
-import { matchKeymapAction, resolveKeymap } from "../pane-switching";
-import type { TilingKeymapActionGuards } from "../pane-switching";
+} from "../core/drop-intent-resolver";
+import { commandRequiredCapability, keyboardActionToCommand } from "../core/commands";
+import { matchKeymapAction, resolveKeymap } from "../core/pane-switching";
+import type { TilingKeymapActionGuards } from "../core/pane-switching";
 import type {
   TilingGroupNode,
   TilingLayoutConfig,
@@ -35,7 +35,7 @@ import type {
   TilingSplitNode,
   ResolvedTilingKeymap,
   TilingKeyboardEventLike,
-} from "../types";
+} from "../core/types";
 
 /**
  * HT-GROUP-TABBED-STACKING — pure tests for the group/member domain model: the

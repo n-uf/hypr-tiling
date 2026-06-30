@@ -7,7 +7,7 @@ import {
   resolveMultiSelectGroupCommand,
   resolveMultiSelectGroupHost,
   toggleLeafMultiSelection,
-} from "../multi-selection";
+} from "../core/multi-selection";
 import {
   collectGroups,
   findGroupById,
@@ -17,14 +17,14 @@ import {
   isStructurallyValidLayout,
   readGroupMemberIds,
   readLeafNodeIds,
-} from "../state";
+} from "../core/state";
 import type {
   TilingGroupNode,
   TilingLayoutNode,
   TilingLeafNode,
   TilingSplitNode,
   TilingCommand,
-} from "../types";
+} from "../core/types";
 
 /**
  * Pure model for the Alt/Opt+click header → group flow

@@ -7,17 +7,17 @@ import {
   DragSourceSlotReservation,
   buildDragPaneSnapshot,
   renderDragPaneShell,
-} from "../dynamic-tiling-renderer";
-import { resolveDragCommitFocusLeafId } from "../drag-machine";
+} from "../react/dynamic-tiling-renderer";
+import { resolveDragCommitFocusLeafId } from "../core/drag-machine";
 import {
   TILING_THEME_REGISTRY,
   accentHue,
   resolvePaneDropAffordanceClasses,
   type PaneDropAffordanceFlags,
   type TilingTheme,
-} from "../theme";
-import type { TilingDropIntentState } from "../drop-intent-resolver";
-import type { TilingDragPaneSnapshot, TilingTile } from "../types";
+} from "../react/theme";
+import type { TilingDropIntentState } from "../core/drop-intent-resolver";
+import type { TilingDragPaneSnapshot, TilingTile } from "../core/types";
 
 /**
  * Drag-visuals contract after the focus-follows-dragged-pane change:

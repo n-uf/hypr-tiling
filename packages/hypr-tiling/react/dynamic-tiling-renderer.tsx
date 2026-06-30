@@ -18,14 +18,14 @@ import {
   keyboardActionToCommand,
   tabDoubleClickMaximizeCommand,
   type TilingCommandGates,
-} from "./commands";
+} from "../core/commands";
 import {
   clampCursorPointToViewport,
   resolveDragCursorPresentation,
   type DragCursorPoint,
   type DragCursorPresentation,
-} from "./drag-cursor";
-import { DEFAULT_DRAG_HOP_EASING, resolveDragEasing } from "./drag-easing";
+} from "../core/drag-cursor";
+import { DEFAULT_DRAG_HOP_EASING, resolveDragEasing } from "../core/drag-easing";
 import {
   DRAG_MACHINE_INITIAL_STATE,
   activeDragSourceLeafId,
@@ -53,20 +53,20 @@ import {
   type DragPointerType,
   type FrameCoalescer,
   type TouchArmedMoveResolution,
-} from "./drag-machine";
+} from "../core/drag-machine";
 import {
   dragSourceReservationSelector,
   isDragPresentationActive,
   resolveDragPresentation,
   resolveInitialPaneContentVisible,
   resolvePaneBodyRenderMode,
-} from "./drag-presentation";
+} from "../core/drag-presentation";
 import type {
   TilingDropIntentHitZoneDiagnostics,
   TilingDropIntentState as TilingDropState,
   TilingEdgeZone,
   TilingZoneGeometryConfig,
-} from "./drop-intent-resolver";
+} from "../core/drop-intent-resolver";
 import {
   TILING_DROP_INTENT_CONFIG,
   buildGroupTabStripMergeIntent,
@@ -76,18 +76,18 @@ import {
   resolveDropIntentHitZoneDiagnostics,
   resolveGroupTabStripHit,
   toPaneLocalPoint,
-} from "./drop-intent-resolver";
+} from "../core/drop-intent-resolver";
 import {
   collectStaticGatedLeafIds,
   evaluateZoneCandidate,
-} from "./drop-validity";
+} from "../core/drop-validity";
 import {
   EMPTY_FOCUS_HISTORY,
   pruneFocusHistory,
   pushFocusHistory,
   resolveFocusCurrentOrLast,
   type FocusHistory,
-} from "./focus-history";
+} from "../core/focus-history";
 import {
   DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT,
   buildBounceEasingCss,
@@ -104,7 +104,7 @@ import {
   type GhostMorphTransform,
   type GhostPoint,
   type GhostRect,
-} from "./ghost-transit";
+} from "../core/ghost-transit";
 import {
   armTransformSettleGuard,
   createDragWatchdog,
@@ -118,12 +118,12 @@ import {
   type TransformSettleGuardHandle,
   type TransitionSettledHandle,
   type TransientDragStyleTarget,
-} from "./drag-recovery";
+} from "../core/drag-recovery";
 import {
   isResizeAxisEnabled,
   resolveInteractionCapabilities,
-} from "./interaction-capabilities";
-import { matchKeyBinding } from "./keybindings";
+} from "../core/interaction-capabilities";
+import { matchKeyBinding } from "../core/keybindings";
 import {
   collectLeafFootprints,
   collectMasterSlots,
@@ -131,7 +131,7 @@ import {
   resolveMasterParams,
   resolveMasterStackFootprints,
   slotRepresentativeLeafId,
-} from "./leaf-geometry";
+} from "../core/leaf-geometry";
 import {
   clampByMinSize,
   isStaticAlongSplitAxis,
@@ -142,7 +142,7 @@ import {
   resolveSizingMode,
   titleBarSizingModeId,
   type SplitChildMainSizing,
-} from "./pane-sizing";
+} from "../core/pane-sizing";
 import {
   advancePaneSwitcher,
   chordRequiresModifier,
@@ -155,16 +155,16 @@ import {
   resolveCycledPaneId,
   resolveJumpedPaneId,
   resolveMaximizeToggle,
-} from "./pane-switching";
+} from "../core/pane-switching";
 import type {
   TilingProjectedLandingOverlay,
   TilingProjectedLandingSubject,
-} from "./projected-layout";
+} from "../core/projected-layout";
 import {
   resolveProjectedDropLayout,
   resolveProjectedLandingOverlays,
-} from "./projected-layout";
-import type { TilingGrowConstraints } from "./state";
+} from "../core/projected-layout";
+import type { TilingGrowConstraints } from "../core/state";
 import {
   addLeafToGroup,
   adjustSplitMasterCount,
@@ -194,7 +194,7 @@ import {
   toggleSplitAxis,
   ungroupNode,
   updateSplitRatio,
-} from "./state";
+} from "../core/state";
 import {
   canGroupMultiSelection,
   isMultiSelectModifierActive,
@@ -202,14 +202,14 @@ import {
   resolveMultiSelectGroupCommand,
   resolveMultiSelectGroupHost,
   toggleLeafMultiSelection,
-} from "./multi-selection";
+} from "../core/multi-selection";
 import {
   deriveSurvivorFlipTransform,
   resolveSurvivorFlipFirst,
   shouldAnimateSurvivorReflow,
   shouldSnapSurvivorReflowOnSettleCommit,
   type SurvivorRect,
-} from "./survivor-reflow";
+} from "../core/survivor-reflow";
 import type {
   TilingDragCancelVisualState,
   TilingDragPaneSnapshot,
@@ -249,7 +249,7 @@ import type {
   TilingPaneSizing,
   TilingPaneSwitcherState,
   TilingTitleBarSizingMode,
-} from "./types";
+} from "../core/types";
 
 function resolveDragPointerType(pointerType: string): DragPointerType {
   if (pointerType === "touch") {
@@ -769,7 +769,7 @@ export {
   resolveDragPresentation,
   resolveInitialPaneContentVisible,
   resolvePaneBodyRenderMode,
-} from "./drag-presentation";
+} from "../core/drag-presentation";
 
 type TilingSplitDividerRenderMode =
   | "render-divider-absent"

@@ -8,13 +8,13 @@ import {
   setSplitLayoutMode,
   setSplitMasterCount,
   setSplitMasterOrientation,
-} from "../state";
+} from "../core/state";
 import type {
   TilingLayoutNode,
   TilingLeafNode,
   TilingMasterOrientation,
   TilingSplitNode,
-} from "../types";
+} from "../core/types";
 
 /**
  * Pure reducer coverage for the master/stack layout-mode state transitions

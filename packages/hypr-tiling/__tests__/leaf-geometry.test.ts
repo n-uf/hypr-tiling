@@ -6,14 +6,14 @@ import {
   isFootprintChanged,
   type TilingLeafFootprint,
   type LeafRect,
-} from "../leaf-geometry";
+} from "../core/leaf-geometry";
 import type {
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,
   TilingSplitNode,
   TilingPaneSizing,
-} from "../types";
+} from "../core/types";
 
 function leaf(id: string, sizing?: TilingPaneSizing): TilingLeafNode {
   return sizing == null

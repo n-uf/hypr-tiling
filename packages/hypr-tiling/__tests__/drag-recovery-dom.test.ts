@@ -36,7 +36,7 @@ import {
   type FrameOrTimeoutScheduler,
   type TimerScheduler,
   type TransformSettleGuardHandle,
-} from "../drag-recovery";
+} from "../core/drag-recovery";
 
 /**
  * Manual frame/timer scheduler — the renderer injects the real

@@ -24,9 +24,9 @@
 import { afterEach, beforeAll, describe, expect, it } from "@jest/globals";
 import * as React from "react";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { TilingRenderer } from "../dynamic-tiling-renderer";
-import { isMultiSelectModifierActive } from "../multi-selection";
-import { collectGroups } from "../state";
+import { TilingRenderer } from "../react/dynamic-tiling-renderer";
+import { isMultiSelectModifierActive } from "../core/multi-selection";
+import { collectGroups } from "../core/state";
 import type {
   TilingGroupNode,
   TilingLayoutNode,
@@ -35,7 +35,7 @@ import type {
   TilingSplitNode,
   TilingTile,
   TilingInteractionCapabilities,
-} from "../types";
+} from "../core/types";
 
 beforeAll((): void => {
   const globalScope = globalThis as unknown as {

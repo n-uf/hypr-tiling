@@ -8,7 +8,7 @@ import {
   isRectFullyOutsideViewport,
   resolveSurvivorFlipFirst,
   shouldAnimateSurvivorReflow,
-} from "../survivor-reflow";
+} from "../core/survivor-reflow";
 
 function rect(left: number, top: number, width: number, height: number): SurvivorRect {
   return { left, top, width, height };

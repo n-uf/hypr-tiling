@@ -26,7 +26,7 @@ import {
   resolveGhostHopFirstRect,
   shouldApplyCoherentTransitDip,
   swapBounceOvershoot,
-} from "../ghost-transit";
+} from "../core/ghost-transit";
 
 function rect(left: number, top: number, width: number, height: number): GhostRect {
   return { left, top, width, height };

@@ -12,8 +12,8 @@ import {
   shouldRenderSplitDivider,
   splitAxisDimension,
   titleBarSizingModeId,
-} from "../pane-sizing";
-import type { TilingLeafNode, TilingLayoutNode, TilingPaneSizing } from "../types";
+} from "../core/pane-sizing";
+import type { TilingLeafNode, TilingLayoutNode, TilingPaneSizing } from "../core/types";
 
 function leaf(id: string, sizing?: TilingPaneSizing): TilingLeafNode {
   return { kind: "leaf", id, tileId: id, sizing };

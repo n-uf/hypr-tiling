@@ -4,8 +4,8 @@ import {
   evaluateEdgeInsertCandidate,
   evaluateZoneCandidate,
   projectedLeafFitsConstraints,
-} from "../drop-validity";
-import { insertLeafAdjacent } from "../state";
+} from "../core/drop-validity";
+import { insertLeafAdjacent } from "../core/state";
 import type {
   TilingLayoutConfig,
   TilingLayoutNode,
@@ -13,7 +13,7 @@ import type {
   TilingPaneFootprint,
   TilingSplitNode,
   TilingPaneSizing,
-} from "../types";
+} from "../core/types";
 
 function leaf(id: string, sizing?: TilingPaneSizing): TilingLeafNode {
   return sizing == null

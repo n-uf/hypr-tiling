@@ -3,9 +3,9 @@ import {
   clampCursorPointToViewport,
   resolveDragCursorPresentation,
   type DragCursorPresentation,
-} from "../drag-cursor";
-import type { DragResolvedTarget } from "../drag-machine";
-import type { TilingDropAction, TilingLeafDropZone } from "../types";
+} from "../core/drag-cursor";
+import type { DragResolvedTarget } from "../core/drag-machine";
+import type { TilingDropAction, TilingLeafDropZone } from "../core/types";
 
 const SOURCE_LEAF_ID: string = "leaf-source";
 const TARGET_LEAF_ID: string = "leaf-target";

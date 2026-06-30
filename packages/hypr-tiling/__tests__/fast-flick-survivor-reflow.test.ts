@@ -5,14 +5,14 @@ import {
   type DragMachineState,
   type DragResolvedTarget,
   dragMachineReducer,
-} from "../drag-machine";
-import type { TilingDropAction, TilingLeafDropZone, TilingPaneFootprint } from "../types";
+} from "../core/drag-machine";
+import type { TilingDropAction, TilingLeafDropZone, TilingPaneFootprint } from "../core/types";
 import {
   applySurvivorReflowSnapLeafStyles,
   shouldPlaySurvivorReflowFlip,
   shouldSnapSurvivorReflowOnSettleCommit,
   type SurvivorReflowLeafStyleTarget,
-} from "../survivor-reflow";
+} from "../core/survivor-reflow";
 
 const SOURCE_LEAF_ID = "A";
 

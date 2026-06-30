@@ -4,7 +4,7 @@ import {
   DEFAULT_DRAG_REFLOW_EASING,
   isCssEasing,
   resolveDragEasing,
-} from "../drag-easing";
+} from "../core/drag-easing";
 
 /**
  * Pure unit coverage for the consumer-configurable easing SDK surface

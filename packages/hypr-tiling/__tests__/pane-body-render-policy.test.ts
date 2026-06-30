@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import { resolveSplitDividerRenderMode } from "../dynamic-tiling-renderer";
+import { resolveSplitDividerRenderMode } from "../react/dynamic-tiling-renderer";
 
 describe("split divider render policy", (): void => {
   it("omits divider when boundary is not resizable", (): void => {

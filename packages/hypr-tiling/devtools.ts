@@ -20,8 +20,8 @@ export {
   TilingObservabilityPanel,
   type AnimationControlDefaults,
   type TilingObservabilityLedgerEntry,
-} from "./tiling-observability-panel";
+} from "./react/tiling-observability-panel";
 export {
   TILING_OBSERVABILITY_COLOR_DEFAULTS,
   TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
-} from "./dynamic-tiling-renderer";
+} from "./react/dynamic-tiling-renderer";

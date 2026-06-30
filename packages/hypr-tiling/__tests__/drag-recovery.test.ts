@@ -15,7 +15,7 @@ import {
   onTransitionSettled,
   scheduleFrameOrTimeout,
   stripTransientDragStyles,
-} from "../drag-recovery";
+} from "../core/drag-recovery";
 
 /**
  * Deterministic fake frame/timer scheduler + monotonic clock. The recovery

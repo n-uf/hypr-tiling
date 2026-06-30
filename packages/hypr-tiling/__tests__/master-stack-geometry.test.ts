@@ -7,13 +7,13 @@ import {
   slotRepresentativeLeafId,
   type TilingLeafFootprint,
   type MasterStackParams,
-} from "../leaf-geometry";
+} from "../core/leaf-geometry";
 import type {
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,
   TilingSplitNode,
-} from "../types";
+} from "../core/types";
 
 /**
  * Pure geometry coverage for the master/stack layout engine
