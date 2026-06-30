@@ -8,7 +8,7 @@ import {
   type TilingCommandHandle,
   type TilingInteractionCapabilities,
 } from "@n-uf/hypr-tiling";
-import { DOC_PANES } from "./docs";
+import { DOC_PANES, REPO_URL } from "./docs";
 import { DocTile } from "./tile";
 import { ShortcutsPane } from "./shortcuts";
 
@@ -127,6 +127,31 @@ function ShowcaseLink({
   );
 }
 
+// Secondary CTA paired with the showcase link: an external link to the GitHub
+// repository. Reuses the single-source `REPO_URL` (also referenced by the
+// JSON-LD in entry-server.tsx). Styled as a neutral pill so the gold showcase
+// CTA stays the primary action, but shares the same monospace pill vocabulary
+// (border, tracking, hover) — no third-party badge, no heavy icon. External
+// destination → opens in a new tab.
+function RepoLink(): React.ReactElement {
+  return (
+    <a
+      href={REPO_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group inline-flex w-fit items-center gap-2 rounded-md border border-white/15 bg-white/[0.02] px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-stone-200 transition-[transform,border-color,background-color,color] duration-150 hover:-translate-y-px hover:border-amber-300/50 hover:bg-amber-300/[0.06] hover:text-amber-100"
+    >
+      GitHub
+      <span
+        aria-hidden
+        className="transition-transform duration-150 group-hover:translate-x-0.5"
+      >
+        {"\u2192"}
+      </span>
+    </a>
+  );
+}
+
 export function HomePage({
   navigate,
 }: {
@@ -150,7 +175,10 @@ export function HomePage({
         pane.id === "intro" ? (
           <div className="flex flex-col gap-5">
             {pane.content}
-            <ShowcaseLink navigate={navigate} />
+            <div className="flex flex-wrap items-center gap-2.5">
+              <ShowcaseLink navigate={navigate} />
+              <RepoLink />
+            </div>
           </div>
         ) : (
           pane.content
