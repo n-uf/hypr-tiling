@@ -150,5 +150,5 @@ all welcome. To get involved, email
 ## License
 
 Source-available under
-[PolyForm-Perimeter-1.0.0](https://polyformproject.org/licenses/perimeter/1.0.0/)
+[PolyForm-Perimeter-1.0.0](https://github.com/polyformproject/polyform-licenses/blob/1.0.0/PolyForm-Perimeter-1.0.0.md)
 — business use allowed, but no competing product built from this software.

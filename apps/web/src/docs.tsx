@@ -21,12 +21,14 @@ export const SITE_URL: string = "https://hypr-tiling.n-uf.com/";
 export const SHOWCASE_URL: string = "https://hypr-tiling.n-uf.com/showcase";
 export const REPO_URL: string = "https://github.com/n-uf/hypr-tiling";
 
-// License, sourced from packages/hypr-tiling/package.json (SPDX
-// `PolyForm-Perimeter-1.0.0`) and the repo-root LICENSE text. The canonical
-// PolyForm URL matches the JSON-LD `license` field in entry-server.tsx.
+// License, sourced from packages/hypr-tiling/package.json (`PolyForm-
+// Perimeter-1.0.0`) and the repo-root LICENSE text. polyformproject.org only
+// serves the latest Perimeter version (1.0.1), so the exact-version canonical
+// text lives at the official PolyForm GitHub `1.0.0` tag; this URL matches the
+// JSON-LD `license` field in entry-server.tsx.
 export const LICENSE_NAME: string = "PolyForm Perimeter 1.0.0";
 export const LICENSE_URL: string =
-  "https://polyformproject.org/licenses/perimeter/1.0.0/";
+  "https://github.com/polyformproject/polyform-licenses/blob/1.0.0/PolyForm-Perimeter-1.0.0.md";
 
 export const PAGE_TITLE: string = "hypr-tiling — dynamic tiling for React";
 

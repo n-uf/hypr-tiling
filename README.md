@@ -193,8 +193,10 @@ See `_agent/versioning-policy.md` for deeper guidance.
 
 ## License policy
 
-This repository uses the source-available `PolyForm-Perimeter-1.0.0` license —
-"business use allowed, but no competing product built from this software":
+This repository uses the source-available
+[PolyForm-Perimeter-1.0.0](https://github.com/polyformproject/polyform-licenses/blob/1.0.0/PolyForm-Perimeter-1.0.0.md)
+license — "business use allowed, but no competing product built from this
+software":
 
 - Internal and commercial use is allowed under PolyForm Perimeter
 - Providing a product that competes with this software is not allowed
