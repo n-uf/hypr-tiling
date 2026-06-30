@@ -9,6 +9,25 @@ Reach for it when users need to rearrange dense, multi-panel screens at runtime
 — IDE-like tools, trading and operator consoles, analytics dashboards — while
 your app keeps strict, controlled ownership of the layout state.
 
+## Use cases
+
+hypr-tiling is built for screens where users live across multiple panels and
+rearrange them as the work demands:
+
+- **Dynamic / content sites** — real, SEO-indexable content arranged as tiles
+  instead of a single scroll; the homepage in `apps/web` dogfoods this, with its
+  docs living in prerendered panes.
+- **Dashboards** — analytics, metrics, and monitoring consoles where several
+  resizable panes share one screen.
+- **IDE-like tools** — editor, preview, and terminal workspaces a user splits,
+  stacks, and rearranges at runtime.
+- **Trading & operator consoles** — dense, keyboard-driven control surfaces that
+  pack many live panels into a fixed viewport.
+- **Admin & data apps** — table, detail, and activity panes side by side, resized
+  to fit the task at hand.
+- **Observability & log explorers** — query, results, and trace panes rearranged
+  on the fly while chasing an incident.
+
 ## Kudos to Hyprland
 
 The interaction model is inspired by [Hyprland](https://hypr.land), the

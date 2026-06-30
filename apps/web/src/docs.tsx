@@ -79,6 +79,47 @@ export const FEATURE_FACTS: ReadonlyArray<FeatureFact> = [
   },
 ];
 
+interface UseCase {
+  readonly term: string;
+  readonly detail: string;
+}
+
+// The scenarios the tiling engine is built for. Promoted from the buried clause
+// in the intro positioning copy into an explicit, scannable list. Kept in sync
+// with the `## Use cases` section in the repo README.
+export const USE_CASES: ReadonlyArray<UseCase> = [
+  {
+    term: "Dynamic / content sites",
+    detail:
+      "Real, SEO-indexable content arranged as tiles instead of a single scroll — this page dogfoods it: the docs live in prerendered panes.",
+  },
+  {
+    term: "Dashboards",
+    detail:
+      "Analytics, metrics, and monitoring consoles where several resizable panes share one screen.",
+  },
+  {
+    term: "IDE-like tools",
+    detail:
+      "Editor, preview, and terminal workspaces a user splits, stacks, and rearranges at runtime.",
+  },
+  {
+    term: "Trading & operator consoles",
+    detail:
+      "Dense, keyboard-driven control surfaces that pack many live panels into a fixed viewport.",
+  },
+  {
+    term: "Admin & data apps",
+    detail:
+      "Table, detail, and activity panes side by side, resized to fit the task at hand.",
+  },
+  {
+    term: "Observability & log explorers",
+    detail:
+      "Query, results, and trace panes rearranged on the fly while chasing an incident.",
+  },
+];
+
 interface DocPaneSpec {
   readonly id: string;
   readonly title: string;
@@ -222,6 +263,39 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
           header, resize the dividers, maximize it — or drive it from the live
           controls pane.
         </p>
+      </div>
+    ),
+  },
+  {
+    id: "usecases",
+    title: "use cases",
+    accent: "amber",
+    summary:
+      "Built for dynamic/content sites, analytics dashboards, IDE-like tools, trading and operator consoles, admin and data apps, and observability/log explorers — any screen with multiple resizable, rearrangeable panes.",
+    content: (
+      <div className="flex flex-col gap-4">
+        <SectionHeading>Use cases</SectionHeading>
+        <SectionLead>
+          Reach for hypr-tiling where users live across multiple panels and
+          rearrange them as the work demands.
+        </SectionLead>
+        <ul className="flex flex-col divide-y divide-white/[0.05]">
+          {USE_CASES.map(
+            (useCase: UseCase): React.ReactElement => (
+              <li
+                key={useCase.term}
+                className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0"
+              >
+                <span className="text-[13px] font-medium text-stone-100">
+                  {useCase.term}
+                </span>
+                <span className="max-w-[60ch] text-[12px] leading-[1.6] text-stone-400">
+                  {useCase.detail}
+                </span>
+              </li>
+            ),
+          )}
+        </ul>
       </div>
     ),
   },
