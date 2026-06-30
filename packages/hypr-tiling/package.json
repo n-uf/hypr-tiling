@@ -2,7 +2,19 @@
   "name": "@n-uf/hypr-tiling",
   "version": "26.6.2",
   "private": false,
-  "description": "Recursive split-tree tiling renderer for React.",
+  "description": "Dynamic tiling for React: a recursive split-tree renderer for drag/drop, resizable, keyboard-controlled panes — inspired by Hyprland.",
+  "keywords": [
+    "react",
+    "tiling",
+    "dynamic-tiling",
+    "split-layout",
+    "resizable-panes",
+    "drag-and-drop",
+    "tiling-window-manager",
+    "layout-engine",
+    "dashboard",
+    "hyprland"
+  ],
   "license": "PolyForm-Perimeter-1.0.0",
   "repository": {
     "type": "git",

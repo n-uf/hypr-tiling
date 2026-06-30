@@ -1,93 +1,144 @@
-# hypr-tiling project
+# hypr-tiling — dynamic tiling for React
 
-`hypr-tiling` is a React dynamic-tiling layout toolkit for building IDE-like products, trading/operator consoles, and analytics dashboards with resizable panes and programmable split trees.
+`@n-uf/hypr-tiling` is a dynamic tiling layout engine for React: a recursive
+split-tree renderer that lets users drag, drop, resize, group, maximize, and
+keyboard-control resizable panes at runtime, with a theming engine and
+self-healing drag recovery.
 
-Use it when you need users to rearrange dense, multi-panel screens at runtime while your app keeps strict control over layout state and rendering behavior.
+Reach for it when users need to rearrange dense, multi-panel screens at runtime
+— IDE-like tools, trading and operator consoles, analytics dashboards — while
+your app keeps strict, controlled ownership of the layout state.
 
-## Attribution
+## Kudos to Hyprland
 
-This project is inspired by [Hyprland](https://hypr.land) and its tiling-first UX philosophy.  
-Kudos to the Hyprland maintainers and contributors for advancing modern Linux compositor and tiling workflow design.
+The interaction model is inspired by [Hyprland](https://hypr.land), the
+dynamic-tiling Wayland compositor, and its tiling-first philosophy:
+detach-and-drop movement, master/stack layouts, and keyboard-driven focus.
+Kudos to the Hyprland maintainers and contributors for advancing modern Linux
+compositor and tiling workflow design.
 
-## Workspace layout
-
-- `packages/hypr-tiling` — core React tiling renderer package (`hypr-tiling`)
-- `packages/showcase` — showcase UI package (`hypr-tiling-showcase`)
-- `apps/web` — flat homepage app that consumes the showcase package
-
-## Package install
+## Install
 
 ```bash
 pnpm add @n-uf/hypr-tiling react react-dom
 ```
 
-## Minimal renderer usage
+`react` and `react-dom` are peer dependencies (version `^19`).
+
+## Integrate
+
+The renderer is a **controlled component**: you own the layout tree in state and
+apply every change it reports through `onLayoutChange`. Nothing about the layout
+is hidden inside the component — the tree is yours to persist, diff, and restore.
 
 ```tsx
-import { DynamicTilingRenderer, type DynamicLayoutConfig, type DynamicLayoutNode, type DynamicTile } from "@n-uf/hypr-tiling";
+import {
+  DynamicTilingRenderer,
+  DEFAULT_TILING_LAYOUT_CONFIG,
+  type DynamicLayoutNode,
+  type DynamicTile,
+} from "@n-uf/hypr-tiling";
+import { useState } from "react";
 
-const layout: DynamicLayoutNode = {
+const tiles: DynamicTile[] = [
+  { id: "a", title: "editor", content: <Editor /> },
+  { id: "b", title: "preview", content: <Preview /> },
+];
+
+const initialLayout: DynamicLayoutNode = {
   kind: "split",
   id: "root",
   axis: "vertical",
   ratio: 0.5,
-  first: { kind: "leaf", id: "left", tileId: "a" },
-  second: { kind: "leaf", id: "right", tileId: "b" },
+  first: { kind: "leaf", id: "l", tileId: "a" },
+  second: { kind: "leaf", id: "r", tileId: "b" },
 };
 
-const config: DynamicLayoutConfig = { gapPx: 8, minPaneSizePx: 120, handleSizePx: 6 };
-
-const tiles: ReadonlyArray<DynamicTile> = [
-  { id: "a", title: "A", content: <div>A</div> },
-  { id: "b", title: "B", content: <div>B</div> },
-];
-
-export function Example(): JSX.Element {
+export function Workspace(): JSX.Element {
+  const [layout, setLayout] = useState<DynamicLayoutNode>(initialLayout);
   return (
     <DynamicTilingRenderer
       layout={layout}
       tiles={tiles}
-      config={config}
-      onLayoutChange={() => {
-        // Controlled component callback.
-      }}
+      config={DEFAULT_TILING_LAYOUT_CONFIG}
+      onLayoutChange={setLayout}
     />
   );
 }
 ```
 
+## Features
+
+- **Recursive split-tree layout** — a layout is a tree of `leaf`, `split`, and
+  `group` nodes; binary splits carry an axis and a ratio.
+- **Drag-and-drop tiling** — Hyprland-style live drag: the source detaches, the
+  tree freezes, a cursor-following ghost hops between seats, and the move commits
+  on release, resolving to swap, edge-insert, split-container-insert, or
+  group-merge.
+- **Resize & sizing modes** — drag split dividers, or pin a pane to a measured
+  pixel extent per dimension (static) versus ratio-distributed (flexible); panes
+  can acquire space directionally.
+- **Master / stack layout** — any subtree can switch to a master-area-plus-stack
+  arrangement with a configurable master count and orientation.
+- **Tabbed grouping** — collapse several leaves into one slot as a stacked group
+  with a tab strip; only the active member renders and is hit-tested.
+- **Full keyboard control** — directional focus, a pane switcher (cycle / jump /
+  overlay), maximize, keyboard move-mode, and master/group commands, all behind a
+  remappable keymap.
+- **Theming engine** — two built-in themes (`neon-terminal`, `clean-flat`), eight
+  accent hues, a theme provider with hooks, and live theme switching with no
+  remount.
+- **Self-healing drag recovery** — a frame-deadline animation backstop, an idle
+  watchdog, transient-style teardown, and a `visibilitychange` reconcile so a drag
+  never strands the tree mid-transition.
+- **Animation choreography** — FLIP survivor reflow, ghost transit, swap bounce,
+  easing knobs, and `prefers-reduced-motion` support.
+
+## SEO & LLM discoverability
+
+Pane content is real semantic DOM — headings, paragraphs, lists, code — emitted
+into the document, not painted onto a canvas or hidden behind a transform. All
+panes render at once, so unfocused sections stay in the DOM. Because the content
+lives in the DOM, it prerenders: a tiling UI can ship its full text in the
+initial static HTML (with the interactive tiling layered on as progressive
+enhancement), so search crawlers and LLM assistants that fetch and cite docs read
+the real content without executing JavaScript. The homepage app in `apps/web`
+dogfoods exactly this — its documentation lives inside the panes and is
+prerendered to static HTML alongside a `/llms.txt` mirror.
+
+## Workspace layout
+
+- `packages/hypr-tiling` — core React tiling renderer package (`@n-uf/hypr-tiling`)
+- `packages/showcase` — interactive showcase package (`hypr-tiling-showcase`)
+- `apps/web` — content-first homepage that renders the library's docs inside the
+  tiling panes and prerenders them for SEO/LLM crawlers
+
 ## Versioning policy
 
-Clause mapping:
+The package uses calendar-aligned versioning, `YY.M.R`:
 
-- First clause (`26`) exposes the release year (`2026`)
-- Second clause (`6`) exposes the release month (`June`)
+- First clause (`26`) is the release year (`2026`)
+- Second clause (`6`) is the release month (`June`)
 - Third clause (`1`) is the major release sequence for that year/month window
 
-Semver caveat:
-
-- Semver numeric identifiers cannot use leading zeroes (`26.06.1` is invalid)
-- This workspace therefore uses `YY.M.R` (e.g. `26.6.1`) instead of `YY.MM.R`
+Semver numeric identifiers cannot use leading zeroes (`26.06.1` is invalid), so
+this workspace uses `YY.M.R` (e.g. `26.6.1`), not `YY.MM.R`.
 
 Release commands (package `packages/hypr-tiling`):
 
-- `npm run release`:
-  - Auto-aligns `YY.M` to the current calendar year/month
-  - If the current version already matches the current month, bumps patch (`26.6.2` -> `26.6.3`)
-  - If the month changed, resets to `.0` for the new month (`26.6.2` in July 2026 -> `26.7.0`)
-  - Publishes with `npm publish --access public`
-- `npm run release --nobump=true`:
-  - Publishes without changing the current version
-- `npm run release:next-version`:
-  - Prints the computed next calendar-aligned version without publishing
+- `npm run release` — auto-aligns `YY.M` to the current calendar year/month
+  (bumps patch within the same month; resets to `.0` when the month changes),
+  then publishes with `npm publish --access public`
+- `npm run release --nobump=true` — publishes without changing the version
+- `npm run release:next-version` — prints the computed next version without
+  publishing
 
 See `_agent/versioning-policy.md` for deeper guidance.
 
 ## License policy
 
-This repository uses the source-available `PolyForm-Perimeter-1.0.0` license.
-
-The model is "business use allowed, but no competing product built from this software":
+This repository uses the source-available `PolyForm-Perimeter-1.0.0` license —
+"business use allowed, but no competing product built from this software":
 
 - Internal and commercial use is allowed under PolyForm Perimeter
 - Providing a product that competes with this software is not allowed
