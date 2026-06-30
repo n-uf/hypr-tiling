@@ -543,6 +543,15 @@ export interface TilingPaneSwitchingCapability {
   /** Render the tab strip. Default `true`. The shortcuts work regardless. */
   showTabStrip?: boolean;
   /**
+   * Render the tab strip's pane-content visibility checkbox (the "content"
+   * toggle that flips the default-tile body between content and empty). Default
+   * `true`. Set `false` to suppress the control for embeddings that always paint
+   * their own content via a custom `renderTile` (e.g. a docs/SEO surface), where
+   * the toggle is inert chrome. Only the control is hidden; pane-content
+   * visibility stays at its current value.
+   */
+  showContentToggle?: boolean;
+  /**
    * Render the macOS Cmd+Tab-style visual switcher overlay while cycling panes
    * with a held modifier (`Alt+]` / `Alt+[`). Default `true`. When `true`, a
    * cycle press opens a centered overlay listing the panes and advances the
@@ -592,6 +601,7 @@ export interface ResolvedTilingMaximizeCapability {
 export interface ResolvedTilingPaneSwitchingCapability {
   enable: boolean;
   showTabStrip: boolean;
+  showContentToggle: boolean;
   showSwitcherOverlay: boolean;
 }
 
@@ -912,7 +922,7 @@ export type DynamicTileAccent =
  * token interfaces + registry live in `./theme`; this union is the central
  * contract a consumer types its `themeId` state against.
  */
-export type TilingThemeId = "neon-terminal" | "clean-flat";
+export type TilingThemeId = "neon-terminal" | "clean-flat" | "mosaic";
 
 /**
  * A pickable accent paired with a human label and a solid Tailwind background

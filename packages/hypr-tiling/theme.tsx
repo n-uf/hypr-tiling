@@ -540,6 +540,92 @@ const CLEAN_FLAT_THEME: TilingTheme = {
 };
 
 /**
+ * Built-in theme: MOSAIC — an editorial "technical atlas" aesthetic and the
+ * deliberate counterpoint to both neon-terminal and clean-flat. Warm graphite
+ * ink (no pure black, no glass blur), flat matte pane surfaces with hairline
+ * rims, restrained moderate radii, and a single confident gold (amber) accent
+ * spent only on interaction — resting panes stay monochrome; focus, active
+ * tabs, dividers-on-hover, and drop targets all resolve to the SAME gold so the
+ * identity reads as one coherent system rather than a rainbow. The root +
+ * viewport are transparent on purpose so the embedding shell's blueprint-grid
+ * canvas shows through the gutters. Distinctive, content-first, print-like.
+ */
+const MOSAIC_THEME: TilingTheme = {
+  id: "mosaic",
+  label: "mosaic",
+  root: {
+    container:
+      "flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-none bg-transparent p-0 outline-none",
+    viewport:
+      "relative isolate min-h-0 min-w-0 flex-1 overflow-hidden bg-transparent",
+  },
+  paneShell: {
+    surface:
+      "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border border-white/[0.07] bg-[#121316] shadow-[0_18px_40px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)]",
+    bodyText:
+      "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 text-[13px] leading-6 text-stone-300",
+    subtitleText: "text-stone-500",
+    dropEligibleRing: "ring-1 ring-dashed ring-amber-300/25",
+    dropHoverRing: "ring-1 ring-amber-200/45",
+    dropTargetRing: "ring-2 ring-amber-300/55",
+    invalidDropRing: "ring-2 ring-rose-300/55",
+    dragSourceOpacity: "opacity-60",
+  },
+  paneHeader: {
+    base: "flex min-h-[40px] shrink-0 items-center justify-between border-b border-white/[0.06] bg-white/[0.015] px-3.5 py-2",
+    focused: "border-b-amber-300/30 bg-amber-300/[0.04]",
+    titleText:
+      "truncate font-mono text-[11px] font-medium uppercase tracking-[0.18em]",
+    controlIdle:
+      "border-white/[0.12] bg-white/[0.03] text-stone-400 hover:border-amber-300/40 hover:bg-amber-300/10 hover:text-amber-100",
+    controlActive: "border-amber-200/55 bg-amber-300/15 text-amber-50",
+  },
+  ghost: {
+    surface:
+      "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border border-amber-300/25 bg-[#16171b] shadow-[0_30px_70px_-22px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)]",
+    header:
+      "flex shrink-0 items-center justify-between border-b border-white/[0.07] bg-white/[0.04] px-3.5 py-2",
+    bodyText: "text-stone-300",
+    subtitleText: "text-stone-500",
+  },
+  divider: {
+    base: "shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-amber-300/55",
+    visibleInteractive: "bg-white/[0.06] hover:bg-amber-300/45",
+    visibleStatic: "bg-white/[0.04] cursor-default",
+    hidden: "bg-transparent hover:bg-transparent",
+  },
+  topBar: {
+    container:
+      "flex shrink-0 items-center gap-2 rounded-lg border border-white/[0.07] bg-[#121316]/90 px-3 py-1.5 shadow-[0_14px_36px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur",
+    titleText:
+      "flex shrink-0 items-center px-1 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.3em] text-amber-200/70",
+    pickerGroup:
+      "flex shrink-0 items-center gap-1 rounded-md border border-white/[0.07] bg-white/[0.02] px-1.5 py-1",
+    controlGroup:
+      "flex shrink-0 items-center gap-1 rounded-md border border-white/[0.07] bg-white/[0.02] px-1.5 py-1",
+    tabBase:
+      "flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors",
+    tabInactive:
+      "border-white/[0.07] bg-white/[0.02] text-stone-400 hover:border-white/20 hover:text-stone-100",
+    switcherCard:
+      "pointer-events-auto max-w-[90%] rounded-lg border border-white/[0.10] bg-[#121316] px-5 py-4 shadow-[0_30px_70px_-24px_rgba(0,0,0,0.95)]",
+    switcherCardInactive: "border-white/[0.07] bg-white/[0.02] text-stone-400",
+  },
+  // Monochrome at rest: no colored resting border. Identity is the single gold
+  // accent, and it appears ONLY on interaction (focus / active tab) below.
+  resolvePaneAccentSurface: (): string => "",
+  resolveAccentText: (accent: DynamicTileAccent | undefined): string =>
+    accentHue(accent).text,
+  // Unified gold focus frame regardless of the per-pane accent — one coherent
+  // accent across the whole surface, hairline (no neon glow).
+  resolveFocusFrame: (): string =>
+    "border border-amber-300/45 ring-1 ring-amber-300/35 ring-offset-0",
+  // Unified gold active tab/chip.
+  resolveTabActive: (): string =>
+    "border-amber-300/55 bg-amber-300/10 text-amber-100",
+};
+
+/**
  * Built-in theme registry, keyed by the closed `TilingThemeId` union. Adding a
  * member to `TilingThemeId` forces a new entry here (the `Record` fails to
  * compile until filled in).
@@ -547,6 +633,7 @@ const CLEAN_FLAT_THEME: TilingTheme = {
 export const TILING_THEME_REGISTRY: Record<TilingThemeId, TilingTheme> = {
   "neon-terminal": NEON_TERMINAL_THEME,
   "clean-flat": CLEAN_FLAT_THEME,
+  mosaic: MOSAIC_THEME,
 };
 
 /** Default library theme id (preserves the prior look at the round-1 checkpoint). */
@@ -556,6 +643,7 @@ export const DEFAULT_TILING_THEME_ID: TilingThemeId = "neon-terminal";
 export const TILING_THEMES: readonly TilingTheme[] = [
   TILING_THEME_REGISTRY["neon-terminal"],
   TILING_THEME_REGISTRY["clean-flat"],
+  TILING_THEME_REGISTRY["mosaic"],
 ];
 
 /** Resolve a theme id (or the default) to its `TilingTheme`. */

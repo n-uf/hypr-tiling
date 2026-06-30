@@ -3015,6 +3015,7 @@ function PaneTabStrip({
   activeFocusedLeafId,
   activeMaximizedLeafId,
   isPaneContentVisible,
+  showContentToggle,
   accentPicker,
   themePicker,
   onSelect,
@@ -3024,6 +3025,7 @@ function PaneTabStrip({
   activeFocusedLeafId: string | null;
   activeMaximizedLeafId: string | null;
   isPaneContentVisible: boolean;
+  showContentToggle: boolean;
   accentPicker: PaneTabStripAccentPicker | null;
   themePicker: PaneTabStripThemePicker | null;
   onSelect: (leafId: string) => void;
@@ -3096,23 +3098,25 @@ function PaneTabStrip({
           )}
         </div>
       ) : null}
-      <label
-        className="flex shrink-0 cursor-pointer select-none items-center gap-1 px-1 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-slate-400 hover:text-slate-100"
-        title={isPaneContentVisible ? "Hide pane content" : "Show pane content"}
-      >
-        <input
-          type="checkbox"
-          className="h-3 w-3 accent-slate-400"
-          checked={isPaneContentVisible}
-          onChange={(event: React.ChangeEvent<HTMLInputElement>): void => {
-            onPaneContentVisibilityChange(event.currentTarget.checked);
-          }}
-          aria-label={
-            isPaneContentVisible ? "hide pane content" : "show pane content"
-          }
-        />
-        content
-      </label>
+      {showContentToggle ? (
+        <label
+          className="flex shrink-0 cursor-pointer select-none items-center gap-1 px-1 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-slate-400 hover:text-slate-100"
+          title={isPaneContentVisible ? "Hide pane content" : "Show pane content"}
+        >
+          <input
+            type="checkbox"
+            className="h-3 w-3 accent-slate-400"
+            checked={isPaneContentVisible}
+            onChange={(event: React.ChangeEvent<HTMLInputElement>): void => {
+              onPaneContentVisibilityChange(event.currentTarget.checked);
+            }}
+            aria-label={
+              isPaneContentVisible ? "hide pane content" : "show pane content"
+            }
+          />
+          content
+        </label>
+      ) : null}
       <div
         role="tablist"
         aria-label="tiling panes"
@@ -3138,7 +3142,7 @@ function PaneTabStrip({
                 )}
               >
                 <span className="font-semibold opacity-70">{tabIndex + 1}</span>
-                <span className="max-w-[13ch] truncate">{tab.title}</span>
+                <span className="whitespace-nowrap">{tab.title}</span>
                 {isMaximized ? (
                   <span
                     className="rounded-sm border border-current/40 px-1 text-[8px] leading-none"
@@ -3412,6 +3416,8 @@ export const DynamicTilingRenderer = React.forwardRef<
   const showTabStrip: boolean =
     isPaneSwitchingEnabled &&
     interactionCapabilities.paneSwitching.showTabStrip;
+  const showContentToggle: boolean =
+    interactionCapabilities.paneSwitching.showContentToggle;
   const [isPaneContentVisible, setIsPaneContentVisible] =
     React.useState<boolean>(false);
   const isMasterLayoutEnabled: boolean = interactionCapabilities.masterLayout;
@@ -7353,6 +7359,7 @@ export const DynamicTilingRenderer = React.forwardRef<
             activeFocusedLeafId={activeFocusedLeafId}
             activeMaximizedLeafId={activeMaximizedLeafId}
             isPaneContentVisible={isPaneContentVisible}
+            showContentToggle={showContentToggle}
             accentPicker={tabStripAccentPicker}
             themePicker={tabStripThemePicker}
             onSelect={activateLeaf}

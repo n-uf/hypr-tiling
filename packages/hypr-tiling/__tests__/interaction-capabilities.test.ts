@@ -31,7 +31,12 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   coherentTransit: true,
   focus: true,
   maximize: { enable: true },
-  paneSwitching: { enable: true, showTabStrip: true, showSwitcherOverlay: true },
+  paneSwitching: {
+    enable: true,
+    showTabStrip: true,
+    showContentToggle: true,
+    showSwitcherOverlay: true,
+  },
   paneTitleBarControls: { sizing: true, acquireSpace: true },
   dropHitZoneGeometry: {
     centerRatio: 0.34,
@@ -210,18 +215,42 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     });
   });
 
-  it("preserves an explicit pane-switching disable, tab-strip hide, and switcher-overlay hide", (): void => {
+  it("preserves an explicit pane-switching disable, tab-strip hide, content-toggle hide, and switcher-overlay hide", (): void => {
     expect(resolveInteractionCapabilities({ paneSwitching: { enable: false } })).toEqual({
       ...RESOLVED_DEFAULTS,
-      paneSwitching: { enable: false, showTabStrip: true, showSwitcherOverlay: true },
+      paneSwitching: {
+        enable: false,
+        showTabStrip: true,
+        showContentToggle: true,
+        showSwitcherOverlay: true,
+      },
     });
     expect(resolveInteractionCapabilities({ paneSwitching: { showTabStrip: false } })).toEqual({
       ...RESOLVED_DEFAULTS,
-      paneSwitching: { enable: true, showTabStrip: false, showSwitcherOverlay: true },
+      paneSwitching: {
+        enable: true,
+        showTabStrip: false,
+        showContentToggle: true,
+        showSwitcherOverlay: true,
+      },
+    });
+    expect(resolveInteractionCapabilities({ paneSwitching: { showContentToggle: false } })).toEqual({
+      ...RESOLVED_DEFAULTS,
+      paneSwitching: {
+        enable: true,
+        showTabStrip: true,
+        showContentToggle: false,
+        showSwitcherOverlay: true,
+      },
     });
     expect(resolveInteractionCapabilities({ paneSwitching: { showSwitcherOverlay: false } })).toEqual({
       ...RESOLVED_DEFAULTS,
-      paneSwitching: { enable: true, showTabStrip: true, showSwitcherOverlay: false },
+      paneSwitching: {
+        enable: true,
+        showTabStrip: true,
+        showContentToggle: true,
+        showSwitcherOverlay: false,
+      },
     });
   });
 

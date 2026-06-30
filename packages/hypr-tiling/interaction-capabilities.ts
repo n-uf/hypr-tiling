@@ -50,7 +50,12 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
   coherentTransit: true,
   focus: true,
   maximize: { enable: true },
-  paneSwitching: { enable: true, showTabStrip: true, showSwitcherOverlay: true },
+  paneSwitching: {
+    enable: true,
+    showTabStrip: true,
+    showContentToggle: true,
+    showSwitcherOverlay: true,
+  },
   paneTitleBarControls: { sizing: true, acquireSpace: true },
   dropHitZoneGeometry: {
     centerRatio: DYNAMIC_DROP_INTENT_CONFIG.centerRatio,
@@ -197,6 +202,9 @@ export function resolveInteractionCapabilities(
       showTabStrip:
         capabilities?.paneSwitching?.showTabStrip
         ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.paneSwitching.showTabStrip,
+      showContentToggle:
+        capabilities?.paneSwitching?.showContentToggle
+        ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.paneSwitching.showContentToggle,
       showSwitcherOverlay:
         capabilities?.paneSwitching?.showSwitcherOverlay
         ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.paneSwitching.showSwitcherOverlay,
