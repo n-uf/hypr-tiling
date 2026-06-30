@@ -108,9 +108,9 @@ const TILES: ReadonlyArray<DynamicTile> = [
 
 // A custom `renderTile` mirroring the homepage `DocTile`'s relevant wiring: an
 // `<article>` whose `onFocus` is the renderer-provided handler, a header that
-// Cmd/Ctrl-click-toggles multi-selection, and a Group control that dispatches
-// `onGroupMultiSelection`. This is the path the bug report exercised — a custom
-// renderer, not `DefaultDynamicTile`.
+// Alt/Opt-click-toggles multi-selection, and a Group control that dispatches
+// `onGroupMultiSelection(leafId)` (this pane is the host slot). This is the path
+// the bug report exercised — a custom renderer, not `DefaultDynamicTile`.
 function renderDocTile(args: DynamicRenderTileArgs): React.ReactElement {
   const controls: React.ReactNode[] = [];
   if (args.isMultiSelected) {
@@ -135,7 +135,7 @@ function renderDocTile(args: DynamicRenderTileArgs): React.ReactElement {
           },
           onClick: (event: React.MouseEvent<HTMLButtonElement>): void => {
             event.stopPropagation();
-            args.onGroupMultiSelection();
+            args.onGroupMultiSelection(args.leafId);
           },
         },
         "Group",
@@ -208,9 +208,11 @@ function requireEl(container: HTMLElement, selector: string): HTMLElement {
 }
 
 function selectHeader(container: HTMLElement, leafId: string): void {
+  // The multi-select chord is unified on Alt/Opt — an Alt-modified header click
+  // toggles selection without changing focus.
   act((): void => {
     fireEvent.click(requireEl(container, `[data-testid="header-${leafId}"]`), {
-      metaKey: true,
+      altKey: true,
     });
   });
 }
@@ -267,6 +269,35 @@ describe("header Group button (custom renderTile) folds the multi-selection", ()
 
     // Selection cleared on success → no lingering ✓ badges.
     expect(query(container, '[data-testid="check-features"]')).toBeNull();
+  });
+
+  it("hosts the merged group at the CLICKED pane's slot (host first + active)", (): void => {
+    const layouts: DynamicLayoutNode[] = [];
+    const { container } = render(
+      React.createElement(Harness, {
+        onLayout: (layout: DynamicLayoutNode): void => {
+          layouts.push(layout);
+        },
+      }),
+    );
+
+    selectHeader(container, "features");
+    selectHeader(container, "install");
+
+    // Press the Group button on `install` (NOT `features`): `install` becomes the
+    // host — first tab + active member — even though `features` was selected first.
+    act((): void => {
+      fireEvent.click(requireEl(container, '[data-testid="group-install"]'));
+    });
+
+    const last: DynamicLayoutNode = layouts[layouts.length - 1];
+    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(last);
+    expect(groups.length).toBe(1);
+    expect(groups[0].members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+      "install",
+      "features",
+    ]);
+    expect(groups[0].activeMemberId).toBe("install");
   });
 });
 

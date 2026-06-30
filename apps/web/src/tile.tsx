@@ -63,7 +63,7 @@ export function DocTile(args: DynamicRenderTileArgs): React.ReactElement {
       <header
         onPointerDown={args.onHandlePointerDown}
         onClick={(event: React.MouseEvent<HTMLElement>): void => {
-          // Cmd/Ctrl+click toggles this pane's multi-selection membership
+          // Alt/Opt+click toggles this pane's multi-selection membership
           // WITHOUT changing focus. The renderer's `onHandlePointerDown` already
           // `preventDefault`s the modified press, so native focus never fires and
           // `onFocus` (which would clear the selection) never runs — the toggle is
@@ -110,7 +110,7 @@ export function DocTile(args: DynamicRenderTileArgs): React.ReactElement {
           {args.isMultiSelected ? (
             <span
               aria-label={`pane ${args.leafId} selected`}
-              title="selected (Cmd/Ctrl+click to deselect)"
+              title="selected (Alt/Opt+click to deselect)"
               className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-stone-300/45 bg-stone-300/[0.08] font-mono text-[11px] leading-none text-stone-200"
             >
               <span aria-hidden>{"\u2713"}</span>
@@ -126,7 +126,7 @@ export function DocTile(args: DynamicRenderTileArgs): React.ReactElement {
               }}
               onClick={(event: React.MouseEvent<HTMLButtonElement>): void => {
                 event.stopPropagation();
-                args.onGroupMultiSelection();
+                args.onGroupMultiSelection(args.leafId);
               }}
               aria-label={`group ${args.leafId} with the selected panes`}
               title="group selected panes into a tabbed group"

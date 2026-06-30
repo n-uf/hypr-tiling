@@ -1,5 +1,5 @@
 /**
- * Pure multi-selection model for the Cmd/Ctrl+click header → group flow
+ * Pure multi-selection model for the Alt/Opt+click header → group flow
  * (`paneSwitching.multiSelectGrouping`).
  *
  * The renderer is a `"use client"` DOM component that cannot be exercised under
@@ -7,8 +7,8 @@
  * coverage status"), so the interaction's decision logic lives here as pure
  * functions the renderer merely wires:
  *
- * - `isMultiSelectModifierActive` — discriminate a plain header click from a
- *   Cmd/Ctrl (multi-select) click.
+ * - `isMultiSelectModifierActive` — discriminate a plain header click from an
+ *   Alt/Opt (multi-select) click.
  * - `toggleLeafMultiSelection` — add/remove a leaf from the selection set
  *   (immutable; insertion order is preserved, so the first-selected leaf is the
  *   `group-leaves` anchor).
@@ -31,22 +31,21 @@ export const MULTI_SELECT_GROUP_MIN_MEMBERS: number = 2;
 
 /**
  * The modifier-key subset of a pointer/mouse event that discriminates a
- * multi-select click from a plain click. `metaKey` = Cmd on macOS, `ctrlKey` =
- * Ctrl on Windows/Linux.
+ * multi-select click from a plain click. The multi-select / grouping modifier is
+ * unified on Alt/Opt across every surface (header click + the Alt+G key), chosen
+ * for minimal cross-browser interference: `altKey` = Opt on macOS, Alt on
+ * Windows/Linux.
  */
 export interface MultiSelectModifierState {
-  readonly metaKey: boolean;
-  readonly ctrlKey: boolean;
+  readonly altKey: boolean;
 }
 
 /**
- * `true` when the event carries the platform multi-select modifier (Cmd on
- * macOS via `metaKey`, Ctrl on Windows/Linux via `ctrlKey`). Both are accepted
- * so one handler covers every platform. This is a boolean predicate (logical
- * OR over two booleans), not a nullish fallback.
+ * `true` when the event carries the multi-select modifier — Alt/Opt (`altKey`),
+ * the single chord both the header toggle and the Alt+G group key key off.
  */
 export function isMultiSelectModifierActive(event: MultiSelectModifierState): boolean {
-  return event.metaKey || event.ctrlKey;
+  return event.altKey;
 }
 
 /**
@@ -112,17 +111,54 @@ export function canGroupMultiSelection(
 }
 
 /**
+ * Resolve the HOST pane (the slot the merged group occupies + its active tab):
+ *
+ * - the explicit `clickedLeafId` (the pane whose Group button was pressed) when
+ *   it is part of the selection — the header-button path;
+ * - else (Alt+G, no click target) the `focusedLeafId` IF it is in the selection,
+ *   else the FIRST-selected pane (insertion order).
+ *
+ * Returns `null` when the selection is empty (nothing to host).
+ */
+export function resolveMultiSelectGroupHost(
+  selection: ReadonlySet<string>,
+  clickedLeafId: string | null,
+  focusedLeafId: string | null,
+): string | null {
+  if (selection.size === 0) {
+    return null;
+  }
+  if (clickedLeafId != null && selection.has(clickedLeafId)) {
+    return clickedLeafId;
+  }
+  if (focusedLeafId != null && selection.has(focusedLeafId)) {
+    return focusedLeafId;
+  }
+  for (const id of selection) {
+    return id;
+  }
+  return null;
+}
+
+/**
  * The `group-leaves` command that folds the current `selection` (insertion
- * order = member order, first id = anchor) into one tabbed group, or `null`
- * when fewer than `MULTI_SELECT_GROUP_MIN_MEMBERS` are selected. Dispatching the
- * returned command is still gated by the `grouping` capability at the renderer's
- * command router (a safe no-op when grouping is disabled).
+ * order, expanded over any touched groups) into ONE flat tabbed group at the
+ * `hostLeafId` slot (host = active tab, listed first), or `null` when fewer than
+ * `MULTI_SELECT_GROUP_MIN_MEMBERS` are selected. When `hostLeafId` is omitted the
+ * op defaults the host to the first resolvable id. Dispatching the returned
+ * command is still gated by the `grouping` capability at the renderer's command
+ * router (a safe no-op when grouping is disabled).
  */
 export function resolveMultiSelectGroupCommand(
   selection: ReadonlySet<string>,
+  hostLeafId?: string | null,
 ): TilingCommand | null {
   if (selection.size < MULTI_SELECT_GROUP_MIN_MEMBERS) {
     return null;
   }
-  return { kind: "group-leaves", leafIds: Array.from(selection) };
+  return {
+    kind: "group-leaves",
+    leafIds: Array.from(selection),
+    hostLeafId: hostLeafId ?? undefined,
+  };
 }

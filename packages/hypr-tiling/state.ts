@@ -1007,38 +1007,116 @@ function membersToSplitChain(
   return chain;
 }
 
+/** Options for `groupLeaves`: an explicit host/anchor + an explicit group id. */
+export interface GroupLeavesOptions {
+  /**
+   * The pane whose slot the merged group occupies and whose tile is the active
+   * tab — the clicked pane for the header Group button, or the resolved host for
+   * Alt+G. Defaults to the FIRST resolvable id in `leafIds` when omitted.
+   */
+  hostLeafId?: string;
+  /** Explicit group id; defaults to `group-<hostLeafId>`. */
+  groupId?: string;
+}
+
 /**
- * Wrap N leaves (`leafIds`, in order) into ONE group occupying the FIRST leaf's
- * slot. The remaining leaves are extracted from wherever they sit (their parent
- * splits collapse to close the gap) and appended as members; the first leaf's
- * tile becomes the active member. Returns the layout UNCHANGED when fewer than
- * two distinct, resolvable leaves are named (a group needs ≥2 members; a group
- * of one is degenerate).
+ * The flat, host-first, de-duplicated member order for `groupLeaves`: the host
+ * leaf, then (if the host was itself a group member) its group-mates in their
+ * existing left-to-right order, then the remaining selection in insertion order
+ * with every touched group expanded to its full membership in existing order.
+ * Selecting ANY one member of a group therefore pulls in that group's ENTIRE
+ * membership.
+ */
+function flatGroupMemberOrder(
+  layout: DynamicLayoutNode,
+  selectionIds: ReadonlyArray<string>,
+  hostLeafId: string,
+): ReadonlyArray<string> {
+  const ordered: string[] = [];
+  const seen: Set<string> = new Set<string>();
+  const push = (id: string): void => {
+    if (!seen.has(id)) {
+      seen.add(id);
+      ordered.push(id);
+    }
+  };
+  // A selected id contributes its WHOLE group (existing member order) when it is
+  // a group member, else just itself.
+  const expand = (id: string): ReadonlyArray<string> => {
+    const group: DynamicGroupNode | null = findGroupContainingLeaf(layout, id);
+    return group != null
+      ? group.members.map((member: DynamicLeafNode): string => member.id)
+      : [id];
+  };
+  // Host first (then its group-mates, if the host was grouped).
+  push(hostLeafId);
+  for (const id of expand(hostLeafId)) {
+    push(id);
+  }
+  // Then the rest of the selection in insertion order, each expanded.
+  for (const selectionId of selectionIds) {
+    if (selectionId === hostLeafId) {
+      continue;
+    }
+    for (const id of expand(selectionId)) {
+      push(id);
+    }
+  }
+  return ordered;
+}
+
+/**
+ * Fold a selection of leaves and/or group members into ONE flat tabbed group
+ * occupying the HOST pane's slot. Any existing group the selection touches is
+ * DISSOLVED and its full membership folded into the single result — there is
+ * never a nested group-within-a-group nor a partial group, and selecting any one
+ * member of a group pulls in the whole group (see `flatGroupMemberOrder`). The
+ * host pane's tile is the active tab and its slot hosts the merged group; every
+ * other involved slot closes and the tree reflows. Returns the layout UNCHANGED
+ * when fewer than two distinct resolvable leaves result (a group needs ≥2
+ * members) or the host is unresolvable.
  */
 export function groupLeaves(
   layout: DynamicLayoutNode,
   leafIds: ReadonlyArray<string>,
-  groupId?: string,
+  options?: GroupLeavesOptions,
 ): DynamicLayoutNode {
-  const uniqueIds: ReadonlyArray<string> = leafIds.filter(
-    (id: string, index: number): boolean => leafIds.indexOf(id) === index,
+  // The host (anchor): the explicit option, else the first id that resolves to a
+  // real leaf (loose leaf OR a member of an existing group).
+  const hostLeafId: string | undefined =
+    options?.hostLeafId ??
+    leafIds.find((id: string): boolean => findLeafById(layout, id) != null);
+  if (hostLeafId == null || findLeafById(layout, hostLeafId) == null) {
+    return layout;
+  }
+
+  const orderedIds: ReadonlyArray<string> = flatGroupMemberOrder(
+    layout,
+    leafIds,
+    hostLeafId,
   );
-  const memberLeaves: ReadonlyArray<DynamicLeafNode> = uniqueIds
+  const memberLeaves: ReadonlyArray<DynamicLeafNode> = orderedIds
     .map((id: string): DynamicLeafNode | null => findLeafById(layout, id))
     .filter((leaf: DynamicLeafNode | null): leaf is DynamicLeafNode => leaf != null);
   if (memberLeaves.length < 2) {
     return layout;
   }
 
-  const anchorId: string = memberLeaves[0].id;
-  // Extract every NON-anchor member from the tree first (the anchor stays in
-  // place so its slot becomes the group's slot).
+  // Extract every NON-host member from wherever it sits: a loose leaf collapses
+  // its parent split; a group member is pulled from its group (which collapses to
+  // a bare leaf when one member is left, or empties). The host stays put so its
+  // slot becomes the group's slot — and when the host was itself a group member,
+  // removing its (all-pulled-in) group-mates collapses that group down to the
+  // bare host leaf at the group's old slot, which then hosts the merged group.
   let working: DynamicLayoutNode = layout;
-  for (let index = 1; index < memberLeaves.length; index += 1) {
-    const extraction: ExtractedLeafResult = extractLeafNode(working, memberLeaves[index].id);
+  for (const member of memberLeaves) {
+    if (member.id === hostLeafId) {
+      continue;
+    }
+    const extraction: ExtractedLeafResult = extractLeafNode(working, member.id);
     if (extraction.nextNode == null) {
-      // Extracting would empty the tree — impossible while the anchor remains,
-      // but guard so the reducer never produces a null layout.
+      // Would empty the tree — impossible while the host remains, but guard so
+      // the reducer never yields a null layout.
       return layout;
     }
     working = extraction.nextNode;
@@ -1046,17 +1124,14 @@ export function groupLeaves(
 
   const group: DynamicGroupNode = {
     kind: "group",
-    id: groupId ?? `group-${anchorId}`,
+    id: options?.groupId ?? `group-${hostLeafId}`,
     members: memberLeaves.map(asGroupMember),
-    activeMemberId: anchorId,
+    activeMemberId: hostLeafId,
   };
-  // `replaceNodeById` only swaps a TOP-LEVEL slot by id; it does not descend into
-  // a group's members. If the anchor is itself a member of an existing group it
-  // is never a placeable slot, so the swap is a no-op (same ref) — but the
-  // non-anchor members were already extracted above, which would silently DROP
-  // them. Detect the unplaceable anchor and abort losslessly on the ORIGINAL
-  // layout instead of returning the members-extracted `working` tree.
-  const placed: DynamicLayoutNode = replaceNodeById(working, anchorId, group);
+  // The host is now a bare leaf at its (or its dissolved group's) slot. Swap it
+  // for the merged group. A failed swap (host vanished) aborts losslessly on the
+  // ORIGINAL layout rather than returning the members-extracted `working` tree.
+  const placed: DynamicLayoutNode = replaceNodeById(working, hostLeafId, group);
   if (placed === working) {
     return layout;
   }

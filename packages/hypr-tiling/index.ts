@@ -53,6 +53,7 @@ export {
   isMultiSelectModifierActive,
   pruneMultiSelection,
   resolveMultiSelectGroupCommand,
+  resolveMultiSelectGroupHost,
   toggleLeafMultiSelection,
   type MultiSelectModifierState,
 } from "./multi-selection";

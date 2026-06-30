@@ -100,8 +100,22 @@ describe("groupLeaves (fold N leaves into one slot)", (): void => {
   });
 
   it("accepts an explicit group id", (): void => {
-    const next: DynamicLayoutNode = groupLeaves(threeLeafTree(), ["a", "b"], "grp-x");
+    const next: DynamicLayoutNode = groupLeaves(threeLeafTree(), ["a", "b"], {
+      groupId: "grp-x",
+    });
     expect(findGroupById(next, "grp-x")).not.toBeNull();
+  });
+
+  it("honors an explicit host: the group occupies the host slot, host first + active", (): void => {
+    // Default host is the first id (`a`); an explicit `hostLeafId: "b"` instead
+    // anchors the group at `b`'s slot with `b` first and active.
+    const next: DynamicLayoutNode = groupLeaves(threeLeafTree(), ["a", "b"], {
+      hostLeafId: "b",
+    });
+    const group: DynamicGroupNode = asGroup(findGroupById(next, "group-b") as DynamicLayoutNode);
+    expect(memberIds(group)).toEqual(["b", "a"]);
+    expect(group.activeMemberId).toBe("b");
+    expect(isStructurallyValidLayout(next)).toBe(true);
   });
 
   it("deduplicates repeated leaf ids before counting members", (): void => {
@@ -124,18 +138,23 @@ describe("groupLeaves (fold N leaves into one slot)", (): void => {
     expect(tree).toEqual(snapshot);
   });
 
-  it("aborts losslessly (no pane loss) when the anchor is already a group member", (): void => {
-    // `b` is a member of `group-b`; making it the anchor of a NEW group is not a
-    // placeable slot (`replaceNodeById` does not descend into group members), so
-    // the reducer must abort on the ORIGINAL layout rather than dropping the
-    // already-extracted non-anchor member `c`.
+  it("flattens a host-is-group-member selection into ONE flat group (dissolve + fold, no nesting)", (): void => {
+    // `b` is a member of `group-b` ({b, a}); grouping host `b` with the loose `c`
+    // DISSOLVES group-b and folds {b, a, c} into one flat group at `b`'s slot —
+    // host `b` first + active, then its dissolved mate `a`, then `c`. No pane is
+    // lost and there is no nested group.
     const grouped: DynamicLayoutNode = groupLeaves(threeLeafTree(), ["b", "a"]);
     expect(findGroupById(grouped, "group-b")).not.toBeNull();
-    const next: DynamicLayoutNode = groupLeaves(grouped, ["b", "c"]);
-    expect(next).toBe(grouped);
-    // Every original leaf still present — nothing silently lost.
-    expect(readGroupMemberIds(next).slice().sort()).toEqual(["a", "b"]);
-    expect(findLeafById(next, "c")).not.toBeNull();
+    const next: DynamicLayoutNode = groupLeaves(grouped, ["b", "c"], { hostLeafId: "b" });
+    expect(collectGroups(next)).toHaveLength(1);
+    const group: DynamicGroupNode = asGroup(findGroupById(next, "group-b") as DynamicLayoutNode);
+    expect(memberIds(group)).toEqual(["b", "a", "c"]);
+    expect(group.activeMemberId).toBe("b");
+    // Every original leaf present, all flat leaves (no group-in-group).
+    expect(readGroupMemberIds(next).slice().sort()).toEqual(["a", "b", "c"]);
+    for (const member of group.members) {
+      expect(findLeafById(next, member.id)?.kind).toBe("leaf");
+    }
     expect(isStructurallyValidLayout(next)).toBe(true);
   });
 });

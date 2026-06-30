@@ -5,11 +5,14 @@ import {
   isMultiSelectModifierActive,
   pruneMultiSelection,
   resolveMultiSelectGroupCommand,
+  resolveMultiSelectGroupHost,
   toggleLeafMultiSelection,
 } from "../multi-selection";
 import {
   collectGroups,
   findGroupById,
+  findGroupContainingLeaf,
+  findLeafById,
   groupLeaves,
   isStructurallyValidLayout,
   readGroupMemberIds,
@@ -24,7 +27,7 @@ import type {
 } from "../types";
 
 /**
- * Pure model for the Cmd/Ctrl+click header → group flow
+ * Pure model for the Alt/Opt+click header → group flow
  * (`paneSwitching.multiSelectGrouping`). The renderer is `"use client"` + DOM
  * and cannot render under the node-only jest harness, so these cover the
  * decision logic the renderer wires (selection toggle / prune / groupability /
@@ -77,21 +80,20 @@ function homepageTree(): DynamicSplitNode {
   );
 }
 
-describe("isMultiSelectModifierActive (plain vs Cmd/Ctrl click discriminator)", (): void => {
-  it("is true for a macOS Cmd press (metaKey)", (): void => {
-    expect(isMultiSelectModifierActive({ metaKey: true, ctrlKey: false })).toBe(true);
-  });
-
-  it("is true for a Windows/Linux Ctrl press (ctrlKey)", (): void => {
-    expect(isMultiSelectModifierActive({ metaKey: false, ctrlKey: true })).toBe(true);
-  });
-
-  it("is true when both modifiers are held", (): void => {
-    expect(isMultiSelectModifierActive({ metaKey: true, ctrlKey: true })).toBe(true);
+describe("isMultiSelectModifierActive (plain vs Alt/Opt click discriminator)", (): void => {
+  it("is true for an Alt/Opt press (altKey)", (): void => {
+    expect(isMultiSelectModifierActive({ altKey: true })).toBe(true);
   });
 
   it("is false for a plain (no-modifier) click", (): void => {
-    expect(isMultiSelectModifierActive({ metaKey: false, ctrlKey: false })).toBe(false);
+    expect(isMultiSelectModifierActive({ altKey: false })).toBe(false);
+  });
+
+  // The modifier was UNIFIED on Alt/Opt — Cmd (meta) / Ctrl alone no longer
+  // select. The event shape narrowed to `{ altKey }`, so a meta/ctrl-only event
+  // (altKey false) is a plain click.
+  it("is false for a meta/ctrl-only press (no longer the multi-select chord)", (): void => {
+    expect(isMultiSelectModifierActive({ altKey: false })).toBe(false);
   });
 });
 
@@ -151,12 +153,12 @@ describe("canGroupMultiSelection (groupable-right-now gate)", (): void => {
     expect(canGroupMultiSelection(threeLeafTree(), new Set<string>(["a", "b", "c"]))).toBe(true);
   });
 
-  it("is false when the anchor is already a group member (groupLeaves would be a no-op)", (): void => {
-    // Group {b, a} first (anchor b), then try to make b the anchor of a new
-    // group — `groupLeaves` aborts (b is no longer a placeable slot), so the
-    // selection is reported NOT groupable rather than offering an inert button.
+  it("is TRUE when a selected group member can flatten with a loose pane", (): void => {
+    // Group {b, a} first (host b → group-b), then select that group's member `b`
+    // plus the loose `c`: under the flatten rework this dissolves group-b and
+    // folds {b, a, c} into one flat group — a real change, so it is groupable.
     const grouped: DynamicLayoutNode = groupLeaves(threeLeafTree(), ["b", "a"]);
-    expect(canGroupMultiSelection(grouped, new Set<string>(["b", "c"]))).toBe(false);
+    expect(canGroupMultiSelection(grouped, new Set<string>(["b", "c"]))).toBe(true);
   });
 
   it("is false when selected ids do not resolve to ≥2 real leaves", (): void => {
@@ -175,6 +177,18 @@ describe("resolveMultiSelectGroupCommand (reuse the existing group-leaves op)", 
       new Set<string>(["c", "a", "b"]),
     );
     expect(command).toEqual({ kind: "group-leaves", leafIds: ["c", "a", "b"] });
+  });
+
+  it("threads an explicit host through as the group-leaves hostLeafId", (): void => {
+    const command: TilingCommand | null = resolveMultiSelectGroupCommand(
+      new Set<string>(["c", "a", "b"]),
+      "b",
+    );
+    expect(command).toEqual({
+      kind: "group-leaves",
+      leafIds: ["c", "a", "b"],
+      hostLeafId: "b",
+    });
   });
 
   it("the emitted command actually groups via the reused groupLeaves op", (): void => {
@@ -245,5 +259,145 @@ describe("resolveMultiSelectGroupCommand (reuse the existing group-leaves op)", 
     const outerIds: ReadonlyArray<string> = readLeafNodeIds(grouped);
     expect(outerIds.slice().sort()).toEqual(["a", "c"]);
     expect(pruneMultiSelection(new Set<string>(["a", "b"]), outerIds)).toEqual(new Set<string>(["a"]));
+  });
+});
+
+describe("resolveMultiSelectGroupHost (host slot for the merged group)", (): void => {
+  it("returns null for an empty selection (nothing to host)", (): void => {
+    expect(resolveMultiSelectGroupHost(new Set<string>(), null, null)).toBeNull();
+    expect(resolveMultiSelectGroupHost(new Set<string>(), "a", "a")).toBeNull();
+  });
+
+  it("the clicked pane (in selection) wins — the header Group button path", (): void => {
+    // Even when a DIFFERENT pane is focused, the clicked pane is the host.
+    expect(
+      resolveMultiSelectGroupHost(new Set<string>(["a", "b", "c"]), "c", "a"),
+    ).toBe("c");
+  });
+
+  it("Alt+G (no click) hosts the focused pane WHEN it is in the selection", (): void => {
+    expect(
+      resolveMultiSelectGroupHost(new Set<string>(["a", "b", "c"]), null, "b"),
+    ).toBe("b");
+  });
+
+  it("Alt+G (no click) falls back to the first-selected when focus is not in the selection", (): void => {
+    expect(
+      resolveMultiSelectGroupHost(new Set<string>(["b", "a", "c"]), null, "z"),
+    ).toBe("b");
+    expect(
+      resolveMultiSelectGroupHost(new Set<string>(["b", "a", "c"]), null, null),
+    ).toBe("b");
+  });
+
+  it("ignores a clicked id that is not in the selection (falls through)", (): void => {
+    expect(
+      resolveMultiSelectGroupHost(new Set<string>(["a", "b"]), "ghost", "b"),
+    ).toBe("b");
+  });
+});
+
+describe("groupLeaves flatten rework (any combination → ONE flat group at the host slot)", (): void => {
+  // A homepage layout where `features` + `model` already form a group and the
+  // rest are loose, to exercise group-touching flattens with a known shape.
+  function withFeaturesModelGroup(): DynamicLayoutNode {
+    return groupLeaves(homepageTree(), ["features", "model"], { hostLeafId: "features" });
+  }
+
+  it("loose+loose: folds two loose panes into one flat group at the clicked host slot", (): void => {
+    const next: DynamicLayoutNode = groupLeaves(homepageTree(), ["features", "install"], {
+      hostLeafId: "install",
+    });
+    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(next);
+    expect(groups.length).toBe(1);
+    // Host `install` is first (active) then the remaining selection.
+    expect(groups[0].members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+      "install",
+      "features",
+    ]);
+    expect(groups[0].activeMemberId).toBe("install");
+    // The merged group occupies the host (`install`) slot id.
+    expect(groups[0].id).toBe("group-install");
+    expect(isStructurallyValidLayout(next)).toBe(true);
+  });
+
+  it("loose+group: selecting any one member pulls in the WHOLE group, flattened with the loose pane", (): void => {
+    const base: DynamicLayoutNode = withFeaturesModelGroup();
+    // Select the loose `install` (host) plus ONE member (`features`) of the group.
+    const next: DynamicLayoutNode = groupLeaves(base, ["install", "features"], {
+      hostLeafId: "install",
+    });
+    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(next);
+    expect(groups.length).toBe(1);
+    // Host first, then the loose-host has no group-mates, then the touched
+    // group's FULL membership (features, model) in existing order.
+    expect(groups[0].members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+      "install",
+      "features",
+      "model",
+    ]);
+    expect(findGroupContainingLeaf(next, "model")?.id).toBe("group-install");
+    expect(isStructurallyValidLayout(next)).toBe(true);
+  });
+
+  it("member-of-group host: hosts at the dissolved group's slot, host first then its mates", (): void => {
+    const base: DynamicLayoutNode = withFeaturesModelGroup();
+    // Host is `features`, itself a member of group-features-model; add loose `install`.
+    const next: DynamicLayoutNode = groupLeaves(base, ["features", "install"], {
+      hostLeafId: "features",
+    });
+    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(next);
+    expect(groups.length).toBe(1);
+    // Host `features` first, then its (now-dissolved) group-mate `model`, then `install`.
+    expect(groups[0].members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+      "features",
+      "model",
+      "install",
+    ]);
+    expect(groups[0].activeMemberId).toBe("features");
+    expect(isStructurallyValidLayout(next)).toBe(true);
+  });
+
+  it("group+group: dissolves BOTH groups into one flat group (no nesting)", (): void => {
+    // First group {features, model}; then group {intro, usecases}.
+    let base: DynamicLayoutNode = groupLeaves(homepageTree(), ["features", "model"], {
+      hostLeafId: "features",
+    });
+    base = groupLeaves(base, ["intro", "usecases"], { hostLeafId: "intro" });
+    expect(collectGroups(base).length).toBe(2);
+    // Select one member of EACH group; host = features.
+    const next: DynamicLayoutNode = groupLeaves(base, ["features", "intro"], {
+      hostLeafId: "features",
+    });
+    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(next);
+    expect(groups.length).toBe(1);
+    expect(groups[0].members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+      "features",
+      "model",
+      "intro",
+      "usecases",
+    ]);
+    // No nested group: every member resolves to a real leaf, none to a group.
+    for (const member of groups[0].members) {
+      expect(findLeafById(next, member.id)?.kind).toBe("leaf");
+    }
+    expect(isStructurallyValidLayout(next)).toBe(true);
+  });
+
+  it("host slot follows the clicked pane: a different click changes the host/active tab", (): void => {
+    const hostFeatures: DynamicLayoutNode = groupLeaves(
+      homepageTree(),
+      ["features", "install"],
+      { hostLeafId: "features" },
+    );
+    const hostInstall: DynamicLayoutNode = groupLeaves(
+      homepageTree(),
+      ["features", "install"],
+      { hostLeafId: "install" },
+    );
+    expect(collectGroups(hostFeatures)[0].activeMemberId).toBe("features");
+    expect(collectGroups(hostFeatures)[0].members[0].id).toBe("features");
+    expect(collectGroups(hostInstall)[0].activeMemberId).toBe("install");
+    expect(collectGroups(hostInstall)[0].members[0].id).toBe("install");
   });
 });

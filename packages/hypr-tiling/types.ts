@@ -473,7 +473,10 @@ export type TilingCommand =
   | { kind: "cycle-master-orientation"; splitId?: string }
   | { kind: "adjust-master-ratio"; splitId?: string; delta: number }
   // grouping / tabbed-stacking (HT-GROUP-TABBED-STACKING).
-  | { kind: "group-leaves"; leafIds: ReadonlyArray<string> }
+  // `hostLeafId` (the clicked pane for the header Group button, or the resolved
+  // host for Alt+G) is the slot the merged flat group occupies and the active
+  // tab; omitted → the first resolvable id in `leafIds`.
+  | { kind: "group-leaves"; leafIds: ReadonlyArray<string>; hostLeafId?: string }
   // toggle: if the focused leaf is in a group → ungroup it; else group the
   // focused leaf with its reading-order neighbor. `leafId` omitted → focused.
   | { kind: "toggle-group"; leafId?: string }
@@ -580,16 +583,18 @@ export interface TilingPaneSwitchingCapability {
    */
   tabDoubleClickMaximize?: boolean;
   /**
-   * Cmd/Ctrl+click a pane HEADER to toggle that pane into a multi-selection set,
-   * then group the selected panes into one tabbed group via the existing
-   * `group-leaves` command. Default `true`. A plain (no-modifier) header click
-   * keeps its normal focus/drag-pickup behavior; only `metaKey` (macOS) /
-   * `ctrlKey` (Windows/Linux) presses participate in multi-selection. When `≥2`
+   * Alt/Opt+click a pane HEADER to toggle that pane into a multi-selection set,
+   * then group the selected panes into one flat tabbed group via the existing
+   * `group-leaves` command (the same chord family as the `Alt+G` group key).
+   * Default `true`. A plain (no-modifier) header click keeps its normal
+   * focus/drag-pickup behavior; only `altKey` (Opt on macOS, Alt on
+   * Windows/Linux) presses participate in multi-selection. When `≥2`
    * groupable panes are selected, a "Group" control appears in each selected
-   * pane's header; clicking it dispatches `group-leaves` and clears the
-   * selection. The selection also clears on Escape, on a drag pickup, and on a
-   * plain click that establishes a single focus. When `false`, Cmd/Ctrl+click and
-   * the Group control are no-ops. The grouping itself is independently gated by
+   * pane's header; clicking it dispatches `group-leaves` (the clicked pane is the
+   * host slot) and clears the selection. The selection also clears on Escape, on
+   * a drag pickup, and on a plain click that establishes a single focus. When
+   * `false`, Alt/Opt+click and the Group control are no-ops. The grouping itself
+   * is independently gated by
    * the `grouping` capability — with grouping disabled the Group control is
    * suppressed (the multi-select dispatch is a safe no-op).
    */
@@ -1150,7 +1155,7 @@ export interface DynamicRenderTileArgs {
    */
   onFocus: (event?: React.SyntheticEvent<HTMLElement>) => void;
   /**
-   * Whether the Cmd/Ctrl+click header multi-selection feature is live
+   * Whether the Alt/Opt+click header multi-selection feature is live
    * (`paneSwitching.multiSelectGrouping` AND the `grouping` capability). When
    * `false`, the header click handler must treat a modified click as a plain
    * click and never render the Group control.
@@ -1160,22 +1165,25 @@ export interface DynamicRenderTileArgs {
   isMultiSelected: boolean;
   /**
    * Whether the current multi-selection (`≥2` panes) can be folded into one
-   * group right now — i.e. `group-leaves` would change the layout under the
-   * existing grouping constraint (the anchor pane must be a placeable slot, not
-   * already a group member). Drives whether the Group control is offered on the
-   * selected panes; `false` hides it rather than offering a no-op.
+   * flat group right now — i.e. `group-leaves` would change the layout. Any mix
+   * of loose panes and/or existing-group members flattens into ONE group (groups
+   * the selection touches are dissolved and their members folded in). Drives
+   * whether the Group control is offered; `false` hides it rather than offering a
+   * no-op (e.g. the selection is already exactly one group).
    */
   canGroupMultiSelection: boolean;
   /**
-   * Toggle THIS pane in/out of the multi-selection set. Wire to a
-   * Cmd/Ctrl+click on the pane header. Does not change focus.
+   * Toggle THIS pane in/out of the multi-selection set. Wire to an
+   * Alt/Opt+click on the pane header. Does not change focus.
    */
   onToggleMultiSelect: () => void;
   /**
-   * Group the currently multi-selected panes into one tabbed group via the
-   * `group-leaves` command, then clear the selection. Wire to the Group control.
+   * Group the current multi-selection into ONE flat tabbed group occupying the
+   * CLICKED pane's slot (pass this pane's `leafId`), then clear the selection.
+   * The clicked pane becomes the host (active tab); any existing group in the
+   * selection is dissolved and folded in. Wire to the Group control.
    */
-  onGroupMultiSelection: () => void;
+  onGroupMultiSelection: (clickedLeafId: string) => void;
   /**
    * Pointer-Events drag pickup on the pane's drag handle (the title-bar grip).
    * Wire this to the handle's `onPointerDown`; the renderer arms the drag FSM,

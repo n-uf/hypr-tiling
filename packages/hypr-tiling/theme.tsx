@@ -106,7 +106,7 @@ export interface TilingThemePaneHeaderTokens {
   /** Active/pressed header control button. */
   readonly controlActive: string;
   /**
-   * Additive header classes when the pane is part of the Cmd/Ctrl+click
+   * Additive header classes when the pane is part of the Alt/Opt+click
    * multi-selection set. Deliberately NEUTRAL (no accent) so it never collides
    * with the accent focus frame — multi-selection and focus are orthogonal
    * states a pane can hold simultaneously.

@@ -291,7 +291,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     );
   });
 
-  it("defaults multiSelectGrouping to true (Cmd/Ctrl+click header multi-select on out of the box)", (): void => {
+  it("defaults multiSelectGrouping to true (Alt/Opt+click header multi-select on out of the box)", (): void => {
     expect(resolveInteractionCapabilities(undefined).paneSwitching.multiSelectGrouping).toBe(true);
     expect(resolveInteractionCapabilities({}).paneSwitching.multiSelectGrouping).toBe(true);
   });
