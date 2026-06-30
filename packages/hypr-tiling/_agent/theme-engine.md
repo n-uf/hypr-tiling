@@ -40,12 +40,13 @@ TilingTheme
 │   ├── surface                    # pane article: bg/gradient, radius, shadow/rim, backdrop-filter
 │   ├── bodyText                   # pane body scroll region typography + color
 │   ├── subtitleText               # pane subtitle color
-│   ├── dropEligibleRing           # faint dashed candidate ring
-│   ├── invalidDropRing            # invalid drop-target ring
+│   ├── invalidDropRing            # invalid drop-target ring (rose error color)
 │   └── dragSourceOpacity          # picked-up source pane opacity
-│   # NOTE: hover-target / resolved-target rings were REMOVED — focus follows the
-│   # dragged pane (ghost + seat wear resolveFocusFrame); the destination is
-│   # conveyed by the ghost hop-in, so no separate focus-color target ring.
+│   # NOTE: hover-target / resolved-target rings AND the faint dashed
+│   # drop-eligibility hint were ALL removed — during a drag the sole affordance
+│   # is the dragged pane (its ghost + the seat it hops into wear
+│   # resolveFocusFrame); the destination is conveyed by the ghost hop-in, so no
+│   # other pane is highlighted. Only the rose invalidDropRing remains.
 │   # See resolvePaneDropAffordanceClasses() + resolveDragCommitFocusLeafId().
 ├── paneHeader                     TilingThemePaneHeaderTokens
 │   ├── base                       # resting header bar: border-b, bg, inset sheen
@@ -125,7 +126,7 @@ through the `renderBranch` `useCallback` deps.
 | Surface (former inline class string)            | Now reads                          |
 |---|---|
 | Pane article shell                              | `theme.paneShell.surface` + `resolvePaneAccentSurface` |
-| Pane drop/eligibility/invalid rings + opacity   | `theme.paneShell.drop*Ring` / `dragSourceOpacity` |
+| Pane invalid-drop ring + drag-source opacity    | `theme.paneShell.invalidDropRing` / `dragSourceOpacity` |
 | Pane focus frame (`border-2 ring-2` + glow)     | `theme.resolveFocusFrame(accent)`  |
 | Pane header (resting + focused) + controls      | `theme.paneHeader.{base,focused,controlIdle,controlActive}` |
 | Pane title / subtitle / body text               | `resolveAccentText` / `paneShell.subtitleText` / `paneShell.bodyText` |

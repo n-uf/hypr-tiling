@@ -87,8 +87,6 @@ export interface TilingThemePaneShellTokens {
   readonly bodyText: string;
   /** Pane subtitle text color. */
   readonly subtitleText: string;
-  /** Faint dashed ring when a pane is a drop-eligible candidate. */
-  readonly dropEligibleRing: string;
   /** Ring on an invalid drop target. */
   readonly invalidDropRing: string;
   /** Opacity applied to the drag-source pane while it is picked up. */
@@ -372,25 +370,22 @@ export interface PaneDropAffordanceFlags {
 /**
  * The drop-affordance ring classes a pane shell wears during a drag.
  *
- * Per the focus-follows-dragged-pane rule: the hover-target and the resolved
- * drop-target NO LONGER receive a ring. Their old highlight reused the accent
- * focus color, so it collided with the focused-pane frame; during a drag the
- * SOLE focus affordance now belongs to the dragged pane (its ghost + the seat
- * the ghost hops into), and the destination is conveyed by that hop-in — so a
- * separate target ring is redundant. `isHoveringDropCandidate` / `isDropTarget`
- * are accepted (the shell still computes them) but deliberately paint nothing.
+ * Per the focus-follows-dragged-pane rule: during a drag the SOLE affordance
+ * belongs to the dragged pane (its ghost + the seat the ghost hops into, both
+ * wearing the focus frame), and the destination is conveyed by that hop-in. So
+ * no other pane is highlighted: `isDropEligible`, `isHoveringDropCandidate`, and
+ * `isDropTarget` are accepted (the shell still computes them) but deliberately
+ * paint nothing. The faint dashed eligibility hint that used to mark every
+ * candidate re-introduced a focus-like highlight on other panes and was removed.
  *
- * Retained, because neither reuses the focus color: the faint DASHED eligibility
- * hint on every candidate, and the rose INVALID-drop ring (an error color).
+ * Retained, because it never reuses the focus color: the rose INVALID-drop ring
+ * (an error color, semantically distinct).
  */
 export function resolvePaneDropAffordanceClasses(
   theme: TilingTheme,
   flags: PaneDropAffordanceFlags,
 ): string {
-  return cn(
-    flags.isDropEligible ? theme.paneShell.dropEligibleRing : "",
-    flags.isInvalidDrop ? theme.paneShell.invalidDropRing : "",
-  );
+  return cn(flags.isInvalidDrop ? theme.paneShell.invalidDropRing : "");
 }
 
 /**
@@ -417,7 +412,6 @@ const NEON_TERMINAL_THEME: TilingTheme = {
     bodyText:
       "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-1.5 font-mono text-[11px] leading-5 text-slate-200",
     subtitleText: "text-slate-400",
-    dropEligibleRing: "ring-1 ring-dashed ring-cyan-300/25",
     invalidDropRing: "ring-2 ring-rose-300/60",
     dragSourceOpacity: "opacity-70",
   },
@@ -507,7 +501,6 @@ const CLEAN_FLAT_THEME: TilingTheme = {
     bodyText:
       "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-1.5 font-mono text-[11px] leading-5 text-slate-300",
     subtitleText: "text-slate-500",
-    dropEligibleRing: "ring-1 ring-dashed ring-slate-400/30",
     invalidDropRing: "ring-2 ring-rose-400/60",
     dragSourceOpacity: "opacity-60",
   },
@@ -593,7 +586,6 @@ const MOSAIC_THEME: TilingTheme = {
     bodyText:
       "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 text-[13px] leading-6 text-stone-300",
     subtitleText: "text-stone-500",
-    dropEligibleRing: "ring-1 ring-dashed ring-amber-300/25",
     invalidDropRing: "ring-2 ring-rose-300/55",
     dragSourceOpacity: "opacity-60",
   },

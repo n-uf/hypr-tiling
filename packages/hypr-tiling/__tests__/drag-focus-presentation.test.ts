@@ -22,8 +22,10 @@ import type { DynamicDragPaneSnapshot, DynamicTile } from "../types";
 /**
  * Drag-visuals contract after the focus-follows-dragged-pane change:
  *
- * 1. The drop TARGET / hover-target pane no longer wears the accent focus-color
- *    ring (`resolvePaneDropAffordanceClasses` returns nothing for those states).
+ * 1. No non-source pane wears a drag ring: the drop TARGET / hover-target / and
+ *    the drop-eligible candidate all paint nothing (the faint dashed eligibility
+ *    hint was removed too) — `resolvePaneDropAffordanceClasses` returns "" for
+ *    every state except an invalid drop (the rose error ring).
  * 2. The dragged ghost (`renderDragPaneShell`) AND the seat it hops into
  *    (`DragSourceSlotReservation`) both wear the focus frame, so the single
  *    focus affordance travels with the dragged pane.
@@ -73,7 +75,7 @@ function makeResolvedTarget(
 
 const NEON: TilingTheme = TILING_THEME_REGISTRY["neon-terminal"];
 
-describe("drop-affordance rings — hover-target / drop-target no longer reuse the focus color", (): void => {
+describe("drop-affordance rings — eligible / hover-target / drop-target paint nothing; only invalid drops ring", (): void => {
   it("renders NOTHING for a resolved drop target (no accent focus-color ring)", (): void => {
     const flags: PaneDropAffordanceFlags = {
       isDropEligible: false,
@@ -88,7 +90,7 @@ describe("drop-affordance rings — hover-target / drop-target no longer reuse t
     expect(classes).not.toContain(accentHue("cyan").focusRing);
   });
 
-  it("keeps the faint dashed eligibility hint on a candidate (non-focus, dashed)", (): void => {
+  it("renders NOTHING for a drop-eligible candidate (the dashed accent hint was removed)", (): void => {
     const flags: PaneDropAffordanceFlags = {
       isDropEligible: true,
       isHoveringDropCandidate: false,
@@ -96,8 +98,9 @@ describe("drop-affordance rings — hover-target / drop-target no longer reuse t
       isInvalidDrop: false,
     };
     const classes: string = resolvePaneDropAffordanceClasses(NEON, flags);
-    // The dashed eligibility hint's accent ring is present (non-focus, faint).
-    expect(classes).toContain("ring-cyan-300/25");
+    // No eligibility ring at all — the sole drag affordance is the dragged pane.
+    expect(classes).toBe("");
+    expect(classes).not.toContain("ring-cyan-300/25");
     expect(classes).not.toContain(accentHue("cyan").focusBorder);
   });
 
@@ -113,7 +116,7 @@ describe("drop-affordance rings — hover-target / drop-target no longer reuse t
     expect(classes).toContain("rose");
   });
 
-  it("an eligible candidate that is also the hover/drop target shows ONLY the dashed hint", (): void => {
+  it("an eligible candidate that is also the hover/drop target (but valid) paints nothing", (): void => {
     const flags: PaneDropAffordanceFlags = {
       isDropEligible: true,
       isHoveringDropCandidate: true,
@@ -121,10 +124,38 @@ describe("drop-affordance rings — hover-target / drop-target no longer reuse t
       isInvalidDrop: false,
     };
     const classes: string = resolvePaneDropAffordanceClasses(NEON, flags);
-    // Only the faint candidate hint — no resolved-target focus-color ring.
-    expect(classes).toContain("ring-cyan-300/25");
+    // No eligibility hint and no resolved-target focus-color ring — only an
+    // invalid drop would paint (the rose error ring), and this one is valid.
+    expect(classes).toBe("");
+    expect(classes).not.toContain("ring-cyan-300/25");
     expect(classes).not.toContain(accentHue("cyan").focusBorder);
     expect(classes).not.toContain("ring-cyan-300/60");
+  });
+
+  it("the drop-eligible ring is gone across ALL built-in themes", (): void => {
+    const eligibleOnly: PaneDropAffordanceFlags = {
+      isDropEligible: true,
+      isHoveringDropCandidate: false,
+      isDropTarget: false,
+      isInvalidDrop: false,
+    };
+    for (const theme of Object.values(TILING_THEME_REGISTRY)) {
+      expect(resolvePaneDropAffordanceClasses(theme, eligibleOnly)).toBe("");
+    }
+  });
+
+  it("the invalid-drop ring is still painted across ALL built-in themes", (): void => {
+    const invalidOnly: PaneDropAffordanceFlags = {
+      isDropEligible: true,
+      isHoveringDropCandidate: true,
+      isDropTarget: true,
+      isInvalidDrop: true,
+    };
+    for (const theme of Object.values(TILING_THEME_REGISTRY)) {
+      expect(resolvePaneDropAffordanceClasses(theme, invalidOnly)).toBe(
+        theme.paneShell.invalidDropRing,
+      );
+    }
   });
 });
 
