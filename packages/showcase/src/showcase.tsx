@@ -32,7 +32,7 @@ import {
   type TilingCommandHandle,
   type TilingObservabilityLedgerEntry,
   type TilingThemeId,
-} from "hypr-tiling";
+} from "@n-uf/hypr-tiling";
 import * as React from "react";
 import {
   resolveShowcasePaneContent,

@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "hypr-tiling": resolve(__dirname, "../../packages/hypr-tiling/index.ts"),
+      "@n-uf/hypr-tiling": resolve(__dirname, "../../packages/hypr-tiling/index.ts"),
       "hypr-tiling-showcase": resolve(__dirname, "../../packages/showcase/src/index.ts"),
     },
   },

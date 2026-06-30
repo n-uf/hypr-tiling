@@ -5,7 +5,7 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "hypr-tiling": ["../hypr-tiling/index.ts"]
+      "@n-uf/hypr-tiling": ["../hypr-tiling/index.ts"]
     },
     "jsx": "react-jsx",
     "strict": true,

@@ -19,7 +19,7 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --clean --external react --external react-dom --external hypr-tiling",
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean --external react --external react-dom --external @n-uf/hypr-tiling",
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
