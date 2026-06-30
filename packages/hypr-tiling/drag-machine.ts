@@ -339,6 +339,45 @@ export function resolveDragGhostSeatLeafId(
 }
 
 /**
+ * The leaf id the dragged pane's CONTENT occupies AFTER a commit — the leaf the
+ * renderer focuses so focus follows the dragged pane through the drop (the
+ * dragged pane ends the gesture already focused). This differs from the
+ * ghost-SEAT leaf for `group-merge`, so it is a distinct resolver:
+ *
+ * - `swap` (`swapLeafTiles` swaps tileIds IN PLACE) → the dragged content lands
+ *   on the RESOLVED TARGET leaf; the source leaf now carries the displaced
+ *   target content. Focus the TARGET leaf.
+ * - `edge-insert` (`insertLeafAdjacent` moves the source leaf, still carrying its
+ *   content) → focus the SOURCE leaf (committable edge only; a non-committable
+ *   edge gap-closes, so there is nothing to focus → null).
+ * - `group-merge` (`addLeafToGroup` moves the source leaf into the group, keeping
+ *   its id + content) → focus the SOURCE leaf (NOT the target/group seat).
+ * - no / self / non-committable target (`removeLeafTile` gap-closes the source)
+ *   → `null`: there is no committed slot, so focus is left untouched.
+ */
+export function resolveDragCommitFocusLeafId(
+  sourceLeafId: string | null,
+  resolvedTarget: DragResolvedTarget | null,
+): string | null {
+  if (sourceLeafId == null) {
+    return null;
+  }
+  if (resolvedTarget == null || resolvedTarget.leafId === sourceLeafId) {
+    return null;
+  }
+  if (resolvedTarget.action === "swap") {
+    return resolvedTarget.leafId;
+  }
+  if (resolvedTarget.action === "group-merge") {
+    return sourceLeafId;
+  }
+  if (resolvedTarget.action === "edge-insert") {
+    return resolveCommitEdgeZone(resolvedTarget) == null ? null : sourceLeafId;
+  }
+  return null;
+}
+
+/**
  * Single-instance gate. In live mode the picked-up source leaf only appears in
  * the candidate tree when a committable target is resolved (`swap` /
  * `edge-insert`) — `deriveCandidateTree` gap-closes it (`removeLeafTile`)

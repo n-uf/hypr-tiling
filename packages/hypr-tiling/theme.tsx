@@ -89,10 +89,6 @@ export interface TilingThemePaneShellTokens {
   readonly subtitleText: string;
   /** Faint dashed ring when a pane is a drop-eligible candidate. */
   readonly dropEligibleRing: string;
-  /** Ring when the pointer hovers a drop candidate. */
-  readonly dropHoverRing: string;
-  /** Ring on the active drop target. */
-  readonly dropTargetRing: string;
   /** Ring on an invalid drop target. */
   readonly invalidDropRing: string;
   /** Opacity applied to the drag-source pane while it is picked up. */
@@ -361,6 +357,42 @@ export function accentHue(accent: DynamicTileAccent | undefined): TilingAccentHu
   return TILING_ACCENT_HUES[accent ?? DEFAULT_TILE_ACCENT];
 }
 
+/** Per-pane drag-affordance state the pane shell composes ring chrome from. */
+export interface PaneDropAffordanceFlags {
+  /** This pane is a drop-eligible candidate (any pane but the drag source). */
+  readonly isDropEligible: boolean;
+  /** The pointer is currently over this pane (the hover-target). */
+  readonly isHoveringDropCandidate: boolean;
+  /** This pane is the resolved, committable drop target. */
+  readonly isDropTarget: boolean;
+  /** This pane is an invalid drop target (e.g. the same-tile self-drop). */
+  readonly isInvalidDrop: boolean;
+}
+
+/**
+ * The drop-affordance ring classes a pane shell wears during a drag.
+ *
+ * Per the focus-follows-dragged-pane rule: the hover-target and the resolved
+ * drop-target NO LONGER receive a ring. Their old highlight reused the accent
+ * focus color, so it collided with the focused-pane frame; during a drag the
+ * SOLE focus affordance now belongs to the dragged pane (its ghost + the seat
+ * the ghost hops into), and the destination is conveyed by that hop-in — so a
+ * separate target ring is redundant. `isHoveringDropCandidate` / `isDropTarget`
+ * are accepted (the shell still computes them) but deliberately paint nothing.
+ *
+ * Retained, because neither reuses the focus color: the faint DASHED eligibility
+ * hint on every candidate, and the rose INVALID-drop ring (an error color).
+ */
+export function resolvePaneDropAffordanceClasses(
+  theme: TilingTheme,
+  flags: PaneDropAffordanceFlags,
+): string {
+  return cn(
+    flags.isDropEligible ? theme.paneShell.dropEligibleRing : "",
+    flags.isInvalidDrop ? theme.paneShell.invalidDropRing : "",
+  );
+}
+
 /**
  * Built-in theme: NEON-TERMINAL — the neon-terminal direction, REFINED and
  * dialed back from the original heavy look. Calmer glass (blur `xl`→`md`,
@@ -386,8 +418,6 @@ const NEON_TERMINAL_THEME: TilingTheme = {
       "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-1.5 font-mono text-[11px] leading-5 text-slate-200",
     subtitleText: "text-slate-400",
     dropEligibleRing: "ring-1 ring-dashed ring-cyan-300/25",
-    dropHoverRing: "ring-1 ring-cyan-200/40",
-    dropTargetRing: "ring-2 ring-cyan-300/60",
     invalidDropRing: "ring-2 ring-rose-300/60",
     dragSourceOpacity: "opacity-70",
   },
@@ -478,8 +508,6 @@ const CLEAN_FLAT_THEME: TilingTheme = {
       "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-1.5 font-mono text-[11px] leading-5 text-slate-300",
     subtitleText: "text-slate-500",
     dropEligibleRing: "ring-1 ring-dashed ring-slate-400/30",
-    dropHoverRing: "ring-1 ring-slate-300/50",
-    dropTargetRing: "ring-2 ring-slate-200/60",
     invalidDropRing: "ring-2 ring-rose-400/60",
     dragSourceOpacity: "opacity-60",
   },
@@ -566,8 +594,6 @@ const MOSAIC_THEME: TilingTheme = {
       "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 text-[13px] leading-6 text-stone-300",
     subtitleText: "text-stone-500",
     dropEligibleRing: "ring-1 ring-dashed ring-amber-300/25",
-    dropHoverRing: "ring-1 ring-amber-200/45",
-    dropTargetRing: "ring-2 ring-amber-300/55",
     invalidDropRing: "ring-2 ring-rose-300/55",
     dragSourceOpacity: "opacity-60",
   },

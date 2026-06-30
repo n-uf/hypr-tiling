@@ -7,6 +7,7 @@ import {
   DYNAMIC_TILE_ACCENT_SWATCHES,
   TILING_THEMES,
   TilingThemeProvider,
+  resolvePaneDropAffordanceClasses,
   resolveTilingTheme,
   useTilingTheme,
   type TilingTheme,
@@ -37,6 +38,7 @@ import {
   hasCrossedPickupThreshold,
   isCommittableTarget,
   previousZoneSeed,
+  resolveDragCommitFocusLeafId,
   resolveDragGhostSeatLeafId,
   resolveTouchArmedMove,
   shouldReresolveSeatedTarget,
@@ -872,7 +874,7 @@ export function buildDragPaneSnapshot(
   };
 }
 
-function renderDragPaneShell(
+export function renderDragPaneShell(
   snapshot: DynamicDragPaneSnapshot,
   theme: TilingTheme,
   isPaneContentVisible: boolean,
@@ -893,6 +895,11 @@ function renderDragPaneShell(
         // (position:fixed), so any backdrop-filter here never contains it.
         theme.ghost.surface,
         theme.resolvePaneAccentSurface(snapshot.accent),
+        // Focus follows the dragged pane: the floating ghost wears the SAME
+        // focus frame the focused pane wears at rest, so the single focus
+        // affordance travels with the pane being dragged (and the pane ends the
+        // drop already focused).
+        theme.resolveFocusFrame(snapshot.accent),
       )}
       aria-hidden
     >
@@ -957,17 +964,29 @@ function renderDragPaneShell(
  * the measurement hooks the seat-rect effect reads. NO title / rows here, so the
  * source content (the single-instance invariant) lives only in the ghost.
  */
-function DragSourceSlotReservation({
+export function DragSourceSlotReservation({
+  theme,
+  accent,
   observabilityColors,
   observabilityColorEnables,
 }: {
+  theme: TilingTheme;
+  accent: DynamicTileAccent | undefined;
   observabilityColors: DynamicObservabilityColorConfig;
   observabilityColorEnables: DynamicObservabilityColorEnableConfig;
 }): React.ReactElement | null {
+  // The seat the single ghost hops into is the dragged pane's landing slot, so
+  // it wears the SAME focus frame the ghost carries (accent = the DRAGGED pane's
+  // accent). Focus thus reads as already living at the destination during the
+  // brief hop-in flight, before the ghost fully covers the seat.
+  const seatFocusFrame: string = theme.resolveFocusFrame(accent);
   if (!observabilityColorEnables.dragSourceBorderEnabled) {
     return (
       <div
-        className="h-full min-h-0 w-full min-w-0 overflow-hidden rounded-xl"
+        className={cn(
+          "h-full min-h-0 w-full min-w-0 overflow-hidden rounded-xl",
+          seatFocusFrame,
+        )}
         data-drag-source-reservation
         aria-hidden
       />
@@ -980,7 +999,10 @@ function DragSourceSlotReservation({
   );
   return (
     <div
-      className="h-full min-h-0 w-full min-w-0 overflow-hidden rounded-xl"
+      className={cn(
+        "h-full min-h-0 w-full min-w-0 overflow-hidden rounded-xl",
+        seatFocusFrame,
+      )}
       style={{ backgroundColor: slotFillColor }}
       data-drag-source-reservation
       aria-hidden
@@ -2066,10 +2088,17 @@ function DefaultDynamicTile({
         // descendant), so this never reintroduces drift.
         theme.paneShell.surface,
         theme.resolvePaneAccentSurface(tile.accent),
-        isDropEligible ? theme.paneShell.dropEligibleRing : "",
-        isHoveringDropCandidate ? theme.paneShell.dropHoverRing : "",
-        isDropTarget ? theme.paneShell.dropTargetRing : "",
-        isInvalidDrop ? theme.paneShell.invalidDropRing : "",
+        // Drop-affordance rings. The hover-target / resolved-target highlight
+        // (which reused the accent focus color) is intentionally GONE — during a
+        // drag the only focus affordance is the dragged ghost + its seat, and the
+        // destination is shown by the ghost hop-in. Only the faint dashed
+        // eligibility hint and the rose invalid-drop ring remain.
+        resolvePaneDropAffordanceClasses(theme, {
+          isDropEligible,
+          isHoveringDropCandidate,
+          isDropTarget,
+          isInvalidDrop,
+        }),
         isDragSource ? theme.paneShell.dragSourceOpacity : "",
         isDragSource && observabilityColorEnables.dragSourceBorderEnabled
           ? "border"
@@ -6329,6 +6358,18 @@ export const DynamicTilingRenderer = React.forwardRef<
     // frame (no release-time jump).
     if (committedTree != null && isStructurallyValidLayout(committedTree)) {
       onLayoutChange(committedTree);
+      // Focus follows the dragged pane through the drop: focus the leaf the
+      // dragged content now occupies (the resolved target for a swap, the source
+      // leaf for an edge-insert / group-merge). The dragged pane therefore ends
+      // the gesture as the focused pane — the natural continuation of the ghost
+      // having carried the focus frame during the drag.
+      const committedFocusLeafId: string | null = resolveDragCommitFocusLeafId(
+        dragState.sourceLeafId,
+        dragState.resolvedTarget,
+      );
+      if (committedFocusLeafId != null) {
+        setFocusedLeaf(committedFocusLeafId);
+      }
     } else if (dragSnapshotRef.current != null) {
       beginCancelFlyBackAnimation({
         sourceLeafId: dragState.sourceLeafId,
@@ -6353,6 +6394,7 @@ export const DynamicTilingRenderer = React.forwardRef<
     layout,
     onLayoutChange,
     onLiveHitLogChange,
+    setFocusedLeaf,
     stripSurvivorTransientStyles,
   ]);
 
@@ -6844,6 +6886,8 @@ export const DynamicTilingRenderer = React.forwardRef<
           >
             {renderReservedDragSlot ? (
               <DragSourceSlotReservation
+                theme={theme}
+                accent={dragSnapshotRef.current?.accent ?? tileForDisplay.accent}
                 observabilityColors={observabilityColors}
                 observabilityColorEnables={observabilityColorEnables}
               />

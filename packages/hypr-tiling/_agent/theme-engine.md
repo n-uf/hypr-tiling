@@ -41,10 +41,12 @@ TilingTheme
 │   ├── bodyText                   # pane body scroll region typography + color
 │   ├── subtitleText               # pane subtitle color
 │   ├── dropEligibleRing           # faint dashed candidate ring
-│   ├── dropHoverRing              # pointer-over-candidate ring
-│   ├── dropTargetRing             # active drop-target ring
 │   ├── invalidDropRing            # invalid drop-target ring
 │   └── dragSourceOpacity          # picked-up source pane opacity
+│   # NOTE: hover-target / resolved-target rings were REMOVED — focus follows the
+│   # dragged pane (ghost + seat wear resolveFocusFrame); the destination is
+│   # conveyed by the ghost hop-in, so no separate focus-color target ring.
+│   # See resolvePaneDropAffordanceClasses() + resolveDragCommitFocusLeafId().
 ├── paneHeader                     TilingThemePaneHeaderTokens
 │   ├── base                       # resting header bar: border-b, bg, inset sheen
 │   ├── focused                    # additive classes when the pane is focused
