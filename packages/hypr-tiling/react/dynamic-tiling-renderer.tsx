@@ -55,7 +55,6 @@ import {
   type TouchArmedMoveResolution,
 } from "../core/drag-machine";
 import {
-  dragSourceReservationSelector,
   isDragPresentationActive,
   resolveDragPresentation,
   resolveInitialPaneContentVisible,
@@ -119,6 +118,8 @@ import {
 } from "../core/drag-recovery";
 import type { SchedulerPort } from "../core/scheduler-port";
 import { createWindowSchedulerPort } from "./window-scheduler-port";
+import type { MeasurementPort } from "../core/measurement-port";
+import { createDomMeasurementPort } from "./dom-measurement-port";
 import {
   isResizeAxisEnabled,
   resolveInteractionCapabilities,
@@ -674,6 +675,199 @@ function readSplitPathToLeaf(
     readSplitPathToLeaf(node.first, leafId, nextPath) ??
     readSplitPathToLeaf(node.second, leafId, nextPath)
   );
+}
+
+/**
+ * Pure, host-port-driven core of `resolvePointerTarget` (Stage-3 measurement
+ * lift). All DOM geometry comes from the injected {@link MeasurementPort}, so the
+ * hit resolution is unit-testable against synthetic rects. Behavior is identical
+ * to the former inline closure: viewport-missing → `null`; tab-strip hits take
+ * priority over the group body; the source + statically-gated leaves are skipped;
+ * a footprint miss → `null`; otherwise the resolved drop intent.
+ */
+export function resolvePointerTargetFromMeasurement(
+  measurement: MeasurementPort,
+  input: {
+    clientX: number;
+    clientY: number;
+    sourceLeafId: string;
+    previousTarget: TilingDropState | null;
+    isRearrangeEnabled: boolean;
+    groupingEnabled: boolean;
+    dropHitZoneGeometry: ResolvedTilingDropHitZoneGeometryCapability;
+    liveDragModeEnabled: boolean;
+    liveHitFootprintsById: ReadonlyMap<string, TilingPaneFootprint>;
+    leafFootprintsById: ReadonlyMap<string, TilingPaneFootprint>;
+    leafIds: ReadonlyArray<string>;
+    rearrangeGatedLeafIds: ReadonlySet<string>;
+    layout: TilingLayoutNode;
+    config: TilingLayoutConfig;
+    viewportSize: { width: number; height: number };
+  },
+): TilingDropState | null {
+  if (!input.isRearrangeEnabled) {
+    return null;
+  }
+  const viewportRect: DOMRect | null = measurement.measureViewportRect();
+  if (viewportRect == null) {
+    return null;
+  }
+  const localX: number = input.clientX - viewportRect.left;
+  const localY: number = input.clientY - viewportRect.top;
+  const hitFootprints: ReadonlyMap<string, TilingPaneFootprint> =
+    input.liveDragModeEnabled
+      ? input.liveHitFootprintsById
+      : input.leafFootprintsById;
+  // Tab-strip hits take priority over the group body: the strip sits above the
+  // active-member footprint and is the Hyprland groupbar merge target.
+  if (input.groupingEnabled) {
+    const tabStripHit = resolveGroupTabStripHit(
+      input.clientX,
+      input.clientY,
+      collectGroups(input.layout).map((group: TilingGroupNode) => {
+        const stripRect: DOMRect | null =
+          measurement.measureGroupTabStripRect(group.id);
+        return {
+          groupId: group.id,
+          activeMemberLeafId: group.activeMemberId,
+          bounds:
+            stripRect == null
+              ? null
+              : {
+                  left: stripRect.left,
+                  top: stripRect.top,
+                  right: stripRect.right,
+                  bottom: stripRect.bottom,
+                },
+        };
+      }),
+    );
+    if (
+      tabStripHit != null &&
+      tabStripHit.activeMemberLeafId !== input.sourceLeafId
+    ) {
+      const targetFootprint: TilingPaneFootprint | undefined =
+        hitFootprints.get(tabStripHit.activeMemberLeafId);
+      if (targetFootprint != null) {
+        return buildGroupTabStripMergeIntent({
+          activeMemberLeafId: tabStripHit.activeMemberLeafId,
+          evaluateCenter: (): {
+            isValid: boolean;
+            rejectionReason: string | null;
+          } =>
+            evaluateZoneCandidate({
+              zone: "center",
+              layout: input.layout,
+              sourceLeafId: input.sourceLeafId,
+              targetLeafId: tabStripHit.activeMemberLeafId,
+              targetFootprint,
+              config: input.config,
+              viewportWidth: input.viewportSize.width,
+              viewportHeight: input.viewportSize.height,
+            }),
+        });
+      }
+    }
+  }
+  let hitLeafId: string | null = null;
+  let hitFootprint: TilingPaneFootprint | undefined;
+  for (const leafId of input.leafIds) {
+    // Skip the source and any statically-gated leaf: a gated target has no
+    // trustworthy footprint, so it resolves to no target (→ cancel-on-release
+    // / gap-closed candidate) rather than a wrong swap/insert.
+    if (leafId === input.sourceLeafId || input.rearrangeGatedLeafIds.has(leafId)) {
+      continue;
+    }
+    const footprint: TilingPaneFootprint | undefined = hitFootprints.get(leafId);
+    if (
+      footprint != null &&
+      localX >= footprint.left &&
+      localX <= footprint.left + footprint.width &&
+      localY >= footprint.top &&
+      localY <= footprint.top + footprint.height
+    ) {
+      hitLeafId = leafId;
+      hitFootprint = footprint;
+      break;
+    }
+  }
+  if (hitLeafId == null || hitFootprint == null) {
+    return null;
+  }
+  const splitPath: ReadonlyArray<TilingSplitPathEntry> =
+    readSplitPathToLeaf(input.layout, hitLeafId) ?? [];
+  const axisPath: ReadonlyArray<TilingSplitAxis> = splitPath.map(
+    (pathEntry: TilingSplitPathEntry): TilingSplitAxis => pathEntry.axis,
+  );
+  const paneLocalPoint = toPaneLocalPoint(
+    { x: localX, y: localY },
+    { left: hitFootprint.left, top: hitFootprint.top },
+  );
+  // Seed the geometric hysteresis band from the prior resolved zone (only for
+  // the same hovered leaf) so zone flips must overcome the band — the
+  // anti-thrash damper that makes live reflow stable.
+  const previousZone: TilingLeafDropZone | null = previousZoneSeed(
+    input.previousTarget,
+    hitLeafId,
+  );
+  return resolveDropIntent({
+    leafId: hitLeafId,
+    paneLocalX: paneLocalPoint.x,
+    paneLocalY: paneLocalPoint.y,
+    paneSize: { width: hitFootprint.width, height: hitFootprint.height },
+    axisPath,
+    geometryConfig: currentGeometryConfig(input.dropHitZoneGeometry),
+    previousZone,
+    evaluateZone: (
+      zone: TilingLeafDropZone,
+    ): { isValid: boolean; rejectionReason: string | null } =>
+      evaluateZoneCandidate({
+        zone,
+        layout: input.layout,
+        sourceLeafId: input.sourceLeafId,
+        targetLeafId: hitLeafId as string,
+        targetFootprint: hitFootprint as TilingPaneFootprint,
+        config: input.config,
+        viewportWidth: input.viewportSize.width,
+        viewportHeight: input.viewportSize.height,
+      }),
+  });
+}
+
+/**
+ * Pure ghost-seat clamp (Stage-3 measurement lift). The seat is `null` when its
+ * reservation slot is unmeasurable (`null`), DEGENERATE (non-positive area), or
+ * OFF-SCREEN (entirely outside the viewport rect); otherwise it is the
+ * reservation slot's client footprint. Identical to the former inline guard chain
+ * in the seat-measurement layout effect.
+ */
+export function resolveSeatFootprint(input: {
+  reservationRect: DOMRect | null;
+  viewportRect: DOMRect | null;
+}): TilingPaneFootprint | null {
+  const rect: DOMRect | null = input.reservationRect;
+  if (rect == null) {
+    return null;
+  }
+  if (rect.width <= 0 || rect.height <= 0) {
+    return null;
+  }
+  const viewportRect: DOMRect | null = input.viewportRect;
+  if (
+    viewportRect != null &&
+    (rect.right < viewportRect.left ||
+      rect.left > viewportRect.right ||
+      rect.bottom < viewportRect.top ||
+      rect.top > viewportRect.bottom)
+  ) {
+    return null;
+  }
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
 }
 
 export function resolveLeafDropPreview(
@@ -3599,6 +3793,15 @@ export const TilingRenderer = React.forwardRef<
   const groupTabStripRefs = React.useRef<Map<string, HTMLDivElement>>(
     new Map(),
   );
+  // DOM-geometry host port. Reads through the stable `rootRef` / `viewportRef` /
+  // `groupTabStripRefs`, so the pointer-target resolution + ghost-seat clamp run
+  // against a single injectable measurement seam (unit-testable with synthetic
+  // rects) rather than scattered inline `getBoundingClientRect()` reads.
+  const measurementPort: MeasurementPort = React.useMemo(
+    () =>
+      createDomMeasurementPort({ rootRef, viewportRef, groupTabStripRefs }),
+    [rootRef, viewportRef, groupTabStripRefs],
+  );
   const clearCancelVisualTimeoutRef = React.useRef<number | null>(null);
   const [viewportSize, setViewportSize] = React.useState<{
     width: number;
@@ -3797,15 +4000,11 @@ export const TilingRenderer = React.forwardRef<
         onLayoutChange(setLeafSizing(layout, targetLeafId, undefined));
         return;
       }
-      // Resolve via `rootRef` (matching the focus/maximize paths at L2081/L2440)
-      // instead of `viewportRef`, so a pane rendered outside the viewport subtree
-      // still resolves — eliminating the viewport-scope miss that returned `null`
-      // and pinned a zero extent.
-      const paneElement: HTMLElement | null =
-        rootRef.current?.querySelector<HTMLElement>(
-          `[data-leaf-id="${targetLeafId}"]`,
-        ) ?? null;
-      const rect: DOMRect | undefined = paneElement?.getBoundingClientRect();
+      // `measureLeafRect` resolves the `[data-leaf-id]` element root-scoped (via
+      // `rootRef`, matching the focus/maximize paths) — NOT viewport-scoped — so a
+      // pane rendered outside the viewport subtree still resolves, eliminating the
+      // viewport-scope miss that returned `null` and pinned a zero extent.
+      const rect: DOMRect | null = measurementPort.measureLeafRect(targetLeafId);
       // Guard the zero-pin collapse: a missing element / zero-area rect must NOT
       // commit a `*Px:0` pin (a zero pin + flexShrink:0 collapses the leaf and
       // surfaces dead space). On a missing measurement leave the pane flexible
@@ -3828,7 +4027,7 @@ export const TilingRenderer = React.forwardRef<
       }
       onLayoutChange(setLeafSizing(layout, targetLeafId, sizing));
     },
-    [layout, onLayoutChange],
+    [layout, onLayoutChange, measurementPort],
   );
 
   // PART 3 — directional annex + re-seed (aggressive eviction). The arrows claim
@@ -3842,8 +4041,7 @@ export const TilingRenderer = React.forwardRef<
   // Controlled.
   const acquireLeafSpace = React.useCallback(
     (targetLeafId: string, direction: TilingFocusDirection): void => {
-      const viewportRect: DOMRect | undefined =
-        viewportRef.current?.getBoundingClientRect();
+      const viewportRect: DOMRect | null = measurementPort.measureViewportRect();
       const isHorizontalAnnex: boolean =
         direction === "left" || direction === "right";
       const viewportWidthPx: number = viewportRect?.width ?? viewportSize.width;
@@ -3874,6 +4072,7 @@ export const TilingRenderer = React.forwardRef<
       onLayoutChange,
       viewportSize.height,
       viewportSize.width,
+      measurementPort,
     ],
   );
 
@@ -4188,41 +4387,18 @@ export const TilingRenderer = React.forwardRef<
       setSeatFootprint(null);
       return;
     }
-    // SCOPED to the ghost-seat leaf (`cc23956`). Resolves only because the
-    // reserved-slot wrapper emits `data-leaf-id={node.id}` below — without that
-    // the descendant selector can never match a `DragSourceSlotReservation`
-    // (which carries no `data-leaf-id`), which is the `cc23956` regression.
-    const reservationSelector: string =
-      dragSourceReservationSelector(ghostSeatLeafId);
-    const reservationElement: HTMLElement | null =
-      rootRef.current?.querySelector<HTMLElement>(reservationSelector) ?? null;
-    if (reservationElement == null) {
-      setSeatFootprint(null);
-      return;
-    }
-    const rect: DOMRect = reservationElement.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) {
-      setSeatFootprint(null);
-      return;
-    }
-    const viewportRect: DOMRect | undefined =
-      viewportRef.current?.getBoundingClientRect();
-    if (
-      viewportRect != null &&
-      (rect.right < viewportRect.left ||
-        rect.left > viewportRect.right ||
-        rect.bottom < viewportRect.top ||
-        rect.top > viewportRect.bottom)
-    ) {
-      setSeatFootprint(null);
-      return;
-    }
-    setSeatFootprint({
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height,
-    });
+    // SCOPED to the ghost-seat leaf (`cc23956`): `measureReservationRect` resolves
+    // the `dragSourceReservationSelector` only because the reserved-slot wrapper
+    // emits `data-leaf-id={node.id}` below — without that the descendant selector
+    // can never match a `DragSourceSlotReservation` (which carries no
+    // `data-leaf-id`), which is the `cc23956` regression. The clamp itself
+    // (degenerate / off-screen → null) is the pure `resolveSeatFootprint`.
+    setSeatFootprint(
+      resolveSeatFootprint({
+        reservationRect: measurementPort.measureReservationRect(ghostSeatLeafId),
+        viewportRect: measurementPort.measureViewportRect(),
+      }),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     liveDragModeEnabled,
@@ -6058,142 +6234,29 @@ export const TilingRenderer = React.forwardRef<
       clientY: number,
       sourceLeafId: string,
       previousTarget: TilingDropState | null,
-    ): TilingDropState | null => {
-      if (!isRearrangeEnabled) {
-        return null;
-      }
-      const viewportRect: DOMRect | undefined =
-        viewportRef.current?.getBoundingClientRect();
-      if (viewportRect == null) {
-        return null;
-      }
-      const localX: number = clientX - viewportRect.left;
-      const localY: number = clientY - viewportRect.top;
-      const hitFootprints: ReadonlyMap<string, TilingPaneFootprint> =
-        liveDragModeEnabled ? liveHitFootprintsById : leafFootprintsById;
-      // Tab-strip hits take priority over the group body: the strip sits above the
-      // active-member footprint and is the Hyprland groupbar merge target.
-      if (interactionCapabilities.grouping) {
-        const tabStripHit = resolveGroupTabStripHit(
-          clientX,
-          clientY,
-          collectGroups(layout).map((group: TilingGroupNode) => {
-            const stripElement: HTMLDivElement | undefined =
-              groupTabStripRefs.current.get(group.id);
-            const stripRect: DOMRect | undefined =
-              stripElement?.getBoundingClientRect();
-            return {
-              groupId: group.id,
-              activeMemberLeafId: group.activeMemberId,
-              bounds:
-                stripRect == null
-                  ? null
-                  : {
-                      left: stripRect.left,
-                      top: stripRect.top,
-                      right: stripRect.right,
-                      bottom: stripRect.bottom,
-                    },
-            };
-          }),
-        );
-        if (
-          tabStripHit != null &&
-          tabStripHit.activeMemberLeafId !== sourceLeafId
-        ) {
-          const targetFootprint: TilingPaneFootprint | undefined =
-            hitFootprints.get(tabStripHit.activeMemberLeafId);
-          if (targetFootprint != null) {
-            return buildGroupTabStripMergeIntent({
-              activeMemberLeafId: tabStripHit.activeMemberLeafId,
-              evaluateCenter: (): {
-                isValid: boolean;
-                rejectionReason: string | null;
-              } =>
-                evaluateZoneCandidate({
-                  zone: "center",
-                  layout,
-                  sourceLeafId,
-                  targetLeafId: tabStripHit.activeMemberLeafId,
-                  targetFootprint,
-                  config,
-                  viewportWidth: viewportSize.width,
-                  viewportHeight: viewportSize.height,
-                }),
-            });
-          }
-        }
-      }
-      let hitLeafId: string | null = null;
-      let hitFootprint: TilingPaneFootprint | undefined;
-      for (const leafId of leafIds) {
-        // Skip the source and any statically-gated leaf: a gated target has no
-        // trustworthy footprint, so it resolves to no target (→ cancel-on-release
-        // / gap-closed candidate) rather than a wrong swap/insert.
-        if (leafId === sourceLeafId || rearrangeGatedLeafIds.has(leafId)) {
-          continue;
-        }
-        const footprint: TilingPaneFootprint | undefined =
-          hitFootprints.get(leafId);
-        if (
-          footprint != null &&
-          localX >= footprint.left &&
-          localX <= footprint.left + footprint.width &&
-          localY >= footprint.top &&
-          localY <= footprint.top + footprint.height
-        ) {
-          hitLeafId = leafId;
-          hitFootprint = footprint;
-          break;
-        }
-      }
-      if (hitLeafId == null || hitFootprint == null) {
-        return null;
-      }
-      const splitPath: ReadonlyArray<TilingSplitPathEntry> =
-        readSplitPathToLeaf(layout, hitLeafId) ?? [];
-      const axisPath: ReadonlyArray<TilingSplitAxis> = splitPath.map(
-        (pathEntry: TilingSplitPathEntry): TilingSplitAxis => pathEntry.axis,
-      );
-      const paneLocalPoint = toPaneLocalPoint(
-        { x: localX, y: localY },
-        { left: hitFootprint.left, top: hitFootprint.top },
-      );
-      // Seed the geometric hysteresis band from the prior resolved zone (only for
-      // the same hovered leaf) so zone flips must overcome the band — the
-      // anti-thrash damper that makes live reflow stable.
-      const previousZone: TilingLeafDropZone | null = previousZoneSeed(
+    ): TilingDropState | null =>
+      resolvePointerTargetFromMeasurement(measurementPort, {
+        clientX,
+        clientY,
+        sourceLeafId,
         previousTarget,
-        hitLeafId,
-      );
-      return resolveDropIntent({
-        leafId: hitLeafId,
-        paneLocalX: paneLocalPoint.x,
-        paneLocalY: paneLocalPoint.y,
-        paneSize: { width: hitFootprint.width, height: hitFootprint.height },
-        axisPath,
-        geometryConfig: currentGeometryConfig(
-          interactionCapabilities.dropHitZoneGeometry,
-        ),
-        previousZone,
-        evaluateZone: (
-          zone: TilingLeafDropZone,
-        ): { isValid: boolean; rejectionReason: string | null } =>
-          evaluateZoneCandidate({
-            zone,
-            layout,
-            sourceLeafId,
-            targetLeafId: hitLeafId as string,
-            targetFootprint: hitFootprint as TilingPaneFootprint,
-            config,
-            viewportWidth: viewportSize.width,
-            viewportHeight: viewportSize.height,
-          }),
-      });
-    },
+        isRearrangeEnabled,
+        groupingEnabled: interactionCapabilities.grouping,
+        dropHitZoneGeometry: interactionCapabilities.dropHitZoneGeometry,
+        liveDragModeEnabled,
+        liveHitFootprintsById,
+        leafFootprintsById,
+        leafIds,
+        rearrangeGatedLeafIds,
+        layout,
+        config,
+        viewportSize: { width: viewportSize.width, height: viewportSize.height },
+      }),
     [
       config,
       isRearrangeEnabled,
+      interactionCapabilities.grouping,
+      interactionCapabilities.dropHitZoneGeometry,
       layout,
       leafFootprintsById,
       leafIds,
@@ -6202,6 +6265,7 @@ export const TilingRenderer = React.forwardRef<
       rearrangeGatedLeafIds,
       viewportSize.height,
       viewportSize.width,
+      measurementPort,
     ],
   );
 
@@ -6832,8 +6896,7 @@ export const TilingRenderer = React.forwardRef<
       const geometryConfig: TilingZoneGeometryConfig = currentGeometryConfig(
         interactionCapabilities.dropHitZoneGeometry,
       );
-      const viewportRect: DOMRect | undefined =
-        viewportRef.current?.getBoundingClientRect();
+      const viewportRect: DOMRect | null = measurementPort.measureViewportRect();
       const cursorViewport = {
         x: viewportRect == null ? pointerX : pointerX - viewportRect.left,
         y: viewportRect == null ? pointerY : pointerY - viewportRect.top,
@@ -6964,6 +7027,7 @@ export const TilingRenderer = React.forwardRef<
       paneHitZoneSourceLeafId,
       viewportSize.height,
       viewportSize.width,
+      measurementPort,
     ],
   );
 
