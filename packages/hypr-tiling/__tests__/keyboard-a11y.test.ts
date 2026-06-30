@@ -2,7 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 import { clampByMinSize } from "../pane-sizing";
 import { directionToPlacement } from "../pane-switching";
 import { findLeafByDirection, insertLeafAdjacent, readLeafNodeIds, updateSplitRatio } from "../state";
-import type { DynamicFocusDirection, DynamicLayoutNode, DynamicLeafNode, DynamicSplitNode } from "../types";
+import type { TilingFocusDirection, TilingLayoutNode, TilingLeafNode, TilingSplitNode } from "../types";
 
 /**
  * These cover the PURE interaction models the renderer wires for keyboard
@@ -17,7 +17,7 @@ import type { DynamicFocusDirection, DynamicLayoutNode, DynamicLeafNode, Dynamic
  *                         then `insertLeafAdjacent` commit (no parallel path).
  */
 
-function leaf(id: string, tileId: string): DynamicLeafNode {
+function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };
 }
 
@@ -28,7 +28,7 @@ function leaf(id: string, tileId: string): DynamicLeafNode {
  *       ├── B       (leaf)
  *       └── C       (leaf)
  */
-function baseLayout(): DynamicSplitNode {
+function baseLayout(): TilingSplitNode {
   return {
     kind: "split",
     id: "root",
@@ -46,7 +46,7 @@ function baseLayout(): DynamicSplitNode {
   };
 }
 
-function findSplit(node: DynamicLayoutNode, splitId: string): DynamicSplitNode | null {
+function findSplit(node: TilingLayoutNode, splitId: string): TilingSplitNode | null {
   if (node.kind === "leaf" || node.kind === "group") {
     return null;
   }
@@ -58,7 +58,7 @@ function findSplit(node: DynamicLayoutNode, splitId: string): DynamicSplitNode |
 
 describe("renderer directional focus nav model (findLeafByDirection)", (): void => {
   it("moves focus to the geometric neighbor in each direction", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     // A is the left column; B/C are stacked on the right.
     expect(findLeafByDirection(layout, "A", "right")).toBe("B");
     expect(findLeafByDirection(layout, "B", "left")).toBe("A");
@@ -67,7 +67,7 @@ describe("renderer directional focus nav model (findLeafByDirection)", (): void 
   });
 
   it("returns null when there is no neighbor in the direction (renderer leaves focus put)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     expect(findLeafByDirection(layout, "A", "left")).toBeNull();
     expect(findLeafByDirection(layout, "B", "up")).toBeNull();
   });
@@ -94,9 +94,9 @@ function steppedRatio(currentRatio: number, delta: number): number {
 
 describe("renderer keyboard separator resize model (clampByMinSize + updateSplitRatio)", (): void => {
   it("steps the split ratio down/up by the keyboard step and applies it via updateSplitRatio", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const decreased: number = steppedRatio(0.5, -SEPARATOR_RATIO_STEP);
-    const nextLayout: DynamicLayoutNode = updateSplitRatio(layout, "root", decreased);
+    const nextLayout: TilingLayoutNode = updateSplitRatio(layout, "root", decreased);
     expect(findSplit(nextLayout, "root")?.ratio).toBeCloseTo(0.48, 5);
 
     const increased: number = steppedRatio(0.5, SEPARATOR_RATIO_STEP);
@@ -124,44 +124,44 @@ describe("renderer keyboard separator resize model (clampByMinSize + updateSplit
 
 describe("renderer keyboard move-mode model (aim + commit via insertLeafAdjacent)", (): void => {
   it("commits a rightward move by relocating the source onto the neighbor's matching edge", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     // Move A to the right: aim picks B as the destination, placement 'right'.
-    const direction: DynamicFocusDirection = "right";
+    const direction: TilingFocusDirection = "right";
     const targetLeafId: string | null = findLeafByDirection(layout, "A", direction);
     expect(targetLeafId).toBe("B");
     const placement = directionToPlacement(direction);
     expect(placement).toBe("right");
 
-    const committed: DynamicLayoutNode = insertLeafAdjacent(layout, "A", targetLeafId as string, placement);
+    const committed: TilingLayoutNode = insertLeafAdjacent(layout, "A", targetLeafId as string, placement);
     // A is removed from the root and re-inserted adjacent to B; both A and B still present.
     const ids: ReadonlyArray<string> = readLeafNodeIds(committed);
     expect(ids).toContain("A");
     expect(ids).toContain("B");
     expect(ids).toContain("C");
     // A no longer sits as the root's first child (it was relocated next to B).
-    const root: DynamicSplitNode | null = committed.kind === "split" ? committed : null;
+    const root: TilingSplitNode | null = committed.kind === "split" ? committed : null;
     expect(root?.first.kind === "leaf" && root.first.id === "A").toBe(false);
   });
 
   it("aim is a no-op when there is no neighbor in the chosen direction", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     // A has no left neighbor → renderer keeps the move-mode state's target null.
     expect(findLeafByDirection(layout, "A", "left")).toBeNull();
   });
 
   it("cancel (no commit) leaves the layout untouched", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const snapshot: string = JSON.stringify(layout);
     // Renderer cancel path simply drops the move-mode state — no reducer runs.
     expect(JSON.stringify(layout)).toBe(snapshot);
   });
 
   it("a down-move of B targets C on its top edge (vertical stack)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const target: string | null = findLeafByDirection(layout, "B", "down");
     expect(target).toBe("C");
     expect(directionToPlacement("down")).toBe("bottom");
-    const committed: DynamicLayoutNode = insertLeafAdjacent(layout, "B", target as string, "bottom");
+    const committed: TilingLayoutNode = insertLeafAdjacent(layout, "B", target as string, "bottom");
     expect([...readLeafNodeIds(committed)].sort()).toEqual(["A", "B", "C"]);
   });
 });

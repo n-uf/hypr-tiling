@@ -11,7 +11,7 @@
  * stubbed to NEVER fire (the worst-case starvation) and an injected manual clock /
  * scheduler, mirroring how the renderer arms each primitive.
  *
- * SCOPING (deliberate): a full `DynamicTilingRenderer` mount is impractical under
+ * SCOPING (deliberate): a full `TilingRenderer` mount is impractical under
  * jsdom — the renderer derives `viewportSize` from `ResizeObserver` (absent in
  * jsdom) and ALL drag geometry from `getBoundingClientRect` (returns zeros in
  * jsdom), so a pointer-driven drag can never cross the pickup threshold into

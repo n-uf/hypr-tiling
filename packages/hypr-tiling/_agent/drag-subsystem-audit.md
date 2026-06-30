@@ -65,7 +65,7 @@ When `CONTENT` is OFF the pane body renders **empty** — no content and no
 "CONTENT HIDDEN" / "Pane N" placeholder text — preserving the pane frame +
 header/title chrome. The header (title) is left as-is; only the BODY is emptied.
 If a labeled placeholder is wanted instead, that is a one-line change in
-`DefaultDynamicTile`'s body branch (and the matching ghost branch).
+`DefaultTilingTile`'s body branch (and the matching ghost branch).
 
 ### What was ROLLED BACK from the older content-conditioned model
 
@@ -116,7 +116,7 @@ guard)` scoped the seat-rect selector to
 (now centralized as `dragSourceReservationSelector` in `drag-presentation.ts`).
 This descendant selector can **never match**: a reserved slot renders
 `DragSourceSlotReservation` (carries `data-drag-source-reservation`, **no
-`data-leaf-id`**) INSTEAD of `DefaultDynamicTile` (the sole emitter of
+`data-leaf-id`**) INSTEAD of `DefaultTilingTile` (the sole emitter of
 `data-leaf-id={leafId}`, on its own article — not an ancestor of the reservation).
 So `reservationElement == null` → `setSeatFootprint(null)` → the ghost never
 hopped and the empty reservation lingered beside the free-following ghost — the
@@ -151,7 +151,7 @@ packages/hypr-tiling/
 │                              swap-bounce ease, coherent-transit dip.
 ├── drag-easing.ts             animation-speed → duration knob math.
 ├── drag-cursor.ts             custom-cursor arrow/validity presentation.
-├── drop-intent-resolver.ts    pointer → DynamicDropIntentState (zone/action/edge)
+├── drop-intent-resolver.ts    pointer → TilingDropIntentState (zone/action/edge)
 │                              + hysteresis. The resolver the FSM stores verbatim.
 ├── leaf-geometry.ts           footprint collection (client rects per leaf).
 ├── projected-layout.ts        PLACEMENT_BY_DROP_ZONE + preview-mode projection.
@@ -189,7 +189,7 @@ pointermove (window, captured)
    │
    ▼
 processPointerSample(client)                 [renderer input layer]
-   │  resolvePointerTarget → DynamicDropState  (against STABLE hit footprints)
+   │  resolvePointerTarget → TilingDropState  (against STABLE hit footprints)
    │  shouldReresolveSeatedTarget   (move samples only — slot-commitment policy)
    │  committableSeatRef ← deriveCommittableSeat(nextTarget)  (SSOT, every sample)
    │  RELEASE sample: SKIP re-resolution, dispatch committableSeatRef verbatim
@@ -291,7 +291,7 @@ settling-commit**); `deriveCandidateTree`, `resolveDragGhostSeatLeafId`,
 - **No impossible/duplicate states.** The discriminated union forbids
   ill-formed combinations at compile time (e.g. a `resolvedTarget` cannot exist
   in `armed`).
-- **No duplicate resolution path.** `DragResolvedTarget = DynamicDropIntentState`
+- **No duplicate resolution path.** `DragResolvedTarget = TilingDropIntentState`
   — the FSM stores the resolver output verbatim, and commit + candidate derive
   from the SAME object the preview reads.
 - The two presentation selectors (`presentation*`) that extend through
@@ -372,7 +372,7 @@ off, and it is the same delta a resting pane has.
 
 ### 5.3 Remaining type-hygiene note
 
-**Closed-union over-width.** `DynamicDropAction` includes
+**Closed-union over-width.** `TilingDropAction` includes
 `split-container-insert`, which the drag resolver never produces and which
 `deriveCandidateTree` / `resolveDragGhostSeatLeafId` / `isCommittableTarget`
 silently treat as gap-close. Unreachable at the drag layer — a closed-union
@@ -519,7 +519,7 @@ possibly-already-clobbered FSM target.
   sourceLeafId)` → returns the target verbatim iff `isCommittableTarget`, else
   `null`. One rule, no release/move-sample branching.
 - `dynamic-tiling-renderer.tsx`: a renderer-scoped `committableSeatRef`
-  (`React.useRef<DynamicDropState | null>`) is written **synchronously on every
+  (`React.useRef<TilingDropState | null>`) is written **synchronously on every
   processed sample** (armed-promotion pickup, touch long-press promotion, and
   each dragging move sample) to `deriveCommittableSeat(nextTarget, …)`. Being a
   ref written in the sample task, it carries no passive-effect lag (unlike
@@ -683,7 +683,7 @@ work was confined to the drag **presentation** layer.
 
 ### Remaining type-hygiene follow-up (not blocking)
 
-`split-container-insert` stays in `DynamicDropAction` though the drag resolver
+`split-container-insert` stays in `TilingDropAction` though the drag resolver
 never produces it — an explicit exhaustive `never` guard would document the
 unreachable union member at compile time. Tracked, not done here.
 
@@ -834,7 +834,7 @@ where inline reads `"none"` but the compositor transition is still mid-flight;
 Scenario C2 exercises the seated-stall-with-held-seat case end-to-end.
 
 > jsdom scoping note: `drag-recovery-dom.test.ts` does NOT mount the full
-> `DynamicTilingRenderer` — under jsdom `viewportSize` (from `ResizeObserver`) and
+> `TilingRenderer` — under jsdom `viewportSize` (from `ResizeObserver`) and
 > all drag geometry (`getBoundingClientRect`) are unavailable/zero, so a
 > pointer-driven drag cannot reach `dragging`. It mounts the smallest harness that
 > arms the SAME exported recovery primitives through real React effects against

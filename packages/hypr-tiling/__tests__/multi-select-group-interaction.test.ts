@@ -24,16 +24,16 @@
 import { afterEach, beforeAll, describe, expect, it } from "@jest/globals";
 import * as React from "react";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { DynamicTilingRenderer } from "../dynamic-tiling-renderer";
+import { TilingRenderer } from "../dynamic-tiling-renderer";
 import { isMultiSelectModifierActive } from "../multi-selection";
 import { collectGroups } from "../state";
 import type {
-  DynamicGroupNode,
-  DynamicLayoutNode,
-  DynamicLeafNode,
-  DynamicRenderTileArgs,
-  DynamicSplitNode,
-  DynamicTile,
+  TilingGroupNode,
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingRenderTileProps,
+  TilingSplitNode,
+  TilingTile,
   TilingInteractionCapabilities,
 } from "../types";
 
@@ -61,23 +61,23 @@ afterEach((): void => {
   cleanup();
 });
 
-function leaf(id: string): DynamicLeafNode {
+function leaf(id: string): TilingLeafNode {
   return { kind: "leaf", id, tileId: id };
 }
 
 function split(
   id: string,
   axis: "horizontal" | "vertical",
-  first: DynamicLayoutNode,
-  second: DynamicLayoutNode,
-): DynamicSplitNode {
+  first: TilingLayoutNode,
+  second: TilingLayoutNode,
+): TilingSplitNode {
   return { kind: "split", id, axis, ratio: 0.5, first, second };
 }
 
 // Mirrors the homepage `INITIAL_LAYOUT` shape: `features` (under `mid`) and
 // `install` (under `far`) live in DIFFERENT branches — the cross-branch case
 // from the reproduction screenshot (03 FEATURES + 05 INSTALL).
-function homepageTree(): DynamicSplitNode {
+function homepageTree(): TilingSplitNode {
   return split(
     "root",
     "horizontal",
@@ -96,7 +96,7 @@ function homepageTree(): DynamicSplitNode {
   );
 }
 
-const TILES: ReadonlyArray<DynamicTile> = [
+const TILES: ReadonlyArray<TilingTile> = [
   "intro",
   "usecases",
   "features",
@@ -104,14 +104,14 @@ const TILES: ReadonlyArray<DynamicTile> = [
   "install",
   "discoverability",
   "controls",
-].map((id: string): DynamicTile => ({ id, title: id, accent: "amber" }));
+].map((id: string): TilingTile => ({ id, title: id, accent: "amber" }));
 
 // A custom `renderTile` mirroring the homepage `DocTile`'s relevant wiring: an
 // `<article>` whose `onFocus` is the renderer-provided handler, a header that
 // Alt/Opt-click-toggles multi-selection, and a Group control that dispatches
 // `onGroupMultiSelection(leafId)` (this pane is the host slot). This is the path
-// the bug report exercised — a custom renderer, not `DefaultDynamicTile`.
-function renderDocTile(args: DynamicRenderTileArgs): React.ReactElement {
+// the bug report exercised — a custom renderer, not `DefaultTilingTile`.
+function renderDocTile(args: TilingRenderTileProps): React.ReactElement {
   const controls: React.ReactNode[] = [];
   if (args.isMultiSelected) {
     controls.push(
@@ -173,24 +173,24 @@ function renderDocTile(args: DynamicRenderTileArgs): React.ReactElement {
 }
 
 interface HarnessProps {
-  onLayout: (layout: DynamicLayoutNode) => void;
+  onLayout: (layout: TilingLayoutNode) => void;
 }
 
 function Harness(props: HarnessProps): React.ReactElement {
-  const [layout, setLayout] = React.useState<DynamicLayoutNode>(homepageTree());
+  const [layout, setLayout] = React.useState<TilingLayoutNode>(homepageTree());
   const interaction: TilingInteractionCapabilities = {
     paneSwitching: { showContentToggle: false },
   };
-  return React.createElement(DynamicTilingRenderer, {
+  return React.createElement(TilingRenderer, {
     layout,
     tiles: TILES,
     config: { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 },
     interaction,
-    onLayoutChange: (next: DynamicLayoutNode): void => {
+    onLayoutChange: (next: TilingLayoutNode): void => {
       setLayout(next);
       props.onLayout(next);
     },
-    renderTile: (args: DynamicRenderTileArgs): React.ReactNode =>
+    renderTile: (args: TilingRenderTileProps): React.ReactNode =>
       renderDocTile(args),
   });
 }
@@ -219,10 +219,10 @@ function selectHeader(container: HTMLElement, leafId: string): void {
 
 describe("header Group button (custom renderTile) folds the multi-selection", (): void => {
   it("survives the focus that the button takes on click, then groups into a tabbed stack", (): void => {
-    const layouts: DynamicLayoutNode[] = [];
+    const layouts: TilingLayoutNode[] = [];
     const { container } = render(
       React.createElement(Harness, {
-        onLayout: (layout: DynamicLayoutNode): void => {
+        onLayout: (layout: TilingLayoutNode): void => {
           layouts.push(layout);
         },
       }),
@@ -259,10 +259,10 @@ describe("header Group button (custom renderTile) folds the multi-selection", ()
     expect(tabs.length).toBe(2);
 
     // And the resulting layout has exactly ONE group of exactly those members.
-    const last: DynamicLayoutNode = layouts[layouts.length - 1];
-    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(last);
+    const last: TilingLayoutNode = layouts[layouts.length - 1];
+    const groups: ReadonlyArray<TilingGroupNode> = collectGroups(last);
     expect(groups.length).toBe(1);
-    expect(groups[0].members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+    expect(groups[0].members.map((m: TilingLeafNode): string => m.id)).toEqual([
       "features",
       "install",
     ]);
@@ -272,10 +272,10 @@ describe("header Group button (custom renderTile) folds the multi-selection", ()
   });
 
   it("hosts the merged group at the CLICKED pane's slot (host first + active)", (): void => {
-    const layouts: DynamicLayoutNode[] = [];
+    const layouts: TilingLayoutNode[] = [];
     const { container } = render(
       React.createElement(Harness, {
-        onLayout: (layout: DynamicLayoutNode): void => {
+        onLayout: (layout: TilingLayoutNode): void => {
           layouts.push(layout);
         },
       }),
@@ -290,10 +290,10 @@ describe("header Group button (custom renderTile) folds the multi-selection", ()
       fireEvent.click(requireEl(container, '[data-testid="group-install"]'));
     });
 
-    const last: DynamicLayoutNode = layouts[layouts.length - 1];
-    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(last);
+    const last: TilingLayoutNode = layouts[layouts.length - 1];
+    const groups: ReadonlyArray<TilingGroupNode> = collectGroups(last);
     expect(groups.length).toBe(1);
-    expect(groups[0].members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+    expect(groups[0].members.map((m: TilingLeafNode): string => m.id)).toEqual([
       "install",
       "features",
     ]);
@@ -319,10 +319,10 @@ describe("Alt+G is the keyboard twin of the Group button", (): void => {
   }
 
   it("groups the multi-selection (same group-leaves result) and clears it", (): void => {
-    const layouts: DynamicLayoutNode[] = [];
+    const layouts: TilingLayoutNode[] = [];
     const { container } = render(
       React.createElement(Harness, {
-        onLayout: (layout: DynamicLayoutNode): void => {
+        onLayout: (layout: TilingLayoutNode): void => {
           layouts.push(layout);
         },
       }),
@@ -333,10 +333,10 @@ describe("Alt+G is the keyboard twin of the Group button", (): void => {
 
     pressAltG();
 
-    const last: DynamicLayoutNode = layouts[layouts.length - 1];
-    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(last);
+    const last: TilingLayoutNode = layouts[layouts.length - 1];
+    const groups: ReadonlyArray<TilingGroupNode> = collectGroups(last);
     expect(groups.length).toBe(1);
-    expect(groups[0].members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+    expect(groups[0].members.map((m: TilingLeafNode): string => m.id)).toEqual([
       "features",
       "install",
     ]);
@@ -347,10 +347,10 @@ describe("Alt+G is the keyboard twin of the Group button", (): void => {
   });
 
   it("does NOTHING when there is no selection (no fallback to focused+neighbor)", (): void => {
-    const layouts: DynamicLayoutNode[] = [];
+    const layouts: TilingLayoutNode[] = [];
     const { container } = render(
       React.createElement(Harness, {
-        onLayout: (layout: DynamicLayoutNode): void => {
+        onLayout: (layout: TilingLayoutNode): void => {
           layouts.push(layout);
         },
       }),

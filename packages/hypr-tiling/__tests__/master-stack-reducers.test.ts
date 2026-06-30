@@ -10,10 +10,10 @@ import {
   setSplitMasterOrientation,
 } from "../state";
 import type {
-  DynamicLayoutNode,
-  DynamicLeafNode,
-  DynamicMasterOrientation,
-  DynamicSplitNode,
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingMasterOrientation,
+  TilingSplitNode,
 } from "../types";
 
 /**
@@ -23,16 +23,16 @@ import type {
  * asserts referential-stability on a no-op and structural validity after.
  */
 
-function leaf(id: string): DynamicLeafNode {
+function leaf(id: string): TilingLeafNode {
   return { kind: "leaf", id, tileId: `tile-${id}` };
 }
 
-function hsplit(ratio: number, first: DynamicLayoutNode, second: DynamicLayoutNode): DynamicSplitNode {
+function hsplit(ratio: number, first: TilingLayoutNode, second: TilingLayoutNode): TilingSplitNode {
   return { kind: "split", id: `h-${first.id}-${second.id}`, axis: "horizontal", ratio, first, second };
 }
 
 /** root split with three leaf slots: A | (B / C). */
-function tree(overrides?: Partial<DynamicSplitNode>): DynamicSplitNode {
+function tree(overrides?: Partial<TilingSplitNode>): TilingSplitNode {
   return {
     kind: "split",
     id: "root",
@@ -44,7 +44,7 @@ function tree(overrides?: Partial<DynamicSplitNode>): DynamicSplitNode {
   };
 }
 
-function rootSplit(node: DynamicLayoutNode): DynamicSplitNode {
+function rootSplit(node: TilingLayoutNode): TilingSplitNode {
   if (node.kind !== "split") {
     throw new Error("expected a split root");
   }
@@ -53,74 +53,74 @@ function rootSplit(node: DynamicLayoutNode): DynamicSplitNode {
 
 describe("setSplitLayoutMode / cycleSplitLayoutMode", (): void => {
   it("sets dwindle → master", (): void => {
-    const next: DynamicLayoutNode = setSplitLayoutMode(tree(), "root", "master");
+    const next: TilingLayoutNode = setSplitLayoutMode(tree(), "root", "master");
     expect(rootSplit(next).layoutMode).toBe("master");
     expect(isStructurallyValidLayout(next)).toBe(true);
   });
 
   it("is a referential no-op when the mode is already set", (): void => {
-    const base: DynamicSplitNode = tree({ layoutMode: "master" });
+    const base: TilingSplitNode = tree({ layoutMode: "master" });
     expect(setSplitLayoutMode(base, "root", "master")).toBe(base);
   });
 
   it("cycles dwindle ⇄ master", (): void => {
-    const toMaster: DynamicLayoutNode = cycleSplitLayoutMode(tree(), "root");
+    const toMaster: TilingLayoutNode = cycleSplitLayoutMode(tree(), "root");
     expect(rootSplit(toMaster).layoutMode).toBe("master");
-    const backToDwindle: DynamicLayoutNode = cycleSplitLayoutMode(toMaster, "root");
+    const backToDwindle: TilingLayoutNode = cycleSplitLayoutMode(toMaster, "root");
     expect(rootSplit(backToDwindle).layoutMode).toBe("dwindle");
   });
 
   it("leaves an unmatched splitId untouched (referential no-op)", (): void => {
-    const base: DynamicSplitNode = tree();
+    const base: TilingSplitNode = tree();
     expect(setSplitLayoutMode(base, "does-not-exist", "master")).toBe(base);
   });
 });
 
 describe("setSplitMasterCount / adjustSplitMasterCount (clamped to slot count)", (): void => {
   it("sets the master count", (): void => {
-    const next: DynamicLayoutNode = setSplitMasterCount(tree({ layoutMode: "master" }), "root", 2);
+    const next: TilingLayoutNode = setSplitMasterCount(tree({ layoutMode: "master" }), "root", 2);
     expect(rootSplit(next).masterCount).toBe(2);
   });
 
   it("clamps the set count to [1, slotCount] (3 slots → max 3)", (): void => {
-    const high: DynamicLayoutNode = setSplitMasterCount(tree({ layoutMode: "master" }), "root", 99);
+    const high: TilingLayoutNode = setSplitMasterCount(tree({ layoutMode: "master" }), "root", 99);
     expect(rootSplit(high).masterCount).toBe(3);
     // start from masterCount 2 so clamping a 0 request down to the floor (1) is a
     // real change (a 0 request on a default-1 split would be a no-op).
-    const low: DynamicLayoutNode = setSplitMasterCount(tree({ layoutMode: "master", masterCount: 2 }), "root", 0);
+    const low: TilingLayoutNode = setSplitMasterCount(tree({ layoutMode: "master", masterCount: 2 }), "root", 0);
     expect(rootSplit(low).masterCount).toBe(1);
   });
 
   it("adjusts by delta from the resolved default (1)", (): void => {
-    const next: DynamicLayoutNode = adjustSplitMasterCount(tree({ layoutMode: "master" }), "root", 1);
+    const next: TilingLayoutNode = adjustSplitMasterCount(tree({ layoutMode: "master" }), "root", 1);
     expect(rootSplit(next).masterCount).toBe(2);
   });
 
   it("clamps an adjust that would exceed the slot count (no-op at the ceiling)", (): void => {
-    const base: DynamicSplitNode = tree({ layoutMode: "master", masterCount: 3 });
+    const base: TilingSplitNode = tree({ layoutMode: "master", masterCount: 3 });
     expect(adjustSplitMasterCount(base, "root", 1)).toBe(base);
   });
 
   it("clamps an adjust that would drop below 1 (no-op at the floor)", (): void => {
-    const base: DynamicSplitNode = tree({ layoutMode: "master", masterCount: 1 });
+    const base: TilingSplitNode = tree({ layoutMode: "master", masterCount: 1 });
     expect(adjustSplitMasterCount(base, "root", -1)).toBe(base);
   });
 });
 
 describe("setSplitMasterOrientation / cycleSplitMasterOrientation", (): void => {
   it("sets the orientation", (): void => {
-    const next: DynamicLayoutNode = setSplitMasterOrientation(tree({ layoutMode: "master" }), "root", "bottom");
+    const next: TilingLayoutNode = setSplitMasterOrientation(tree({ layoutMode: "master" }), "root", "bottom");
     expect(rootSplit(next).masterOrientation).toBe("bottom");
   });
 
   it("is a referential no-op when already at the target orientation", (): void => {
-    const base: DynamicSplitNode = tree({ layoutMode: "master", masterOrientation: "right" });
+    const base: TilingSplitNode = tree({ layoutMode: "master", masterOrientation: "right" });
     expect(setSplitMasterOrientation(base, "root", "right")).toBe(base);
   });
 
   it("cycles left → top → right → bottom → left", (): void => {
-    const ring: ReadonlyArray<DynamicMasterOrientation> = ["top", "right", "bottom", "left"];
-    let current: DynamicLayoutNode = tree({ layoutMode: "master", masterOrientation: "left" });
+    const ring: ReadonlyArray<TilingMasterOrientation> = ["top", "right", "bottom", "left"];
+    let current: TilingLayoutNode = tree({ layoutMode: "master", masterOrientation: "left" });
     for (const expected of ring) {
       current = cycleSplitMasterOrientation(current, "root");
       expect(rootSplit(current).masterOrientation).toBe(expected);
@@ -128,29 +128,29 @@ describe("setSplitMasterOrientation / cycleSplitMasterOrientation", (): void => 
   });
 
   it("defaults an undefined orientation to left and cycles to top", (): void => {
-    const next: DynamicLayoutNode = cycleSplitMasterOrientation(tree({ layoutMode: "master" }), "root");
+    const next: TilingLayoutNode = cycleSplitMasterOrientation(tree({ layoutMode: "master" }), "root");
     expect(rootSplit(next).masterOrientation).toBe("top");
   });
 });
 
 describe("adjustSplitRatio (shared nudge, clamped [0.05, 0.95])", (): void => {
   it("nudges the ratio up", (): void => {
-    const next: DynamicLayoutNode = adjustSplitRatio(tree({ ratio: 0.5 }), "root", 0.1);
+    const next: TilingLayoutNode = adjustSplitRatio(tree({ ratio: 0.5 }), "root", 0.1);
     expect(rootSplit(next).ratio).toBeCloseTo(0.6);
   });
 
   it("nudges the ratio down", (): void => {
-    const next: DynamicLayoutNode = adjustSplitRatio(tree({ ratio: 0.5 }), "root", -0.1);
+    const next: TilingLayoutNode = adjustSplitRatio(tree({ ratio: 0.5 }), "root", -0.1);
     expect(rootSplit(next).ratio).toBeCloseTo(0.4);
   });
 
   it("clamps at the ceiling (no-op once pinned at 0.95)", (): void => {
-    const base: DynamicSplitNode = tree({ ratio: 0.95 });
+    const base: TilingSplitNode = tree({ ratio: 0.95 });
     expect(adjustSplitRatio(base, "root", 0.1)).toBe(base);
   });
 
   it("clamps at the floor (no-op once pinned at 0.05)", (): void => {
-    const base: DynamicSplitNode = tree({ ratio: 0.05 });
+    const base: TilingSplitNode = tree({ ratio: 0.05 });
     expect(adjustSplitRatio(base, "root", -0.1)).toBe(base);
   });
 });

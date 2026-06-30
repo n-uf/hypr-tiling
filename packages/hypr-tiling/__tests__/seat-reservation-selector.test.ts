@@ -9,7 +9,7 @@ import { dragSourceReservationSelector } from "../drag-presentation";
  * (`dragSourceReservationSelector`). For it to resolve, a `data-leaf-id` ancestor
  * of the `[data-drag-source-reservation]` node must exist. A reserved slot renders
  * `DragSourceSlotReservation` (which carries `data-drag-source-reservation` but NO
- * `data-leaf-id`) INSTEAD of `DefaultDynamicTile` (the sole `data-leaf-id`
+ * `data-leaf-id`) INSTEAD of `DefaultTilingTile` (the sole `data-leaf-id`
  * emitter), so `cc23956` — which introduced the scoped selector without emitting
  * `data-leaf-id` on the reserved wrapper — could NEVER match. `setSeatFootprint`
  * stayed null → the ghost never hopped → the empty reservation lingered beside a
@@ -67,7 +67,7 @@ function dragTree(seatLeafId: string, reservedWrapperCarriesLeafId: boolean): Fi
     ? { "data-leaf-id": seatLeafId }
     : {};
   return el({}, [
-    // A normal, non-reserved leaf: DefaultDynamicTile emits data-leaf-id on its
+    // A normal, non-reserved leaf: DefaultTilingTile emits data-leaf-id on its
     // own article (NOT an ancestor of the reserved slot).
     el({}, [el({ "data-leaf-id": "other-leaf" })]),
     // The ghost-seat leaf: reserved wrapper holding the content-less reservation.

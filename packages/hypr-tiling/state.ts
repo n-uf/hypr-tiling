@@ -5,16 +5,16 @@ import {
 } from "./pane-sizing";
 import { collectNormalizedLeafRects, type LeafRect } from "./leaf-geometry";
 import type {
-  DynamicFocusDirection,
-  DynamicGroupNode,
-  DynamicInsertionOptions,
-  DynamicLayoutMode,
-  DynamicLayoutNode,
-  DynamicLeafNode,
-  DynamicMasterOrientation,
-  DynamicMovePlacement,
-  DynamicSplitAxis,
-  DynamicSplitNode,
+  TilingFocusDirection,
+  TilingGroupNode,
+  TilingInsertionOptions,
+  TilingLayoutMode,
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingMasterOrientation,
+  TilingMovePlacement,
+  TilingSplitAxis,
+  TilingSplitNode,
   TilingDimension,
   TilingPaneCycleDirection,
   TilingPaneSizing,
@@ -22,7 +22,7 @@ import type {
 
 const MIN_RATIO: number = 0.05;
 const MAX_RATIO: number = 0.95;
-const DEFAULT_INSERTION_OPTIONS: DynamicInsertionOptions = {
+const DEFAULT_INSERTION_OPTIONS: TilingInsertionOptions = {
   preserveParentSplitAxis: true,
   splitRatio: 0.5,
 };
@@ -36,10 +36,10 @@ function clampRatio(value: number): number {
 }
 
 export function updateSplitRatio(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   splitId: string,
   ratio: number,
-): DynamicLayoutNode {
+): TilingLayoutNode {
   if (node.kind === "leaf") {
     return node;
   }
@@ -63,10 +63,10 @@ export function updateSplitRatio(
 }
 
 function replaceLeafTileById(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   leafId: string,
   tileId: string,
-): DynamicLayoutNode {
+): TilingLayoutNode {
   if (node.kind === "leaf") {
     if (node.id !== leafId) {
       return node;
@@ -79,8 +79,8 @@ function replaceLeafTileById(
   }
 
   if (node.kind === "group") {
-    const members: ReadonlyArray<DynamicLeafNode> = node.members.map(
-      (member: DynamicLeafNode): DynamicLeafNode =>
+    const members: ReadonlyArray<TilingLeafNode> = node.members.map(
+      (member: TilingLeafNode): TilingLeafNode =>
         member.id === leafId ? { ...member, tileId } : member,
     );
     return { ...node, members };
@@ -94,10 +94,10 @@ function replaceLeafTileById(
 }
 
 function writeLeafSizing(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   leafId: string,
   sizing: TilingPaneSizing | undefined,
-): DynamicLayoutNode {
+): TilingLayoutNode {
   if (node.kind === "leaf") {
     if (node.id !== leafId) {
       return node;
@@ -114,7 +114,7 @@ function writeLeafSizing(
     // A group is a slot; static sizing targeting any of its members pins the
     // GROUP (the slot), mirroring "a group can be static like a leaf".
     const targetsMember: boolean = node.members.some(
-      (member: DynamicLeafNode): boolean => member.id === leafId,
+      (member: TilingLeafNode): boolean => member.id === leafId,
     );
     if (!targetsMember) {
       return node;
@@ -143,9 +143,9 @@ function writeLeafSizing(
  * `setLeafSizing` "no static dims → undefined" convention).
  */
 function demoteAlongAxisStatic(
-  node: DynamicLayoutNode,
-  axis: DynamicSplitAxis,
-): DynamicLayoutNode {
+  node: TilingLayoutNode,
+  axis: TilingSplitAxis,
+): TilingLayoutNode {
   if (node.sizing == null) {
     return node;
   }
@@ -181,13 +181,13 @@ function demoteAlongAxisStatic(
  * `moveLeafToSplitContainer`) — so both the reachable and the latent triggers are
  * covered.
  */
-export function normalizeStaticAxisFill(node: DynamicLayoutNode): DynamicLayoutNode {
+export function normalizeStaticAxisFill(node: TilingLayoutNode): TilingLayoutNode {
   if (node.kind === "leaf" || node.kind === "group") {
     return node;
   }
 
-  const normalizedFirst: DynamicLayoutNode = normalizeStaticAxisFill(node.first);
-  let normalizedSecond: DynamicLayoutNode = normalizeStaticAxisFill(node.second);
+  const normalizedFirst: TilingLayoutNode = normalizeStaticAxisFill(node.first);
+  let normalizedSecond: TilingLayoutNode = normalizeStaticAxisFill(node.second);
 
   if (
     isStaticAlongSplitAxis(normalizedFirst, node.axis) &&
@@ -212,45 +212,45 @@ export function normalizeStaticAxisFill(node: DynamicLayoutNode): DynamicLayoutN
  * static-switch gap trigger at the data layer.
  */
 export function setLeafSizing(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   leafId: string,
   sizing: TilingPaneSizing | undefined,
-): DynamicLayoutNode {
+): TilingLayoutNode {
   return normalizeStaticAxisFill(writeLeafSizing(node, leafId, sizing));
 }
 
 export function findLeafById(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   leafId: string,
-): DynamicLeafNode | null {
+): TilingLeafNode | null {
   if (node.kind === "leaf") {
     return node.id === leafId ? node : null;
   }
 
   if (node.kind === "group") {
-    return node.members.find((member: DynamicLeafNode): boolean => member.id === leafId) ?? null;
+    return node.members.find((member: TilingLeafNode): boolean => member.id === leafId) ?? null;
   }
 
   return findLeafById(node.first, leafId) ?? findLeafById(node.second, leafId);
 }
 
 export function swapLeafTiles(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   firstLeafId: string,
   secondLeafId: string,
-): DynamicLayoutNode {
+): TilingLayoutNode {
   if (firstLeafId === secondLeafId) {
     return node;
   }
 
-  const firstLeaf: DynamicLeafNode | null = findLeafById(node, firstLeafId);
-  const secondLeaf: DynamicLeafNode | null = findLeafById(node, secondLeafId);
+  const firstLeaf: TilingLeafNode | null = findLeafById(node, firstLeafId);
+  const secondLeaf: TilingLeafNode | null = findLeafById(node, secondLeafId);
 
   if (firstLeaf == null || secondLeaf == null) {
     return node;
   }
 
-  const withFirstReplaced: DynamicLayoutNode = replaceLeafTileById(
+  const withFirstReplaced: TilingLayoutNode = replaceLeafTileById(
     node,
     firstLeafId,
     secondLeaf.tileId,
@@ -259,7 +259,7 @@ export function swapLeafTiles(
   return replaceLeafTileById(withFirstReplaced, secondLeafId, firstLeaf.tileId);
 }
 
-export function collectSplitNodes(node: DynamicLayoutNode): ReadonlyArray<DynamicSplitNode> {
+export function collectSplitNodes(node: TilingLayoutNode): ReadonlyArray<TilingSplitNode> {
   if (node.kind === "leaf" || node.kind === "group") {
     return [];
   }
@@ -273,7 +273,7 @@ export function collectSplitNodes(node: DynamicLayoutNode): ReadonlyArray<Dynami
  * outer layout — pane-cycle / jump / directional focus see the active member).
  * Use `readGroupMemberIds` / `collectGroups` to enumerate ALL members for tab UI.
  */
-export function readLeafNodeIds(node: DynamicLayoutNode): ReadonlyArray<string> {
+export function readLeafNodeIds(node: TilingLayoutNode): ReadonlyArray<string> {
   if (node.kind === "leaf") {
     return [node.id];
   }
@@ -286,7 +286,7 @@ export function readLeafNodeIds(node: DynamicLayoutNode): ReadonlyArray<string> 
 }
 
 /** Every group in the tree (depth-first, reading order) — the tab-strip source. */
-export function collectGroups(node: DynamicLayoutNode): ReadonlyArray<DynamicGroupNode> {
+export function collectGroups(node: TilingLayoutNode): ReadonlyArray<TilingGroupNode> {
   if (node.kind === "leaf") {
     return [];
   }
@@ -299,30 +299,30 @@ export function collectGroups(node: DynamicLayoutNode): ReadonlyArray<DynamicGro
 }
 
 /** All member ids of every group (for whole-tree member enumeration). */
-export function readGroupMemberIds(node: DynamicLayoutNode): ReadonlyArray<string> {
-  return collectGroups(node).flatMap((group: DynamicGroupNode): ReadonlyArray<string> =>
-    group.members.map((member: DynamicLeafNode): string => member.id),
+export function readGroupMemberIds(node: TilingLayoutNode): ReadonlyArray<string> {
+  return collectGroups(node).flatMap((group: TilingGroupNode): ReadonlyArray<string> =>
+    group.members.map((member: TilingLeafNode): string => member.id),
   );
 }
 
 /** The group that contains `leafId` as a member, or `null`. */
 export function findGroupContainingLeaf(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   leafId: string,
-): DynamicGroupNode | null {
+): TilingGroupNode | null {
   return (
-    collectGroups(node).find((group: DynamicGroupNode): boolean =>
-      group.members.some((member: DynamicLeafNode): boolean => member.id === leafId),
+    collectGroups(node).find((group: TilingGroupNode): boolean =>
+      group.members.some((member: TilingLeafNode): boolean => member.id === leafId),
     ) ?? null
   );
 }
 
 /** Find a group node by its id. */
 export function findGroupById(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   groupId: string,
-): DynamicGroupNode | null {
-  return collectGroups(node).find((group: DynamicGroupNode): boolean => group.id === groupId) ?? null;
+): TilingGroupNode | null {
+  return collectGroups(node).find((group: TilingGroupNode): boolean => group.id === groupId) ?? null;
 }
 
 /**
@@ -341,10 +341,10 @@ export function findGroupById(
  * invalid tree is refused (the drag falls back to cancel) so a broken commit can
  * never reach consumer state.
  */
-export function isStructurallyValidLayout(node: DynamicLayoutNode): boolean {
+export function isStructurallyValidLayout(node: TilingLayoutNode): boolean {
   const seenLeafIds = new Set<string>();
 
-  function walk(current: DynamicLayoutNode): boolean {
+  function walk(current: TilingLayoutNode): boolean {
     if (current.kind === "leaf") {
       if (current.id.length === 0 || current.tileId.length === 0) {
         return false;
@@ -382,7 +382,7 @@ export function isStructurallyValidLayout(node: DynamicLayoutNode): boolean {
   return walk(node);
 }
 
-function normalizedInsertionOptions(options?: Partial<DynamicInsertionOptions>): DynamicInsertionOptions {
+function normalizedInsertionOptions(options?: Partial<TilingInsertionOptions>): TilingInsertionOptions {
   const safeRatio: number = clampRatio(options?.splitRatio ?? DEFAULT_INSERTION_OPTIONS.splitRatio);
   return {
     preserveParentSplitAxis:
@@ -392,9 +392,9 @@ function normalizedInsertionOptions(options?: Partial<DynamicInsertionOptions>):
 }
 
 function parentSplitForLeaf(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   leafId: string,
-): DynamicSplitNode | null {
+): TilingSplitNode | null {
   if (node.kind === "leaf" || node.kind === "group") {
     return null;
   }
@@ -419,10 +419,10 @@ function parentSplitForLeaf(
  * leaf. Returns `null` for a root leaf (no parent) or an unknown id.
  */
 export function siblingSubtreeForLeaf(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   leafId: string,
-): DynamicLayoutNode | null {
-  const parentSplit: DynamicSplitNode | null = parentSplitForLeaf(node, leafId);
+): TilingLayoutNode | null {
+  const parentSplit: TilingSplitNode | null = parentSplitForLeaf(node, leafId);
   if (parentSplit == null) {
     return null;
   }
@@ -430,7 +430,7 @@ export function siblingSubtreeForLeaf(
   return firstIsLeaf ? parentSplit.second : parentSplit.first;
 }
 
-function inferredAxisFromPlacement(placement: DynamicMovePlacement): "horizontal" | "vertical" {
+function inferredAxisFromPlacement(placement: TilingMovePlacement): "horizontal" | "vertical" {
   if (placement === "left" || placement === "right") {
     return "horizontal";
   }
@@ -438,16 +438,16 @@ function inferredAxisFromPlacement(placement: DynamicMovePlacement): "horizontal
 }
 
 function resolveInsertionAxis(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   targetLeafId: string,
-  placement: DynamicMovePlacement,
-  options: DynamicInsertionOptions,
+  placement: TilingMovePlacement,
+  options: TilingInsertionOptions,
 ): "horizontal" | "vertical" {
   if (!options.preserveParentSplitAxis) {
     return inferredAxisFromPlacement(placement);
   }
 
-  const parentSplit: DynamicSplitNode | null = parentSplitForLeaf(layout, targetLeafId);
+  const parentSplit: TilingSplitNode | null = parentSplitForLeaf(layout, targetLeafId);
   if (parentSplit == null) {
     return inferredAxisFromPlacement(placement);
   }
@@ -455,11 +455,11 @@ function resolveInsertionAxis(
 }
 
 interface ExtractedLeafResult {
-  nextNode: DynamicLayoutNode | null;
-  extractedLeaf: DynamicLeafNode | null;
+  nextNode: TilingLayoutNode | null;
+  extractedLeaf: TilingLeafNode | null;
 }
 
-function extractLeafNode(node: DynamicLayoutNode, leafId: string): ExtractedLeafResult {
+function extractLeafNode(node: TilingLayoutNode, leafId: string): ExtractedLeafResult {
   if (node.kind === "leaf") {
     if (node.id !== leafId) {
       return { nextNode: node, extractedLeaf: null };
@@ -469,14 +469,14 @@ function extractLeafNode(node: DynamicLayoutNode, leafId: string): ExtractedLeaf
 
   if (node.kind === "group") {
     const index: number = node.members.findIndex(
-      (member: DynamicLeafNode): boolean => member.id === leafId,
+      (member: TilingLeafNode): boolean => member.id === leafId,
     );
     if (index === -1) {
       return { nextNode: node, extractedLeaf: null };
     }
-    const extractedLeaf: DynamicLeafNode = node.members[index];
-    const remaining: ReadonlyArray<DynamicLeafNode> = node.members.filter(
-      (_member: DynamicLeafNode, memberIndex: number): boolean => memberIndex !== index,
+    const extractedLeaf: TilingLeafNode = node.members[index];
+    const remaining: ReadonlyArray<TilingLeafNode> = node.members.filter(
+      (_member: TilingLeafNode, memberIndex: number): boolean => memberIndex !== index,
     );
     // Sole member extracted → the group empties; the caller collapses the parent
     // split exactly as it would for a removed root leaf.
@@ -534,16 +534,16 @@ function extractLeafNode(node: DynamicLayoutNode, leafId: string): ExtractedLeaf
 }
 
 function buildSplitNodeWithPlacement(
-  targetNode: DynamicLayoutNode,
-  insertedLeafNode: DynamicLayoutNode,
+  targetNode: TilingLayoutNode,
+  insertedLeafNode: TilingLayoutNode,
   splitId: string,
   axis: "horizontal" | "vertical",
-  placement: DynamicMovePlacement,
+  placement: TilingMovePlacement,
   ratio: number,
-): DynamicSplitNode {
+): TilingSplitNode {
   const placeInsertedFirst: boolean = placement === "left" || placement === "top";
-  const firstNode: DynamicLayoutNode = placeInsertedFirst ? insertedLeafNode : targetNode;
-  const secondNode: DynamicLayoutNode = placeInsertedFirst ? targetNode : insertedLeafNode;
+  const firstNode: TilingLayoutNode = placeInsertedFirst ? insertedLeafNode : targetNode;
+  const secondNode: TilingLayoutNode = placeInsertedFirst ? targetNode : insertedLeafNode;
 
   return {
     kind: "split",
@@ -556,14 +556,14 @@ function buildSplitNodeWithPlacement(
 }
 
 function insertLeafAroundTarget(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   targetLeafId: string,
-  insertedLeafNode: DynamicLayoutNode,
+  insertedLeafNode: TilingLayoutNode,
   splitId: string,
   axis: "horizontal" | "vertical",
-  placement: DynamicMovePlacement,
+  placement: TilingMovePlacement,
   ratio: number,
-): DynamicLayoutNode {
+): TilingLayoutNode {
   if (node.kind === "leaf") {
     if (node.id !== targetLeafId) {
       return node;
@@ -619,19 +619,19 @@ function insertLeafAroundTarget(
 }
 
 function insertLeafIntoSplitContainer(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   targetSplitId: string,
-  insertedLeafNode: DynamicLeafNode,
+  insertedLeafNode: TilingLeafNode,
   placement: "first" | "second",
-  options: DynamicInsertionOptions,
-): DynamicLayoutNode {
+  options: TilingInsertionOptions,
+): TilingLayoutNode {
   if (node.kind === "leaf" || node.kind === "group") {
     return node;
   }
 
   if (node.id === targetSplitId) {
-    const existingBranch: DynamicLayoutNode = placement === "first" ? node.first : node.second;
-    const newBranch: DynamicLayoutNode = {
+    const existingBranch: TilingLayoutNode = placement === "first" ? node.first : node.second;
+    const newBranch: TilingLayoutNode = {
       kind: "split",
       id: `${targetSplitId}-insert-${insertedLeafNode.id}`,
       axis: node.axis,
@@ -655,17 +655,17 @@ function insertLeafIntoSplitContainer(
 }
 
 export function insertLeafAdjacent(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   sourceLeafId: string,
   targetLeafId: string,
-  placement: DynamicMovePlacement,
-  options?: Partial<DynamicInsertionOptions>,
-): DynamicLayoutNode {
+  placement: TilingMovePlacement,
+  options?: Partial<TilingInsertionOptions>,
+): TilingLayoutNode {
   if (sourceLeafId === targetLeafId) {
     return layout;
   }
 
-  const normalizedOptions: DynamicInsertionOptions = normalizedInsertionOptions(options);
+  const normalizedOptions: TilingInsertionOptions = normalizedInsertionOptions(options);
   const extraction: ExtractedLeafResult = extractLeafNode(layout, sourceLeafId);
   if (extraction.extractedLeaf == null || extraction.nextNode == null) {
     return layout;
@@ -708,9 +708,9 @@ export function insertLeafAdjacent(
  * root leaf (a root with no parent cannot be removed without emptying the tree).
  */
 export function removeLeafTile(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   leafId: string,
-): DynamicLayoutNode {
+): TilingLayoutNode {
   const extraction: ExtractedLeafResult = extractLeafNode(layout, leafId);
   if (extraction.extractedLeaf == null || extraction.nextNode == null) {
     return layout;
@@ -719,12 +719,12 @@ export function removeLeafTile(
 }
 
 export function moveLeafToRoot(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   sourceLeafId: string,
   placement: "first" | "second",
-  options?: Partial<DynamicInsertionOptions>,
-): DynamicLayoutNode {
-  const normalizedOptions: DynamicInsertionOptions = normalizedInsertionOptions(options);
+  options?: Partial<TilingInsertionOptions>,
+): TilingLayoutNode {
+  const normalizedOptions: TilingInsertionOptions = normalizedInsertionOptions(options);
   const extraction: ExtractedLeafResult = extractLeafNode(layout, sourceLeafId);
   if (extraction.extractedLeaf == null || extraction.nextNode == null) {
     return layout;
@@ -741,13 +741,13 @@ export function moveLeafToRoot(
 }
 
 export function moveLeafToSplitContainer(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   sourceLeafId: string,
   targetSplitId: string,
   placement: "first" | "second",
-  options?: Partial<DynamicInsertionOptions>,
-): DynamicLayoutNode {
-  const normalizedOptions: DynamicInsertionOptions = normalizedInsertionOptions(options);
+  options?: Partial<TilingInsertionOptions>,
+): TilingLayoutNode {
+  const normalizedOptions: TilingInsertionOptions = normalizedInsertionOptions(options);
   const extraction: ExtractedLeafResult = extractLeafNode(layout, sourceLeafId);
   if (extraction.extractedLeaf == null || extraction.nextNode == null) {
     return layout;
@@ -765,9 +765,9 @@ export function moveLeafToSplitContainer(
 }
 
 export function toggleSplitAxis(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   splitId: string,
-): DynamicLayoutNode {
+): TilingLayoutNode {
   if (node.kind === "leaf" || node.kind === "group") {
     return node;
   }
@@ -787,7 +787,7 @@ export function toggleSplitAxis(
 }
 
 /** Ring order for `cycleSplitMasterOrientation` (left → top → right → bottom → …). */
-const MASTER_ORIENTATION_RING: ReadonlyArray<DynamicMasterOrientation> = [
+const MASTER_ORIENTATION_RING: ReadonlyArray<TilingMasterOrientation> = [
   "left",
   "top",
   "right",
@@ -802,18 +802,18 @@ const MASTER_ORIENTATION_RING: ReadonlyArray<DynamicMasterOrientation> = [
  * so each master reducer states only its per-split transform.
  */
 function rewriteSplitById(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   splitId: string,
-  rewrite: (split: DynamicSplitNode) => DynamicSplitNode,
-): DynamicLayoutNode {
+  rewrite: (split: TilingSplitNode) => TilingSplitNode,
+): TilingLayoutNode {
   if (node.kind === "leaf" || node.kind === "group") {
     return node;
   }
   if (node.id === splitId) {
     return rewrite(node);
   }
-  const first: DynamicLayoutNode = rewriteSplitById(node.first, splitId, rewrite);
-  const second: DynamicLayoutNode = rewriteSplitById(node.second, splitId, rewrite);
+  const first: TilingLayoutNode = rewriteSplitById(node.first, splitId, rewrite);
+  const second: TilingLayoutNode = rewriteSplitById(node.second, splitId, rewrite);
   if (first === node.first && second === node.second) {
     return node;
   }
@@ -821,7 +821,7 @@ function rewriteSplitById(
 }
 
 /** Resolved (defaulted) master count for a split, clamped to its slot count. */
-function resolvedMasterCount(split: DynamicSplitNode): number {
+function resolvedMasterCount(split: TilingSplitNode): number {
   const slotCount: number = Math.max(readLeafNodeIds(split).length, 1);
   return Math.min(Math.max(Math.round(split.masterCount ?? 1), 1), slotCount);
 }
@@ -832,21 +832,21 @@ function resolvedMasterCount(split: DynamicSplitNode): number {
  * this stores the literal mode so the value round-trips through persistence.
  */
 export function setSplitLayoutMode(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   splitId: string,
-  mode: DynamicLayoutMode,
-): DynamicLayoutNode {
-  return rewriteSplitById(layout, splitId, (split: DynamicSplitNode): DynamicSplitNode =>
+  mode: TilingLayoutMode,
+): TilingLayoutNode {
+  return rewriteSplitById(layout, splitId, (split: TilingSplitNode): TilingSplitNode =>
     (split.layoutMode ?? "dwindle") === mode ? split : { ...split, layoutMode: mode },
   );
 }
 
 /** Toggle a split between dwindle and master (the Hyprland layout-toggle analog). */
 export function cycleSplitLayoutMode(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   splitId: string,
-): DynamicLayoutNode {
-  return rewriteSplitById(layout, splitId, (split: DynamicSplitNode): DynamicSplitNode => ({
+): TilingLayoutNode {
+  return rewriteSplitById(layout, splitId, (split: TilingSplitNode): TilingSplitNode => ({
     ...split,
     layoutMode: (split.layoutMode ?? "dwindle") === "master" ? "dwindle" : "master",
   }));
@@ -854,11 +854,11 @@ export function cycleSplitLayoutMode(
 
 /** Set a split's master-area count, clamped to `[1, slotCount]`. */
 export function setSplitMasterCount(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   splitId: string,
   count: number,
-): DynamicLayoutNode {
-  return rewriteSplitById(layout, splitId, (split: DynamicSplitNode): DynamicSplitNode => {
+): TilingLayoutNode {
+  return rewriteSplitById(layout, splitId, (split: TilingSplitNode): TilingSplitNode => {
     const slotCount: number = Math.max(readLeafNodeIds(split).length, 1);
     const next: number = Math.min(Math.max(Math.round(count), 1), slotCount);
     return next === resolvedMasterCount(split) ? split : { ...split, masterCount: next };
@@ -867,11 +867,11 @@ export function setSplitMasterCount(
 
 /** Add/remove master tiles by `delta`, clamped to `[1, slotCount]`. */
 export function adjustSplitMasterCount(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   splitId: string,
   delta: number,
-): DynamicLayoutNode {
-  return rewriteSplitById(layout, splitId, (split: DynamicSplitNode): DynamicSplitNode => {
+): TilingLayoutNode {
+  return rewriteSplitById(layout, splitId, (split: TilingSplitNode): TilingSplitNode => {
     const slotCount: number = Math.max(readLeafNodeIds(split).length, 1);
     const current: number = resolvedMasterCount(split);
     const next: number = Math.min(Math.max(current + Math.round(delta), 1), slotCount);
@@ -881,11 +881,11 @@ export function adjustSplitMasterCount(
 
 /** Set a split's master-area orientation. */
 export function setSplitMasterOrientation(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   splitId: string,
-  orientation: DynamicMasterOrientation,
-): DynamicLayoutNode {
-  return rewriteSplitById(layout, splitId, (split: DynamicSplitNode): DynamicSplitNode =>
+  orientation: TilingMasterOrientation,
+): TilingLayoutNode {
+  return rewriteSplitById(layout, splitId, (split: TilingSplitNode): TilingSplitNode =>
     (split.masterOrientation ?? "left") === orientation
       ? split
       : { ...split, masterOrientation: orientation },
@@ -894,13 +894,13 @@ export function setSplitMasterOrientation(
 
 /** Cycle a split's master orientation left → top → right → bottom → left. */
 export function cycleSplitMasterOrientation(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   splitId: string,
-): DynamicLayoutNode {
-  return rewriteSplitById(layout, splitId, (split: DynamicSplitNode): DynamicSplitNode => {
-    const current: DynamicMasterOrientation = split.masterOrientation ?? "left";
+): TilingLayoutNode {
+  return rewriteSplitById(layout, splitId, (split: TilingSplitNode): TilingSplitNode => {
+    const current: TilingMasterOrientation = split.masterOrientation ?? "left";
     const index: number = MASTER_ORIENTATION_RING.indexOf(current);
-    const next: DynamicMasterOrientation =
+    const next: TilingMasterOrientation =
       MASTER_ORIENTATION_RING[(index + 1) % MASTER_ORIENTATION_RING.length];
     return { ...split, masterOrientation: next };
   });
@@ -913,11 +913,11 @@ export function cycleSplitMasterOrientation(
  * `updateSplitRatio` is the absolute counterpart).
  */
 export function adjustSplitRatio(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   splitId: string,
   delta: number,
-): DynamicLayoutNode {
-  return rewriteSplitById(layout, splitId, (split: DynamicSplitNode): DynamicSplitNode => {
+): TilingLayoutNode {
+  return rewriteSplitById(layout, splitId, (split: TilingSplitNode): TilingSplitNode => {
     const next: number = clampRatio(split.ratio + delta);
     return next === split.ratio ? split : { ...split, ratio: next };
   });
@@ -934,18 +934,18 @@ export function adjustSplitRatio(
  * group, a group → split chain, …) without touching the rest of the tree.
  */
 function replaceNodeById(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   targetId: string,
-  replacement: DynamicLayoutNode,
-): DynamicLayoutNode {
+  replacement: TilingLayoutNode,
+): TilingLayoutNode {
   if (node.id === targetId) {
     return replacement;
   }
   if (node.kind === "leaf" || node.kind === "group") {
     return node;
   }
-  const first: DynamicLayoutNode = replaceNodeById(node.first, targetId, replacement);
-  const second: DynamicLayoutNode = replaceNodeById(node.second, targetId, replacement);
+  const first: TilingLayoutNode = replaceNodeById(node.first, targetId, replacement);
+  const second: TilingLayoutNode = replaceNodeById(node.second, targetId, replacement);
   if (first === node.first && second === node.second) {
     return node;
   }
@@ -958,18 +958,18 @@ function replaceNodeById(
  * reducers (mirrors `rewriteSplitById`).
  */
 function rewriteGroupById(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   groupId: string,
-  rewrite: (group: DynamicGroupNode) => DynamicLayoutNode,
-): DynamicLayoutNode {
+  rewrite: (group: TilingGroupNode) => TilingLayoutNode,
+): TilingLayoutNode {
   if (node.kind === "leaf") {
     return node;
   }
   if (node.kind === "group") {
     return node.id === groupId ? rewrite(node) : node;
   }
-  const first: DynamicLayoutNode = rewriteGroupById(node.first, groupId, rewrite);
-  const second: DynamicLayoutNode = rewriteGroupById(node.second, groupId, rewrite);
+  const first: TilingLayoutNode = rewriteGroupById(node.first, groupId, rewrite);
+  const second: TilingLayoutNode = rewriteGroupById(node.second, groupId, rewrite);
   if (first === node.first && second === node.second) {
     return node;
   }
@@ -977,7 +977,7 @@ function rewriteGroupById(
 }
 
 /** Strip a leaf of group-irrelevant slot state (its own sizing) before it joins a group. */
-function asGroupMember(leaf: DynamicLeafNode): DynamicLeafNode {
+function asGroupMember(leaf: TilingLeafNode): TilingLeafNode {
   return leaf.sizing == null ? leaf : { id: leaf.id, kind: "leaf", tileId: leaf.tileId };
 }
 
@@ -988,13 +988,13 @@ function asGroupMember(leaf: DynamicLeafNode): DynamicLeafNode {
  * explode a group back into the binary tree.
  */
 function membersToSplitChain(
-  members: ReadonlyArray<DynamicLeafNode>,
+  members: ReadonlyArray<TilingLeafNode>,
   idSeed: string,
-): DynamicLayoutNode {
-  const last: DynamicLeafNode = members[members.length - 1];
-  let chain: DynamicLayoutNode = last;
+): TilingLayoutNode {
+  const last: TilingLeafNode = members[members.length - 1];
+  let chain: TilingLayoutNode = last;
   for (let index = members.length - 2; index >= 0; index -= 1) {
-    const head: DynamicLeafNode = members[index];
+    const head: TilingLeafNode = members[index];
     chain = {
       kind: "split",
       id: `${idSeed}-${head.id}`,
@@ -1028,7 +1028,7 @@ export interface GroupLeavesOptions {
  * membership.
  */
 function flatGroupMemberOrder(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   selectionIds: ReadonlyArray<string>,
   hostLeafId: string,
 ): ReadonlyArray<string> {
@@ -1043,9 +1043,9 @@ function flatGroupMemberOrder(
   // A selected id contributes its WHOLE group (existing member order) when it is
   // a group member, else just itself.
   const expand = (id: string): ReadonlyArray<string> => {
-    const group: DynamicGroupNode | null = findGroupContainingLeaf(layout, id);
+    const group: TilingGroupNode | null = findGroupContainingLeaf(layout, id);
     return group != null
-      ? group.members.map((member: DynamicLeafNode): string => member.id)
+      ? group.members.map((member: TilingLeafNode): string => member.id)
       : [id];
   };
   // Host first (then its group-mates, if the host was grouped).
@@ -1077,10 +1077,10 @@ function flatGroupMemberOrder(
  * members) or the host is unresolvable.
  */
 export function groupLeaves(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   leafIds: ReadonlyArray<string>,
   options?: GroupLeavesOptions,
-): DynamicLayoutNode {
+): TilingLayoutNode {
   // The host (anchor): the explicit option, else the first id that resolves to a
   // real leaf (loose leaf OR a member of an existing group).
   const hostLeafId: string | undefined =
@@ -1095,9 +1095,9 @@ export function groupLeaves(
     leafIds,
     hostLeafId,
   );
-  const memberLeaves: ReadonlyArray<DynamicLeafNode> = orderedIds
-    .map((id: string): DynamicLeafNode | null => findLeafById(layout, id))
-    .filter((leaf: DynamicLeafNode | null): leaf is DynamicLeafNode => leaf != null);
+  const memberLeaves: ReadonlyArray<TilingLeafNode> = orderedIds
+    .map((id: string): TilingLeafNode | null => findLeafById(layout, id))
+    .filter((leaf: TilingLeafNode | null): leaf is TilingLeafNode => leaf != null);
   if (memberLeaves.length < 2) {
     return layout;
   }
@@ -1108,7 +1108,7 @@ export function groupLeaves(
   // slot becomes the group's slot — and when the host was itself a group member,
   // removing its (all-pulled-in) group-mates collapses that group down to the
   // bare host leaf at the group's old slot, which then hosts the merged group.
-  let working: DynamicLayoutNode = layout;
+  let working: TilingLayoutNode = layout;
   for (const member of memberLeaves) {
     if (member.id === hostLeafId) {
       continue;
@@ -1122,7 +1122,7 @@ export function groupLeaves(
     working = extraction.nextNode;
   }
 
-  const group: DynamicGroupNode = {
+  const group: TilingGroupNode = {
     kind: "group",
     id: options?.groupId ?? `group-${hostLeafId}`,
     members: memberLeaves.map(asGroupMember),
@@ -1131,7 +1131,7 @@ export function groupLeaves(
   // The host is now a bare leaf at its (or its dissolved group's) slot. Swap it
   // for the merged group. A failed swap (host vanished) aborts losslessly on the
   // ORIGINAL layout rather than returning the members-extracted `working` tree.
-  const placed: DynamicLayoutNode = replaceNodeById(working, hostLeafId, group);
+  const placed: TilingLayoutNode = replaceNodeById(working, hostLeafId, group);
   if (placed === working) {
     return layout;
   }
@@ -1143,12 +1143,12 @@ export function groupLeaves(
  * `groupLeaves`). A 1-member group collapses to the bare leaf. Returns the
  * layout unchanged when `groupId` is absent.
  */
-export function ungroupNode(layout: DynamicLayoutNode, groupId: string): DynamicLayoutNode {
-  const group: DynamicGroupNode | null = findGroupById(layout, groupId);
+export function ungroupNode(layout: TilingLayoutNode, groupId: string): TilingLayoutNode {
+  const group: TilingGroupNode | null = findGroupById(layout, groupId);
   if (group == null) {
     return layout;
   }
-  const replacement: DynamicLayoutNode = membersToSplitChain(group.members, `ungroup-${groupId}`);
+  const replacement: TilingLayoutNode = membersToSplitChain(group.members, `ungroup-${groupId}`);
   return normalizeStaticAxisFill(replaceNodeById(layout, groupId, replacement));
 }
 
@@ -1159,23 +1159,23 @@ export function ungroupNode(layout: DynamicLayoutNode, groupId: string): Dynamic
  * absent or the source leaf is already a member of that group.
  */
 export function addLeafToGroup(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   groupId: string,
   sourceLeafId: string,
-): DynamicLayoutNode {
-  const group: DynamicGroupNode | null = findGroupById(layout, groupId);
+): TilingLayoutNode {
+  const group: TilingGroupNode | null = findGroupById(layout, groupId);
   if (group == null) {
     return layout;
   }
-  if (group.members.some((member: DynamicLeafNode): boolean => member.id === sourceLeafId)) {
+  if (group.members.some((member: TilingLeafNode): boolean => member.id === sourceLeafId)) {
     return layout;
   }
   const extraction: ExtractedLeafResult = extractLeafNode(layout, sourceLeafId);
   if (extraction.extractedLeaf == null || extraction.nextNode == null) {
     return layout;
   }
-  const member: DynamicLeafNode = asGroupMember(extraction.extractedLeaf);
-  const nextGroup: DynamicGroupNode = {
+  const member: TilingLeafNode = asGroupMember(extraction.extractedLeaf);
+  const nextGroup: TilingGroupNode = {
     ...group,
     members: [...group.members, member],
     activeMemberId: member.id,
@@ -1190,26 +1190,26 @@ export function addLeafToGroup(
  * group or member is absent.
  */
 export function removeMemberFromGroup(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   groupId: string,
   memberId: string,
-): DynamicLayoutNode {
-  const group: DynamicGroupNode | null = findGroupById(layout, groupId);
+): TilingLayoutNode {
+  const group: TilingGroupNode | null = findGroupById(layout, groupId);
   if (group == null) {
     return layout;
   }
-  const removed: DynamicLeafNode | undefined = group.members.find(
-    (member: DynamicLeafNode): boolean => member.id === memberId,
+  const removed: TilingLeafNode | undefined = group.members.find(
+    (member: TilingLeafNode): boolean => member.id === memberId,
   );
   if (removed == null) {
     return layout;
   }
-  const remaining: ReadonlyArray<DynamicLeafNode> = group.members.filter(
-    (member: DynamicLeafNode): boolean => member.id !== memberId,
+  const remaining: ReadonlyArray<TilingLeafNode> = group.members.filter(
+    (member: TilingLeafNode): boolean => member.id !== memberId,
   );
   // The group's surviving slot: a bare leaf when one member is left, else the
   // group minus the removed member (active follows if it was the removed one).
-  const survivingSlot: DynamicLayoutNode =
+  const survivingSlot: TilingLayoutNode =
     remaining.length === 1
       ? remaining[0]
       : {
@@ -1218,7 +1218,7 @@ export function removeMemberFromGroup(
           activeMemberId:
             group.activeMemberId === memberId ? remaining[0].id : group.activeMemberId,
         };
-  const replacement: DynamicLayoutNode = {
+  const replacement: TilingLayoutNode = {
     kind: "split",
     id: `ungroup-member-${memberId}`,
     axis: "horizontal",
@@ -1231,15 +1231,15 @@ export function removeMemberFromGroup(
 
 /** Activate a specific member tab of a group. Same ref when already active or absent. */
 export function setActiveGroupMember(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   groupId: string,
   memberId: string,
-): DynamicLayoutNode {
-  return rewriteGroupById(layout, groupId, (group: DynamicGroupNode): DynamicLayoutNode => {
+): TilingLayoutNode {
+  return rewriteGroupById(layout, groupId, (group: TilingGroupNode): TilingLayoutNode => {
     if (group.activeMemberId === memberId) {
       return group;
     }
-    if (!group.members.some((member: DynamicLeafNode): boolean => member.id === memberId)) {
+    if (!group.members.some((member: TilingLeafNode): boolean => member.id === memberId)) {
       return group;
     }
     return { ...group, activeMemberId: memberId };
@@ -1248,16 +1248,16 @@ export function setActiveGroupMember(
 
 /** Advance the active member tab one step around the member ring (wraparound). */
 export function cycleActiveGroupMember(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   groupId: string,
   direction: TilingPaneCycleDirection,
-): DynamicLayoutNode {
-  return rewriteGroupById(layout, groupId, (group: DynamicGroupNode): DynamicLayoutNode => {
+): TilingLayoutNode {
+  return rewriteGroupById(layout, groupId, (group: TilingGroupNode): TilingLayoutNode => {
     if (group.members.length < 2) {
       return group;
     }
     const index: number = group.members.findIndex(
-      (member: DynamicLeafNode): boolean => member.id === group.activeMemberId,
+      (member: TilingLeafNode): boolean => member.id === group.activeMemberId,
     );
     const step: number = direction === "next" ? 1 : -1;
     const nextIndex: number =
@@ -1281,7 +1281,7 @@ function overlapAmount(startA: number, endA: number, startB: number, endB: numbe
 function directionalScore(
   fromRect: LeafRect,
   candidateRect: LeafRect,
-  direction: DynamicFocusDirection,
+  direction: TilingFocusDirection,
 ): number | null {
   if (direction === "left" && centerX(candidateRect) >= centerX(fromRect)) {
     return null;
@@ -1311,9 +1311,9 @@ function directionalScore(
 }
 
 export function findLeafByDirection(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   fromLeafId: string,
-  direction: DynamicFocusDirection,
+  direction: TilingFocusDirection,
 ): string | null {
   const rects: ReadonlyArray<LeafRect> = collectNormalizedLeafRects(layout);
   const fromRect: LeafRect | undefined = rects.find((rect: LeafRect): boolean => rect.leafId === fromLeafId);
@@ -1381,7 +1381,7 @@ export interface TilingGrowConstraints {
  * minimums": the sibling subtree's minimum axis extent is
  * `axisStackedLeafCount(sibling, axis) * minPaneSizePx`.
  */
-export function axisStackedLeafCount(node: DynamicLayoutNode, axis: DynamicSplitAxis): number {
+export function axisStackedLeafCount(node: TilingLayoutNode, axis: TilingSplitAxis): number {
   if (node.kind === "leaf" || node.kind === "group") {
     return 1;
   }
@@ -1392,7 +1392,7 @@ export function axisStackedLeafCount(node: DynamicLayoutNode, axis: DynamicSplit
 }
 
 interface GrowRewriteResult {
-  node: DynamicLayoutNode;
+  node: TilingLayoutNode;
   containsLeaf: boolean;
 }
 
@@ -1417,16 +1417,16 @@ interface GrowRewriteResult {
  * ancestor with room, returns the layout unchanged (pure; input never mutated).
  */
 export function growLeafToward(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   leafId: string,
-  direction: DynamicFocusDirection,
+  direction: TilingFocusDirection,
   minConstraints: TilingGrowConstraints,
-): DynamicLayoutNode {
+): TilingLayoutNode {
   if (findLeafById(layout, leafId) == null) {
     return layout;
   }
 
-  const matchingAxis: DynamicSplitAxis =
+  const matchingAxis: TilingSplitAxis =
     direction === "left" || direction === "right" ? "horizontal" : "vertical";
   const firstSideGrows: boolean = direction === "right" || direction === "down";
   const availableSizePx: number = Math.max(minConstraints.containerSizePx - minConstraints.gapPx, 1);
@@ -1435,7 +1435,7 @@ export function growLeafToward(
   // the rest", then the per-pane floor (`clampByMinSize` with the single-pane
   // minimum) keeps BOTH the growing pane and its immediate neighbor at/above
   // `minPaneSizePx` and inside the global [0.05, 0.95] bounds.
-  const pushedRatio = (siblingSubtree: DynamicLayoutNode, growingSideIsFirst: boolean): number => {
+  const pushedRatio = (siblingSubtree: TilingLayoutNode, growingSideIsFirst: boolean): number => {
     const siblingMinPx: number =
       axisStackedLeafCount(siblingSubtree, matchingAxis) * minConstraints.minPaneSizePx;
     const siblingFraction: number = siblingMinPx / availableSizePx;
@@ -1448,7 +1448,7 @@ export function growLeafToward(
     );
   };
 
-  const rewrite = (node: DynamicLayoutNode): GrowRewriteResult => {
+  const rewrite = (node: TilingLayoutNode): GrowRewriteResult => {
     if (node.kind === "leaf") {
       return { node, containsLeaf: node.id === leafId };
     }
@@ -1461,7 +1461,7 @@ export function growLeafToward(
 
     const firstResult: GrowRewriteResult = rewrite(node.first);
     if (firstResult.containsLeaf) {
-      let next: DynamicSplitNode = { ...node, first: firstResult.node };
+      let next: TilingSplitNode = { ...node, first: firstResult.node };
       if (node.axis === matchingAxis && firstSideGrows) {
         next = { ...next, ratio: pushedRatio(node.second, true) };
       }
@@ -1470,7 +1470,7 @@ export function growLeafToward(
 
     const secondResult: GrowRewriteResult = rewrite(node.second);
     if (secondResult.containsLeaf) {
-      let next: DynamicSplitNode = { ...node, second: secondResult.node };
+      let next: TilingSplitNode = { ...node, second: secondResult.node };
       if (node.axis === matchingAxis && !firstSideGrows) {
         next = { ...next, ratio: pushedRatio(node.first, false) };
       }
@@ -1484,7 +1484,7 @@ export function growLeafToward(
 }
 
 /** The split axis a direction distributes along (horizontal for left/right). */
-function directionAxis(direction: DynamicFocusDirection): DynamicSplitAxis {
+function directionAxis(direction: TilingFocusDirection): TilingSplitAxis {
   return direction === "left" || direction === "right" ? "horizontal" : "vertical";
 }
 
@@ -1493,7 +1493,7 @@ function directionAxis(direction: DynamicFocusDirection): DynamicSplitAxis {
  * complementary region). `right → left`, `left → right`, `down → top`,
  * `up → bottom`. (Direction uses `up`/`down`; placement uses `top`/`bottom`.)
  */
-function complementaryPlacement(direction: DynamicFocusDirection): DynamicMovePlacement {
+function complementaryPlacement(direction: TilingFocusDirection): TilingMovePlacement {
   switch (direction) {
     case "right":
       return "left";
@@ -1507,34 +1507,34 @@ function complementaryPlacement(direction: DynamicFocusDirection): DynamicMovePl
 }
 
 /** The axis perpendicular to `axis` — the off-axis the annex re-seed relocates into. */
-function perpendicularAxis(axis: DynamicSplitAxis): DynamicSplitAxis {
+function perpendicularAxis(axis: TilingSplitAxis): TilingSplitAxis {
   return axis === "horizontal" ? "vertical" : "horizontal";
 }
 
 /** The "after" (second-slot) placement along an axis: `bottom` for vertical, `right` for horizontal. */
-function afterPlacementForAxis(axis: DynamicSplitAxis): DynamicMovePlacement {
+function afterPlacementForAxis(axis: TilingSplitAxis): TilingMovePlacement {
   return axis === "vertical" ? "bottom" : "right";
 }
 
 /** The "before" (first-slot) placement along an axis: `top` for vertical, `left` for horizontal. */
-function beforePlacementForAxis(axis: DynamicSplitAxis): DynamicMovePlacement {
+function beforePlacementForAxis(axis: TilingSplitAxis): TilingMovePlacement {
   return axis === "vertical" ? "top" : "left";
 }
 
 /** True when a slot node (leaf or group) is the slot identified by `repId` (a leaf id or a group's member id). */
-function slotMatchesRepId(node: DynamicLayoutNode, repId: string): boolean {
+function slotMatchesRepId(node: TilingLayoutNode, repId: string): boolean {
   if (node.kind === "leaf") {
     return node.id === repId;
   }
   if (node.kind === "group") {
-    return node.members.some((member: DynamicLeafNode): boolean => member.id === repId);
+    return node.members.some((member: TilingLeafNode): boolean => member.id === repId);
   }
   return false;
 }
 
 interface ExtractedSlotResult {
-  nextNode: DynamicLayoutNode | null;
-  extracted: DynamicLayoutNode | null;
+  nextNode: TilingLayoutNode | null;
+  extracted: TilingLayoutNode | null;
 }
 
 /**
@@ -1545,7 +1545,7 @@ interface ExtractedSlotResult {
  * one unit. This is the group-aware extraction the annex eviction uses so that
  * annexing toward a group relocates the whole group instead of dissolving it.
  */
-function extractSlot(node: DynamicLayoutNode, repId: string): ExtractedSlotResult {
+function extractSlot(node: TilingLayoutNode, repId: string): ExtractedSlotResult {
   if (node.kind === "leaf" || node.kind === "group") {
     return slotMatchesRepId(node, repId)
       ? { nextNode: null, extracted: node }
@@ -1578,7 +1578,7 @@ function extractSlot(node: DynamicLayoutNode, repId: string): ExtractedSlotResul
 }
 
 /** The whole slot node (leaf or group) identified by `repId`, or `null` if absent. */
-function findSlotByRepId(node: DynamicLayoutNode, repId: string): DynamicLayoutNode | null {
+function findSlotByRepId(node: TilingLayoutNode, repId: string): TilingLayoutNode | null {
   if (node.kind === "leaf" || node.kind === "group") {
     return slotMatchesRepId(node, repId) ? node : null;
   }
@@ -1586,7 +1586,7 @@ function findSlotByRepId(node: DynamicLayoutNode, repId: string): DynamicLayoutN
 }
 
 /** Remove a whole slot (leaf or group) by rep id and gap-close; unchanged ref when absent / root. */
-function removeSlotByRepId(layout: DynamicLayoutNode, repId: string): DynamicLayoutNode {
+function removeSlotByRepId(layout: TilingLayoutNode, repId: string): TilingLayoutNode {
   const extraction: ExtractedSlotResult = extractSlot(layout, repId);
   if (extraction.extracted == null || extraction.nextNode == null) {
     return layout;
@@ -1601,11 +1601,11 @@ function removeSlotByRepId(layout: DynamicLayoutNode, repId: string): DynamicLay
  * is the "perpendicular split" the off-axis re-seed grafts/carves as one child.
  */
 function buildPerpStack(
-  slots: ReadonlyArray<DynamicLayoutNode>,
-  axis: DynamicSplitAxis,
-): DynamicLayoutNode {
-  const last: DynamicLayoutNode = slots[slots.length - 1];
-  let stack: DynamicLayoutNode = last;
+  slots: ReadonlyArray<TilingLayoutNode>,
+  axis: TilingSplitAxis,
+): TilingLayoutNode {
+  const last: TilingLayoutNode = slots[slots.length - 1];
+  let stack: TilingLayoutNode = last;
   // Fold from the tail so reading order is preserved head→tail along `axis`.
   for (let index: number = slots.length - 2; index >= 0; index -= 1) {
     const remaining: number = slots.length - index;
@@ -1625,7 +1625,7 @@ interface PerpSink {
   /** Representative leaf id of the sibling region facing the active. */
   targetLeafId: string;
   /** Edge of the target the evicted stack grafts onto (toward the active). */
-  placement: DynamicMovePlacement;
+  placement: TilingMovePlacement;
 }
 
 /**
@@ -1640,16 +1640,16 @@ interface PerpSink {
  * path.
  */
 function findPerpSink(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   activeLeafId: string,
-  perpAxis: DynamicSplitAxis,
+  perpAxis: TilingSplitAxis,
 ): PerpSink | null {
   let sink: PerpSink | null = null;
-  let node: DynamicLayoutNode = layout;
+  let node: TilingLayoutNode = layout;
   while (node.kind === "split") {
     const activeInFirst: boolean = findLeafById(node.first, activeLeafId) != null;
     if (node.axis === perpAxis) {
-      const region: DynamicLayoutNode = activeInFirst ? node.second : node.first;
+      const region: TilingLayoutNode = activeInFirst ? node.second : node.first;
       const regionLeafIds: ReadonlyArray<string> = readLeafNodeIds(region);
       // Active first → sibling is after the active; graft on the sibling's
       // leading edge (before its first leaf). Active second → graft on the
@@ -1691,21 +1691,21 @@ function findPerpSink(
  * `direction` (nothing lies in the vector).
  */
 export function selectEvictionSet(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   activeLeafId: string,
-  direction: DynamicFocusDirection,
+  direction: TilingFocusDirection,
 ): ReadonlyArray<string> {
   if (findLeafById(layout, activeLeafId) == null) {
     return [];
   }
-  const axis: DynamicSplitAxis = directionAxis(direction);
+  const axis: TilingSplitAxis = directionAxis(direction);
   // The child on the directional side (toward the edge): for a horizontal split
   // `first` is left / `second` is right; for vertical `first` is top / `second`
   // is bottom. So `left`/`up` target the FIRST child, `right`/`down` the SECOND.
   const directionalChildIsFirst: boolean = direction === "left" || direction === "up";
 
   const evicted: string[] = [];
-  let node: DynamicLayoutNode = layout;
+  let node: TilingLayoutNode = layout;
   while (node.kind === "split") {
     const activeInFirst: boolean = findLeafById(node.first, activeLeafId) != null;
     if (node.axis === axis) {
@@ -1747,22 +1747,22 @@ export function selectEvictionSet(
  * total — no pane is ever lost). Pure; the input tree is never mutated.
  */
 export function reseedEvicted(
-  layout: DynamicLayoutNode,
-  evictedSlots: ReadonlyArray<DynamicLayoutNode>,
+  layout: TilingLayoutNode,
+  evictedSlots: ReadonlyArray<TilingLayoutNode>,
   anchorLeafId: string,
-  direction: DynamicFocusDirection,
+  direction: TilingFocusDirection,
   constraints: TilingGrowConstraints,
-): DynamicLayoutNode {
+): TilingLayoutNode {
   if (evictedSlots.length === 0) {
     return layout;
   }
 
-  const annexAxis: DynamicSplitAxis = directionAxis(direction);
-  const perpAxis: DynamicSplitAxis = perpendicularAxis(annexAxis);
+  const annexAxis: TilingSplitAxis = directionAxis(direction);
+  const perpAxis: TilingSplitAxis = perpendicularAxis(annexAxis);
 
   // Anchor absent → graft the whole perpendicular stack at the root (never drop).
   if (findLeafById(layout, anchorLeafId) == null) {
-    const stack: DynamicLayoutNode = buildPerpStack(evictedSlots, perpAxis);
+    const stack: TilingLayoutNode = buildPerpStack(evictedSlots, perpAxis);
     return {
       kind: "split",
       id: `annex-reseed-root-${readLeafNodeIds(stack)[0]}`,
@@ -1783,8 +1783,8 @@ export function reseedEvicted(
   );
   const perpCapacity: number = Math.max(1, Math.floor(crossExtent / constraints.minPaneSizePx));
   const hostCap: number = sink != null ? perpCapacity : Math.max(1, perpCapacity - 1);
-  const hosted: ReadonlyArray<DynamicLayoutNode> = evictedSlots.slice(0, hostCap);
-  const spilled: ReadonlyArray<DynamicLayoutNode> = evictedSlots.slice(hostCap);
+  const hosted: ReadonlyArray<TilingLayoutNode> = evictedSlots.slice(0, hostCap);
+  const spilled: ReadonlyArray<TilingLayoutNode> = evictedSlots.slice(hostCap);
 
   const minFraction: number = clampByMinSize(
     0,
@@ -1793,9 +1793,9 @@ export function reseedEvicted(
     constraints.minPaneSizePx,
   );
   const hostedBandFraction: number = Math.min(0.95, hosted.length * minFraction);
-  const stack: DynamicLayoutNode = buildPerpStack(hosted, perpAxis);
+  const stack: TilingLayoutNode = buildPerpStack(hosted, perpAxis);
 
-  let tree: DynamicLayoutNode = layout;
+  let tree: TilingLayoutNode = layout;
   if (sink != null) {
     // L1 — graft minimized into the existing perpendicular region adjacent to the
     // active. Stack-first placements (before) want the small fraction directly;
@@ -1814,7 +1814,7 @@ export function reseedEvicted(
   } else {
     // L2 — carve a perpendicular split around the active: active dominant +
     // anchored (first slot), evicted stack minimized in the after slot.
-    const placement: DynamicMovePlacement = afterPlacementForAxis(perpAxis);
+    const placement: TilingMovePlacement = afterPlacementForAxis(perpAxis);
     const activeFraction: number = clampByMinSize(
       1 - hostedBandFraction,
       constraints.crossSizePx ?? constraints.containerSizePx,
@@ -1835,7 +1835,7 @@ export function reseedEvicted(
   // L3 — spill the residual to the OPPOSITE side, minimized (the only rung that
   // touches the opposite side). Along the annex axis at the complementary edge.
   if (spilled.length > 0) {
-    const spillPlacement: DynamicMovePlacement = complementaryPlacement(direction);
+    const spillPlacement: TilingMovePlacement = complementaryPlacement(direction);
     const spillIsFirst: boolean = spillPlacement === "left" || spillPlacement === "top";
     const spillRatio: number = clampByMinSize(
       spillIsFirst ? 0 : 1,
@@ -1879,11 +1879,11 @@ export function reseedEvicted(
  * unchanged. Pure; the input tree is never mutated.
  */
 export function annexDirection(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   activeLeafId: string,
-  direction: DynamicFocusDirection,
+  direction: TilingFocusDirection,
   constraints: TilingGrowConstraints,
-): DynamicLayoutNode {
+): TilingLayoutNode {
   if (findLeafById(layout, activeLeafId) == null) {
     return layout;
   }
@@ -1894,11 +1894,11 @@ export function annexDirection(
 
   // Resolve each evicted outer-slot id to its WHOLE slot node (a bare leaf, or
   // the entire group containing the id) so a group relocates as one unit.
-  const evictedSlots: ReadonlyArray<DynamicLayoutNode> = evictedIds
-    .map((id: string): DynamicLayoutNode | null => findSlotByRepId(layout, id))
-    .filter((node: DynamicLayoutNode | null): node is DynamicLayoutNode => node != null);
+  const evictedSlots: ReadonlyArray<TilingLayoutNode> = evictedIds
+    .map((id: string): TilingLayoutNode | null => findSlotByRepId(layout, id))
+    .filter((node: TilingLayoutNode | null): node is TilingLayoutNode => node != null);
 
-  let tree: DynamicLayoutNode = layout;
+  let tree: TilingLayoutNode = layout;
   for (const id of evictedIds) {
     tree = removeSlotByRepId(tree, id);
   }

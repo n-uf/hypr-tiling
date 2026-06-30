@@ -1,5 +1,5 @@
 import * as React from "react";
-import type { DynamicTileAccent } from "@n-uf/hypr-tiling";
+import type { TilingTileAccent } from "@n-uf/hypr-tiling";
 
 // Single source of truth for the homepage's documentation surface. The same
 // section content is rendered (a) inside the tiling panes for the interactive
@@ -175,7 +175,7 @@ export const ROADMAP_ITEMS: ReadonlyArray<RoadmapItem> = [
 interface DocPaneSpec {
   readonly id: string;
   readonly title: string;
-  readonly accent: DynamicTileAccent;
+  readonly accent: TilingTileAccent;
   // A short plain-text summary used by the prerender text mirror / llms.txt.
   readonly summary: string;
   readonly content: React.ReactNode;
@@ -270,19 +270,19 @@ function Pre({ children }: { children: string }): React.ReactElement {
 }
 
 const INTEGRATION_EXAMPLE: string = `import {
-  DynamicTilingRenderer,
+  TilingRenderer,
   DEFAULT_TILING_LAYOUT_CONFIG,
-  type DynamicLayoutNode,
-  type DynamicTile,
+  type TilingLayoutNode,
+  type TilingTile,
 } from "@n-uf/hypr-tiling";
 import { useState } from "react";
 
-const tiles: DynamicTile[] = [
+const tiles: TilingTile[] = [
   { id: "a", title: "editor", content: <Editor /> },
   { id: "b", title: "preview", content: <Preview /> },
 ];
 
-const initialLayout: DynamicLayoutNode = {
+const initialLayout: TilingLayoutNode = {
   kind: "split", id: "root", axis: "vertical", ratio: 0.5,
   first: { kind: "leaf", id: "l", tileId: "a" },
   second: { kind: "leaf", id: "r", tileId: "b" },
@@ -291,7 +291,7 @@ const initialLayout: DynamicLayoutNode = {
 export function Workspace() {
   const [layout, setLayout] = useState(initialLayout);
   return (
-    <DynamicTilingRenderer
+    <TilingRenderer
       layout={layout}
       tiles={tiles}
       config={DEFAULT_TILING_LAYOUT_CONFIG}
@@ -382,7 +382,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     title: "install",
     accent: "amber",
     summary:
-      "Install with pnpm add @n-uf/hypr-tiling react react-dom. React 19 peer deps. Render DynamicTilingRenderer with controlled layout state.",
+      "Install with pnpm add @n-uf/hypr-tiling react react-dom. React 19 peer deps. Render TilingRenderer with controlled layout state.",
     content: (
       <div className="flex flex-col gap-4">
         <SectionHeading>Install &amp; integrate</SectionHeading>

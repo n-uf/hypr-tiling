@@ -14,7 +14,7 @@
  * primitive), `drag-machine.ts` (the drag FSM the ghost sub-states map onto).
  */
 
-import type { DynamicDropAction } from "./types";
+import type { TilingDropAction } from "./types";
 
 /** A measured client-coordinate rect (the subset of `DOMRect` the morph needs). */
 export interface GhostRect {
@@ -299,7 +299,7 @@ export function buildLinearEasingCss(sampleCount: number = MAGNETIC_EASE_SAMPLE_
  */
 export function shouldApplyCoherentTransitDip(params: {
   enabled: boolean;
-  action: DynamicDropAction | null;
+  action: TilingDropAction | null;
   reducedMotion: boolean;
   speedsParity: boolean;
 }): boolean {

@@ -7,20 +7,20 @@ import {
   swapLeafTiles,
 } from "./state";
 import { collectLeafFootprints, footprintsByLeafId } from "./leaf-geometry";
-import type { DynamicEdgeZone } from "./drop-intent-resolver";
+import type { TilingEdgeZone } from "./drop-intent-resolver";
 import type {
-  DynamicDropIntentState,
+  TilingDropIntentState,
 } from "./drop-intent-resolver";
 import type {
-  DynamicLayoutConfig,
-  DynamicLayoutNode,
-  DynamicMovePlacement,
-  DynamicPaneFootprint,
-  DynamicProjectedLandingOverlay,
-  DynamicProjectedLandingSubject,
+  TilingLayoutConfig,
+  TilingLayoutNode,
+  TilingMovePlacement,
+  TilingPaneFootprint,
+  TilingProjectedLandingOverlay,
+  TilingProjectedLandingSubject,
 } from "./types";
 
-export type { DynamicProjectedLandingOverlay, DynamicProjectedLandingSubject } from "./types";
+export type { TilingProjectedLandingOverlay, TilingProjectedLandingSubject } from "./types";
 
 /**
  * Pure projected-layout / landing-overlay model — single source of truth shared
@@ -36,7 +36,7 @@ export type { DynamicProjectedLandingOverlay, DynamicProjectedLandingSubject } f
  * unit-tested directly.
  */
 
-export const PLACEMENT_BY_DROP_ZONE: Record<DynamicEdgeZone, DynamicMovePlacement> = {
+export const PLACEMENT_BY_DROP_ZONE: Record<TilingEdgeZone, TilingMovePlacement> = {
   left: "left",
   right: "right",
   top: "top",
@@ -48,10 +48,10 @@ export const PLACEMENT_BY_DROP_ZONE: Record<DynamicEdgeZone, DynamicMovePlacemen
  * time (`swapLeafTiles` / `insertLeafAdjacent`), so overlay geometry == result.
  */
 export function resolveProjectedDropLayout(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   sourceLeafId: string | null,
-  dropState: DynamicDropIntentState | null,
-): DynamicLayoutNode | null {
+  dropState: TilingDropIntentState | null,
+): TilingLayoutNode | null {
   if (sourceLeafId == null || dropState == null || sourceLeafId === dropState.leafId) {
     return null;
   }
@@ -71,7 +71,7 @@ export function resolveProjectedDropLayout(
   if (dropState.action !== "edge-insert") {
     return null;
   }
-  const edgeZone: DynamicEdgeZone | null = dropState.finalEdge ?? dropState.selectedSplitZone;
+  const edgeZone: TilingEdgeZone | null = dropState.finalEdge ?? dropState.selectedSplitZone;
   if (edgeZone == null) {
     return null;
   }
@@ -88,7 +88,7 @@ export function resolveProjectedDropLayout(
   );
 }
 
-function unionFootprints(footprints: ReadonlyArray<DynamicPaneFootprint>): DynamicPaneFootprint | null {
+function unionFootprints(footprints: ReadonlyArray<TilingPaneFootprint>): TilingPaneFootprint | null {
   if (footprints.length === 0) {
     return null;
   }
@@ -121,11 +121,11 @@ function unionFootprints(footprints: ReadonlyArray<DynamicPaneFootprint>): Dynam
 function resolveSwapLandingOverlays(
   sourceLeafId: string,
   targetLeafId: string,
-  projectedFootprints: ReadonlyMap<string, DynamicPaneFootprint>,
-): ReadonlyArray<DynamicProjectedLandingOverlay> {
-  const overlays: Array<DynamicProjectedLandingOverlay> = [];
+  projectedFootprints: ReadonlyMap<string, TilingPaneFootprint>,
+): ReadonlyArray<TilingProjectedLandingOverlay> {
+  const overlays: Array<TilingProjectedLandingOverlay> = [];
 
-  const sourceLandingFootprint: DynamicPaneFootprint | undefined = projectedFootprints.get(targetLeafId);
+  const sourceLandingFootprint: TilingPaneFootprint | undefined = projectedFootprints.get(targetLeafId);
   if (sourceLandingFootprint != null) {
     overlays.push({
       subject: "source",
@@ -134,7 +134,7 @@ function resolveSwapLandingOverlays(
     });
   }
 
-  const targetLandingFootprint: DynamicPaneFootprint | undefined = projectedFootprints.get(sourceLeafId);
+  const targetLandingFootprint: TilingPaneFootprint | undefined = projectedFootprints.get(sourceLeafId);
   if (targetLandingFootprint != null) {
     overlays.push({
       subject: "target",
@@ -153,13 +153,13 @@ function resolveSwapLandingOverlays(
  * — a pure insert does not displace the target in the swap sense.
  */
 function resolveInsertLandingOverlays(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   sourceLeafId: string,
-  projectedFootprints: ReadonlyMap<string, DynamicPaneFootprint>,
-): ReadonlyArray<DynamicProjectedLandingOverlay> {
-  const overlays: Array<DynamicProjectedLandingOverlay> = [];
+  projectedFootprints: ReadonlyMap<string, TilingPaneFootprint>,
+): ReadonlyArray<TilingProjectedLandingOverlay> {
+  const overlays: Array<TilingProjectedLandingOverlay> = [];
 
-  const sourceLandingFootprint: DynamicPaneFootprint | undefined = projectedFootprints.get(sourceLeafId);
+  const sourceLandingFootprint: TilingPaneFootprint | undefined = projectedFootprints.get(sourceLeafId);
   if (sourceLandingFootprint != null) {
     overlays.push({
       subject: "source",
@@ -168,13 +168,13 @@ function resolveInsertLandingOverlays(
     });
   }
 
-  const siblingSubtree: DynamicLayoutNode | null = siblingSubtreeForLeaf(layout, sourceLeafId);
+  const siblingSubtree: TilingLayoutNode | null = siblingSubtreeForLeaf(layout, sourceLeafId);
   if (siblingSubtree != null) {
     const successorLeafIds: ReadonlyArray<string> = readLeafNodeIds(siblingSubtree);
-    const successorFootprints: ReadonlyArray<DynamicPaneFootprint> = successorLeafIds
-      .map((leafId: string): DynamicPaneFootprint | undefined => projectedFootprints.get(leafId))
-      .filter((footprint: DynamicPaneFootprint | undefined): footprint is DynamicPaneFootprint => footprint != null);
-    const successorFootprint: DynamicPaneFootprint | null = unionFootprints(successorFootprints);
+    const successorFootprints: ReadonlyArray<TilingPaneFootprint> = successorLeafIds
+      .map((leafId: string): TilingPaneFootprint | undefined => projectedFootprints.get(leafId))
+      .filter((footprint: TilingPaneFootprint | undefined): footprint is TilingPaneFootprint => footprint != null);
+    const successorFootprint: TilingPaneFootprint | null = unionFootprints(successorFootprints);
     if (successorFootprint != null && successorLeafIds.length > 0) {
       overlays.push({
         subject: "successor",
@@ -193,14 +193,14 @@ function resolveInsertLandingOverlays(
  * actual post-drop reducer tree), so what is drawn equals what will commit.
  */
 export function resolveProjectedLandingOverlays(
-  layout: DynamicLayoutNode,
-  projectedLayout: DynamicLayoutNode | null,
+  layout: TilingLayoutNode,
+  projectedLayout: TilingLayoutNode | null,
   sourceLeafId: string | null,
-  dropState: DynamicDropIntentState | null,
+  dropState: TilingDropIntentState | null,
   viewportWidth: number,
   viewportHeight: number,
-  config: DynamicLayoutConfig,
-): ReadonlyArray<DynamicProjectedLandingOverlay> {
+  config: TilingLayoutConfig,
+): ReadonlyArray<TilingProjectedLandingOverlay> {
   if (
     projectedLayout == null ||
     sourceLeafId == null ||
@@ -211,7 +211,7 @@ export function resolveProjectedLandingOverlays(
     return [];
   }
 
-  const projectedFootprints: ReadonlyMap<string, DynamicPaneFootprint> = footprintsByLeafId(
+  const projectedFootprints: ReadonlyMap<string, TilingPaneFootprint> = footprintsByLeafId(
     collectLeafFootprints(projectedLayout, 0, 0, viewportWidth, viewportHeight, config),
   );
 

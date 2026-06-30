@@ -2,8 +2,8 @@ import { describe, expect, it } from "@jest/globals";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
-  DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS,
-  DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
+  TILING_OBSERVABILITY_COLOR_DEFAULTS,
+  TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
   DragSourceSlotReservation,
   buildDragPaneSnapshot,
   renderDragPaneShell,
@@ -16,8 +16,8 @@ import {
   type PaneDropAffordanceFlags,
   type TilingTheme,
 } from "../theme";
-import type { DynamicDropIntentState } from "../drop-intent-resolver";
-import type { DynamicDragPaneSnapshot, DynamicTile } from "../types";
+import type { TilingDropIntentState } from "../drop-intent-resolver";
+import type { TilingDragPaneSnapshot, TilingTile } from "../types";
 
 /**
  * Drag-visuals contract after the focus-follows-dragged-pane change:
@@ -34,15 +34,15 @@ import type { DynamicDragPaneSnapshot, DynamicTile } from "../types";
  */
 
 /**
- * Minimal-but-typed `DynamicDropIntentState` fixture (mirrors the helper in
+ * Minimal-but-typed `TilingDropIntentState` fixture (mirrors the helper in
  * `live-render-invariant.test.ts`). Only `leafId` / `action` / the commit-edge
  * fields are load-bearing for the resolvers under test; the rest are inert.
  */
 function makeResolvedTarget(
   targetLeafId: string,
-  action: DynamicDropIntentState["action"],
-  finalEdge: DynamicDropIntentState["finalEdge"] = null,
-): DynamicDropIntentState {
+  action: TilingDropIntentState["action"],
+  finalEdge: TilingDropIntentState["finalEdge"] = null,
+): TilingDropIntentState {
   return {
     leafId: targetLeafId,
     zone: finalEdge ?? "center",
@@ -161,13 +161,13 @@ describe("drop-affordance rings — eligible / hover-target / drop-target paint 
 
 describe("dragged ghost wears the focus frame (focus follows the dragged pane)", (): void => {
   it("the floating ghost shell carries the accent focus frame", (): void => {
-    const tile: DynamicTile = {
+    const tile: TilingTile = {
       id: "tile-a",
       title: "Alpha",
       accent: "violet",
       rows: ["row one"],
     };
-    const snapshot: DynamicDragPaneSnapshot = buildDragPaneSnapshot(tile);
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(tile);
     const markup: string = renderToStaticMarkup(
       renderDragPaneShell(snapshot, NEON, true),
     );
@@ -182,8 +182,8 @@ describe("seat / hop-in slot wears the focus frame", (): void => {
       createElement(DragSourceSlotReservation, {
         theme: NEON,
         accent: "emerald",
-        observabilityColors: DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS,
-        observabilityColorEnables: DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
+        observabilityColors: TILING_OBSERVABILITY_COLOR_DEFAULTS,
+        observabilityColorEnables: TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
       }),
     );
     expect(markup).toContain(accentHue("emerald").focusBorder);
@@ -196,9 +196,9 @@ describe("seat / hop-in slot wears the focus frame", (): void => {
       createElement(DragSourceSlotReservation, {
         theme: NEON,
         accent: "rose",
-        observabilityColors: DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS,
+        observabilityColors: TILING_OBSERVABILITY_COLOR_DEFAULTS,
         observabilityColorEnables: {
-          ...DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
+          ...TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
           dragSourceBorderEnabled: false,
         },
       }),
@@ -211,12 +211,12 @@ describe("commit-time focus follows the dragged pane to its destination leaf", (
   const SOURCE = "A";
 
   it("swap → focuses the TARGET leaf (swapLeafTiles moves the dragged content there)", (): void => {
-    const target: DynamicDropIntentState = makeResolvedTarget("C", "swap");
+    const target: TilingDropIntentState = makeResolvedTarget("C", "swap");
     expect(resolveDragCommitFocusLeafId(SOURCE, target)).toBe("C");
   });
 
   it("edge-insert → focuses the SOURCE leaf (it moves carrying its own content)", (): void => {
-    const target: DynamicDropIntentState = makeResolvedTarget(
+    const target: TilingDropIntentState = makeResolvedTarget(
       "C",
       "edge-insert",
       "right",
@@ -225,12 +225,12 @@ describe("commit-time focus follows the dragged pane to its destination leaf", (
   });
 
   it("group-merge → focuses the SOURCE leaf (it becomes the group's added member)", (): void => {
-    const target: DynamicDropIntentState = makeResolvedTarget("C", "group-merge");
+    const target: TilingDropIntentState = makeResolvedTarget("C", "group-merge");
     expect(resolveDragCommitFocusLeafId(SOURCE, target)).toBe(SOURCE);
   });
 
   it("non-committable edge-insert (no resolved edge) → null (gap-close, no focus change)", (): void => {
-    const target: DynamicDropIntentState = makeResolvedTarget(
+    const target: TilingDropIntentState = makeResolvedTarget(
       "C",
       "edge-insert",
       null,

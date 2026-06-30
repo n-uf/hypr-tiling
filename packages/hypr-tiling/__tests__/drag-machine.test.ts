@@ -37,21 +37,21 @@ import {
 import { createDragWatchdog } from "../drag-recovery";
 import { collectGroups, findGroupContainingLeaf, findLeafById, groupLeaves, insertLeafAdjacent, readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../state";
 import type {
-  DynamicDropAction,
-  DynamicLayoutNode,
-  DynamicGroupNode,
-  DynamicLeafDropZone,
-  DynamicLeafNode,
-  DynamicPaneFootprint,
-  DynamicSplitNode,
+  TilingDropAction,
+  TilingLayoutNode,
+  TilingGroupNode,
+  TilingLeafDropZone,
+  TilingLeafNode,
+  TilingPaneFootprint,
+  TilingSplitNode,
 } from "../types";
 
-function leaf(id: string, tileId: string): DynamicLeafNode {
+function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };
 }
 
-function memberIdsFromGroup(group: DynamicGroupNode): ReadonlyArray<string> {
-  return group.members.map((member: DynamicLeafNode): string => member.id);
+function memberIdsFromGroup(group: TilingGroupNode): ReadonlyArray<string> {
+  return group.members.map((member: TilingLeafNode): string => member.id);
 }
 
 /**
@@ -63,7 +63,7 @@ function memberIdsFromGroup(group: DynamicGroupNode): ReadonlyArray<string> {
  *       ├── B       (leaf, tile-b)
  *       └── C       (leaf, tile-c)
  */
-function baseLayout(): DynamicSplitNode {
+function baseLayout(): TilingSplitNode {
   return {
     kind: "split",
     id: "root",
@@ -81,13 +81,13 @@ function baseLayout(): DynamicSplitNode {
   };
 }
 
-const ANCHOR: DynamicPaneFootprint = { left: 100, top: 100, width: 200, height: 150 };
+const ANCHOR: TilingPaneFootprint = { left: 100, top: 100, width: 200, height: 150 };
 
 /** A fully-typed resolved target; only `leafId`/`zone`/`action`/edge fields are load-bearing. */
 function makeTarget(
   targetLeafId: string,
-  zone: DynamicLeafDropZone,
-  action: DynamicDropAction,
+  zone: TilingLeafDropZone,
+  action: TilingDropAction,
 ): DragResolvedTarget {
   return {
     leafId: targetLeafId,
@@ -153,7 +153,7 @@ describe("drag-machine — pickup threshold + ghost geometry", (): void => {
   });
 
   it("anchors the ghost at the grab offset (footprint follows the pointer)", (): void => {
-    const footprint: DynamicPaneFootprint = ghostFootprintAt(ANCHOR, { x: 10, y: 10 }, { x: 250, y: 260 });
+    const footprint: TilingPaneFootprint = ghostFootprintAt(ANCHOR, { x: 10, y: 10 }, { x: 250, y: 260 });
     expect(footprint).toEqual({ left: 240, top: 250, width: 200, height: 150 });
   });
 });
@@ -374,18 +374,18 @@ describe("drag-machine — commit eligibility (mirrors handleLeafDrop)", (): voi
 
 describe("drag-machine — derived candidate tree IS the live reflow (== commit, never a projection)", (): void => {
   it("null target → removeLeafTile(layout, source) (gap-closed base; ghost floats free)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     expect(deriveCandidateTree(layout, "A", null)).toEqual(removeLeafTile(layout, "A"));
     expect(readLeafNodeIds(deriveCandidateTree(layout, "A", null))).not.toContain("A");
   });
 
   it("self-target → removeLeafTile(layout, source) (no double image at the source)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     expect(deriveCandidateTree(layout, "A", makeTarget("A", "center", "swap"))).toEqual(removeLeafTile(layout, "A"));
   });
 
   it("swap candidate === swapLeafTiles commit (release never jumps)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const candidate = deriveCandidateTree(layout, "A", makeTarget("C", "center", "swap"));
     expect(candidate).toEqual(swapLeafTiles(layout, "A", "C"));
     // The candidate is a REAL reflowed tree (every leaf present), not a projection.
@@ -393,7 +393,7 @@ describe("drag-machine — derived candidate tree IS the live reflow (== commit,
   });
 
   it("edge-insert candidate === insertLeafAdjacent commit (the destination physically reflows)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const target: DragResolvedTarget = makeTarget("C", "left", "edge-insert"); // finalEdge "right"
     const candidate = deriveCandidateTree(layout, "A", target);
     const commit = insertLeafAdjacent(layout, "A", "C", "right", { preserveParentSplitAxis: false, splitRatio: 0.5 });
@@ -402,14 +402,14 @@ describe("drag-machine — derived candidate tree IS the live reflow (== commit,
   });
 
   it("null source → original layout untouched", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     expect(deriveCandidateTree(layout, null, null)).toBe(layout);
   });
 
   it("group-merge candidate === addLeafToGroup commit", (): void => {
-    const layout: DynamicLayoutNode = groupLeaves(baseLayout(), ["A", "B"]);
+    const layout: TilingLayoutNode = groupLeaves(baseLayout(), ["A", "B"]);
     const target: DragResolvedTarget = makeTarget("A", "center", "group-merge");
-    const candidate: DynamicLayoutNode = deriveCandidateTree(layout, "C", target);
+    const candidate: TilingLayoutNode = deriveCandidateTree(layout, "C", target);
     const groups = collectGroups(candidate);
     expect(groups).toHaveLength(1);
     expect([...memberIdsFromGroup(groups[0])].sort()).toEqual(["A", "B", "C"]);
@@ -444,7 +444,7 @@ describe("drag-machine — single-instance reservation gate (ghost fills the slo
     // sits in the destination slot) → exactly the leaf the gate reserves. Gate
     // + candidate derivation together: open slot, no in-slot source content,
     // the single ghost hops in to fill it.
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const candidate = deriveCandidateTree(layout, "A", makeTarget("C", "center", "swap"));
     expect(readLeafNodeIds(candidate)).toContain("A");
     expect(shouldReserveDragSourceSlot(true, true)).toBe(true);
@@ -485,7 +485,7 @@ describe("drag-machine — ghost-seat leaf (swap reserves the TARGET slot, not t
   });
 
   it("SWAP preview == commit: candidate exchanges the two tiles, dragged content lives ONCE at the seat (target) leaf", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const target: DragResolvedTarget = makeTarget("C", "center", "swap");
     const candidate = deriveCandidateTree(layout, "A", target);
     const seatLeafId: string | null = resolveDragGhostSeatLeafId("A", target);

@@ -65,19 +65,19 @@ is hidden inside the component — the tree is yours to persist, diff, and resto
 
 ```tsx
 import {
-  DynamicTilingRenderer,
+  TilingRenderer,
   DEFAULT_TILING_LAYOUT_CONFIG,
-  type DynamicLayoutNode,
-  type DynamicTile,
+  type TilingLayoutNode,
+  type TilingTile,
 } from "@n-uf/hypr-tiling";
 import { useState } from "react";
 
-const tiles: DynamicTile[] = [
+const tiles: TilingTile[] = [
   { id: "a", title: "editor", content: <Editor /> },
   { id: "b", title: "preview", content: <Preview /> },
 ];
 
-const initialLayout: DynamicLayoutNode = {
+const initialLayout: TilingLayoutNode = {
   kind: "split",
   id: "root",
   axis: "vertical",
@@ -87,9 +87,9 @@ const initialLayout: DynamicLayoutNode = {
 };
 
 export function Workspace(): JSX.Element {
-  const [layout, setLayout] = useState<DynamicLayoutNode>(initialLayout);
+  const [layout, setLayout] = useState<TilingLayoutNode>(initialLayout);
   return (
-    <DynamicTilingRenderer
+    <TilingRenderer
       layout={layout}
       tiles={tiles}
       config={DEFAULT_TILING_LAYOUT_CONFIG}

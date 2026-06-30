@@ -5,21 +5,21 @@ import {
   type DragCursorPresentation,
 } from "../drag-cursor";
 import type { DragResolvedTarget } from "../drag-machine";
-import type { DynamicDropAction, DynamicLeafDropZone } from "../types";
+import type { TilingDropAction, TilingLeafDropZone } from "../types";
 
 const SOURCE_LEAF_ID: string = "leaf-source";
 const TARGET_LEAF_ID: string = "leaf-target";
 
 /**
- * Minimal `DragResolvedTarget` (= `DynamicDropIntentState`) fixture. Only the
+ * Minimal `DragResolvedTarget` (= `TilingDropIntentState`) fixture. Only the
  * fields `resolveDragCursorPresentation` reads (`leafId`, `action`, `finalEdge`,
  * `selectedSplitZone`, `blockedReason`) are meaningful; the rest are filled with
  * inert defaults so the operation+validity → kind mapping can be exercised
  * without the full resolver.
  */
 function intent(overrides: Partial<DragResolvedTarget>): DragResolvedTarget {
-  const zone: DynamicLeafDropZone = overrides.zone ?? "center";
-  const action: DynamicDropAction = overrides.action ?? "swap";
+  const zone: TilingLeafDropZone = overrides.zone ?? "center";
+  const action: TilingDropAction = overrides.action ?? "swap";
   return {
     leafId: TARGET_LEAF_ID,
     zone,

@@ -7,10 +7,10 @@ import {
   readLeafNodeIds,
   resolveInteractionCapabilities,
   resolveJumpedPaneId,
-  type DynamicFocusDirection,
-  type DynamicGroupNode,
-  type DynamicLayoutNode,
-  type DynamicSplitNode,
+  type TilingFocusDirection,
+  type TilingGroupNode,
+  type TilingLayoutNode,
+  type TilingSplitNode,
   type ResolvedTilingInteractionCapabilities,
   type ResolvedTilingKeyChord,
   type ResolvedTilingKeyChordModifiers,
@@ -112,7 +112,7 @@ function gatesFromCapabilities(
 }
 
 function buildSections(args: {
-  layout: DynamicLayoutNode;
+  layout: TilingLayoutNode;
   focusedLeafId: string | null;
   maximizedLeafId: string | null;
   keymap: ResolvedTilingKeymap;
@@ -121,26 +121,26 @@ function buildSections(args: {
   const { layout, focusedLeafId, maximizedLeafId, keymap, gates } = args;
   const leafIds: ReadonlyArray<string> = readLeafNodeIds(layout);
   const hasMultiplePanes: boolean = leafIds.length > 1;
-  const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(layout);
-  const focusedGroup: DynamicGroupNode | undefined =
+  const groups: ReadonlyArray<TilingGroupNode> = collectGroups(layout);
+  const focusedGroup: TilingGroupNode | undefined =
     focusedLeafId == null
       ? undefined
-      : groups.find((group: DynamicGroupNode): boolean =>
+      : groups.find((group: TilingGroupNode): boolean =>
           group.members.some((member): boolean => member.id === focusedLeafId),
         );
   const isFocusedGrouped: boolean =
     focusedGroup != null && focusedGroup.members.length > 1;
-  const splits: ReadonlyArray<DynamicSplitNode> = collectSplitNodes(layout);
+  const splits: ReadonlyArray<TilingSplitNode> = collectSplitNodes(layout);
   const isMasterActive: boolean = splits.some(
-    (split: DynamicSplitNode): boolean => split.layoutMode === "master",
+    (split: TilingSplitNode): boolean => split.layoutMode === "master",
   );
 
-  const directionExists = (direction: DynamicFocusDirection): boolean =>
+  const directionExists = (direction: TilingFocusDirection): boolean =>
     focusedLeafId != null &&
     findLeafByDirection(layout, focusedLeafId, direction) != null;
 
   const directionEntry = (
-    direction: DynamicFocusDirection,
+    direction: TilingFocusDirection,
     chord: ResolvedTilingKeyChord,
   ): ShortcutEntry => {
     const command: TilingCommand = { kind: "focus-direction", direction };
@@ -379,7 +379,7 @@ export function ShortcutsPane({
   interaction,
 }: {
   commandHandleRef: React.RefObject<TilingCommandHandle | null>;
-  layout: DynamicLayoutNode;
+  layout: TilingLayoutNode;
   focusedLeafId: string | null;
   maximizedLeafId: string | null;
   interaction?: TilingInteractionCapabilities;

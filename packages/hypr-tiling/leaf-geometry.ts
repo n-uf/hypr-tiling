@@ -1,12 +1,12 @@
 import { clampByMinSize, isStaticAlongSplitAxis, splitAxisDimension } from "./pane-sizing";
 import type {
-  DynamicLayoutConfig,
-  DynamicLayoutNode,
-  DynamicLeafNode,
-  DynamicMasterOrientation,
-  DynamicPaneFootprint,
-  DynamicSplitAxis,
-  DynamicSplitNode,
+  TilingLayoutConfig,
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingMasterOrientation,
+  TilingPaneFootprint,
+  TilingSplitAxis,
+  TilingSplitNode,
   TilingDimension,
 } from "./types";
 
@@ -26,13 +26,13 @@ import type {
  * the geometry is identical to a pure ratio split.
  */
 
-const GAP_FREE_UNIT_CONFIG: DynamicLayoutConfig = {
+const GAP_FREE_UNIT_CONFIG: TilingLayoutConfig = {
   gapPx: 0,
   minPaneSizePx: 0,
   handleSizePx: 0,
 };
 
-export interface DynamicLeafFootprint extends DynamicPaneFootprint {
+export interface TilingLeafFootprint extends TilingPaneFootprint {
   leafId: string;
 }
 
@@ -51,7 +51,7 @@ export interface LeafRect {
  * strictly-positive px value (a zero/negative/absent pin is content-sized and
  * unknowable to pure geometry → callers fall back to ratio).
  */
-function alongAxisPinPx(node: DynamicLayoutNode, axis: DynamicSplitAxis): number | null {
+function alongAxisPinPx(node: TilingLayoutNode, axis: TilingSplitAxis): number | null {
   const dimension: TilingDimension = splitAxisDimension(axis);
   const pinPx: number | undefined = dimension === "width" ? node.sizing?.widthPx : node.sizing?.heightPx;
   if (pinPx == null || !Number.isFinite(pinPx) || pinPx <= 0) {
@@ -67,15 +67,15 @@ function alongAxisPinPx(node: DynamicLayoutNode, axis: DynamicSplitAxis): number
  * boundary renders no handle — matches the renderer `{content, fill}` arm).
  */
 function collectStaticAlongFootprints(
-  node: { axis: DynamicSplitAxis; first: DynamicLayoutNode; second: DynamicLayoutNode },
+  node: { axis: TilingSplitAxis; first: TilingLayoutNode; second: TilingLayoutNode },
   left: number,
   top: number,
   width: number,
   height: number,
-  config: DynamicLayoutConfig,
+  config: TilingLayoutConfig,
   staticPinPx: number,
   staticIsFirst: boolean,
-): ReadonlyArray<DynamicLeafFootprint> {
+): ReadonlyArray<TilingLeafFootprint> {
   if (node.axis === "horizontal") {
     const firstWidth: number = staticIsFirst ? staticPinPx : Math.max(0, width - staticPinPx);
     const secondWidth: number = staticIsFirst ? Math.max(0, width - staticPinPx) : staticPinPx;
@@ -100,7 +100,7 @@ const MASTER_RATIO_MAX: number = 0.95;
 export interface MasterStackParams {
   /** Number of slots in the master area, clamped to `[1, slotCount]`. */
   count: number;
-  orientation: DynamicMasterOrientation;
+  orientation: TilingMasterOrientation;
   /** Master-area fraction along the orientation's primary axis, clamped `[0.05, 0.95]`. */
   ratio: number;
 }
@@ -120,7 +120,7 @@ function clampMasterRatio(value: number): number {
  * window list, not a tree). The binary structure still defines slot membership +
  * order + identity and the reducers still operate on it.
  */
-export function collectMasterSlots(node: DynamicLayoutNode): ReadonlyArray<DynamicLayoutNode> {
+export function collectMasterSlots(node: TilingLayoutNode): ReadonlyArray<TilingLayoutNode> {
   if (node.kind === "leaf" || node.kind === "group") {
     return [node];
   }
@@ -133,7 +133,7 @@ export function collectMasterSlots(node: DynamicLayoutNode): ReadonlyArray<Dynam
  * (should never occur — slots are flattened to non-splits) falls back to its
  * first descendant leaf. Phase-3b: a group resolves to its active member id.
  */
-export function slotRepresentativeLeafId(node: DynamicLayoutNode): string {
+export function slotRepresentativeLeafId(node: TilingLayoutNode): string {
   if (node.kind === "leaf") {
     return node.id;
   }
@@ -144,7 +144,7 @@ export function slotRepresentativeLeafId(node: DynamicLayoutNode): string {
 }
 
 /** Resolve a master split's parameters, clamping count to the available slots. */
-export function resolveMasterParams(node: DynamicSplitNode, slotCount: number): MasterStackParams {
+export function resolveMasterParams(node: TilingSplitNode, slotCount: number): MasterStackParams {
   const requestedCount: number = Math.round(node.masterCount ?? 1);
   const maxCount: number = Math.max(slotCount, 1);
   return {
@@ -160,15 +160,15 @@ export function resolveMasterParams(node: DynamicSplitNode, slotCount: number): 
  * (so a leaf slot — or a group slot in Phase-3b — resolves its own footprint).
  */
 function layoutSlotsAlong(
-  items: ReadonlyArray<DynamicLayoutNode>,
+  items: ReadonlyArray<TilingLayoutNode>,
   left: number,
   top: number,
   width: number,
   height: number,
   stackAxis: "vertical" | "horizontal",
   gapPx: number,
-  config: DynamicLayoutConfig,
-): ReadonlyArray<DynamicLeafFootprint> {
+  config: TilingLayoutConfig,
+): ReadonlyArray<TilingLeafFootprint> {
   const count: number = items.length;
   if (count === 0) {
     return [];
@@ -176,12 +176,12 @@ function layoutSlotsAlong(
   const totalGapPx: number = gapPx * (count - 1);
   if (stackAxis === "vertical") {
     const eachHeight: number = Math.max(0, (height - totalGapPx) / count);
-    return items.flatMap((item: DynamicLayoutNode, index: number): ReadonlyArray<DynamicLeafFootprint> =>
+    return items.flatMap((item: TilingLayoutNode, index: number): ReadonlyArray<TilingLeafFootprint> =>
       collectLeafFootprints(item, left, top + index * (eachHeight + gapPx), width, eachHeight, config),
     );
   }
   const eachWidth: number = Math.max(0, (width - totalGapPx) / count);
-  return items.flatMap((item: DynamicLayoutNode, index: number): ReadonlyArray<DynamicLeafFootprint> =>
+  return items.flatMap((item: TilingLayoutNode, index: number): ReadonlyArray<TilingLeafFootprint> =>
     collectLeafFootprints(item, left + index * (eachWidth + gapPx), top, eachWidth, height, config),
   );
 }
@@ -191,7 +191,7 @@ function layoutSlotsAlong(
  * ordered `slots` out as `params.count` master tiles in a master area plus the
  * remaining tiles in a stack, divided along the orientation's primary axis by
  * `params.ratio` (gap-reserved). Returns one footprint per slot, consistent with
- * the dwindle traversal (same `DynamicLeafFootprint` shape, same recursion into
+ * the dwindle traversal (same `TilingLeafFootprint` shape, same recursion into
  * each slot) so hit-testing / overlays / focus all read this geometry uniformly.
  *
  * - `left`/`right` orientation → master area is a left/right COLUMN (primary
@@ -202,22 +202,22 @@ function layoutSlotsAlong(
  *   along the orientation's cross axis.
  */
 export function resolveMasterStackFootprints(
-  slots: ReadonlyArray<DynamicLayoutNode>,
+  slots: ReadonlyArray<TilingLayoutNode>,
   left: number,
   top: number,
   width: number,
   height: number,
-  config: DynamicLayoutConfig,
+  config: TilingLayoutConfig,
   params: MasterStackParams,
-): ReadonlyArray<DynamicLeafFootprint> {
+): ReadonlyArray<TilingLeafFootprint> {
   const slotCount: number = slots.length;
   if (slotCount === 0) {
     return [];
   }
   const count: number = Math.min(Math.max(params.count, 1), slotCount);
-  const orientation: DynamicMasterOrientation = params.orientation;
-  const masters: ReadonlyArray<DynamicLayoutNode> = slots.slice(0, count);
-  const stack: ReadonlyArray<DynamicLayoutNode> = slots.slice(count);
+  const orientation: TilingMasterOrientation = params.orientation;
+  const masters: ReadonlyArray<TilingLayoutNode> = slots.slice(0, count);
+  const stack: ReadonlyArray<TilingLayoutNode> = slots.slice(count);
   const gapPx: number = config.gapPx;
   const withinAxis: "vertical" | "horizontal" =
     orientation === "left" || orientation === "right" ? "vertical" : "horizontal";
@@ -254,13 +254,13 @@ export function resolveMasterStackFootprints(
 }
 
 export function collectLeafFootprints(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   left: number,
   top: number,
   width: number,
   height: number,
-  config: DynamicLayoutConfig,
-): ReadonlyArray<DynamicLeafFootprint> {
+  config: TilingLayoutConfig,
+): ReadonlyArray<TilingLeafFootprint> {
   if (node.kind === "leaf") {
     return [{
       leafId: node.id,
@@ -275,8 +275,8 @@ export function collectLeafFootprints(
   // member occupies the group's footprint (the stacking contract). Inactive
   // members have no footprint, so they are never hit-tested / overlaid.
   if (node.kind === "group") {
-    const activeMember: DynamicLeafNode | undefined = node.members.find(
-      (member: DynamicLeafNode): boolean => member.id === node.activeMemberId,
+    const activeMember: TilingLeafNode | undefined = node.members.find(
+      (member: TilingLeafNode): boolean => member.id === node.activeMemberId,
     );
     if (activeMember == null) {
       return [];
@@ -288,7 +288,7 @@ export function collectLeafFootprints(
   // "master"` lays its flattened descendant slots out as master area + stack
   // instead of by recursive binary ratio. Dwindle (the default) falls through.
   if (node.layoutMode === "master") {
-    const slots: ReadonlyArray<DynamicLayoutNode> = collectMasterSlots(node);
+    const slots: ReadonlyArray<TilingLayoutNode> = collectMasterSlots(node);
     return resolveMasterStackFootprints(
       slots,
       left,
@@ -361,9 +361,9 @@ export function collectLeafFootprints(
  * 1-unit container, so the static arm falls through to ratio — identical to the
  * deleted `state.ts:collectLeafRects` for every structurally-valid tree).
  */
-export function collectNormalizedLeafRects(node: DynamicLayoutNode): ReadonlyArray<LeafRect> {
+export function collectNormalizedLeafRects(node: TilingLayoutNode): ReadonlyArray<LeafRect> {
   return collectLeafFootprints(node, 0, 0, 1, 1, GAP_FREE_UNIT_CONFIG).map(
-    (footprint: DynamicLeafFootprint): LeafRect => ({
+    (footprint: TilingLeafFootprint): LeafRect => ({
       leafId: footprint.leafId,
       left: footprint.left,
       top: footprint.top,
@@ -374,10 +374,10 @@ export function collectNormalizedLeafRects(node: DynamicLayoutNode): ReadonlyArr
 }
 
 export function footprintsByLeafId(
-  footprints: ReadonlyArray<DynamicLeafFootprint>,
-): ReadonlyMap<string, DynamicPaneFootprint> {
-  return new Map<string, DynamicPaneFootprint>(
-    footprints.map((footprint: DynamicLeafFootprint): [string, DynamicPaneFootprint] => [
+  footprints: ReadonlyArray<TilingLeafFootprint>,
+): ReadonlyMap<string, TilingPaneFootprint> {
+  return new Map<string, TilingPaneFootprint>(
+    footprints.map((footprint: TilingLeafFootprint): [string, TilingPaneFootprint] => [
       footprint.leafId,
       {
         left: footprint.left,
@@ -391,7 +391,7 @@ export function footprintsByLeafId(
 
 const FOOTPRINT_DELTA_EPSILON_PX: number = 0.5;
 
-export function isFootprintChanged(previous: DynamicPaneFootprint, next: DynamicPaneFootprint): boolean {
+export function isFootprintChanged(previous: TilingPaneFootprint, next: TilingPaneFootprint): boolean {
   return (
     Math.abs(previous.left - next.left) > FOOTPRINT_DELTA_EPSILON_PX ||
     Math.abs(previous.top - next.top) > FOOTPRINT_DELTA_EPSILON_PX ||

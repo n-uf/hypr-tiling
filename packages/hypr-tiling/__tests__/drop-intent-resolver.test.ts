@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import {
-  DYNAMIC_DROP_INTENT_CONFIG,
+  TILING_DROP_INTENT_CONFIG,
   buildGroupTabStripMergeIntent,
   classifyPaneZone,
   paneZoneCenterInsetPercent,
@@ -13,29 +13,29 @@ import {
   snapToDevicePixel,
   toPaneLocalPoint,
 } from "../drop-intent-resolver";
-import type { DynamicPanePoint } from "../drop-intent-resolver";
+import type { TilingPanePoint } from "../drop-intent-resolver";
 import type {
-  DynamicPaneSize,
-  DynamicZoneGeometryConfig,
+  TilingPaneSize,
+  TilingZoneGeometryConfig,
 } from "../drop-intent-resolver";
 import type {
-  DynamicLeafDropZone,
-  DynamicSplitAxis,
+  TilingLeafDropZone,
+  TilingSplitAxis,
 } from "../types";
 
-const EMPTY_AXIS_PATH: ReadonlyArray<DynamicSplitAxis> = [];
-const SQUARE_PANE: DynamicPaneSize = { width: 200, height: 200 };
+const EMPTY_AXIS_PATH: ReadonlyArray<TilingSplitAxis> = [];
+const SQUARE_PANE: TilingPaneSize = { width: 200, height: 200 };
 
 interface ZoneEvaluation {
   isValid: boolean;
   rejectionReason: string | null;
 }
 
-function makeConfig(overrides?: Partial<DynamicZoneGeometryConfig>): DynamicZoneGeometryConfig {
+function makeConfig(overrides?: Partial<TilingZoneGeometryConfig>): TilingZoneGeometryConfig {
   return {
-    centerRatio: DYNAMIC_DROP_INTENT_CONFIG.centerRatio,
-    centerMinPx: DYNAMIC_DROP_INTENT_CONFIG.centerMinPx,
-    hysteresisPx: DYNAMIC_DROP_INTENT_CONFIG.hysteresisPx,
+    centerRatio: TILING_DROP_INTENT_CONFIG.centerRatio,
+    centerMinPx: TILING_DROP_INTENT_CONFIG.centerMinPx,
+    hysteresisPx: TILING_DROP_INTENT_CONFIG.hysteresisPx,
     devicePixelRatio: 1,
     ...overrides,
   };
@@ -49,10 +49,10 @@ function resolveAt(
   paneLocalX: number,
   paneLocalY: number,
   options?: {
-    config?: DynamicZoneGeometryConfig;
-    previousZone?: DynamicLeafDropZone | null;
-    evaluateZone?: (zone: DynamicLeafDropZone) => ZoneEvaluation;
-    paneSize?: DynamicPaneSize;
+    config?: TilingZoneGeometryConfig;
+    previousZone?: TilingLeafDropZone | null;
+    evaluateZone?: (zone: TilingLeafDropZone) => ZoneEvaluation;
+    paneSize?: TilingPaneSize;
   },
 ) {
   return resolveDropIntent({
@@ -132,7 +132,7 @@ describe("parameterized geometry (centerRatio / centerMinPx / hysteresisPx)", ()
   });
 
   it("applies centerMinPx as the floor for the center rectangle on tiny panes", (): void => {
-    const tinyPane: DynamicPaneSize = { width: 50, height: 50 };
+    const tinyPane: TilingPaneSize = { width: 50, height: 50 };
     // 50 * 0.34 = 17 < 24, so the floor wins: center rect is 24px wide.
     const floored = resolvePaneZoneGeometry(tinyPane, makeConfig({ centerMinPx: 24 }));
     expect(floored.centerRightPx - floored.centerLeftPx).toBe(24);
@@ -371,9 +371,9 @@ describe("zone / overlay agreement on a NON-square pane", (): void => {
   // the normalized-penetration boundary, which is the interesting case on a
   // non-square aspect ratio.
   const NON_SQUARE = { width: 300, height: 200 } as const;
-  const RATIO = DYNAMIC_DROP_INTENT_CONFIG.centerRatio;
+  const RATIO = TILING_DROP_INTENT_CONFIG.centerRatio;
 
-  function pointInPolygon(point: DynamicPanePoint, polygon: ReadonlyArray<readonly [number, number]>): boolean {
+  function pointInPolygon(point: TilingPanePoint, polygon: ReadonlyArray<readonly [number, number]>): boolean {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
       const [xi, yi] = polygon[i];
@@ -388,7 +388,7 @@ describe("zone / overlay agreement on a NON-square pane", (): void => {
     return inside;
   }
 
-  function drawnOverlayZone(point: DynamicPanePoint): "center" | "left" | "right" | "top" | "bottom" {
+  function drawnOverlayZone(point: TilingPanePoint): "center" | "left" | "right" | "top" | "bottom" {
     const low: number = (1 - RATIO) / 2;
     const high: number = (1 + RATIO) / 2;
     const lowX: number = low * NON_SQUARE.width;
@@ -414,7 +414,7 @@ describe("zone / overlay agreement on a NON-square pane", (): void => {
 
   it("agrees with the drawn overlay for points in every region (incl. diagonal boundary)", (): void => {
     const geometry = resolvePaneZoneGeometry(NON_SQUARE, makeConfig());
-    const samplePoints: ReadonlyArray<DynamicPanePoint> = [
+    const samplePoints: ReadonlyArray<TilingPanePoint> = [
       { x: 150, y: 100 }, // center
       { x: 150, y: 20 }, // clearly top
       { x: 20, y: 100 }, // clearly left

@@ -7,7 +7,7 @@ import {
   type DragPresentationInput,
   type DragPresentationMode,
 } from "../drag-presentation";
-import type { DynamicPaneBodyRenderMode } from "../types";
+import type { TilingPaneBodyRenderMode } from "../types";
 
 /**
  * Build a fully-typed presentation input with inert defaults; tests override
@@ -242,7 +242,7 @@ describe("(c) single painted instance — exactly one ghost-seat reservation", (
       DragPresentationInput,
       "liveDragModeEnabled" | "dragPhase" | "settlingOutcome" | "dropAction" | "dropZone"
     > & { ghostSeatLeafId: string; isPaneContentVisible: boolean },
-  ): Record<"origin" | "seat" | "other", DynamicPaneBodyRenderMode> {
+  ): Record<"origin" | "seat" | "other", TilingPaneBodyRenderMode> {
     const base = {
       liveDragModeEnabled: args.liveDragModeEnabled,
       dragPhase: args.dragPhase,
@@ -253,7 +253,7 @@ describe("(c) single painted instance — exactly one ghost-seat reservation", (
       dropZone: args.dropZone,
       dropDominantEdge: null,
     };
-    const mode = (leafId: string): DynamicPaneBodyRenderMode =>
+    const mode = (leafId: string): TilingPaneBodyRenderMode =>
       resolvePaneBodyRenderMode(
         resolveDragPresentation({ ...base, leafId }).isGhostSeatReservation,
         args.isPaneContentVisible,
@@ -261,9 +261,9 @@ describe("(c) single painted instance — exactly one ghost-seat reservation", (
     return { origin: mode(ORIGIN), seat: mode(SEAT), other: mode(OTHER) };
   }
 
-  function reservationCount(modes: Record<string, DynamicPaneBodyRenderMode>): number {
+  function reservationCount(modes: Record<string, TilingPaneBodyRenderMode>): number {
     return Object.values(modes).filter(
-      (mode: DynamicPaneBodyRenderMode): boolean => mode === "render-reservation",
+      (mode: TilingPaneBodyRenderMode): boolean => mode === "render-reservation",
     ).length;
   }
 

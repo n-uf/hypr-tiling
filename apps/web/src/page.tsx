@@ -1,10 +1,10 @@
 import * as React from "react";
 import {
-  DynamicTilingRenderer,
-  type DynamicLayoutConfig,
-  type DynamicLayoutNode,
-  type DynamicRenderTileArgs,
-  type DynamicTile,
+  TilingRenderer,
+  type TilingLayoutConfig,
+  type TilingLayoutNode,
+  type TilingRenderTileProps,
+  type TilingTile,
   type TilingCommandHandle,
   type TilingInteractionCapabilities,
 } from "@n-uf/hypr-tiling";
@@ -22,7 +22,7 @@ const INTERACTION: TilingInteractionCapabilities = {
   paneSwitching: { showContentToggle: false },
 };
 
-const LAYOUT_CONFIG: DynamicLayoutConfig = {
+const LAYOUT_CONFIG: TilingLayoutConfig = {
   gapPx: 14,
   minPaneSizePx: 180,
   handleSizePx: 8,
@@ -35,7 +35,7 @@ const LAYOUT_CONFIG: DynamicLayoutConfig = {
 // the roadmap pane, and the install/integration column over a bottom row that
 // pairs the SEO note with the live controls. A leaf id mirrors its tile id (one
 // tile per pane).
-const INITIAL_LAYOUT: DynamicLayoutNode = {
+const INITIAL_LAYOUT: TilingLayoutNode = {
   kind: "split",
   id: "root",
   axis: "horizontal",
@@ -165,7 +165,7 @@ export function HomePage({
 }: {
   navigate?: (to: string) => void;
 }): React.ReactElement {
-  const [layout, setLayout] = React.useState<DynamicLayoutNode>(INITIAL_LAYOUT);
+  const [layout, setLayout] = React.useState<TilingLayoutNode>(INITIAL_LAYOUT);
   const [focusedLeafId, setFocusedLeafId] = React.useState<string | null>(
     INITIAL_FOCUSED_LEAF_ID,
   );
@@ -174,8 +174,8 @@ export function HomePage({
   );
   const commandHandleRef = React.useRef<TilingCommandHandle | null>(null);
 
-  const tiles: ReadonlyArray<DynamicTile> = DOC_PANES.map(
-    (pane): DynamicTile => ({
+  const tiles: ReadonlyArray<TilingTile> = DOC_PANES.map(
+    (pane): TilingTile => ({
       id: pane.id,
       title: pane.title,
       accent: pane.accent,
@@ -194,7 +194,7 @@ export function HomePage({
     }),
   );
 
-  const allTiles: ReadonlyArray<DynamicTile> = [
+  const allTiles: ReadonlyArray<TilingTile> = [
     ...tiles,
     {
       id: "controls",
@@ -217,7 +217,7 @@ export function HomePage({
       className="mosaic-rise h-screen max-h-screen min-h-0 w-full overflow-hidden p-3 font-sans text-stone-100"
       style={MAIN_BACKGROUND}
     >
-      <DynamicTilingRenderer
+      <TilingRenderer
         ref={commandHandleRef}
         layout={layout}
         tiles={allTiles}
@@ -229,7 +229,7 @@ export function HomePage({
         onFocusedLeafChange={setFocusedLeafId}
         maximizedLeafId={maximizedLeafId}
         onMaximizedLeafChange={setMaximizedLeafId}
-        renderTile={(args: DynamicRenderTileArgs): React.ReactNode => (
+        renderTile={(args: TilingRenderTileProps): React.ReactNode => (
           <DocTile {...args} />
         )}
       />

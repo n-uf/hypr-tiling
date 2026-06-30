@@ -4,19 +4,19 @@ import {
   resolveProjectedLandingOverlays,
 } from "../projected-layout";
 import { collectLeafFootprints, footprintsByLeafId } from "../leaf-geometry";
-import type { DynamicProjectedLandingOverlay } from "../projected-layout";
+import type { TilingProjectedLandingOverlay } from "../projected-layout";
 import { insertLeafAdjacent, swapLeafTiles } from "../state";
-import type { DynamicDropIntentState, DynamicEdgeZone } from "../drop-intent-resolver";
+import type { TilingDropIntentState, TilingEdgeZone } from "../drop-intent-resolver";
 import type {
-  DynamicDropAction,
-  DynamicLayoutConfig,
-  DynamicLayoutNode,
-  DynamicLeafNode,
-  DynamicPaneFootprint,
-  DynamicSplitNode,
+  TilingDropAction,
+  TilingLayoutConfig,
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingPaneFootprint,
+  TilingSplitNode,
 } from "../types";
 
-function leaf(id: string, tileId: string): DynamicLeafNode {
+function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };
 }
 
@@ -32,7 +32,7 @@ function leaf(id: string, tileId: string): DynamicLeafNode {
  * Viewport 1000 x 800. Current footprints:
  *   A {0,0,500,400}  B {0,400,500,400}  C {500,0,500,800}
  */
-function baseLayout(): DynamicSplitNode {
+function baseLayout(): TilingSplitNode {
   return {
     kind: "split",
     id: "root",
@@ -50,7 +50,7 @@ function baseLayout(): DynamicSplitNode {
   };
 }
 
-const GAP_FREE_CONFIG: DynamicLayoutConfig = {
+const GAP_FREE_CONFIG: TilingLayoutConfig = {
   gapPx: 0,
   minPaneSizePx: 0,
   handleSizePx: 0,
@@ -60,11 +60,11 @@ const VIEWPORT_HEIGHT: number = 800;
 
 function makeDropState(overrides: {
   leafId: string;
-  action: DynamicDropAction;
-  zone: DynamicDropIntentState["zone"];
-  finalEdge?: DynamicEdgeZone | null;
-  selectedSplitZone?: DynamicEdgeZone | null;
-}): DynamicDropIntentState {
+  action: TilingDropAction;
+  zone: TilingDropIntentState["zone"];
+  finalEdge?: TilingEdgeZone | null;
+  selectedSplitZone?: TilingEdgeZone | null;
+}): TilingDropIntentState {
   return {
     leafId: overrides.leafId,
     zone: overrides.zone,
@@ -95,27 +95,27 @@ function makeDropState(overrides: {
   };
 }
 
-function projectedFootprintFor(layout: DynamicLayoutNode, leafId: string): DynamicPaneFootprint | undefined {
+function projectedFootprintFor(layout: TilingLayoutNode, leafId: string): TilingPaneFootprint | undefined {
   return footprintsByLeafId(
     collectLeafFootprints(layout, 0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, GAP_FREE_CONFIG),
   ).get(leafId);
 }
 
 function overlayBySubject(
-  overlays: ReadonlyArray<DynamicProjectedLandingOverlay>,
-  subject: DynamicProjectedLandingOverlay["subject"],
-): DynamicProjectedLandingOverlay | undefined {
-  return overlays.find((overlay: DynamicProjectedLandingOverlay): boolean => overlay.subject === subject);
+  overlays: ReadonlyArray<TilingProjectedLandingOverlay>,
+  subject: TilingProjectedLandingOverlay["subject"],
+): TilingProjectedLandingOverlay | undefined {
+  return overlays.find((overlay: TilingProjectedLandingOverlay): boolean => overlay.subject === subject);
 }
 
 describe("resolveProjectedLandingOverlays — SWAP subject taxonomy", (): void => {
   // Drag source A, drop target C, center swap. swapLeafTiles exchanges tile
   // content between two FIXED leaves: source content lands UNDER THE CURSOR
   // (target leaf C's cell), target content lands in the source's old cell (A).
-  const layout: DynamicSplitNode = baseLayout();
-  const dropState: DynamicDropIntentState = makeDropState({ leafId: "C", action: "swap", zone: "center" });
-  const projectedLayout: DynamicLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
-  const overlays: ReadonlyArray<DynamicProjectedLandingOverlay> = resolveProjectedLandingOverlays(
+  const layout: TilingSplitNode = baseLayout();
+  const dropState: TilingDropIntentState = makeDropState({ leafId: "C", action: "swap", zone: "center" });
+  const projectedLayout: TilingLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
+  const overlays: ReadonlyArray<TilingProjectedLandingOverlay> = resolveProjectedLandingOverlays(
     layout,
     projectedLayout,
     "A",
@@ -126,7 +126,7 @@ describe("resolveProjectedLandingOverlays — SWAP subject taxonomy", (): void =
   );
 
   it("labels the under-cursor cell (target leaf C) as the source landing S'", (): void => {
-    const sourceOverlay: DynamicProjectedLandingOverlay | undefined = overlayBySubject(overlays, "source");
+    const sourceOverlay: TilingProjectedLandingOverlay | undefined = overlayBySubject(overlays, "source");
     expect(sourceOverlay).toBeDefined();
     // C is the cell under the cursor; the dragged source content lands there.
     expect(sourceOverlay?.leafId).toBe("C");
@@ -134,27 +134,27 @@ describe("resolveProjectedLandingOverlays — SWAP subject taxonomy", (): void =
   });
 
   it("labels the source's old cell (leaf A) as the target landing T'", (): void => {
-    const targetOverlay: DynamicProjectedLandingOverlay | undefined = overlayBySubject(overlays, "target");
+    const targetOverlay: TilingProjectedLandingOverlay | undefined = overlayBySubject(overlays, "target");
     expect(targetOverlay).toBeDefined();
     expect(targetOverlay?.leafId).toBe("A");
     expect(targetOverlay?.footprint).toEqual({ left: 0, top: 0, width: 500, height: 400 });
   });
 
   it("emits exactly source + target and no successor on a swap", (): void => {
-    expect(overlays.map((overlay: DynamicProjectedLandingOverlay): string => overlay.subject).sort()).toEqual([
+    expect(overlays.map((overlay: TilingProjectedLandingOverlay): string => overlay.subject).sort()).toEqual([
       "source",
       "target",
     ]);
   });
 
   it("matches the reducer's post-swap projected geometry exactly (overlay == result)", (): void => {
-    const sourceOverlay: DynamicProjectedLandingOverlay | undefined = overlayBySubject(overlays, "source");
-    const targetOverlay: DynamicProjectedLandingOverlay | undefined = overlayBySubject(overlays, "target");
+    const sourceOverlay: TilingProjectedLandingOverlay | undefined = overlayBySubject(overlays, "source");
+    const targetOverlay: TilingProjectedLandingOverlay | undefined = overlayBySubject(overlays, "target");
     expect(projectedLayout).not.toBeNull();
     // Source landing footprint == projected cell of target leaf C (under cursor).
-    expect(sourceOverlay?.footprint).toEqual(projectedFootprintFor(projectedLayout as DynamicLayoutNode, "C"));
+    expect(sourceOverlay?.footprint).toEqual(projectedFootprintFor(projectedLayout as TilingLayoutNode, "C"));
     // Target landing footprint == projected cell of source leaf A (old source).
-    expect(targetOverlay?.footprint).toEqual(projectedFootprintFor(projectedLayout as DynamicLayoutNode, "A"));
+    expect(targetOverlay?.footprint).toEqual(projectedFootprintFor(projectedLayout as TilingLayoutNode, "A"));
   });
 });
 
@@ -162,15 +162,15 @@ describe("resolveProjectedLandingOverlays — INSERT/MOVE successor subject", ()
   // Drag source A inserted to the right of target C. A leaves its parent split
   // s1; its former sibling B is promoted into the vacated cell and absorbs the
   // released space, becoming the successor.
-  const layout: DynamicSplitNode = baseLayout();
-  const dropState: DynamicDropIntentState = makeDropState({
+  const layout: TilingSplitNode = baseLayout();
+  const dropState: TilingDropIntentState = makeDropState({
     leafId: "C",
     action: "edge-insert",
     zone: "right",
     finalEdge: "right",
   });
-  const projectedLayout: DynamicLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
-  const overlays: ReadonlyArray<DynamicProjectedLandingOverlay> = resolveProjectedLandingOverlays(
+  const projectedLayout: TilingLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
+  const overlays: ReadonlyArray<TilingProjectedLandingOverlay> = resolveProjectedLandingOverlays(
     layout,
     projectedLayout,
     "A",
@@ -181,28 +181,28 @@ describe("resolveProjectedLandingOverlays — INSERT/MOVE successor subject", ()
   );
 
   it("produces a successor overlay for the former sibling B", (): void => {
-    const successorOverlay: DynamicProjectedLandingOverlay | undefined = overlayBySubject(overlays, "successor");
+    const successorOverlay: TilingProjectedLandingOverlay | undefined = overlayBySubject(overlays, "successor");
     expect(successorOverlay).toBeDefined();
     expect(successorOverlay?.leafId).toBe("B");
   });
 
   it("matches the reducer's projected geometry for the successor (vacated-space promotion)", (): void => {
-    const successorOverlay: DynamicProjectedLandingOverlay | undefined = overlayBySubject(overlays, "successor");
+    const successorOverlay: TilingProjectedLandingOverlay | undefined = overlayBySubject(overlays, "successor");
     expect(projectedLayout).not.toBeNull();
     // B expands from its old bottom-left quarter to the full left half.
     expect(successorOverlay?.footprint).toEqual({ left: 0, top: 0, width: 500, height: 800 });
-    expect(successorOverlay?.footprint).toEqual(projectedFootprintFor(projectedLayout as DynamicLayoutNode, "B"));
+    expect(successorOverlay?.footprint).toEqual(projectedFootprintFor(projectedLayout as TilingLayoutNode, "B"));
   });
 
   it("matches the reducer's projected geometry for the relocated source S'", (): void => {
-    const sourceOverlay: DynamicProjectedLandingOverlay | undefined = overlayBySubject(overlays, "source");
+    const sourceOverlay: TilingProjectedLandingOverlay | undefined = overlayBySubject(overlays, "source");
     expect(sourceOverlay?.leafId).toBe("A");
-    expect(sourceOverlay?.footprint).toEqual(projectedFootprintFor(projectedLayout as DynamicLayoutNode, "A"));
+    expect(sourceOverlay?.footprint).toEqual(projectedFootprintFor(projectedLayout as TilingLayoutNode, "A"));
   });
 
   it("emits no spurious target projection when there is no swap", (): void => {
     expect(overlayBySubject(overlays, "target")).toBeUndefined();
-    expect(overlays.map((overlay: DynamicProjectedLandingOverlay): string => overlay.subject).sort()).toEqual([
+    expect(overlays.map((overlay: TilingProjectedLandingOverlay): string => overlay.subject).sort()).toEqual([
       "source",
       "successor",
     ]);
@@ -218,24 +218,24 @@ describe("projected drop layout == committed layout (preview-overlay single sour
   // see state.test.ts "live detach drag" for the live == preview convergence.)
 
   it("swap: projected drop tree equals the committed swap reducer output", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
-    const dropState: DynamicDropIntentState = makeDropState({ leafId: "C", action: "swap", zone: "center" });
-    const provisional: DynamicLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
-    const committed: DynamicLayoutNode = swapLeafTiles(layout, "A", "C");
+    const layout: TilingSplitNode = baseLayout();
+    const dropState: TilingDropIntentState = makeDropState({ leafId: "C", action: "swap", zone: "center" });
+    const provisional: TilingLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
+    const committed: TilingLayoutNode = swapLeafTiles(layout, "A", "C");
     expect(provisional).not.toBeNull();
     expect(provisional).toEqual(committed);
   });
 
   it("edge-insert: projected drop tree equals the committed insert reducer output", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
-    const dropState: DynamicDropIntentState = makeDropState({
+    const layout: TilingSplitNode = baseLayout();
+    const dropState: TilingDropIntentState = makeDropState({
       leafId: "C",
       action: "edge-insert",
       zone: "right",
       finalEdge: "right",
     });
-    const provisional: DynamicLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
-    const committed: DynamicLayoutNode = insertLeafAdjacent(layout, "A", "C", "right", {
+    const provisional: TilingLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
+    const committed: TilingLayoutNode = insertLeafAdjacent(layout, "A", "C", "right", {
       preserveParentSplitAxis: false,
       splitRatio: 0.5,
     });
@@ -244,17 +244,17 @@ describe("projected drop layout == committed layout (preview-overlay single sour
   });
 
   it("edge-insert via selectedSplitZone fallback also matches the committed insert", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     // finalEdge null → resolveProjectedDropLayout falls back to selectedSplitZone.
-    const dropState: DynamicDropIntentState = makeDropState({
+    const dropState: TilingDropIntentState = makeDropState({
       leafId: "C",
       action: "edge-insert",
       zone: "top",
       finalEdge: null,
       selectedSplitZone: "top",
     });
-    const provisional: DynamicLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
-    const committed: DynamicLayoutNode = insertLeafAdjacent(layout, "A", "C", "top", {
+    const provisional: TilingLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
+    const committed: TilingLayoutNode = insertLeafAdjacent(layout, "A", "C", "top", {
       preserveParentSplitAxis: false,
       splitRatio: 0.5,
     });
@@ -263,17 +263,17 @@ describe("projected drop layout == committed layout (preview-overlay single sour
   });
 
   it("returns null (no reflow) when the resolved action is not a move", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
-    const dropState: DynamicDropIntentState = makeDropState({ leafId: "C", action: "none", zone: "center" });
+    const layout: TilingSplitNode = baseLayout();
+    const dropState: TilingDropIntentState = makeDropState({ leafId: "C", action: "none", zone: "center" });
     expect(resolveProjectedDropLayout(layout, "A", dropState)).toBeNull();
   });
 });
 
 describe("resolveProjectedLandingOverlays — guard paths", (): void => {
   it("returns no overlays when source and target are the same leaf", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
-    const dropState: DynamicDropIntentState = makeDropState({ leafId: "A", action: "swap", zone: "center" });
-    const projectedLayout: DynamicLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
+    const layout: TilingSplitNode = baseLayout();
+    const dropState: TilingDropIntentState = makeDropState({ leafId: "A", action: "swap", zone: "center" });
+    const projectedLayout: TilingLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
     expect(projectedLayout).toBeNull();
     expect(
       resolveProjectedLandingOverlays(layout, projectedLayout, "A", dropState, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, GAP_FREE_CONFIG),
@@ -281,9 +281,9 @@ describe("resolveProjectedLandingOverlays — guard paths", (): void => {
   });
 
   it("returns no overlays for a zero-area viewport", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
-    const dropState: DynamicDropIntentState = makeDropState({ leafId: "C", action: "swap", zone: "center" });
-    const projectedLayout: DynamicLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
+    const layout: TilingSplitNode = baseLayout();
+    const dropState: TilingDropIntentState = makeDropState({ leafId: "C", action: "swap", zone: "center" });
+    const projectedLayout: TilingLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
     expect(resolveProjectedLandingOverlays(layout, projectedLayout, "A", dropState, 0, 0, GAP_FREE_CONFIG)).toEqual([]);
   });
 });

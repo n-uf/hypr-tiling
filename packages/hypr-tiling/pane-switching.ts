@@ -1,6 +1,6 @@
 import type {
-  DynamicFocusDirection,
-  DynamicMovePlacement,
+  TilingFocusDirection,
+  TilingMovePlacement,
   ResolvedTilingKeyChord,
   ResolvedTilingKeyChordModifiers,
   ResolvedTilingKeymap,
@@ -211,7 +211,7 @@ export interface TilingKeymapActionGuards {
   rearrangeEnabled: boolean;
 }
 
-const ARROW_FOCUS_DIRECTIONS: ReadonlyArray<{ chord: keyof Pick<ResolvedTilingKeymap, "focusLeft" | "focusRight" | "focusUp" | "focusDown">; direction: DynamicFocusDirection }> = [
+const ARROW_FOCUS_DIRECTIONS: ReadonlyArray<{ chord: keyof Pick<ResolvedTilingKeymap, "focusLeft" | "focusRight" | "focusUp" | "focusDown">; direction: TilingFocusDirection }> = [
   { chord: "focusLeft", direction: "left" },
   { chord: "focusRight", direction: "right" },
   { chord: "focusUp", direction: "up" },
@@ -307,7 +307,7 @@ export function matchKeymapAction(
  * `right` → `[B|A]` (A relocated rightward). `left → "left"`, `right →
  * "right"`, `up → "top"`, `down → "bottom"`.
  */
-export function directionToPlacement(direction: DynamicFocusDirection): DynamicMovePlacement {
+export function directionToPlacement(direction: TilingFocusDirection): TilingMovePlacement {
   if (direction === "left") {
     return "left";
   }
@@ -410,12 +410,12 @@ export function resolveMaximizeToggle(
 // --- macOS Cmd+Tab-style pane switcher (pure state transitions) ------------
 
 /** Whether a chord requires at least one held modifier (the switcher needs one to commit on release). */
-export function chordHasModifier(chord: ResolvedTilingKeyChord): boolean {
+export function chordRequiresModifier(chord: ResolvedTilingKeyChord): boolean {
   return chord.alt || chord.ctrl || chord.meta || chord.shift;
 }
 
 /** Whether a modifier set requires at least one held modifier. */
-export function modifiersHaveModifier(modifiers: ResolvedTilingKeyChordModifiers): boolean {
+export function hasAnyModifier(modifiers: ResolvedTilingKeyChordModifiers): boolean {
   return modifiers.alt || modifiers.ctrl || modifiers.meta || modifiers.shift;
 }
 

@@ -3,8 +3,8 @@ import { defaultKeyBindings, matchKeyBinding } from "../keybindings";
 import { cycleSplitMasterOrientation } from "../state";
 import { resolveKeymap } from "../pane-switching";
 import type {
-  DynamicLayoutNode,
-  DynamicSplitNode,
+  TilingLayoutNode,
+  TilingSplitNode,
   ResolvedTilingKeymap,
   TilingKeyBinding,
   TilingKeyboardEventLike,
@@ -134,7 +134,7 @@ describe("defaultKeyBindings (keymap → binding registry projection)", (): void
   it("maps Alt+Shift+O to cycle-master-orientation and the reducer mutates orientation", (): void => {
     const command = matchKeyBinding(keyEvent("KeyO", { alt: true, shift: true }), bindings);
     expect(command).toEqual({ kind: "cycle-master-orientation" });
-    const rootSplit: DynamicSplitNode = {
+    const rootSplit: TilingSplitNode = {
       kind: "split",
       id: "root",
       axis: "horizontal",
@@ -144,7 +144,7 @@ describe("defaultKeyBindings (keymap → binding registry projection)", (): void
       first: { kind: "leaf", id: "a", tileId: "tile-a" },
       second: { kind: "leaf", id: "b", tileId: "tile-b" },
     };
-    const next: DynamicLayoutNode = cycleSplitMasterOrientation(rootSplit, "root");
-    expect((next as DynamicSplitNode).masterOrientation).toBe("top");
+    const next: TilingLayoutNode = cycleSplitMasterOrientation(rootSplit, "root");
+    expect((next as TilingSplitNode).masterOrientation).toBe("top");
   });
 });

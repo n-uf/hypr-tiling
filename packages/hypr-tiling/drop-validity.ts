@@ -2,13 +2,13 @@ import { collectLeafFootprints, footprintsByLeafId } from "./leaf-geometry";
 import { isStaticAlongSplitAxis, isStaticInDimension, splitAxisDimension } from "./pane-sizing";
 import { PLACEMENT_BY_DROP_ZONE } from "./projected-layout";
 import { insertLeafAdjacent } from "./state";
-import type { DynamicEdgeZone } from "./drop-intent-resolver";
+import type { TilingEdgeZone } from "./drop-intent-resolver";
 import type {
-  DynamicLayoutConfig,
-  DynamicLayoutNode,
-  DynamicLeafDropZone,
-  DynamicPaneFootprint,
-  DynamicSplitAxis,
+  TilingLayoutConfig,
+  TilingLayoutNode,
+  TilingLeafDropZone,
+  TilingPaneFootprint,
+  TilingSplitAxis,
   TilingDimension,
 } from "./types";
 
@@ -36,29 +36,29 @@ export interface DropZoneEvaluation {
  * pinned static pane are correct.
  */
 export function projectedLeafFitsConstraints(
-  projectedLayout: DynamicLayoutNode,
+  projectedLayout: TilingLayoutNode,
   sourceLeafId: string,
   targetLeafId: string,
   viewportWidth: number,
   viewportHeight: number,
   minPaneSizePx: number,
-  config: DynamicLayoutConfig,
+  config: TilingLayoutConfig,
 ): boolean {
   if (viewportWidth <= 0 || viewportHeight <= 0) {
     return true;
   }
 
-  const projectedLeafFootprints: ReadonlyMap<string, DynamicPaneFootprint> = footprintsByLeafId(
+  const projectedLeafFootprints: ReadonlyMap<string, TilingPaneFootprint> = footprintsByLeafId(
     collectLeafFootprints(projectedLayout, 0, 0, viewportWidth, viewportHeight, config),
   );
-  const sourceFootprint: DynamicPaneFootprint | undefined = projectedLeafFootprints.get(sourceLeafId);
-  const targetFootprint: DynamicPaneFootprint | undefined = projectedLeafFootprints.get(targetLeafId);
+  const sourceFootprint: TilingPaneFootprint | undefined = projectedLeafFootprints.get(sourceLeafId);
+  const targetFootprint: TilingPaneFootprint | undefined = projectedLeafFootprints.get(targetLeafId);
 
   if (sourceFootprint == null || targetFootprint == null) {
     return false;
   }
 
-  const footprintRespectsMin = (footprint: DynamicPaneFootprint): boolean =>
+  const footprintRespectsMin = (footprint: TilingPaneFootprint): boolean =>
     footprint.width >= minPaneSizePx && footprint.height >= minPaneSizePx;
 
   return footprintRespectsMin(sourceFootprint) && footprintRespectsMin(targetFootprint);
@@ -74,12 +74,12 @@ export function evaluateEdgeInsertCandidate({
   viewportWidth,
   viewportHeight,
 }: {
-  candidateZone: DynamicEdgeZone;
-  layout: DynamicLayoutNode;
+  candidateZone: TilingEdgeZone;
+  layout: TilingLayoutNode;
   sourceLeafId: string | null;
   targetLeafId: string;
-  targetFootprint: DynamicPaneFootprint;
-  config: DynamicLayoutConfig;
+  targetFootprint: TilingPaneFootprint;
+  config: TilingLayoutConfig;
   viewportWidth: number;
   viewportHeight: number;
 }): DropZoneEvaluation {
@@ -109,7 +109,7 @@ export function evaluateEdgeInsertCandidate({
     };
   }
 
-  const projectedLayout: DynamicLayoutNode = insertLeafAdjacent(
+  const projectedLayout: TilingLayoutNode = insertLeafAdjacent(
     layout,
     sourceLeafId,
     targetLeafId,
@@ -147,12 +147,12 @@ export function evaluateZoneCandidate({
   viewportWidth,
   viewportHeight,
 }: {
-  zone: DynamicLeafDropZone;
-  layout: DynamicLayoutNode;
+  zone: TilingLeafDropZone;
+  layout: TilingLayoutNode;
   sourceLeafId: string | null;
   targetLeafId: string;
-  targetFootprint: DynamicPaneFootprint;
-  config: DynamicLayoutConfig;
+  targetFootprint: TilingPaneFootprint;
+  config: TilingLayoutConfig;
   viewportWidth: number;
   viewportHeight: number;
 }): DropZoneEvaluation {
@@ -183,7 +183,7 @@ export function evaluateZoneCandidate({
  * `alongAxisPinPx`: a split with a fitting along-axis pin is geometry-resolvable
  * (static-aware footprints handle it), so it does NOT gate its flexible sibling.
  */
-function alongAxisPinPx(node: DynamicLayoutNode, axis: DynamicSplitAxis): number | null {
+function alongAxisPinPx(node: TilingLayoutNode, axis: TilingSplitAxis): number | null {
   const dimension: TilingDimension = splitAxisDimension(axis);
   const pinPx: number | undefined = dimension === "width" ? node.sizing?.widthPx : node.sizing?.heightPx;
   if (pinPx == null || !Number.isFinite(pinPx) || pinPx <= 0) {
@@ -193,7 +193,7 @@ function alongAxisPinPx(node: DynamicLayoutNode, axis: DynamicSplitAxis): number
 }
 
 /** True when a child static-along-axis lacks a usable pin → its split's space distribution is unknowable. */
-function childMakesSplitUnresolvable(node: DynamicLayoutNode, axis: DynamicSplitAxis): boolean {
+function childMakesSplitUnresolvable(node: TilingLayoutNode, axis: TilingSplitAxis): boolean {
   return isStaticAlongSplitAxis(node, axis) && alongAxisPinPx(node, axis) == null;
 }
 
@@ -218,10 +218,10 @@ function childMakesSplitUnresolvable(node: DynamicLayoutNode, axis: DynamicSplit
  * pinned "fixed-size pane + flexible rest" dashboard keeps drag live in the
  * flexible regions instead of freezing the whole layout.
  */
-export function collectStaticGatedLeafIds(layout: DynamicLayoutNode): ReadonlySet<string> {
+export function collectStaticGatedLeafIds(layout: TilingLayoutNode): ReadonlySet<string> {
   const gated = new Set<string>();
 
-  function walk(node: DynamicLayoutNode, inUnresolvableRegion: boolean): void {
+  function walk(node: TilingLayoutNode, inUnresolvableRegion: boolean): void {
     if (node.kind === "leaf") {
       const selfStatic: boolean =
         isStaticInDimension(node, "width") || isStaticInDimension(node, "height");

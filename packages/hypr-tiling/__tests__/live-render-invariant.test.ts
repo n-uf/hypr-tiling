@@ -8,17 +8,17 @@ import {
 import { deriveCandidateTree } from "../drag-machine";
 import { PLACEMENT_BY_DROP_ZONE } from "../projected-layout";
 import { collectLeafFootprints, footprintsByLeafId } from "../leaf-geometry";
-import type { DynamicDropIntentState } from "../drop-intent-resolver";
+import type { TilingDropIntentState } from "../drop-intent-resolver";
 import type {
-  DynamicLayoutConfig,
-  DynamicLeafDropPreview,
-  DynamicLeafDropZone,
-  DynamicLeafNode,
-  DynamicPaneFootprint,
-  DynamicSplitNode,
+  TilingLayoutConfig,
+  TilingLeafDropPreview,
+  TilingLeafDropZone,
+  TilingLeafNode,
+  TilingPaneFootprint,
+  TilingSplitNode,
 } from "../types";
 
-function leaf(id: string, tileId: string): DynamicLeafNode {
+function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };
 }
 
@@ -31,7 +31,7 @@ function leaf(id: string, tileId: string): DynamicLeafNode {
  *       ├── B       (leaf, tile-b)
  *       └── C       (leaf, tile-c)
  */
-function baseLayout(): DynamicSplitNode {
+function baseLayout(): TilingSplitNode {
   return {
     kind: "split",
     id: "root",
@@ -50,15 +50,15 @@ function baseLayout(): DynamicSplitNode {
 }
 
 /**
- * Minimal-but-complete `DynamicDropState` (= `DynamicDropIntentState`) fixture.
+ * Minimal-but-complete `TilingDropState` (= `TilingDropIntentState`) fixture.
  * `resolveLeafDropPreview` only reads `leafId` / `zone` / `action`; the remaining
  * fields are filled with inert defaults so the value is fully typed (no `any`).
  */
 function makeDropState(
   targetLeafId: string,
-  zone: DynamicLeafDropZone,
-  action: DynamicDropIntentState["action"],
-): DynamicDropIntentState {
+  zone: TilingLeafDropZone,
+  action: TilingDropIntentState["action"],
+): TilingDropIntentState {
   return {
     leafId: targetLeafId,
     zone,
@@ -96,7 +96,7 @@ describe("live-mode render invariant — frozen gap-closed tree, no result-shado
   const TARGET_LEAF_ID = "C";
 
   it("live render equals removeLeafTile(layout, source) — the gap closes (source absent, sibling promoted)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const frozen = removeLeafTile(layout, SOURCE_LEAF_ID);
     const renderedIds: ReadonlyArray<string> = readLeafNodeIds(frozen);
 
@@ -107,8 +107,8 @@ describe("live-mode render invariant — frozen gap-closed tree, no result-shado
   });
 
   it("preview mode: the target tile receives the drop-target-result-shadow preview (System B active)", (): void => {
-    const dropState: DynamicDropIntentState = makeDropState(TARGET_LEAF_ID, "center", "swap");
-    const preview: DynamicLeafDropPreview | null = resolveLeafDropPreviewForMode(
+    const dropState: TilingDropIntentState = makeDropState(TARGET_LEAF_ID, "center", "swap");
+    const preview: TilingLeafDropPreview | null = resolveLeafDropPreviewForMode(
       false,
       TARGET_LEAF_ID,
       SOURCE_LEAF_ID,
@@ -120,10 +120,10 @@ describe("live-mode render invariant — frozen gap-closed tree, no result-shado
   });
 
   it("live mode: the result-shadow path is suppressed for the SAME intent (System B gated off)", (): void => {
-    const dropState: DynamicDropIntentState = makeDropState(TARGET_LEAF_ID, "center", "swap");
+    const dropState: TilingDropIntentState = makeDropState(TARGET_LEAF_ID, "center", "swap");
 
     // The pure helper still computes a shadow for this intent...
-    const ungated: DynamicLeafDropPreview | null = resolveLeafDropPreview(
+    const ungated: TilingLeafDropPreview | null = resolveLeafDropPreview(
       TARGET_LEAF_ID,
       SOURCE_LEAF_ID,
       dropState,
@@ -132,7 +132,7 @@ describe("live-mode render invariant — frozen gap-closed tree, no result-shado
     expect(ungated?.role).toBe("drop-target-result-shadow");
 
     // ...but the live-mode gate suppresses it (Hyprland: ghost only, no shadow).
-    const gated: DynamicLeafDropPreview | null = resolveLeafDropPreviewForMode(
+    const gated: TilingLeafDropPreview | null = resolveLeafDropPreviewForMode(
       true,
       TARGET_LEAF_ID,
       SOURCE_LEAF_ID,
@@ -142,9 +142,9 @@ describe("live-mode render invariant — frozen gap-closed tree, no result-shado
   });
 
   it("edge-insert intent: same live-vs-preview divergence (shadow in preview, null in live)", (): void => {
-    const dropState: DynamicDropIntentState = makeDropState(TARGET_LEAF_ID, "left", "edge-insert");
+    const dropState: TilingDropIntentState = makeDropState(TARGET_LEAF_ID, "left", "edge-insert");
 
-    const previewModePreview: DynamicLeafDropPreview | null = resolveLeafDropPreviewForMode(
+    const previewModePreview: TilingLeafDropPreview | null = resolveLeafDropPreviewForMode(
       false,
       TARGET_LEAF_ID,
       SOURCE_LEAF_ID,
@@ -153,7 +153,7 @@ describe("live-mode render invariant — frozen gap-closed tree, no result-shado
     expect(previewModePreview?.role).toBe("drop-target-result-shadow");
     expect(previewModePreview?.mode).toBe("edge-insert");
 
-    const liveModePreview: DynamicLeafDropPreview | null = resolveLeafDropPreviewForMode(
+    const liveModePreview: TilingLeafDropPreview | null = resolveLeafDropPreviewForMode(
       true,
       TARGET_LEAF_ID,
       SOURCE_LEAF_ID,
@@ -163,7 +163,7 @@ describe("live-mode render invariant — frozen gap-closed tree, no result-shado
   });
 
   it("regression guard: toggling preview↔live flips the result-shadow on/off for a fixed intent", (): void => {
-    const dropState: DynamicDropIntentState = makeDropState(TARGET_LEAF_ID, "center", "swap");
+    const dropState: TilingDropIntentState = makeDropState(TARGET_LEAF_ID, "center", "swap");
     const previewShadow = resolveLeafDropPreviewForMode(false, TARGET_LEAF_ID, SOURCE_LEAF_ID, dropState);
     const liveShadow = resolveLeafDropPreviewForMode(true, TARGET_LEAF_ID, SOURCE_LEAF_ID, dropState);
     expect(previewShadow).not.toBeNull();
@@ -181,25 +181,25 @@ describe("live-mode render invariant — the rendered tree IS the derived candid
   const TARGET_LEAF_ID = "C";
 
   it("no resolved target → candidate is the gap-closed base (source detached, riding the ghost)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const candidate = deriveCandidateTree(layout, SOURCE_LEAF_ID, null);
     expect(candidate).toEqual(removeLeafTile(layout, SOURCE_LEAF_ID));
     expect(readLeafNodeIds(candidate)).not.toContain(SOURCE_LEAF_ID);
   });
 
   it("swap intent → candidate equals swapLeafTiles (both panes still present, positions exchanged)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
-    const dropState: DynamicDropIntentState = makeDropState(TARGET_LEAF_ID, "center", "swap");
+    const layout: TilingSplitNode = baseLayout();
+    const dropState: TilingDropIntentState = makeDropState(TARGET_LEAF_ID, "center", "swap");
     const candidate = deriveCandidateTree(layout, SOURCE_LEAF_ID, dropState);
     expect(candidate).toEqual(swapLeafTiles(layout, SOURCE_LEAF_ID, TARGET_LEAF_ID));
     expect([...readLeafNodeIds(candidate)].sort()).toEqual(["A", "B", "C"]);
   });
 
   it("edge-insert intent → candidate equals insertLeafAdjacent at the resolved edge (destination reflows)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     // The fixture carries finalEdge "right" for non-center zones, and
     // deriveCandidateTree resolves the commit edge as `finalEdge ?? selectedSplitZone`.
-    const dropState: DynamicDropIntentState = makeDropState(TARGET_LEAF_ID, "right", "edge-insert");
+    const dropState: TilingDropIntentState = makeDropState(TARGET_LEAF_ID, "right", "edge-insert");
     const candidate = deriveCandidateTree(layout, SOURCE_LEAF_ID, dropState);
     expect(candidate).toEqual(
       insertLeafAdjacent(layout, SOURCE_LEAF_ID, TARGET_LEAF_ID, PLACEMENT_BY_DROP_ZONE["right"], {
@@ -211,11 +211,11 @@ describe("live-mode render invariant — the rendered tree IS the derived candid
   });
 
   it("candidate is always derived from the ORIGINAL layout — re-deriving on a moved target cannot accumulate drift", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     // Hover C (swap), then re-hover B (swap): each derivation starts from the
     // pristine `layout`, so the second result is independent of the first.
-    const firstHover: DynamicDropIntentState = makeDropState("C", "center", "swap");
-    const secondHover: DynamicDropIntentState = makeDropState("B", "center", "swap");
+    const firstHover: TilingDropIntentState = makeDropState("C", "center", "swap");
+    const secondHover: TilingDropIntentState = makeDropState("B", "center", "swap");
     const afterFirst = deriveCandidateTree(layout, SOURCE_LEAF_ID, firstHover);
     const afterSecond = deriveCandidateTree(layout, SOURCE_LEAF_ID, secondHover);
     expect(afterFirst).toEqual(swapLeafTiles(layout, SOURCE_LEAF_ID, "C"));
@@ -232,15 +232,15 @@ describe("stable-reference hit-test geometry — target resolution never chases 
   // target changes — cannot move a hit zone and flip the target. That is the
   // structural break of the reflow→retarget→re-reflow oscillation.
   const SOURCE_LEAF_ID = "A";
-  const CONFIG: DynamicLayoutConfig = { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 };
+  const CONFIG: TilingLayoutConfig = { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 };
   const VIEWPORT = { width: 1000, height: 800 };
 
-  function originalFootprints(layout: DynamicSplitNode): ReadonlyMap<string, DynamicPaneFootprint> {
+  function originalFootprints(layout: TilingSplitNode): ReadonlyMap<string, TilingPaneFootprint> {
     return footprintsByLeafId(collectLeafFootprints(layout, 0, 0, VIEWPORT.width, VIEWPORT.height, CONFIG));
   }
 
   it("live mode resolves against the gap-closed base (source removed), independent of any resolved target", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const expected = footprintsByLeafId(
       collectLeafFootprints(removeLeafTile(layout, SOURCE_LEAF_ID), 0, 0, VIEWPORT.width, VIEWPORT.height, CONFIG),
     );
@@ -258,7 +258,7 @@ describe("stable-reference hit-test geometry — target resolution never chases 
   });
 
   it("INVARIANT: the hit geometry is byte-identical regardless of which target/zone is currently resolved", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     // The function signature has NO dropState/candidate parameter, so reflow
     // literally cannot be an input. We assert the consequence: re-deriving the
     // candidate tree for two different hovers (the reflow) leaves the SAME hit
@@ -271,7 +271,7 @@ describe("stable-reference hit-test geometry — target resolution never chases 
   });
 
   it("preview mode resolves against the ORIGINAL footprints (source still in place)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const original = originalFootprints(layout);
     const geometry = resolveStableDragHitFootprints(false, layout, SOURCE_LEAF_ID, VIEWPORT, CONFIG, original);
     expect(geometry).toBe(original);
@@ -279,7 +279,7 @@ describe("stable-reference hit-test geometry — target resolution never chases 
   });
 
   it("no source held → original footprints (no drag in flight)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const original = originalFootprints(layout);
     expect(resolveStableDragHitFootprints(true, layout, null, VIEWPORT, CONFIG, original)).toBe(original);
   });

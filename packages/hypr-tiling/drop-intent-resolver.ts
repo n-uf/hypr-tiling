@@ -1,11 +1,11 @@
 import type {
-  DynamicDropAction,
-  DynamicDropIntentTuningState,
-  DynamicLeafDropZone,
-  DynamicSplitAxis,
+  TilingDropAction,
+  TilingDropIntentTuningState,
+  TilingLeafDropZone,
+  TilingSplitAxis,
 } from "./types";
 
-export type DynamicEdgeZone = Exclude<DynamicLeafDropZone, "center">;
+export type TilingEdgeZone = Exclude<TilingLeafDropZone, "center">;
 
 /**
  * Single-source-of-truth hit-zone model.
@@ -28,27 +28,27 @@ export type DynamicEdgeZone = Exclude<DynamicLeafDropZone, "center">;
  * under the cursor.
  */
 
-interface DynamicDropIntentEvaluation {
+interface TilingDropIntentEvaluation {
   isValid: boolean;
   rejectionReason: string | null;
 }
 
-export interface DynamicPaneSize {
+export interface TilingPaneSize {
   width: number;
   height: number;
 }
 
-export interface DynamicPanePoint {
+export interface TilingPanePoint {
   x: number;
   y: number;
 }
 
-export interface DynamicClientRectOrigin {
+export interface TilingClientRectOrigin {
   left: number;
   top: number;
 }
 
-export interface DynamicDropIntentBaseConfig {
+export interface TilingDropIntentBaseConfig {
   /**
    * Fraction of each pane axis spanned by the center (swap) rectangle. Acts as
    * the SYMMETRIC value: it sizes both axes unless a per-axis override
@@ -66,7 +66,7 @@ export interface DynamicDropIntentBaseConfig {
 }
 
 /** Per-axis swap-zone fractions (`x` = width, `y` = height), both clamped to `[0.05, 0.95]`. */
-export interface DynamicCenterRatios {
+export interface TilingCenterRatios {
   x: number;
   y: number;
 }
@@ -77,19 +77,19 @@ export interface DynamicCenterRatios {
  * Both are clamped to `[0.05, 0.95]` — the same clamp `resolvePaneZoneGeometry`
  * and `paneZoneClipPaths` apply, surfaced once so callers agree.
  */
-export function resolveCenterRatios(config: DynamicDropIntentBaseConfig): DynamicCenterRatios {
+export function resolveCenterRatios(config: TilingDropIntentBaseConfig): TilingCenterRatios {
   return {
     x: clamp(config.centerRatioX ?? config.centerRatio, 0.05, 0.95),
     y: clamp(config.centerRatioY ?? config.centerRatio, 0.05, 0.95),
   };
 }
 
-export interface DynamicZoneGeometryConfig extends DynamicDropIntentBaseConfig {
+export interface TilingZoneGeometryConfig extends TilingDropIntentBaseConfig {
   /** `window.devicePixelRatio`; geometry boundaries snap to this grid (Retina). */
   devicePixelRatio: number;
 }
 
-export interface DynamicPaneZoneGeometry {
+export interface TilingPaneZoneGeometry {
   width: number;
   height: number;
   centerLeftPx: number;
@@ -99,15 +99,15 @@ export interface DynamicPaneZoneGeometry {
   devicePixelRatio: number;
 }
 
-export interface DynamicDropIntentState {
+export interface TilingDropIntentState {
   leafId: string;
-  zone: DynamicLeafDropZone;
-  action: DynamicDropAction;
-  dominantEdge: DynamicEdgeZone;
-  finalEdge: DynamicEdgeZone | null;
+  zone: TilingLeafDropZone;
+  action: TilingDropAction;
+  dominantEdge: TilingEdgeZone;
+  finalEdge: TilingEdgeZone | null;
   fallbackReason: string | null;
   blockedReason: string | null;
-  axisPath: ReadonlyArray<DynamicSplitAxis>;
+  axisPath: ReadonlyArray<TilingSplitAxis>;
   edgeThresholdRatio: number;
   centerRectWidthPx: number;
   centerRectHeightPx: number;
@@ -117,31 +117,31 @@ export interface DynamicDropIntentState {
   paneLocalY: number;
   targetSplitId: string | null;
   targetSplitPlacement: "first" | "second" | null;
-  selectedSplitZone: DynamicEdgeZone | null;
+  selectedSplitZone: TilingEdgeZone | null;
   selectedSplitDistancePx: number | null;
   rejectedSplitReasons: ReadonlyArray<string>;
-  tuning: DynamicDropIntentTuningState;
+  tuning: TilingDropIntentTuningState;
 }
 
-interface DynamicDropIntentResolutionInput {
+interface TilingDropIntentResolutionInput {
   leafId: string;
   paneLocalX: number;
   paneLocalY: number;
-  paneSize: DynamicPaneSize;
-  axisPath: ReadonlyArray<DynamicSplitAxis>;
-  geometryConfig: DynamicZoneGeometryConfig;
-  previousZone?: DynamicLeafDropZone | null;
-  evaluateZone: (zone: DynamicLeafDropZone) => DynamicDropIntentEvaluation;
+  paneSize: TilingPaneSize;
+  axisPath: ReadonlyArray<TilingSplitAxis>;
+  geometryConfig: TilingZoneGeometryConfig;
+  previousZone?: TilingLeafDropZone | null;
+  evaluateZone: (zone: TilingLeafDropZone) => TilingDropIntentEvaluation;
 }
 
-export interface DynamicDropIntentHitZoneDiagnosticEntry {
-  zone: DynamicEdgeZone;
+export interface TilingDropIntentHitZoneDiagnosticEntry {
+  zone: TilingEdgeZone;
   isValid: boolean;
   rejectionReason: string | null;
 }
 
-export interface DynamicDropIntentHitZoneDiagnostics {
-  geometry: DynamicPaneZoneGeometry;
+export interface TilingDropIntentHitZoneDiagnostics {
+  geometry: TilingPaneZoneGeometry;
   /** Representative (X-axis) swap-zone fraction; equals `centerRatioX`. Retained for legacy single-axis readouts. */
   centerRatio: number;
   /** Per-axis HORIZONTAL swap-zone fraction driving the X clip-path boundaries. */
@@ -151,10 +151,10 @@ export interface DynamicDropIntentHitZoneDiagnostics {
   edgeThresholdRatio: number;
   centerRectWidthPx: number;
   centerRectHeightPx: number;
-  edgeZones: ReadonlyArray<DynamicDropIntentHitZoneDiagnosticEntry>;
+  edgeZones: ReadonlyArray<TilingDropIntentHitZoneDiagnosticEntry>;
 }
 
-export const DYNAMIC_DROP_INTENT_CONFIG: DynamicDropIntentBaseConfig = {
+export const TILING_DROP_INTENT_CONFIG: TilingDropIntentBaseConfig = {
   centerRatio: 0.34,
   centerMinPx: 24,
   hysteresisPx: 6,
@@ -172,7 +172,7 @@ export const DYNAMIC_DROP_INTENT_CONFIG: DynamicDropIntentBaseConfig = {
  * overlay *paint* order constant where the DOM paint sequence intentionally
  * differs (see `DROP_EDGE_ZONE_PAINT_ORDER` in the renderer).
  */
-export const DROP_EDGE_ZONES: ReadonlyArray<DynamicEdgeZone> = ["top", "right", "bottom", "left"];
+export const DROP_EDGE_ZONES: ReadonlyArray<TilingEdgeZone> = ["top", "right", "bottom", "left"];
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -190,9 +190,9 @@ export function snapToDevicePixel(valuePx: number, devicePixelRatio: number): nu
 
 /** Convert a raw client-space point into pane-local coordinates. */
 export function toPaneLocalPoint(
-  clientPoint: DynamicPanePoint,
-  paneRectOrigin: DynamicClientRectOrigin,
-): DynamicPanePoint {
+  clientPoint: TilingPanePoint,
+  paneRectOrigin: TilingClientRectOrigin,
+): TilingPanePoint {
   return {
     x: clientPoint.x - paneRectOrigin.left,
     y: clientPoint.y - paneRectOrigin.top,
@@ -200,13 +200,13 @@ export function toPaneLocalPoint(
 }
 
 export function resolvePaneZoneGeometry(
-  size: DynamicPaneSize,
-  config: DynamicZoneGeometryConfig,
-): DynamicPaneZoneGeometry {
+  size: TilingPaneSize,
+  config: TilingZoneGeometryConfig,
+): TilingPaneZoneGeometry {
   const width: number = Math.max(0, size.width);
   const height: number = Math.max(0, size.height);
   const devicePixelRatio: number = config.devicePixelRatio > 0 ? config.devicePixelRatio : 1;
-  const ratios: DynamicCenterRatios = resolveCenterRatios(config);
+  const ratios: TilingCenterRatios = resolveCenterRatios(config);
   const centerWidth: number = Math.min(width, Math.max(width * ratios.x, Math.min(config.centerMinPx, width)));
   const centerHeight: number = Math.min(height, Math.max(height * ratios.y, Math.min(config.centerMinPx, height)));
 
@@ -221,12 +221,12 @@ export function resolvePaneZoneGeometry(
   };
 }
 
-interface DynamicEdgePenetration {
-  zone: DynamicEdgeZone;
+interface TilingEdgePenetration {
+  zone: TilingEdgeZone;
   penetration: number;
 }
 
-function edgePenetrations(point: DynamicPanePoint, geometry: DynamicPaneZoneGeometry): ReadonlyArray<DynamicEdgePenetration> {
+function edgePenetrations(point: TilingPanePoint, geometry: TilingPaneZoneGeometry): ReadonlyArray<TilingEdgePenetration> {
   const leftGapPx: number = Math.max(geometry.centerLeftPx, 1);
   const rightGapPx: number = Math.max(geometry.width - geometry.centerRightPx, 1);
   const topGapPx: number = Math.max(geometry.centerTopPx, 1);
@@ -249,8 +249,8 @@ function edgePenetrations(point: DynamicPanePoint, geometry: DynamicPaneZoneGeom
  * cursor leaning toward" signal independent of the hysteresis-held zone; it is
  * unit-tested so the diagnostic stays trustworthy.
  */
-export function resolveDominantEdge(point: DynamicPanePoint, geometry: DynamicPaneZoneGeometry): DynamicEdgeZone {
-  let bestZone: DynamicEdgeZone = "top";
+export function resolveDominantEdge(point: TilingPanePoint, geometry: TilingPaneZoneGeometry): TilingEdgeZone {
+  let bestZone: TilingEdgeZone = "top";
   let bestPenetration: number = Number.NEGATIVE_INFINITY;
   for (const entry of edgePenetrations(point, geometry)) {
     if (entry.penetration > bestPenetration) {
@@ -261,14 +261,14 @@ export function resolveDominantEdge(point: DynamicPanePoint, geometry: DynamicPa
   return bestZone;
 }
 
-function classifyRawZone(point: DynamicPanePoint, geometry: DynamicPaneZoneGeometry): DynamicLeafDropZone {
+function classifyRawZone(point: TilingPanePoint, geometry: TilingPaneZoneGeometry): TilingLeafDropZone {
   const insideCenterX: boolean = point.x >= geometry.centerLeftPx && point.x <= geometry.centerRightPx;
   const insideCenterY: boolean = point.y >= geometry.centerTopPx && point.y <= geometry.centerBottomPx;
   if (insideCenterX && insideCenterY) {
     return "center";
   }
 
-  let bestZone: DynamicLeafDropZone = "center";
+  let bestZone: TilingLeafDropZone = "center";
   let bestPenetration: number = 0;
   for (const entry of edgePenetrations(point, geometry)) {
     if (entry.penetration > bestPenetration) {
@@ -280,11 +280,11 @@ function classifyRawZone(point: DynamicPanePoint, geometry: DynamicPaneZoneGeome
 }
 
 function nudgeTowardZone(
-  point: DynamicPanePoint,
-  zone: DynamicLeafDropZone,
+  point: TilingPanePoint,
+  zone: TilingLeafDropZone,
   distancePx: number,
-  geometry: DynamicPaneZoneGeometry,
-): DynamicPanePoint {
+  geometry: TilingPaneZoneGeometry,
+): TilingPanePoint {
   if (zone === "left") {
     return { x: point.x - distancePx, y: point.y };
   }
@@ -321,18 +321,18 @@ function nudgeTowardZone(
  * flicker without time-based debounce.
  */
 export function classifyPaneZone(
-  point: DynamicPanePoint,
-  geometry: DynamicPaneZoneGeometry,
-  options?: { previousZone?: DynamicLeafDropZone | null; hysteresisPx?: number },
-): DynamicLeafDropZone {
-  const rawZone: DynamicLeafDropZone = classifyRawZone(point, geometry);
-  const previousZone: DynamicLeafDropZone | null = options?.previousZone ?? null;
+  point: TilingPanePoint,
+  geometry: TilingPaneZoneGeometry,
+  options?: { previousZone?: TilingLeafDropZone | null; hysteresisPx?: number },
+): TilingLeafDropZone {
+  const rawZone: TilingLeafDropZone = classifyRawZone(point, geometry);
+  const previousZone: TilingLeafDropZone | null = options?.previousZone ?? null;
   const hysteresisPx: number = Math.max(0, options?.hysteresisPx ?? 0);
   if (previousZone == null || hysteresisPx === 0 || previousZone === rawZone) {
     return rawZone;
   }
 
-  const nudgedPoint: DynamicPanePoint = nudgeTowardZone(point, previousZone, hysteresisPx, geometry);
+  const nudgedPoint: TilingPanePoint = nudgeTowardZone(point, previousZone, hysteresisPx, geometry);
   return classifyRawZone(nudgedPoint, geometry) === previousZone ? previousZone : rawZone;
 }
 
@@ -341,7 +341,7 @@ export function classifyPaneZone(
  * four edge trapezoids. The overlay draws these; classification uses the same
  * ratio-defined boundaries, guaranteeing visual/resolver agreement.
  */
-export function paneZoneClipPaths(centerRatioX: number, centerRatioY: number): Record<DynamicEdgeZone, string> {
+export function paneZoneClipPaths(centerRatioX: number, centerRatioY: number): Record<TilingEdgeZone, string> {
   const ratioX: number = clamp(centerRatioX, 0.05, 0.95);
   const ratioY: number = clamp(centerRatioY, 0.05, 0.95);
   const lowX: string = (((1 - ratioX) / 2) * 100).toFixed(4);
@@ -357,7 +357,7 @@ export function paneZoneClipPaths(centerRatioX: number, centerRatioY: number): R
 }
 
 /** Per-axis inset (percent of pane) of the center rectangle from each pane edge. */
-export function paneZoneCenterInsetPercent(centerRatioX: number, centerRatioY: number): DynamicCenterRatios {
+export function paneZoneCenterInsetPercent(centerRatioX: number, centerRatioY: number): TilingCenterRatios {
   return {
     x: (((1 - clamp(centerRatioX, 0.05, 0.95)) / 2) * 100),
     y: (((1 - clamp(centerRatioY, 0.05, 0.95)) / 2) * 100),
@@ -365,9 +365,9 @@ export function paneZoneCenterInsetPercent(centerRatioX: number, centerRatioY: n
 }
 
 function edgeDistanceToPaneEdgePx(
-  zone: DynamicEdgeZone,
-  point: DynamicPanePoint,
-  geometry: DynamicPaneZoneGeometry,
+  zone: TilingEdgeZone,
+  point: TilingPanePoint,
+  geometry: TilingPaneZoneGeometry,
 ): number {
   if (zone === "left") {
     return Math.max(0, point.x);
@@ -381,7 +381,7 @@ function edgeDistanceToPaneEdgePx(
   return Math.max(0, geometry.height - point.y);
 }
 
-function resolveTuning(config: DynamicZoneGeometryConfig): DynamicDropIntentTuningState {
+function resolveTuning(config: TilingZoneGeometryConfig): TilingDropIntentTuningState {
   // The tuning telemetry carries a single representative `centerRatio` (the X /
   // width axis); the per-axis Y value is consumed by the geometry directly. For
   // a symmetric config (the default) X == Y, so this is exact; for an
@@ -395,11 +395,11 @@ function resolveTuning(config: DynamicZoneGeometryConfig): DynamicDropIntentTuni
   };
 }
 
-export function resolveDropIntent(input: DynamicDropIntentResolutionInput): DynamicDropIntentState {
+export function resolveDropIntent(input: TilingDropIntentResolutionInput): TilingDropIntentState {
   const { leafId, paneLocalX, paneLocalY, paneSize, axisPath, geometryConfig, evaluateZone } = input;
-  const geometry: DynamicPaneZoneGeometry = resolvePaneZoneGeometry(paneSize, geometryConfig);
-  const point: DynamicPanePoint = { x: paneLocalX, y: paneLocalY };
-  const tuning: DynamicDropIntentTuningState = resolveTuning(geometryConfig);
+  const geometry: TilingPaneZoneGeometry = resolvePaneZoneGeometry(paneSize, geometryConfig);
+  const point: TilingPanePoint = { x: paneLocalX, y: paneLocalY };
+  const tuning: TilingDropIntentTuningState = resolveTuning(geometryConfig);
 
   // Two classifications are both required and return semantically distinct
   // values: `rawZone` is the pure position-only partition (no hysteresis), and
@@ -410,8 +410,8 @@ export function resolveDropIntent(input: DynamicDropIntentResolutionInput): Dyna
   // an O(4) micro-cost kept inside `classifyPaneZone` to preserve it as the
   // single source of truth for the partition rather than inlining the geometry
   // here.
-  const rawZone: DynamicLeafDropZone = classifyPaneZone(point, geometry);
-  const zone: DynamicLeafDropZone = classifyPaneZone(point, geometry, {
+  const rawZone: TilingLeafDropZone = classifyPaneZone(point, geometry);
+  const zone: TilingLeafDropZone = classifyPaneZone(point, geometry, {
     previousZone: input.previousZone ?? null,
     hysteresisPx: geometryConfig.hysteresisPx,
   });
@@ -425,31 +425,31 @@ export function resolveDropIntent(input: DynamicDropIntentResolutionInput): Dyna
     Math.min(point.x, geometry.width - point.x, point.y, geometry.height - point.y),
   );
   // Diagnostic-only signal (telemetry panels); not consumed by drop resolution.
-  const dominantEdge: DynamicEdgeZone = resolveDominantEdge(point, geometry);
+  const dominantEdge: TilingEdgeZone = resolveDominantEdge(point, geometry);
 
   const rejectedSplitReasons: Array<string> = [];
   for (const edgeZone of DROP_EDGE_ZONES) {
-    const edgeEvaluation: DynamicDropIntentEvaluation = evaluateZone(edgeZone);
+    const edgeEvaluation: TilingDropIntentEvaluation = evaluateZone(edgeZone);
     if (!edgeEvaluation.isValid) {
       rejectedSplitReasons.push(edgeEvaluation.rejectionReason ?? `${edgeZone} rejected`);
     }
   }
 
   const isCenter: boolean = zone === "center";
-  const evaluation: DynamicDropIntentEvaluation = evaluateZone(zone);
+  const evaluation: TilingDropIntentEvaluation = evaluateZone(zone);
   const isValid: boolean = evaluation.isValid;
   // A center drop on a pane body — leaf OR group — is always `swap`. Add-to-group
   // (`group-merge`) is reachable only via the group's TAB STRIP drop target
   // (`resolveGroupTabStripHit` → `buildGroupTabStripMergeIntent`), never via the
   // group body center, so the center (swap) zone is identical on every slot.
-  const action: DynamicDropAction = isCenter
+  const action: TilingDropAction = isCenter
     ? (isValid ? "swap" : "none")
     : (isValid ? "edge-insert" : "none");
-  const finalEdge: DynamicEdgeZone | null = !isCenter && isValid ? (zone as DynamicEdgeZone) : null;
-  const selectedSplitZone: DynamicEdgeZone | null = isCenter ? null : (zone as DynamicEdgeZone);
+  const finalEdge: TilingEdgeZone | null = !isCenter && isValid ? (zone as TilingEdgeZone) : null;
+  const selectedSplitZone: TilingEdgeZone | null = isCenter ? null : (zone as TilingEdgeZone);
   const selectedSplitDistancePx: number | null = isCenter
     ? null
-    : edgeDistanceToPaneEdgePx(zone as DynamicEdgeZone, point, geometry);
+    : edgeDistanceToPaneEdgePx(zone as TilingEdgeZone, point, geometry);
   const blockedReason: string | null = isValid
     ? null
     : (evaluation.rejectionReason ?? `${zone}-blocked`);
@@ -480,16 +480,16 @@ export function resolveDropIntent(input: DynamicDropIntentResolutionInput): Dyna
 }
 
 export function resolveDropIntentHitZoneDiagnostics(input: {
-  paneSize: DynamicPaneSize;
-  geometryConfig: DynamicZoneGeometryConfig;
-  evaluateZone: (zone: DynamicLeafDropZone) => DynamicDropIntentEvaluation;
-}): DynamicDropIntentHitZoneDiagnostics {
-  const geometry: DynamicPaneZoneGeometry = resolvePaneZoneGeometry(input.paneSize, input.geometryConfig);
-  const tuning: DynamicDropIntentTuningState = resolveTuning(input.geometryConfig);
-  const ratios: DynamicCenterRatios = resolveCenterRatios(input.geometryConfig);
-  const edgeZones: ReadonlyArray<DynamicDropIntentHitZoneDiagnosticEntry> = DROP_EDGE_ZONES.map(
-    (zone: DynamicEdgeZone): DynamicDropIntentHitZoneDiagnosticEntry => {
-      const evaluation: DynamicDropIntentEvaluation = input.evaluateZone(zone);
+  paneSize: TilingPaneSize;
+  geometryConfig: TilingZoneGeometryConfig;
+  evaluateZone: (zone: TilingLeafDropZone) => TilingDropIntentEvaluation;
+}): TilingDropIntentHitZoneDiagnostics {
+  const geometry: TilingPaneZoneGeometry = resolvePaneZoneGeometry(input.paneSize, input.geometryConfig);
+  const tuning: TilingDropIntentTuningState = resolveTuning(input.geometryConfig);
+  const ratios: TilingCenterRatios = resolveCenterRatios(input.geometryConfig);
+  const edgeZones: ReadonlyArray<TilingDropIntentHitZoneDiagnosticEntry> = DROP_EDGE_ZONES.map(
+    (zone: TilingEdgeZone): TilingDropIntentHitZoneDiagnosticEntry => {
+      const evaluation: TilingDropIntentEvaluation = input.evaluateZone(zone);
       return {
         zone,
         isValid: evaluation.isValid,
@@ -511,7 +511,7 @@ export function resolveDropIntentHitZoneDiagnostics(input: {
 }
 
 /** Client-space axis-aligned bounds (e.g. from `getBoundingClientRect`). */
-export interface DynamicClientRectBounds {
+export interface TilingClientRectBounds {
   left: number;
   top: number;
   right: number;
@@ -519,7 +519,7 @@ export interface DynamicClientRectBounds {
 }
 
 /** A group tab strip hit during drag — merge into this group. */
-export interface DynamicGroupTabStripHitTarget {
+export interface TilingGroupTabStripHitTarget {
   groupId: string;
   activeMemberLeafId: string;
 }
@@ -528,7 +528,7 @@ export interface DynamicGroupTabStripHitTarget {
 export function pointInClientBounds(
   clientX: number,
   clientY: number,
-  bounds: DynamicClientRectBounds,
+  bounds: TilingClientRectBounds,
 ): boolean {
   return (
     clientX >= bounds.left &&
@@ -548,9 +548,9 @@ export function resolveGroupTabStripHit(
   candidates: ReadonlyArray<{
     groupId: string;
     activeMemberLeafId: string;
-    bounds: DynamicClientRectBounds | null;
+    bounds: TilingClientRectBounds | null;
   }>,
-): DynamicGroupTabStripHitTarget | null {
+): TilingGroupTabStripHitTarget | null {
   for (const candidate of candidates) {
     if (candidate.bounds != null && pointInClientBounds(clientX, clientY, candidate.bounds)) {
       return {
@@ -562,9 +562,9 @@ export function resolveGroupTabStripHit(
   return null;
 }
 
-const GROUP_TAB_STRIP_MERGE_TUNING: DynamicDropIntentTuningState = {
-  centerRatio: DYNAMIC_DROP_INTENT_CONFIG.centerRatio,
-  edgeThresholdRatio: (1 - DYNAMIC_DROP_INTENT_CONFIG.centerRatio) / 2,
+const GROUP_TAB_STRIP_MERGE_TUNING: TilingDropIntentTuningState = {
+  centerRatio: TILING_DROP_INTENT_CONFIG.centerRatio,
+  edgeThresholdRatio: (1 - TILING_DROP_INTENT_CONFIG.centerRatio) / 2,
   hysteresisPx: 0,
   devicePixelRatio: 1,
 };
@@ -576,9 +576,9 @@ const GROUP_TAB_STRIP_MERGE_TUNING: DynamicDropIntentTuningState = {
  */
 export function buildGroupTabStripMergeIntent(input: {
   activeMemberLeafId: string;
-  evaluateCenter: () => DynamicDropIntentEvaluation;
-}): DynamicDropIntentState {
-  const evaluation: DynamicDropIntentEvaluation = input.evaluateCenter();
+  evaluateCenter: () => TilingDropIntentEvaluation;
+}): TilingDropIntentState {
+  const evaluation: TilingDropIntentEvaluation = input.evaluateCenter();
   const isValid: boolean = evaluation.isValid;
   return {
     leafId: input.activeMemberLeafId,

@@ -1,7 +1,7 @@
 import * as React from "react";
 import {
   isMultiSelectModifierActive,
-  type DynamicRenderTileArgs,
+  type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
 
 // Custom pane renderer for the homepage ("mosaic" identity). The body honors
@@ -22,7 +22,7 @@ import {
 // because the renderer's drag pickup resolves the source pane via
 // `closest("article[data-leaf-id]")`.
 
-function dropStateRing(args: DynamicRenderTileArgs): string {
+function dropStateRing(args: TilingRenderTileProps): string {
   if (args.isInvalidDrop) {
     return "ring-2 ring-rose-300/55";
   }
@@ -38,7 +38,7 @@ function dropStateRing(args: DynamicRenderTileArgs): string {
   return "";
 }
 
-export function DocTile(args: DynamicRenderTileArgs): React.ReactElement {
+export function DocTile(args: TilingRenderTileProps): React.ReactElement {
   const dropRing: string = dropStateRing(args);
   // Drop-state rings take precedence over the resting focus ring during a drag.
   const ring: string =

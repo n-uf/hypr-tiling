@@ -2,35 +2,35 @@ import { describe, expect, it } from "@jest/globals";
 import { annexDirection, reseedEvicted, selectEvictionSet } from "../state";
 import type { TilingGrowConstraints } from "../state";
 import type {
-  DynamicLayoutNode,
-  DynamicLeafNode,
-  DynamicSplitNode,
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingSplitNode,
 } from "../types";
 
-function leaf(id: string): DynamicLeafNode {
+function leaf(id: string): TilingLeafNode {
   return { kind: "leaf", id, tileId: `tile-${id}` };
 }
 
-function clone(node: DynamicLayoutNode): DynamicLayoutNode {
-  return JSON.parse(JSON.stringify(node)) as DynamicLayoutNode;
+function clone(node: TilingLayoutNode): TilingLayoutNode {
+  return JSON.parse(JSON.stringify(node)) as TilingLayoutNode;
 }
 
-function leafIdsOf(node: DynamicLayoutNode): ReadonlyArray<string> {
+function leafIdsOf(node: TilingLayoutNode): ReadonlyArray<string> {
   if (node.kind === "leaf") {
     return [node.id];
   }
   if (node.kind === "group") {
-    return node.members.map((member: DynamicLeafNode): string => member.id);
+    return node.members.map((member: TilingLeafNode): string => member.id);
   }
   return [...leafIdsOf(node.first), ...leafIdsOf(node.second)];
 }
 
-function findLeaf(node: DynamicLayoutNode, id: string): DynamicLeafNode | null {
+function findLeaf(node: TilingLayoutNode, id: string): TilingLeafNode | null {
   if (node.kind === "leaf") {
     return node.id === id ? node : null;
   }
   if (node.kind === "group") {
-    return node.members.find((member: DynamicLeafNode): boolean => member.id === id) ?? null;
+    return node.members.find((member: TilingLeafNode): boolean => member.id === id) ?? null;
   }
   return findLeaf(node.first, id) ?? findLeaf(node.second, id);
 }
@@ -47,7 +47,7 @@ interface Rect {
 // active pane reaches the directional edge and that the left→right / top→bottom
 // pane order is what the reducer produced.
 function rects(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   left: number,
   top: number,
   width: number,
@@ -57,8 +57,8 @@ function rects(
     return [{ id: node.id, left, top, right: left + width, bottom: top + height }];
   }
   if (node.kind === "group") {
-    const active: DynamicLeafNode =
-      node.members.find((member: DynamicLeafNode): boolean => member.id === node.activeMemberId) ??
+    const active: TilingLeafNode =
+      node.members.find((member: TilingLeafNode): boolean => member.id === node.activeMemberId) ??
       node.members[0];
     return [{ id: active.id, left, top, right: left + width, bottom: top + height }];
   }
@@ -76,7 +76,7 @@ function rects(
   ];
 }
 
-function rectOf(node: DynamicLayoutNode, id: string): Rect {
+function rectOf(node: TilingLayoutNode, id: string): Rect {
   const found: Rect | undefined = rects(node, 0, 0, 1, 1).find((rect: Rect): boolean => rect.id === id);
   if (found == null) {
     throw new Error(`rect for leaf "${id}" not found`);
@@ -106,7 +106,7 @@ const CONSTRAINTS: TilingGrowConstraints = {
  *       ├── WARN              (leaf)
  *       └── INFO              (leaf)
  */
-function spendGraphLayout(): DynamicSplitNode {
+function spendGraphLayout(): TilingSplitNode {
   return {
     kind: "split",
     id: "root",
@@ -138,7 +138,7 @@ describe("selectEvictionSet — STRUCTURAL eviction (fixes the non-aligned / nes
     //   root (H)
     //   ├── SPEND
     //   └── (V): { TOP_RIGHT, (H): { MID_RIGHT, FAR_RIGHT } }   ← depths 2 and 3
-    const layout: DynamicSplitNode = {
+    const layout: TilingSplitNode = {
       kind: "split",
       id: "root",
       axis: "horizontal",
@@ -166,7 +166,7 @@ describe("selectEvictionSet — STRUCTURAL eviction (fixes the non-aligned / nes
 
   it("does NOT evict complementary-side panes (left of the active stays put)", (): void => {
     //   root (H): { LEFT, (H): { SPEND, RIGHT } } — annex right from SPEND.
-    const layout: DynamicSplitNode = {
+    const layout: TilingSplitNode = {
       kind: "split",
       id: "root",
       axis: "horizontal",
@@ -187,7 +187,7 @@ describe("selectEvictionSet — STRUCTURAL eviction (fixes the non-aligned / nes
 
   it("does NOT evict cross-axis panes that are not in the vector (a pane below)", (): void => {
     //   root (V): { (H): { SPEND, RIGHT }, BOTTOM } — annex right from SPEND.
-    const layout: DynamicSplitNode = {
+    const layout: TilingSplitNode = {
       kind: "split",
       id: "root",
       axis: "vertical",
@@ -208,7 +208,7 @@ describe("selectEvictionSet — STRUCTURAL eviction (fixes the non-aligned / nes
 
   it("returns farthest-first (topmost matching ancestor's subtree leads)", (): void => {
     //   root (H): { (H): { SPEND, NEAR }, FAR } — FAR is farther right than NEAR.
-    const layout: DynamicSplitNode = {
+    const layout: TilingSplitNode = {
       kind: "split",
       id: "root",
       axis: "horizontal",
@@ -227,7 +227,7 @@ describe("selectEvictionSet — STRUCTURAL eviction (fixes the non-aligned / nes
   });
 
   it("is empty when the active pane is already at the edge in the direction", (): void => {
-    const layout: DynamicSplitNode = {
+    const layout: TilingSplitNode = {
       kind: "split",
       id: "root",
       axis: "horizontal",
@@ -248,7 +248,7 @@ describe("reseedEvicted — OFF-AXIS re-accommodation (perpendicular to the anne
     // annex right ⇒ perpendicular axis is vertical ⇒ evicted carve BELOW the
     // active (off-axis), active dominant + anchored on top. The OLD behavior put
     // them on the same (horizontal) axis at the opposite end — this asserts the fix.
-    const result: DynamicLayoutNode = reseedEvicted(leaf("SPEND"), [leaf("E1"), leaf("E2")], "SPEND", "right", CONSTRAINTS);
+    const result: TilingLayoutNode = reseedEvicted(leaf("SPEND"), [leaf("E1"), leaf("E2")], "SPEND", "right", CONSTRAINTS);
     // depth-first reading order: active first (dominant top band), evicted below.
     expect(leafIdsOf(result)).toEqual(["SPEND", "E1", "E2"]);
     // SPEND spans the FULL annex (horizontal) extent — it never moved off-axis.
@@ -262,13 +262,13 @@ describe("reseedEvicted — OFF-AXIS re-accommodation (perpendicular to the anne
   });
 
   it("preserves evicted leaf fields (tileId carried through)", (): void => {
-    const evicted: DynamicLeafNode = { kind: "leaf", id: "E1", tileId: "custom-tile" };
-    const result: DynamicLayoutNode = reseedEvicted(leaf("SPEND"), [evicted], "SPEND", "right", CONSTRAINTS);
+    const evicted: TilingLeafNode = { kind: "leaf", id: "E1", tileId: "custom-tile" };
+    const result: TilingLayoutNode = reseedEvicted(leaf("SPEND"), [evicted], "SPEND", "right", CONSTRAINTS);
     expect(findLeaf(result, "E1")?.tileId).toBe("custom-tile");
   });
 
   it("never drops a pane: grafts at root when the anchor is unexpectedly absent", (): void => {
-    const result: DynamicLayoutNode = reseedEvicted(leaf("SPEND"), [leaf("E1")], "ghost", "right", CONSTRAINTS);
+    const result: TilingLayoutNode = reseedEvicted(leaf("SPEND"), [leaf("E1")], "ghost", "right", CONSTRAINTS);
     expect([...leafIdsOf(result)].sort()).toEqual(["E1", "SPEND"]);
   });
 });
@@ -279,7 +279,7 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
   it("L1 sink (horizontal annex): evicted sink into the existing perpendicular band; active claims FULL vector untouched", (): void => {
     //   root (V, 0.5): { top (H): { SPEND, RIGHT }, BOTTOM } — annex right.
     //   The vertical root split is an EXISTING perpendicular region (BOTTOM).
-    const layout: DynamicSplitNode = {
+    const layout: TilingSplitNode = {
       kind: "split",
       id: "root",
       axis: "vertical",
@@ -294,7 +294,7 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
       },
       second: leaf("BOTTOM"),
     };
-    const result: DynamicLayoutNode = annexDirection(layout, "SPEND", "right", CONSTRAINTS);
+    const result: TilingLayoutNode = annexDirection(layout, "SPEND", "right", CONSTRAINTS);
     expect([...leafIdsOf(result)].sort()).toEqual(["BOTTOM", "RIGHT", "SPEND"]);
     // active claims its FULL vector (full width) and keeps its perpendicular
     // extent UNTOUCHED (still the top half, 0..0.5).
@@ -312,7 +312,7 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
   it("L1 sink (vertical annex): evicted sink into the existing perpendicular column; active claims FULL height untouched", (): void => {
     //   root (H, 0.5): { left (V): { TOP, SPEND }, RIGHT } — annex up.
     //   The horizontal root split is an EXISTING perpendicular region (RIGHT).
-    const layout: DynamicSplitNode = {
+    const layout: TilingSplitNode = {
       kind: "split",
       id: "root",
       axis: "horizontal",
@@ -327,7 +327,7 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
       },
       second: leaf("RIGHT"),
     };
-    const result: DynamicLayoutNode = annexDirection(layout, "SPEND", "up", CONSTRAINTS);
+    const result: TilingLayoutNode = annexDirection(layout, "SPEND", "up", CONSTRAINTS);
     expect([...leafIdsOf(result)].sort()).toEqual(["RIGHT", "SPEND", "TOP"]);
     const spend: Rect = rectOf(result, "SPEND");
     // active claims FULL vertical vector and keeps its left column extent (0..0.5).
@@ -342,7 +342,7 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
   // L2 far-edge carve — no perpendicular region; carve a perpendicular split
   // around the active (active dominant + anchored, opposite side clean).
   it("L2 carve (horizontal annex, last column): SPEND claims width, WARN/INFO carved perpendicular BELOW (no pane lost)", (): void => {
-    const result: DynamicLayoutNode = annexDirection(spendGraphLayout(), "SPEND", "right", CONSTRAINTS);
+    const result: TilingLayoutNode = annexDirection(spendGraphLayout(), "SPEND", "right", CONSTRAINTS);
     expect([...leafIdsOf(result)].sort()).toEqual(["INFO", "SPEND", "WARN"]);
     const spend: Rect = rectOf(result, "SPEND");
     // SPEND stays ANCHORED at the left and spans the full width (full vector reach).
@@ -359,7 +359,7 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
   it("L2 carve (vertical annex, anchor-in-middle): surviving opposite pane UNTOUCHED, evicted carved off-axis", (): void => {
     //   root (V, 0.5): { TOP, mid (V, 0.5): { SPEND, BOTTOM } } — annex up.
     //   BOTTOM is the OPPOSITE-side (down) pane and must stay clean.
-    const layout: DynamicSplitNode = {
+    const layout: TilingSplitNode = {
       kind: "split",
       id: "root",
       axis: "vertical",
@@ -374,7 +374,7 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
         second: leaf("BOTTOM"),
       },
     };
-    const result: DynamicLayoutNode = annexDirection(layout, "SPEND", "up", CONSTRAINTS);
+    const result: TilingLayoutNode = annexDirection(layout, "SPEND", "up", CONSTRAINTS);
     expect([...leafIdsOf(result)].sort()).toEqual(["BOTTOM", "SPEND", "TOP"]);
     const spend: Rect = rectOf(result, "SPEND");
     // SPEND anchored at the top, dominant; opposite (BOTTOM) untouched at 0.5..1.
@@ -396,7 +396,7 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
   it("L3 spill: min-size exhaustion forces residual to the OPPOSITE side, minimized (the hosted prefix stays off-axis)", (): void => {
     //   root (H): { SPEND, (V): { E1, E2 } } — annex right with a SHORT cross
     //   extent (150px / 100px min ⇒ perpCapacity 1) ⇒ host E1 off-axis, spill E2.
-    const layout: DynamicSplitNode = {
+    const layout: TilingSplitNode = {
       kind: "split",
       id: "root",
       axis: "horizontal",
@@ -412,7 +412,7 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
       },
     };
     const tight: TilingGrowConstraints = { containerSizePx: 1000, gapPx: 0, minPaneSizePx: 100, crossSizePx: 150 };
-    const result: DynamicLayoutNode = annexDirection(layout, "SPEND", "right", tight);
+    const result: TilingLayoutNode = annexDirection(layout, "SPEND", "right", tight);
     expect([...leafIdsOf(result)].sort()).toEqual(["E1", "E2", "SPEND"]);
     const spend: Rect = rectOf(result, "SPEND");
     // E1 hosted OFF-AXIS (below SPEND).
@@ -425,7 +425,7 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
   });
 
   it("L3 contrast: the SAME layout with ample cross extent hosts BOTH evicted off-axis (no opposite-side spill)", (): void => {
-    const layout: DynamicSplitNode = {
+    const layout: TilingSplitNode = {
       kind: "split",
       id: "root",
       axis: "horizontal",
@@ -440,7 +440,7 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
         second: leaf("E2"),
       },
     };
-    const result: DynamicLayoutNode = annexDirection(layout, "SPEND", "right", CONSTRAINTS);
+    const result: TilingLayoutNode = annexDirection(layout, "SPEND", "right", CONSTRAINTS);
     const spend: Rect = rectOf(result, "SPEND");
     // Both evicted are below SPEND, full width — neither is on the opposite (left) side.
     expect(spend.left).toBeCloseTo(0, 10);
@@ -452,7 +452,7 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
 
   // Regression — the OLD same-axis-opposite-end dump no longer occurs.
   it("REGRESSION: evicted are never dumped at the opposite end of the same band (active stays anchored)", (): void => {
-    const result: DynamicLayoutNode = annexDirection(spendGraphLayout(), "SPEND", "right", CONSTRAINTS);
+    const result: TilingLayoutNode = annexDirection(spendGraphLayout(), "SPEND", "right", CONSTRAINTS);
     const spend: Rect = rectOf(result, "SPEND");
     // OLD bug: SPEND jumped to the far right (left ≈ 0.2) and WARN/INFO sat at
     // the left head (right ≤ SPEND.left). NEW: SPEND anchored at left, every
@@ -464,7 +464,7 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
   });
 
   it("no-op when already at the edge with nothing to annex (falls through to acquire-space)", (): void => {
-    const layout: DynamicSplitNode = {
+    const layout: TilingSplitNode = {
       kind: "split",
       id: "root",
       axis: "horizontal",
@@ -479,19 +479,19 @@ describe("annexDirection — directional annex + OFF-AXIS re-seed (3-rung ladder
   });
 
   it("returns the layout unchanged (same reference) for an unknown active id", (): void => {
-    const layout: DynamicSplitNode = spendGraphLayout();
+    const layout: TilingSplitNode = spendGraphLayout();
     expect(annexDirection(layout, "ghost", "right", CONSTRAINTS)).toBe(layout);
   });
 
   it("is idempotent: a second annex in the same direction does not lose or duplicate panes", (): void => {
-    const once: DynamicLayoutNode = annexDirection(spendGraphLayout(), "SPEND", "right", CONSTRAINTS);
-    const twice: DynamicLayoutNode = annexDirection(once, "SPEND", "right", CONSTRAINTS);
+    const once: TilingLayoutNode = annexDirection(spendGraphLayout(), "SPEND", "right", CONSTRAINTS);
+    const twice: TilingLayoutNode = annexDirection(once, "SPEND", "right", CONSTRAINTS);
     expect([...leafIdsOf(twice)].sort()).toEqual([...leafIdsOf(once)].sort());
   });
 
   it("does not mutate the input tree", (): void => {
-    const input: DynamicSplitNode = spendGraphLayout();
-    const snapshot: DynamicLayoutNode = clone(input);
+    const input: TilingSplitNode = spendGraphLayout();
+    const snapshot: TilingLayoutNode = clone(input);
     annexDirection(input, "SPEND", "right", CONSTRAINTS);
     expect(input).toEqual(snapshot);
   });

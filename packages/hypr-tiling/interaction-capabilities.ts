@@ -9,10 +9,10 @@ import {
   DRAG_RECOVERY_DEFAULT_TRANSITION_SLACK_MS,
 } from "./drag-recovery";
 import { DEFAULT_GHOST_PICKUP_SCALE_PERCENT, clampGhostPickupScalePercent } from "./ghost-transit";
-import { DYNAMIC_DROP_INTENT_CONFIG } from "./drop-intent-resolver";
+import { TILING_DROP_INTENT_CONFIG } from "./drop-intent-resolver";
 import { TILING_KEYMAP_DEFAULTS, resolveKeymap } from "./pane-switching";
 import type {
-  DynamicSplitAxis,
+  TilingSplitAxis,
   ResolvedTilingInteractionCapabilities,
   TilingInteractionCapabilities,
   TilingKeymap,
@@ -60,11 +60,11 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
   },
   paneTitleBarControls: { sizing: true, acquireSpace: true },
   dropHitZoneGeometry: {
-    centerRatio: DYNAMIC_DROP_INTENT_CONFIG.centerRatio,
-    centerRatioX: DYNAMIC_DROP_INTENT_CONFIG.centerRatio,
-    centerRatioY: DYNAMIC_DROP_INTENT_CONFIG.centerRatio,
-    centerMinPx: DYNAMIC_DROP_INTENT_CONFIG.centerMinPx,
-    hysteresisPx: DYNAMIC_DROP_INTENT_CONFIG.hysteresisPx,
+    centerRatio: TILING_DROP_INTENT_CONFIG.centerRatio,
+    centerRatioX: TILING_DROP_INTENT_CONFIG.centerRatio,
+    centerRatioY: TILING_DROP_INTENT_CONFIG.centerRatio,
+    centerMinPx: TILING_DROP_INTENT_CONFIG.centerMinPx,
+    hysteresisPx: TILING_DROP_INTENT_CONFIG.hysteresisPx,
   },
   keymap: TILING_KEYMAP_DEFAULTS,
   keyBindings: { bindings: [], replaceDefaults: false },
@@ -86,7 +86,7 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
  * per-pane sizing belongs to interactive workspaces (the showcase default), not
  * config-driven dashboards.
  */
-export const STATIC_DASHBOARD_INTERACTION: TilingInteractionCapabilities = {
+export const TILING_DASHBOARD_PRESET: TilingInteractionCapabilities = {
   resize: "vertical",
   rearrange: false,
   focus: false,
@@ -278,7 +278,7 @@ function resolveDropHitZoneGeometry(
  */
 export function isResizeAxisEnabled(
   capability: TilingResizeCapability,
-  splitAxis: DynamicSplitAxis,
+  splitAxis: TilingSplitAxis,
 ): boolean {
   if (capability === "none") {
     return false;

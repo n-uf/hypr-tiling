@@ -6,7 +6,7 @@ import {
   type DragResolvedTarget,
   dragMachineReducer,
 } from "../drag-machine";
-import type { DynamicDropAction, DynamicLeafDropZone, DynamicPaneFootprint } from "../types";
+import type { TilingDropAction, TilingLeafDropZone, TilingPaneFootprint } from "../types";
 import {
   applySurvivorReflowSnapLeafStyles,
   shouldPlaySurvivorReflowFlip,
@@ -16,12 +16,12 @@ import {
 
 const SOURCE_LEAF_ID = "A";
 
-const ANCHOR: DynamicPaneFootprint = { left: 100, top: 100, width: 200, height: 150 };
+const ANCHOR: TilingPaneFootprint = { left: 100, top: 100, width: 200, height: 150 };
 
 function makeTarget(
   targetLeafId: string,
-  zone: DynamicLeafDropZone,
-  action: DynamicDropAction,
+  zone: TilingLeafDropZone,
+  action: TilingDropAction,
 ): DragResolvedTarget {
   return {
     leafId: targetLeafId,

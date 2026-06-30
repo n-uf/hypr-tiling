@@ -4,8 +4,8 @@ import * as React from "react";
 
 import { cn } from "./cn";
 import type {
-  DynamicTileAccent,
-  DynamicTileAccentSwatch,
+  TilingTileAccent,
+  TilingTileAccentSwatch,
   TilingThemeId,
 } from "./types";
 
@@ -16,7 +16,7 @@ import type {
  * `TilingTheme` instead of inline Tailwind class strings. A theme is a typed
  * bundle of class-string tokens (one group per surface) plus a small set of
  * accent-composition resolvers that decide HOW a pane's per-pane accent
- * (`DynamicTileAccent`) tints the themed chrome. Themes are pure data +
+ * (`TilingTileAccent`) tints the themed chrome. Themes are pure data +
  * pure functions — no component owns visual constants anymore.
  *
  * Why class-token strings (not CSS variables): the renderer is class-driven
@@ -180,24 +180,24 @@ export interface TilingTheme {
   readonly topBar: TilingThemeTopBarTokens;
   /** Resting pane accent composition (border tint + colored shadow). */
   readonly resolvePaneAccentSurface: (
-    accent: DynamicTileAccent | undefined,
+    accent: TilingTileAccent | undefined,
   ) => string;
   /** Accent title-text color. */
-  readonly resolveAccentText: (accent: DynamicTileAccent | undefined) => string;
+  readonly resolveAccentText: (accent: TilingTileAccent | undefined) => string;
   /** Full focused-pane frame (structural border/ring + accent glow). */
-  readonly resolveFocusFrame: (accent: DynamicTileAccent | undefined) => string;
+  readonly resolveFocusFrame: (accent: TilingTileAccent | undefined) => string;
   /** Active tab / switcher / group-member chip. */
-  readonly resolveTabActive: (accent: DynamicTileAccent | undefined) => string;
+  readonly resolveTabActive: (accent: TilingTileAccent | undefined) => string;
 }
 
 /** First palette member — the fallback when a tile omits `accent`. */
-export const DEFAULT_TILE_ACCENT: DynamicTileAccent = "cyan";
+export const DEFAULT_TILE_ACCENT: TilingTileAccent = "cyan";
 
 /**
  * Ordered, enumerable accent palette — the generic capability a consumer
  * iterates to build an accent picker.
  */
-export const DYNAMIC_TILE_ACCENTS: readonly DynamicTileAccent[] = [
+export const TILING_TILE_ACCENTS: readonly TilingTileAccent[] = [
   "cyan",
   "sky",
   "violet",
@@ -209,11 +209,11 @@ export const DYNAMIC_TILE_ACCENTS: readonly DynamicTileAccent[] = [
 ];
 
 /**
- * The hue atoms for every accent. Keyed by the closed `DynamicTileAccent`
+ * The hue atoms for every accent. Keyed by the closed `TilingTileAccent`
  * union so the compiler enforces full coverage. Theme-independent: themes
  * choose which atoms to apply.
  */
-export const TILING_ACCENT_HUES: Record<DynamicTileAccent, TilingAccentHue> = {
+export const TILING_ACCENT_HUES: Record<TilingTileAccent, TilingAccentHue> = {
   cyan: {
     label: "cyan",
     swatch: "bg-cyan-400",
@@ -353,9 +353,9 @@ export const TILING_ACCENT_HUES: Record<DynamicTileAccent, TilingAccentHue> = {
 };
 
 /** Picker-ready metadata (accent + label + swatch class) for every accent. */
-export const DYNAMIC_TILE_ACCENT_SWATCHES: readonly DynamicTileAccentSwatch[] =
-  DYNAMIC_TILE_ACCENTS.map(
-    (accent: DynamicTileAccent): DynamicTileAccentSwatch => ({
+export const TILING_TILE_ACCENT_SWATCHES: readonly TilingTileAccentSwatch[] =
+  TILING_TILE_ACCENTS.map(
+    (accent: TilingTileAccent): TilingTileAccentSwatch => ({
       accent,
       label: TILING_ACCENT_HUES[accent].label,
       swatchClassName: TILING_ACCENT_HUES[accent].swatch,
@@ -363,7 +363,7 @@ export const DYNAMIC_TILE_ACCENT_SWATCHES: readonly DynamicTileAccentSwatch[] =
   );
 
 /** Resolve an accent (or the default fallback) to its hue atoms. */
-export function accentHue(accent: DynamicTileAccent | undefined): TilingAccentHue {
+export function accentHue(accent: TilingTileAccent | undefined): TilingAccentHue {
   return TILING_ACCENT_HUES[accent ?? DEFAULT_TILE_ACCENT];
 }
 
@@ -472,12 +472,12 @@ const NEON_TERMINAL_THEME: TilingTheme = {
     switcherCardInactive: "border-white/10 bg-slate-950/80 text-slate-400",
   },
   // Disciplined accent use: a faint accent border at rest, no colored shadow tint.
-  resolvePaneAccentSurface: (accent: DynamicTileAccent | undefined): string =>
+  resolvePaneAccentSurface: (accent: TilingTileAccent | undefined): string =>
     accentHue(accent).surfaceBorder,
-  resolveAccentText: (accent: DynamicTileAccent | undefined): string =>
+  resolveAccentText: (accent: TilingTileAccent | undefined): string =>
     accentHue(accent).text,
   // Lower-contrast focus frame: border-2 + single ring-1 + softened glow.
-  resolveFocusFrame: (accent: DynamicTileAccent | undefined): string => {
+  resolveFocusFrame: (accent: TilingTileAccent | undefined): string => {
     const hue: TilingAccentHue = accentHue(accent);
     return cn(
       "border-2 ring-1 ring-offset-0",
@@ -486,7 +486,7 @@ const NEON_TERMINAL_THEME: TilingTheme = {
       hue.focusGlowSoft,
     );
   },
-  resolveTabActive: (accent: DynamicTileAccent | undefined): string => {
+  resolveTabActive: (accent: TilingTileAccent | undefined): string => {
     const hue: TilingAccentHue = accentHue(accent);
     return cn(hue.tabBorder, hue.tabBg, hue.textStrong);
   },
@@ -562,15 +562,15 @@ const CLEAN_FLAT_THEME: TilingTheme = {
   },
   // Resting panes stay neutral — accents are spent sparingly.
   resolvePaneAccentSurface: (): string => "",
-  resolveAccentText: (accent: DynamicTileAccent | undefined): string =>
+  resolveAccentText: (accent: TilingTileAccent | undefined): string =>
     accentHue(accent).text,
   // Thin 1px accent border + 1px ring, no glow.
-  resolveFocusFrame: (accent: DynamicTileAccent | undefined): string => {
+  resolveFocusFrame: (accent: TilingTileAccent | undefined): string => {
     const hue: TilingAccentHue = accentHue(accent);
     return cn("border ring-1 ring-offset-0", hue.focusBorder, hue.focusRing);
   },
   // Soft accent fill + accent text on the active chip.
-  resolveTabActive: (accent: DynamicTileAccent | undefined): string => {
+  resolveTabActive: (accent: TilingTileAccent | undefined): string => {
     const hue: TilingAccentHue = accentHue(accent);
     return cn(hue.tabBorder, hue.tabBgSoft, hue.textStrong);
   },
@@ -650,7 +650,7 @@ const MOSAIC_THEME: TilingTheme = {
   // Monochrome at rest: no colored resting border. Identity is the single gold
   // accent, and it appears ONLY on interaction (focus / active tab) below.
   resolvePaneAccentSurface: (): string => "",
-  resolveAccentText: (accent: DynamicTileAccent | undefined): string =>
+  resolveAccentText: (accent: TilingTileAccent | undefined): string =>
     accentHue(accent).text,
   // Unified gold focus frame regardless of the per-pane accent — one coherent
   // accent across the whole surface, hairline (no neon glow).

@@ -27,7 +27,7 @@ packages/hypr-tiling/
 
 ```text
 Consumer App
-└── DynamicTilingRenderer
+└── TilingRenderer
     ├── recursive split branch renderer
     │   ├── first child branch
     │   ├── divider handle
@@ -40,7 +40,7 @@ Consumer App
 
 ```text
 [Pointer/Keyboard Input]
-  -> [DynamicTilingRenderer handlers]
+  -> [TilingRenderer handlers]
   -> [drop-intent-resolver / pane-sizing / pane-switching]
   -> [state reducers produce next layout]
   -> [onLayoutChange(nextLayout)]
@@ -50,7 +50,7 @@ Consumer App
 
 ## Component Interactions
 
-`DynamicTilingRenderer` is a controlled component. It receives `layout`, `tiles`, and interaction config from the host, computes interaction intent, and emits immutable layout updates through `onLayoutChange`.
+`TilingRenderer` is a controlled component. It receives `layout`, `tiles`, and interaction config from the host, computes interaction intent, and emits immutable layout updates through `onLayoutChange`.
 
 Pure modules own all deterministic behavior:
 
@@ -67,15 +67,15 @@ The renderer composes these pure functions and keeps transient UI state (hover, 
 ### Minimal integration
 
 ```tsx
-import { DynamicTilingRenderer, type DynamicLayoutNode, type DynamicTile } from "@n-uf/hypr-tiling";
+import { TilingRenderer, type TilingLayoutNode, type TilingTile } from "@n-uf/hypr-tiling";
 import { useMemo, useState } from "react";
 
 export function ExampleTilingHost(): JSX.Element {
-  const [layout, setLayout] = useState<DynamicLayoutNode>(INITIAL_LAYOUT);
-  const tileMap: ReadonlyMap<string, DynamicTile> = useMemo(() => new Map(TILES.map((tile) => [tile.id, tile])), []);
+  const [layout, setLayout] = useState<TilingLayoutNode>(INITIAL_LAYOUT);
+  const tileMap: ReadonlyMap<string, TilingTile> = useMemo(() => new Map(TILES.map((tile) => [tile.id, tile])), []);
 
   return (
-    <DynamicTilingRenderer
+    <TilingRenderer
       layout={layout}
       tiles={tileMap}
       config={{ gapPx: 8, minPaneSizePx: 120, handleSizePx: 8 }}

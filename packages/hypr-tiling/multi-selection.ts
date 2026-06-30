@@ -24,7 +24,7 @@
  */
 
 import { groupLeaves } from "./state";
-import type { DynamicLayoutNode, TilingCommand } from "./types";
+import type { TilingLayoutNode, TilingCommand } from "./types";
 
 /** Minimum selection size that the existing `groupLeaves` op will act on. */
 export const MULTI_SELECT_GROUP_MIN_MEMBERS: number = 2;
@@ -100,7 +100,7 @@ export function pruneMultiSelection(
  * groupable, so the Group control is suppressed rather than offered inert.
  */
 export function canGroupMultiSelection(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   selection: ReadonlySet<string>,
 ): boolean {
   if (selection.size < MULTI_SELECT_GROUP_MIN_MEMBERS) {

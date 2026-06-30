@@ -9,10 +9,10 @@ import {
   type DragMachineState,
   type DragResolvedTarget,
 } from "../drag-machine";
-import type { DynamicDropIntentState } from "../drop-intent-resolver";
-import type { DynamicLayoutNode, DynamicLeafDropZone, DynamicLeafNode, DynamicSplitNode } from "../types";
+import type { TilingDropIntentState } from "../drop-intent-resolver";
+import type { TilingLayoutNode, TilingLeafDropZone, TilingLeafNode, TilingSplitNode } from "../types";
 
-function leaf(id: string, tileId: string): DynamicLeafNode {
+function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };
 }
 
@@ -25,7 +25,7 @@ function leaf(id: string, tileId: string): DynamicLeafNode {
  *       ├── B       (leaf, tile-b)
  *       └── C       (leaf, tile-c)
  */
-function baseLayout(): DynamicSplitNode {
+function baseLayout(): TilingSplitNode {
   return {
     kind: "split",
     id: "root",
@@ -44,7 +44,7 @@ function baseLayout(): DynamicSplitNode {
 }
 
 /** Two-pane layout — the minimal topology that reproduces the parked-forever symptom. */
-function twoPaneLayout(): DynamicSplitNode {
+function twoPaneLayout(): TilingSplitNode {
   return {
     kind: "split",
     id: "root",
@@ -59,8 +59,8 @@ const SOURCE_LEAF_ID = "A";
 
 describe("live-drag cleanup — frozen tree is parked ONLY while drag state is held", (): void => {
   it("in-flight live drag (source held) displays the gap-closed frozen tree (source absent)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
-    const displayed: DynamicLayoutNode = resolveLiveDisplayLayout(true, SOURCE_LEAF_ID, layout);
+    const layout: TilingSplitNode = baseLayout();
+    const displayed: TilingLayoutNode = resolveLiveDisplayLayout(true, SOURCE_LEAF_ID, layout);
     // Mid-drag the displayed tree IS the detach tree, NOT the original layout.
     expect(displayed).not.toBe(layout);
     expect(displayed).toEqual(removeLeafTile(layout, SOURCE_LEAF_ID));
@@ -68,51 +68,51 @@ describe("live-drag cleanup — frozen tree is parked ONLY while drag state is h
   });
 
   it("after dragend with NO valid drop (state cleared → source null) the displayed tree IS the original layout", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     // clearDragInteraction() sets dragSourceLeafId = null; the displayed tree must
     // collapse back to the original layout (gap restored), NOT stay frozen.
-    const displayed: DynamicLayoutNode = resolveLiveDisplayLayout(true, null, layout);
+    const displayed: TilingLayoutNode = resolveLiveDisplayLayout(true, null, layout);
     expect(displayed).toBe(layout);
     expect([...readLeafNodeIds(displayed)].sort()).toEqual(["A", "B", "C"]);
   });
 
   it("after cancel/Escape (state cleared) the displayed tree IS the original layout", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
-    const displayed: DynamicLayoutNode = resolveLiveDisplayLayout(true, null, layout);
+    const layout: TilingSplitNode = baseLayout();
+    const displayed: TilingLayoutNode = resolveLiveDisplayLayout(true, null, layout);
     expect(displayed).toBe(layout);
     expect(readLeafNodeIds(displayed)).toContain(SOURCE_LEAF_ID);
   });
 
   it("two-pane parked-forever symptom: pickup collapses to the survivor; clear restores BOTH panes", (): void => {
-    const layout: DynamicSplitNode = twoPaneLayout();
+    const layout: TilingSplitNode = twoPaneLayout();
 
     // Mid-drag: picking up "A" collapses the tree to the survivor "B" full-width —
     // this is the state that, when left uncleared, parked the layout forever.
-    const midDrag: DynamicLayoutNode = resolveLiveDisplayLayout(true, "A", layout);
+    const midDrag: TilingLayoutNode = resolveLiveDisplayLayout(true, "A", layout);
     expect(readLeafNodeIds(midDrag)).toEqual(["B"]);
 
     // Drag end / cancel clears the source → both panes restored (gap closes back up).
-    const afterClear: DynamicLayoutNode = resolveLiveDisplayLayout(true, null, layout);
+    const afterClear: TilingLayoutNode = resolveLiveDisplayLayout(true, null, layout);
     expect(afterClear).toBe(layout);
     expect([...readLeafNodeIds(afterClear)].sort()).toEqual(["A", "B"]);
   });
 
   it("preview (non-live) mode never detaches the source, regardless of the held source id", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     // System A (preview) keeps the source in place; only the live model freezes.
     expect(resolveLiveDisplayLayout(false, SOURCE_LEAF_ID, layout)).toBe(layout);
   });
 
   it("root-leaf source is a no-op detach (keeps the original tree, never null/collapsed)", (): void => {
-    const rootLeaf: DynamicLeafNode = leaf("only", "tile-only");
+    const rootLeaf: TilingLeafNode = leaf("only", "tile-only");
     expect(resolveLiveDisplayLayout(true, "only", rootLeaf)).toBe(rootLeaf);
   });
 });
 
 function makeResolvedTarget(
   targetLeafId: string,
-  zone: DynamicLeafDropZone,
-  action: DynamicDropIntentState["action"],
+  zone: TilingLeafDropZone,
+  action: TilingDropIntentState["action"],
 ): DragResolvedTarget {
   return {
     leafId: targetLeafId,
@@ -189,7 +189,7 @@ describe("live-drag cleanup — FSM cancel edges restore the ORIGINAL layout (ne
   });
 
   it("cancel never mutates the layout: the original tree is byte-for-byte unchanged after a full cancel cycle", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const before: ReadonlyArray<string> = [...readLeafNodeIds(layout)].sort();
     const dragging: DragMachineState = dragMachineDraggingOver("C");
     const settling: DragMachineState = dragMachineReducer(dragging, { type: "ESCAPE" });
@@ -201,16 +201,16 @@ describe("live-drag cleanup — FSM cancel edges restore the ORIGINAL layout (ne
   });
 
   it("pointerup over a valid swap commits the SAME tree the candidate render showed (no release-time jump)", (): void => {
-    const layout: DynamicSplitNode = baseLayout();
+    const layout: TilingSplitNode = baseLayout();
     const dragging: DragMachineState = dragMachineDraggingOver("C");
     // The candidate the render showed mid-drag:
-    const candidate: DynamicLayoutNode =
+    const candidate: TilingLayoutNode =
       dragging.phase === "dragging" ? deriveCandidateTree(layout, dragging.sourceLeafId, dragging.resolvedTarget) : layout;
 
     const settling: DragMachineState = dragMachineReducer(dragging, { type: "POINTER_UP", pointerId: 1 });
     expect(settling.phase).toBe("settling");
     // The committed tree (settling.outcome === commit, same resolvedTarget):
-    const committed: DynamicLayoutNode =
+    const committed: TilingLayoutNode =
       settling.phase === "settling"
         ? deriveCandidateTree(layout, settling.sourceLeafId, settling.resolvedTarget)
         : layout;

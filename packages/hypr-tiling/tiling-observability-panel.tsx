@@ -22,17 +22,17 @@ import {
   toggleSplitAxis,
 } from "./state";
 import type {
-  DynamicDropAction,
-  DynamicDropIntentDebugState,
-  DynamicFocusDirection,
-  DynamicLayoutConfig,
-  DynamicLayoutNode,
-  DynamicLiveHitLogState,
-  DynamicPaneFootprint,
-  DynamicSplitAxis,
-  DynamicSplitNode,
-  DynamicObservabilityColorConfig,
-  DynamicObservabilityColorEnableConfig,
+  TilingDropAction,
+  TilingDropIntentDebugState,
+  TilingFocusDirection,
+  TilingLayoutConfig,
+  TilingLayoutNode,
+  TilingLiveHitLogState,
+  TilingPaneFootprint,
+  TilingSplitAxis,
+  TilingSplitNode,
+  TilingObservabilityColorConfig,
+  TilingObservabilityColorEnableConfig,
   ResolvedTilingInteractionCapabilities,
   ResolvedTilingKeyChord,
   ResolvedTilingKeyChordModifiers,
@@ -94,10 +94,10 @@ export interface TilingObservabilityLedgerEntry {
 }
 
 interface TilingObservabilityPanelProps {
-  layout: DynamicLayoutNode;
-  setLayout: React.Dispatch<React.SetStateAction<DynamicLayoutNode>>;
-  config: DynamicLayoutConfig;
-  setConfig: React.Dispatch<React.SetStateAction<DynamicLayoutConfig>>;
+  layout: TilingLayoutNode;
+  setLayout: React.Dispatch<React.SetStateAction<TilingLayoutNode>>;
+  config: TilingLayoutConfig;
+  setConfig: React.Dispatch<React.SetStateAction<TilingLayoutConfig>>;
   focusedLeafId: string | null;
   selectedSourceLeafId: string;
   setSelectedSourceLeafId: React.Dispatch<React.SetStateAction<string>>;
@@ -109,10 +109,10 @@ interface TilingObservabilityPanelProps {
   setPreserveParentSplitAxis: React.Dispatch<React.SetStateAction<boolean>>;
   showDropPreviewOverlays: boolean;
   setShowDropPreviewOverlays: React.Dispatch<React.SetStateAction<boolean>>;
-  observabilityColors: DynamicObservabilityColorConfig;
-  setObservabilityColors: React.Dispatch<React.SetStateAction<DynamicObservabilityColorConfig>>;
-  observabilityColorEnables: DynamicObservabilityColorEnableConfig;
-  setObservabilityColorEnables: React.Dispatch<React.SetStateAction<DynamicObservabilityColorEnableConfig>>;
+  observabilityColors: TilingObservabilityColorConfig;
+  setObservabilityColors: React.Dispatch<React.SetStateAction<TilingObservabilityColorConfig>>;
+  observabilityColorEnables: TilingObservabilityColorEnableConfig;
+  setObservabilityColorEnables: React.Dispatch<React.SetStateAction<TilingObservabilityColorEnableConfig>>;
   projectedOverlayBgAlphaPercent: number;
   setProjectedOverlayBgAlphaPercent: React.Dispatch<React.SetStateAction<number>>;
   animationSpeedLinked: boolean;
@@ -164,15 +164,15 @@ interface TilingObservabilityPanelProps {
   setAnimationControlsEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   animationControlsSticky: boolean;
   setAnimationControlsSticky: React.Dispatch<React.SetStateAction<boolean>>;
-  liveDropIntent: DynamicDropIntentDebugState | null;
-  liveHitLog: DynamicLiveHitLogState | null;
+  liveDropIntent: TilingDropIntentDebugState | null;
+  liveHitLog: TilingLiveHitLogState | null;
   observabilityLedgerEntries: ReadonlyArray<TilingObservabilityLedgerEntry>;
   splitCount: number;
   leafIds: ReadonlyArray<string>;
   tileOrder: ReadonlyArray<string>;
-  splitNodes: ReadonlyArray<DynamicSplitNode>;
+  splitNodes: ReadonlyArray<TilingSplitNode>;
   setFocusedLeafId: React.Dispatch<React.SetStateAction<string | null>>;
-  runDirectionalFocus: (direction: DynamicFocusDirection) => void;
+  runDirectionalFocus: (direction: TilingFocusDirection) => void;
   interactionCapabilities: ResolvedTilingInteractionCapabilities;
   setInteractionCapabilities: React.Dispatch<React.SetStateAction<ResolvedTilingInteractionCapabilities>>;
 }
@@ -292,7 +292,7 @@ function formatKeyChordLabel(chord: ResolvedTilingKeyChord): string {
   return prefix.length === 0 ? keyLabel : `${prefix}+${keyLabel}`;
 }
 
-function axisPathLabel(axisPath: ReadonlyArray<DynamicSplitAxis>): string {
+function axisPathLabel(axisPath: ReadonlyArray<TilingSplitAxis>): string {
   if (axisPath.length === 0) {
     return "none";
   }
@@ -316,14 +316,14 @@ function normalizeReasonList(reasons: ReadonlyArray<string>): string {
   return reasons.map((reason: string): string => normalizeReasonToken(reason)).join(" | ");
 }
 
-type DynamicIntentToken = "swap" | "left" | "right" | "top" | "bottom" | "split" | "none" | "blocked";
+type TilingIntentToken = "swap" | "left" | "right" | "top" | "bottom" | "split" | "none" | "blocked";
 
 function readIntentToken(input: {
-  action: DynamicDropAction;
+  action: TilingDropAction;
   edgeLabel: string;
   blockedReasonLabel: string;
   validityLabel: string;
-}): DynamicIntentToken {
+}): TilingIntentToken {
   const isBlocked: boolean = input.validityLabel === "blocked" || (input.action === "none" && input.blockedReasonLabel !== "none");
   if (isBlocked) {
     return "blocked";
@@ -352,7 +352,7 @@ function readIntentToken(input: {
   return "none";
 }
 
-function readIntentBadgeClass(intentToken: DynamicIntentToken): string {
+function readIntentBadgeClass(intentToken: TilingIntentToken): string {
   if (intentToken === "blocked") {
     return "bg-rose-500";
   }
@@ -838,7 +838,7 @@ function SubjectColorRow(props: SubjectColorRowProps): React.ReactElement {
   );
 }
 
-function hasEnabledProjectedFill(enables: DynamicObservabilityColorEnableConfig): boolean {
+function hasEnabledProjectedFill(enables: TilingObservabilityColorEnableConfig): boolean {
   return enables.projectedSourceFillEnabled
     || enables.projectedTargetFillEnabled
     || enables.projectedSuccessorFillEnabled;
@@ -871,7 +871,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
     : isDraggingActive
       ? props.liveDropIntent?.leafId ?? props.liveHitLog?.hoveredLeafId ?? "none"
       : props.liveHitLog?.hoveredLeafId ?? "none";
-  const liveIntentAction: DynamicDropAction = isLiveStatusIdle
+  const liveIntentAction: TilingDropAction = isLiveStatusIdle
     ? "none"
     : props.liveDropIntent?.action ?? props.liveHitLog?.intent?.action ?? "none";
   const liveIntentEdgeLabel: string = isLiveStatusIdle
@@ -894,7 +894,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
       ?? props.liveDropIntent?.blockedReason
       ?? props.liveHitLog?.intent?.blockedReason
       ?? "none";
-  const liveIntentToken: DynamicIntentToken = readIntentToken({
+  const liveIntentToken: TilingIntentToken = readIntentToken({
     action: liveIntentAction,
     edgeLabel: liveIntentEdgeLabel,
     blockedReasonLabel: liveBlockedReasonLabel,
@@ -903,7 +903,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
   const liveIntentBadgeClass: string = readIntentBadgeClass(liveIntentToken);
   const liveCursorXLabel: string = props.liveHitLog == null ? "none" : props.liveHitLog.cursorViewport.x.toFixed(1);
   const liveCursorYLabel: string = props.liveHitLog == null ? "none" : props.liveHitLog.cursorViewport.y.toFixed(1);
-  const sourcePaneFootprint: DynamicPaneFootprint | null = props.liveHitLog?.sourcePaneFootprint ?? null;
+  const sourcePaneFootprint: TilingPaneFootprint | null = props.liveHitLog?.sourcePaneFootprint ?? null;
   const liveSourceXLabel: string = sourcePaneFootprint == null ? "none" : sourcePaneFootprint.left.toFixed(1);
   const liveSourceYLabel: string = sourcePaneFootprint == null ? "none" : sourcePaneFootprint.top.toFixed(1);
   const liveSourceXPlusWLabel: string = sourcePaneFootprint == null
@@ -913,8 +913,8 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
     ? "none"
     : (sourcePaneFootprint.top + sourcePaneFootprint.height).toFixed(1);
   const updateObservabilityColor = React.useCallback(
-    (field: keyof DynamicObservabilityColorConfig, value: string): void => {
-      props.setObservabilityColors((previous: DynamicObservabilityColorConfig): DynamicObservabilityColorConfig => ({
+    (field: keyof TilingObservabilityColorConfig, value: string): void => {
+      props.setObservabilityColors((previous: TilingObservabilityColorConfig): TilingObservabilityColorConfig => ({
         ...previous,
         [field]: value,
       }));
@@ -922,9 +922,9 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
     [props],
   );
   const updateObservabilityColorEnable = React.useCallback(
-    (field: keyof DynamicObservabilityColorEnableConfig, value: boolean): void => {
+    (field: keyof TilingObservabilityColorEnableConfig, value: boolean): void => {
       props.setObservabilityColorEnables(
-        (previous: DynamicObservabilityColorEnableConfig): DynamicObservabilityColorEnableConfig => ({
+        (previous: TilingObservabilityColorEnableConfig): TilingObservabilityColorEnableConfig => ({
           ...previous,
           [field]: value,
         }),
@@ -2038,7 +2038,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                   onChange={(event: React.ChangeEvent<HTMLSelectElement>): void => props.setSelectedSplitId(event.target.value)}
                   className="w-full min-w-0 max-w-full rounded border border-white/10 bg-slate-950 px-2 py-1 font-mono text-[11px] text-slate-200"
                 >
-                  {props.splitNodes.map((splitNode: DynamicSplitNode): React.ReactElement => (
+                  {props.splitNodes.map((splitNode: TilingSplitNode): React.ReactElement => (
                     <option key={`split-${splitNode.id}`} value={splitNode.id}>
                       {splitNode.id} ({splitNode.axis})
                     </option>
@@ -2062,7 +2062,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={(): void => props.setLayout((previous: DynamicLayoutNode): DynamicLayoutNode =>
+                  onClick={(): void => props.setLayout((previous: TilingLayoutNode): TilingLayoutNode =>
                     insertLeafAdjacent(
                       previous,
                       props.selectedSourceLeafId,
@@ -2076,7 +2076,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 </button>
                 <button
                   type="button"
-                  onClick={(): void => props.setLayout((previous: DynamicLayoutNode): DynamicLayoutNode =>
+                  onClick={(): void => props.setLayout((previous: TilingLayoutNode): TilingLayoutNode =>
                     insertLeafAdjacent(
                       previous,
                       props.selectedSourceLeafId,
@@ -2090,7 +2090,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 </button>
                 <button
                   type="button"
-                  onClick={(): void => props.setLayout((previous: DynamicLayoutNode): DynamicLayoutNode =>
+                  onClick={(): void => props.setLayout((previous: TilingLayoutNode): TilingLayoutNode =>
                     insertLeafAdjacent(
                       previous,
                       props.selectedSourceLeafId,
@@ -2104,7 +2104,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 </button>
                 <button
                   type="button"
-                  onClick={(): void => props.setLayout((previous: DynamicLayoutNode): DynamicLayoutNode =>
+                  onClick={(): void => props.setLayout((previous: TilingLayoutNode): TilingLayoutNode =>
                     insertLeafAdjacent(
                       previous,
                       props.selectedSourceLeafId,
@@ -2118,7 +2118,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 </button>
                 <button
                   type="button"
-                  onClick={(): void => props.setLayout((previous: DynamicLayoutNode): DynamicLayoutNode =>
+                  onClick={(): void => props.setLayout((previous: TilingLayoutNode): TilingLayoutNode =>
                     moveLeafToRoot(previous, props.selectedSourceLeafId, "first", { splitRatio: 0.5 }))}
                   className="rounded border border-violet-300/35 bg-violet-500/10 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.13em] text-violet-100"
                 >
@@ -2126,7 +2126,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 </button>
                 <button
                   type="button"
-                  onClick={(): void => props.setLayout((previous: DynamicLayoutNode): DynamicLayoutNode =>
+                  onClick={(): void => props.setLayout((previous: TilingLayoutNode): TilingLayoutNode =>
                     moveLeafToRoot(previous, props.selectedSourceLeafId, "second", { splitRatio: 0.5 }))}
                   className="rounded border border-violet-300/35 bg-violet-500/10 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.13em] text-violet-100"
                 >
@@ -2134,7 +2134,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 </button>
                 <button
                   type="button"
-                  onClick={(): void => props.setLayout((previous: DynamicLayoutNode): DynamicLayoutNode =>
+                  onClick={(): void => props.setLayout((previous: TilingLayoutNode): TilingLayoutNode =>
                     moveLeafToSplitContainer(
                       previous,
                       props.selectedSourceLeafId,
@@ -2148,7 +2148,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 </button>
                 <button
                   type="button"
-                  onClick={(): void => props.setLayout((previous: DynamicLayoutNode): DynamicLayoutNode =>
+                  onClick={(): void => props.setLayout((previous: TilingLayoutNode): TilingLayoutNode =>
                     moveLeafToSplitContainer(
                       previous,
                       props.selectedSourceLeafId,
@@ -2162,7 +2162,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 </button>
                 <button
                   type="button"
-                  onClick={(): void => props.setLayout((previous: DynamicLayoutNode): DynamicLayoutNode =>
+                  onClick={(): void => props.setLayout((previous: TilingLayoutNode): TilingLayoutNode =>
                     toggleSplitAxis(previous, props.selectedSplitId))}
                   className="col-span-2 rounded border border-pink-300/35 bg-pink-500/10 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.13em] text-pink-100"
                 >
@@ -2229,7 +2229,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 step={1}
                 value={props.config.gapPx}
                 onChange={(value: number): void =>
-                  props.setConfig((previous: DynamicLayoutConfig): DynamicLayoutConfig => ({
+                  props.setConfig((previous: TilingLayoutConfig): TilingLayoutConfig => ({
                     ...previous,
                     gapPx: value,
                   }))}
@@ -2243,7 +2243,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 step={10}
                 value={props.config.minPaneSizePx}
                 onChange={(value: number): void =>
-                  props.setConfig((previous: DynamicLayoutConfig): DynamicLayoutConfig => ({
+                  props.setConfig((previous: TilingLayoutConfig): TilingLayoutConfig => ({
                     ...previous,
                     minPaneSizePx: value,
                   }))}

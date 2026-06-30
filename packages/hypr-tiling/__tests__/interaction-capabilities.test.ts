@@ -1,13 +1,13 @@
 import { describe, expect, it } from "@jest/globals";
 import {
-  STATIC_DASHBOARD_INTERACTION,
+  TILING_DASHBOARD_PRESET,
   TILING_INTERACTION_CAPABILITY_DEFAULTS,
   isResizeAxisEnabled,
   resolveInteractionCapabilities,
 } from "../interaction-capabilities";
 import { TILING_KEYMAP_DEFAULTS } from "../pane-switching";
 import type {
-  DynamicSplitAxis,
+  TilingSplitAxis,
   ResolvedTilingInteractionCapabilities,
   TilingResizeCapability,
 } from "../types";
@@ -406,14 +406,14 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     });
   });
 
-  it("resolves STATIC_DASHBOARD_INTERACTION with both title-bar control groups disabled", (): void => {
-    expect(resolveInteractionCapabilities(STATIC_DASHBOARD_INTERACTION).paneTitleBarControls).toEqual({
+  it("resolves TILING_DASHBOARD_PRESET with both title-bar control groups disabled", (): void => {
+    expect(resolveInteractionCapabilities(TILING_DASHBOARD_PRESET).paneTitleBarControls).toEqual({
       sizing: false,
       acquireSpace: false,
     });
   });
 
-  it("defaults dropHitZoneGeometry to the DYNAMIC_DROP_INTENT_CONFIG values when undefined", (): void => {
+  it("defaults dropHitZoneGeometry to the TILING_DROP_INTENT_CONFIG values when undefined", (): void => {
     expect(resolveInteractionCapabilities(undefined).dropHitZoneGeometry).toEqual({
       centerRatio: 0.34,
       centerRatioX: 0.34,
@@ -499,8 +499,8 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
 });
 
 describe("isResizeAxisEnabled (axis-convention gate)", (): void => {
-  const HORIZONTAL_SPLIT: DynamicSplitAxis = "horizontal"; // width divider (side-by-side panes)
-  const VERTICAL_SPLIT: DynamicSplitAxis = "vertical"; // height divider (stacked panes)
+  const HORIZONTAL_SPLIT: TilingSplitAxis = "horizontal"; // width divider (side-by-side panes)
+  const VERTICAL_SPLIT: TilingSplitAxis = "vertical"; // height divider (stacked panes)
 
   it("\"none\" disables every divider axis", (): void => {
     expect(isResizeAxisEnabled("none", HORIZONTAL_SPLIT)).toBe(false);
@@ -524,7 +524,7 @@ describe("isResizeAxisEnabled (axis-convention gate)", (): void => {
 
   it("covers the full capability x axis matrix deterministically", (): void => {
     const capabilities: ReadonlyArray<TilingResizeCapability> = ["both", "horizontal", "vertical", "none"];
-    const axes: ReadonlyArray<DynamicSplitAxis> = ["horizontal", "vertical"];
+    const axes: ReadonlyArray<TilingSplitAxis> = ["horizontal", "vertical"];
     const expectedByKey: Record<string, boolean> = {
       "both:horizontal": true,
       "both:vertical": true,

@@ -4,7 +4,7 @@ A generic, typed theming capability for the `hypr-tiling` renderer. Every
 visual surface (pane shells, header chrome, focus frame, drag ghost, split
 dividers, renderer root/background, top-bar/tab-strip) is painted from a single
 resolved `TilingTheme` instead of inline Tailwind class strings. Per-pane
-accents (`DynamicTileAccent`) compose with the active theme through typed
+accents (`TilingTileAccent`) compose with the active theme through typed
 resolver functions. Any consumer of the library inherits the engine + the
 built-in themes; the showcase only selects a theme (and, from round 3, exposes
 the switcher).
@@ -17,7 +17,7 @@ packages/hypr-tiling/
 │                                  # registry, TilingTheme registry, React
 │                                  # context + provider + useTilingTheme hook
 ├── types.ts                       # TilingThemeId union (central contract);
-│                                  # DynamicTilingRendererProps.themeId / onThemeChange
+│                                  # TilingRendererProps.themeId / onThemeChange
 ├── dynamic-tiling-renderer.tsx    # consumes the active theme via context;
 │                                  # no surface owns hardcoded class strings
 ├── index.ts                       # public re-exports of the theme API
@@ -73,7 +73,7 @@ TilingTheme
 │   ├── tabInactive                # inactive tab chip
 │   ├── switcherCard               # centered pane-switcher overlay card
 │   └── switcherCardInactive       # switcher card, pane not selected
-└── accent-composition resolvers (DynamicTileAccent → className)
+└── accent-composition resolvers (TilingTileAccent → className)
     ├── resolvePaneAccentSurface   # resting pane border tint + colored shadow
     ├── resolveAccentText          # accent title-text color
     ├── resolveFocusFrame          # full focused-pane frame (structural border/ring + glow)
@@ -82,7 +82,7 @@ TilingTheme
 
 ### Accent hue atoms
 
-`TILING_ACCENT_HUES: Record<DynamicTileAccent, TilingAccentHue>` holds the raw
+`TILING_ACCENT_HUES: Record<TilingTileAccent, TilingAccentHue>` holds the raw
 color atoms per accent (border/text/ring/glow/tab tints + a `focusGlowSoft`
 dialed-back variant). Decoupling hue from the previous bundled accent theme is
 what lets a calm theme borrow an accent's hue WITHOUT its heavy neon glow, and a
@@ -98,22 +98,22 @@ the JIT sees every literal because they all live in `theme.tsx`.
         │                                          │
         │                              TilingThemeProvider value
         ▼                                          ▼
-DynamicTilingRenderer root  ────────────►  useTilingTheme() in:
- (root/viewport/divider/group-tab read       DefaultDynamicTile, PaneTabStrip,
+TilingRenderer root  ────────────►  useTilingTheme() in:
+ (root/viewport/divider/group-tab read       DefaultTilingTile, PaneTabStrip,
   the closure `theme` directly)               DragPaneOverlay/cancel ghost,
                                               PaneSwitcherOverlay
 ```
 
-- `DynamicTilingRendererProps.themeId?: TilingThemeId` — selects the active
+- `TilingRendererProps.themeId?: TilingThemeId` — selects the active
   theme. `undefined` → `DEFAULT_TILING_THEME_ID` (`"neon-terminal"`). Reacts to
   prop changes without remount; a live switch re-themes the whole tree.
-- `DynamicTilingRendererProps.onThemeChange?: (id) => void` — wired by the
+- `TilingRendererProps.onThemeChange?: (id) => void` — wired by the
   in-renderer theme switcher control (round 3). Controlled: the consumer owns
   the `themeId` state. Omit to hide the switcher.
 - `TILING_THEME_REGISTRY: Record<TilingThemeId, TilingTheme>` — closed registry;
   adding a `TilingThemeId` member forces the registry to cover it.
 - `TILING_THEMES: readonly TilingTheme[]` — ordered, enumerable list a switcher
-  iterates (mirrors `DYNAMIC_TILE_ACCENT_SWATCHES` for the accent picker).
+  iterates (mirrors `TILING_TILE_ACCENT_SWATCHES` for the accent picker).
 - `resolveTilingTheme(id)` / `useTilingTheme()` / `TilingThemeProvider` — the
   selection + context primitives.
 
@@ -137,10 +137,10 @@ through the `renderBranch` `useCallback` deps.
 | Pane-switcher overlay + group-member tabs       | `theme.topBar.switcherCard*` + `resolveTabActive` |
 
 Behavior/layout is unchanged: only the source of the class strings moved. The
-former `DYNAMIC_TILE_ACCENT_THEMES` record + its `accentTheme` / `accentClassName`
+former `TILING_TILE_ACCENT_THEMES` record + its `accentTheme` / `accentClassName`
 / `accentTextClassName` / `focusFrameClassName` / `tabAccentActiveClassName` /
-`switcherCardAccentClassName` helpers were removed; `DYNAMIC_TILE_ACCENTS` and
-`DYNAMIC_TILE_ACCENT_SWATCHES` now derive from `TILING_ACCENT_HUES` in
+`switcherCardAccentClassName` helpers were removed; `TILING_TILE_ACCENTS` and
+`TILING_TILE_ACCENT_SWATCHES` now derive from `TILING_ACCENT_HUES` in
 `theme.tsx`.
 
 ## Generic-vs-showcase boundary
@@ -159,7 +159,7 @@ utility. Every token is a literal string declared in `theme.tsx`, so the JIT
 emits all of them for any consumer regardless of which theme is active at
 runtime. CSS variables would move color decisions out of the type system and
 defeat the closed-union exhaustiveness (`Record<TilingThemeId, …>`,
-`Record<DynamicTileAccent, …>`) the rest of the renderer relies on. The chosen
+`Record<TilingTileAccent, …>`) the rest of the renderer relies on. The chosen
 shape keeps theme authoring fully type-checked and JIT-safe.
 
 ## Usage / integration
@@ -168,14 +168,14 @@ Select a built-in theme (controlled by the consumer):
 
 ```tsx
 import {
-  DynamicTilingRenderer,
+  TilingRenderer,
   TILING_THEMES,
   type TilingThemeId,
 } from "@n-uf/hypr-tiling";
 
 const [themeId, setThemeId] = React.useState<TilingThemeId>("clean-flat");
 
-<DynamicTilingRenderer
+<TilingRenderer
   layout={layout}
   tiles={tiles}
   config={config}

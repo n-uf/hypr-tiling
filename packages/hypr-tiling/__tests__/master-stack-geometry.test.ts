@@ -5,14 +5,14 @@ import {
   resolveMasterParams,
   resolveMasterStackFootprints,
   slotRepresentativeLeafId,
-  type DynamicLeafFootprint,
+  type TilingLeafFootprint,
   type MasterStackParams,
 } from "../leaf-geometry";
 import type {
-  DynamicLayoutConfig,
-  DynamicLayoutNode,
-  DynamicLeafNode,
-  DynamicSplitNode,
+  TilingLayoutConfig,
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingSplitNode,
 } from "../types";
 
 /**
@@ -23,19 +23,19 @@ import type {
  * the single-source `collectLeafFootprints` traversal.
  */
 
-function leaf(id: string): DynamicLeafNode {
+function leaf(id: string): TilingLeafNode {
   return { kind: "leaf", id, tileId: `tile-${id}` };
 }
 
-function hsplit(ratio: number, first: DynamicLayoutNode, second: DynamicLayoutNode): DynamicSplitNode {
+function hsplit(ratio: number, first: TilingLayoutNode, second: TilingLayoutNode): TilingSplitNode {
   return { kind: "split", id: `h-${first.id}-${second.id}`, axis: "horizontal", ratio, first, second };
 }
 
 function master(
-  overrides: Partial<DynamicSplitNode>,
-  first: DynamicLayoutNode,
-  second: DynamicLayoutNode,
-): DynamicSplitNode {
+  overrides: Partial<TilingSplitNode>,
+  first: TilingLayoutNode,
+  second: TilingLayoutNode,
+): TilingSplitNode {
   return {
     kind: "split",
     id: "root",
@@ -48,22 +48,22 @@ function master(
   };
 }
 
-const GAP_FREE_CONFIG: DynamicLayoutConfig = { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 };
+const GAP_FREE_CONFIG: TilingLayoutConfig = { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 };
 
-function byId(footprints: ReadonlyArray<DynamicLeafFootprint>): Map<string, DynamicLeafFootprint> {
+function byId(footprints: ReadonlyArray<TilingLeafFootprint>): Map<string, TilingLeafFootprint> {
   return new Map(
-    footprints.map((footprint: DynamicLeafFootprint): [string, DynamicLeafFootprint] => [footprint.leafId, footprint]),
+    footprints.map((footprint: TilingLeafFootprint): [string, TilingLeafFootprint] => [footprint.leafId, footprint]),
   );
 }
 
 describe("collectMasterSlots (descendant non-split flattening)", (): void => {
   it("returns a single leaf as its own slot", (): void => {
-    expect(collectMasterSlots(leaf("A")).map((node: DynamicLayoutNode): string => node.id)).toEqual(["A"]);
+    expect(collectMasterSlots(leaf("A")).map((node: TilingLayoutNode): string => node.id)).toEqual(["A"]);
   });
 
   it("flattens a nested binary tree into reading-order slots", (): void => {
-    const tree: DynamicLayoutNode = hsplit(0.5, hsplit(0.5, leaf("A"), leaf("B")), hsplit(0.5, leaf("C"), leaf("D")));
-    expect(collectMasterSlots(tree).map((node: DynamicLayoutNode): string => node.id)).toEqual(["A", "B", "C", "D"]);
+    const tree: TilingLayoutNode = hsplit(0.5, hsplit(0.5, leaf("A"), leaf("B")), hsplit(0.5, leaf("C"), leaf("D")));
+    expect(collectMasterSlots(tree).map((node: TilingLayoutNode): string => node.id)).toEqual(["A", "B", "C", "D"]);
   });
 });
 
@@ -99,7 +99,7 @@ describe("resolveMasterParams (defaulting + clamping)", (): void => {
 });
 
 describe("resolveMasterStackFootprints (master area + stack)", (): void => {
-  const slots: ReadonlyArray<DynamicLayoutNode> = [leaf("A"), leaf("B"), leaf("C")];
+  const slots: ReadonlyArray<TilingLayoutNode> = [leaf("A"), leaf("B"), leaf("C")];
 
   it("returns nothing for zero slots", (): void => {
     expect(resolveMasterStackFootprints([], 0, 0, 1000, 800, GAP_FREE_CONFIG, { count: 1, orientation: "left", ratio: 0.5 })).toEqual([]);
@@ -159,7 +159,7 @@ describe("resolveMasterStackFootprints (master area + stack)", (): void => {
 
   it("reserves gaps between adjacent slots within an area", (): void => {
     const params: MasterStackParams = { count: 1, orientation: "left", ratio: 0.5 };
-    const gapped: DynamicLayoutConfig = { gapPx: 20, minPaneSizePx: 0, handleSizePx: 0 };
+    const gapped: TilingLayoutConfig = { gapPx: 20, minPaneSizePx: 0, handleSizePx: 0 };
     const map = byId(resolveMasterStackFootprints([leaf("A"), leaf("B"), leaf("C")], 0, 0, 1000, 900, gapped, params));
     // availableWidth = 1000 - 20 = 980 → master 490, stack 490 (left col offset by master+gap)
     expect(map.get("A")?.width).toBeCloseTo(490);
@@ -183,7 +183,7 @@ describe("resolveMasterStackFootprints (master area + stack)", (): void => {
 describe("collectLeafFootprints — master-mode arm", (): void => {
   it("a master split flattens its binary descendants and lays them out master/stack", (): void => {
     // Binary structure: ((A,B),(C,D)) but layoutMode master → flat [A,B,C,D]
-    const tree: DynamicSplitNode = master(
+    const tree: TilingSplitNode = master(
       { masterCount: 1, masterOrientation: "left", ratio: 0.5 },
       hsplit(0.5, leaf("A"), leaf("B")),
       hsplit(0.5, leaf("C"), leaf("D")),
@@ -197,19 +197,19 @@ describe("collectLeafFootprints — master-mode arm", (): void => {
   });
 
   it("a dwindle split (no layoutMode) keeps the recursive binary geometry", (): void => {
-    const tree: DynamicSplitNode = hsplit(0.5, leaf("A"), leaf("B"));
+    const tree: TilingSplitNode = hsplit(0.5, leaf("A"), leaf("B"));
     const map = byId(collectLeafFootprints(tree, 0, 0, 1000, 800, GAP_FREE_CONFIG));
     expect(map.get("A")).toEqual({ leafId: "A", left: 0, top: 0, width: 500, height: 800 });
     expect(map.get("B")).toEqual({ leafId: "B", left: 500, top: 0, width: 500, height: 800 });
   });
 
   it("every leaf in a master subtree gets exactly one footprint", (): void => {
-    const tree: DynamicSplitNode = master(
+    const tree: TilingSplitNode = master(
       { masterCount: 2, masterOrientation: "top" },
       hsplit(0.5, leaf("A"), leaf("B")),
       hsplit(0.5, leaf("C"), leaf("D")),
     );
     const footprints = collectLeafFootprints(tree, 0, 0, 1000, 800, GAP_FREE_CONFIG);
-    expect(footprints.map((fp: DynamicLeafFootprint): string => fp.leafId).sort()).toEqual(["A", "B", "C", "D"]);
+    expect(footprints.map((fp: TilingLeafFootprint): string => fp.leafId).sort()).toEqual(["A", "B", "C", "D"]);
   });
 });

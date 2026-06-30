@@ -7,7 +7,7 @@ import { isCommittableTarget, type DragResolvedTarget } from "./drag-machine";
  * coalesced rAF/render path as the ghost so it never lags the hardware cursor.
  *
  * This module is the PURE, DOM-less core: it maps the drag FSM's resolved target
- * (`DragResolvedTarget` = the resolver's `DynamicDropIntentState`) plus the drop
+ * (`DragResolvedTarget` = the resolver's `TilingDropIntentState`) plus the drop
  * validity onto a small SEMANTIC presentation descriptor — the OPERATION the
  * release would perform (grab / insert / swap) or its rejection (invalid) — NOT
  * an edge direction. The found slot itself already shows where the pane lands;

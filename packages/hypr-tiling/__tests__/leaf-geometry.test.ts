@@ -4,48 +4,48 @@ import {
   collectNormalizedLeafRects,
   footprintsByLeafId,
   isFootprintChanged,
-  type DynamicLeafFootprint,
+  type TilingLeafFootprint,
   type LeafRect,
 } from "../leaf-geometry";
 import type {
-  DynamicLayoutConfig,
-  DynamicLayoutNode,
-  DynamicLeafNode,
-  DynamicSplitNode,
+  TilingLayoutConfig,
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingSplitNode,
   TilingPaneSizing,
 } from "../types";
 
-function leaf(id: string, sizing?: TilingPaneSizing): DynamicLeafNode {
+function leaf(id: string, sizing?: TilingPaneSizing): TilingLeafNode {
   return sizing == null
     ? { kind: "leaf", id, tileId: `tile-${id}` }
     : { kind: "leaf", id, tileId: `tile-${id}`, sizing };
 }
 
-function hsplit(ratio: number, first: DynamicLayoutNode, second: DynamicLayoutNode): DynamicSplitNode {
+function hsplit(ratio: number, first: TilingLayoutNode, second: TilingLayoutNode): TilingSplitNode {
   return { kind: "split", id: `h-${first.id}-${second.id}`, axis: "horizontal", ratio, first, second };
 }
 
-function vsplit(ratio: number, first: DynamicLayoutNode, second: DynamicLayoutNode): DynamicSplitNode {
+function vsplit(ratio: number, first: TilingLayoutNode, second: TilingLayoutNode): TilingSplitNode {
   return { kind: "split", id: `v-${first.id}-${second.id}`, axis: "vertical", ratio, first, second };
 }
 
-const GAP_FREE_CONFIG: DynamicLayoutConfig = { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 };
-const GAPPED_CONFIG: DynamicLayoutConfig = { gapPx: 10, minPaneSizePx: 0, handleSizePx: 4 };
+const GAP_FREE_CONFIG: TilingLayoutConfig = { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 };
+const GAPPED_CONFIG: TilingLayoutConfig = { gapPx: 10, minPaneSizePx: 0, handleSizePx: 4 };
 
-function byId(footprints: ReadonlyArray<DynamicLeafFootprint>): Map<string, DynamicLeafFootprint> {
-  return new Map(footprints.map((footprint: DynamicLeafFootprint): [string, DynamicLeafFootprint] => [footprint.leafId, footprint]));
+function byId(footprints: ReadonlyArray<TilingLeafFootprint>): Map<string, TilingLeafFootprint> {
+  return new Map(footprints.map((footprint: TilingLeafFootprint): [string, TilingLeafFootprint] => [footprint.leafId, footprint]));
 }
 
 describe("collectLeafFootprints — flexible (ratio) parity", (): void => {
   it("distributes a horizontal split by ratio, gap-free", (): void => {
-    const layout: DynamicLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
+    const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
     const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
     expect(map.get("A")).toEqual({ leafId: "A", left: 0, top: 0, width: 500, height: 800 });
     expect(map.get("B")).toEqual({ leafId: "B", left: 500, top: 0, width: 500, height: 800 });
   });
 
   it("subtracts the splitter/gap offset on a flexible boundary", (): void => {
-    const layout: DynamicLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
+    const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
     const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAPPED_CONFIG));
     // splitGapOffsetPx = (10 + 4) / 2 = 7
     expect(map.get("A")?.width).toBeCloseTo(500 - 7);
@@ -54,7 +54,7 @@ describe("collectLeafFootprints — flexible (ratio) parity", (): void => {
   });
 
   it("recurses nested splits", (): void => {
-    const layout: DynamicLayoutNode = hsplit(0.5, vsplit(0.5, leaf("A"), leaf("B")), leaf("C"));
+    const layout: TilingLayoutNode = hsplit(0.5, vsplit(0.5, leaf("A"), leaf("B")), leaf("C"));
     const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
     expect(map.get("A")).toEqual({ leafId: "A", left: 0, top: 0, width: 500, height: 400 });
     expect(map.get("B")).toEqual({ leafId: "B", left: 0, top: 400, width: 500, height: 400 });
@@ -65,7 +65,7 @@ describe("collectLeafFootprints — flexible (ratio) parity", (): void => {
 describe("collectLeafFootprints — static-aware (pinned along-axis child)", (): void => {
   it("gives a pinned static-width child its exact px and the flexible sibling the remainder (no gap)", (): void => {
     // sidebar static-width pinned 200; main flexible. Horizontal split → width is along-axis.
-    const layout: DynamicLayoutNode = hsplit(0.5, leaf("sidebar", { width: "static", widthPx: 200 }), leaf("main"));
+    const layout: TilingLayoutNode = hsplit(0.5, leaf("sidebar", { width: "static", widthPx: 200 }), leaf("main"));
     const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAPPED_CONFIG));
     expect(map.get("sidebar")).toEqual({ leafId: "sidebar", left: 0, top: 0, width: 200, height: 800 });
     // sibling FILLS the remainder; no splitter gap reserved on a static boundary.
@@ -73,14 +73,14 @@ describe("collectLeafFootprints — static-aware (pinned along-axis child)", ():
   });
 
   it("honors a pinned static-height child on a vertical split", (): void => {
-    const layout: DynamicLayoutNode = vsplit(0.5, leaf("top"), leaf("bottom", { height: "static", heightPx: 150 }));
+    const layout: TilingLayoutNode = vsplit(0.5, leaf("top"), leaf("bottom", { height: "static", heightPx: 150 }));
     const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
     expect(map.get("bottom")).toEqual({ leafId: "bottom", left: 0, top: 650, width: 1000, height: 150 });
     expect(map.get("top")).toEqual({ leafId: "top", left: 0, top: 0, width: 1000, height: 650 });
   });
 
   it("keeps the flexible sibling's own ratio subtree correct next to a pinned static pane", (): void => {
-    const layout: DynamicLayoutNode = hsplit(
+    const layout: TilingLayoutNode = hsplit(
       0.5,
       leaf("sidebar", { width: "static", widthPx: 200 }),
       vsplit(0.5, leaf("X"), leaf("Y")),
@@ -94,14 +94,14 @@ describe("collectLeafFootprints — static-aware (pinned along-axis child)", ():
 
   it("falls back to ratio when a static pin does not fit the container (fit-guard)", (): void => {
     // pin 2000 > axis container 1000 → cannot honor → ratio distribution instead.
-    const layout: DynamicLayoutNode = hsplit(0.5, leaf("sidebar", { width: "static", widthPx: 2000 }), leaf("main"));
+    const layout: TilingLayoutNode = hsplit(0.5, leaf("sidebar", { width: "static", widthPx: 2000 }), leaf("main"));
     const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
     expect(map.get("sidebar")?.width).toBe(500);
     expect(map.get("main")?.width).toBe(500);
   });
 
   it("falls back to ratio for an UNPINNED static-along-axis child (px unknowable)", (): void => {
-    const layout: DynamicLayoutNode = hsplit(0.6, leaf("sidebar", { width: "static" }), leaf("main"));
+    const layout: TilingLayoutNode = hsplit(0.6, leaf("sidebar", { width: "static" }), leaf("main"));
     const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
     expect(map.get("sidebar")?.width).toBeCloseTo(600);
     expect(map.get("main")?.width).toBeCloseTo(400);
@@ -109,7 +109,7 @@ describe("collectLeafFootprints — static-aware (pinned along-axis child)", ():
 
   it("ignores a CROSS-axis static pin for along-axis distribution", (): void => {
     // height static on a horizontal split is a CROSS-axis pin → width stays ratio.
-    const layout: DynamicLayoutNode = hsplit(0.5, leaf("A", { height: "static", heightPx: 100 }), leaf("B"));
+    const layout: TilingLayoutNode = hsplit(0.5, leaf("A", { height: "static", heightPx: 100 }), leaf("B"));
     const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
     expect(map.get("A")?.width).toBe(500);
     expect(map.get("B")?.width).toBe(500);
@@ -118,7 +118,7 @@ describe("collectLeafFootprints — static-aware (pinned along-axis child)", ():
 
 describe("collectNormalizedLeafRects — directional-neighbor wrapper", (): void => {
   it("returns unit 0..1 edge-rects matching pure ratio splits", (): void => {
-    const layout: DynamicLayoutNode = hsplit(0.5, vsplit(0.5, leaf("A"), leaf("B")), leaf("C"));
+    const layout: TilingLayoutNode = hsplit(0.5, vsplit(0.5, leaf("A"), leaf("B")), leaf("C"));
     const rects: ReadonlyArray<LeafRect> = collectNormalizedLeafRects(layout);
     const map = new Map(rects.map((rect: LeafRect): [string, LeafRect] => [rect.leafId, rect]));
     expect(map.get("A")).toEqual({ leafId: "A", left: 0, top: 0, right: 0.5, bottom: 0.5 });
@@ -129,7 +129,7 @@ describe("collectNormalizedLeafRects — directional-neighbor wrapper", (): void
   it("ignores px pins in unit space (a px pin cannot fit a 1-unit container)", (): void => {
     // The static pin is undefined against a 1-unit container → pure ratio, so
     // directional focus stays purely topological (identical to the old rects).
-    const layout: DynamicLayoutNode = hsplit(0.5, leaf("sidebar", { width: "static", widthPx: 200 }), leaf("main"));
+    const layout: TilingLayoutNode = hsplit(0.5, leaf("sidebar", { width: "static", widthPx: 200 }), leaf("main"));
     const map = new Map(
       collectNormalizedLeafRects(layout).map((rect: LeafRect): [string, LeafRect] => [rect.leafId, rect]),
     );
@@ -140,7 +140,7 @@ describe("collectNormalizedLeafRects — directional-neighbor wrapper", (): void
 
 describe("footprintsByLeafId / isFootprintChanged", (): void => {
   it("keys footprints by leaf id, stripping the leafId field", (): void => {
-    const layout: DynamicLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
+    const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
     const map = footprintsByLeafId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
     expect(map.get("A")).toEqual({ left: 0, top: 0, width: 500, height: 800 });
   });

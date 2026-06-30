@@ -1,6 +1,6 @@
 import type * as React from "react";
 
-export type DynamicSplitAxis = "horizontal" | "vertical";
+export type TilingSplitAxis = "horizontal" | "vertical";
 
 /**
  * Arrangement of a split subtree's slots:
@@ -17,7 +17,7 @@ export type DynamicSplitAxis = "horizontal" | "vertical";
  *   still defines slot membership + order + identity, and the reducers still
  *   operate on it.
  */
-export type DynamicLayoutMode = "dwindle" | "master";
+export type TilingLayoutMode = "dwindle" | "master";
 
 /**
  * Where the master area sits in `layoutMode: "master"`. `left`/`right` divide
@@ -25,7 +25,7 @@ export type DynamicLayoutMode = "dwindle" | "master";
  * `top`/`bottom` divide along HEIGHT (master area a row, members stacked
  * horizontally). The complement holds the stack.
  */
-export type DynamicMasterOrientation = "left" | "right" | "top" | "bottom";
+export type TilingMasterOrientation = "left" | "right" | "top" | "bottom";
 
 /** The two layout dimensions a pane can be sized along, independent of split axis. */
 export type TilingDimension = "width" | "height";
@@ -419,7 +419,7 @@ export type TilingKeyboardAction =
   | { kind: "previous-pane" }
   | { kind: "next-pane" }
   | { kind: "jump-to-pane"; paneNumber: number }
-  | { kind: "focus-direction"; direction: DynamicFocusDirection }
+  | { kind: "focus-direction"; direction: TilingFocusDirection }
   | { kind: "focus-current-or-last" }
   | { kind: "enter-move-mode" }
   | { kind: "cycle-layout-mode" }
@@ -446,7 +446,7 @@ export type TilingPaneCycleDirection = "next" | "previous";
  */
 export type TilingCommand =
   | { kind: "focus-pane"; leafId: string }
-  | { kind: "focus-direction"; direction: DynamicFocusDirection }
+  | { kind: "focus-direction"; direction: TilingFocusDirection }
   | { kind: "focus-cycle"; direction: TilingPaneCycleDirection }
   | { kind: "focus-jump"; paneNumber: number }
   | { kind: "focus-current-or-last" }
@@ -454,22 +454,22 @@ export type TilingCommand =
   | { kind: "maximize"; leafId?: string }
   | { kind: "restore" }
   | { kind: "enter-move-mode"; leafId?: string }
-  | { kind: "move-aim"; direction: DynamicFocusDirection }
+  | { kind: "move-aim"; direction: TilingFocusDirection }
   | { kind: "commit-move-mode" }
   | { kind: "cancel-move-mode" }
   | { kind: "swap-panes"; sourceLeafId: string; targetLeafId: string }
-  | { kind: "insert-adjacent"; sourceLeafId: string; targetLeafId: string; placement: DynamicMovePlacement }
-  | { kind: "acquire-space"; leafId?: string; direction: DynamicFocusDirection }
+  | { kind: "insert-adjacent"; sourceLeafId: string; targetLeafId: string; placement: TilingMovePlacement }
+  | { kind: "acquire-space"; leafId?: string; direction: TilingFocusDirection }
   | { kind: "set-sizing"; leafId?: string; mode: TilingTitleBarSizingMode }
   | { kind: "set-split-ratio"; splitId: string; ratio: number }
   | { kind: "toggle-split-axis"; splitId: string }
   // layout-mode (master/stack). `splitId` omitted → the ROOT split (the
   // "act on the workspace" ergonomic). A no-op when the resolved node is a leaf.
-  | { kind: "set-layout-mode"; splitId?: string; mode: DynamicLayoutMode }
+  | { kind: "set-layout-mode"; splitId?: string; mode: TilingLayoutMode }
   | { kind: "cycle-layout-mode"; splitId?: string }
   | { kind: "set-master-count"; splitId?: string; count: number }
   | { kind: "adjust-master-count"; splitId?: string; delta: number }
-  | { kind: "set-master-orientation"; splitId?: string; orientation: DynamicMasterOrientation }
+  | { kind: "set-master-orientation"; splitId?: string; orientation: TilingMasterOrientation }
   | { kind: "cycle-master-orientation"; splitId?: string }
   | { kind: "adjust-master-ratio"; splitId?: string; delta: number }
   // grouping / tabbed-stacking (HT-GROUP-TABBED-STACKING).
@@ -487,7 +487,7 @@ export type TilingCommand =
   | { kind: "group-tab-jump"; groupId?: string; memberNumber: number };
 
 /**
- * The imperative handle exposed via `ref` on `DynamicTilingRenderer`. A consumer
+ * The imperative handle exposed via `ref` on `TilingRenderer`. A consumer
  * holds the ref and drives the tiler programmatically — `dispatch` routes a
  * command through the SAME internal router the keyboard layer uses, so a
  * disabled-capability command is a safe no-op (it never mutates the layout).
@@ -676,7 +676,7 @@ export interface TilingPaneSwitcherState {
 export interface TilingMoveModeState {
   sourceLeafId: string;
   targetLeafId: string | null;
-  placement: DynamicMovePlacement | null;
+  placement: TilingMovePlacement | null;
 }
 
 /**
@@ -697,7 +697,7 @@ export interface TilingMoveModeState {
  * tie-break order (top → right → bottom → left) on an exact diagonal.
  *
  * Every field is optional; an `undefined` field resolves to the documented
- * default (which equals today's `DYNAMIC_DROP_INTENT_CONFIG`), so omitting this
+ * default (which equals today's `TILING_DROP_INTENT_CONFIG`), so omitting this
  * object leaves drop-zone behavior exactly as it was.
  */
 export interface TilingDropHitZoneGeometryCapability {
@@ -861,7 +861,7 @@ export interface TilingInteractionCapabilities {
   paneTitleBarControls?: TilingPaneTitleBarControlsCapability;
   /**
    * Adjustable drag-drop hit-zone geometry (center swap fraction, center floor,
-   * boundary hysteresis). Undefined → today's `DYNAMIC_DROP_INTENT_CONFIG`
+   * boundary hysteresis). Undefined → today's `TILING_DROP_INTENT_CONFIG`
    * defaults. Reactive: changing it at runtime re-shapes the drop zones (and
    * their visual overlay) immediately.
    */
@@ -941,11 +941,11 @@ export interface ResolvedTilingKeyBindings {
 
 /**
  * Per-pane identity accent. A closed, typed palette so a consumer can drive a
- * picker from the enumerable `DYNAMIC_TILE_ACCENTS` list (exported from the
+ * picker from the enumerable `TILING_TILE_ACCENTS` list (exported from the
  * renderer) with exhaustive type-checking — adding a member here forces every
  * accent theme map to cover it.
  */
-export type DynamicTileAccent =
+export type TilingTileAccent =
   | "cyan"
   | "sky"
   | "violet"
@@ -969,8 +969,8 @@ export type TilingThemeId = "neon-terminal" | "clean-flat" | "mosaic";
  * class for rendering a swatch dot — the generic metadata a palette control
  * (e.g. the showcase top-bar picker) iterates to offer accent selection.
  */
-export interface DynamicTileAccentSwatch {
-  accent: DynamicTileAccent;
+export interface TilingTileAccentSwatch {
+  accent: TilingTileAccent;
   label: string;
   swatchClassName: string;
 }
@@ -978,21 +978,21 @@ export interface DynamicTileAccentSwatch {
 /**
  * Generic tile payload. Only `id` + `title` are required so a product consumer
  * (e.g. a dashboard) can supply a minimal `{ id, title, content }` tile and a
- * custom `renderTile`. The `accent` / `rows` fields drive `DefaultDynamicTile`
+ * custom `renderTile`. The `accent` / `rows` fields drive `DefaultTilingTile`
  * and the drag-pane snapshot chrome; when omitted they fall back (accent →
  * `"cyan"`, rows → `[]`), so a tile without them renders correctly under the
  * default tile surface. `content` is the slot a custom `renderTile` reads.
  */
-export interface DynamicTile {
+export interface TilingTile {
   id: string;
   title: string;
   description?: string;
-  accent?: DynamicTileAccent;
+  accent?: TilingTileAccent;
   rows?: ReadonlyArray<string>;
   content?: React.ReactNode;
 }
 
-export interface DynamicLeafNode {
+export interface TilingLeafNode {
   kind: "leaf";
   id: string;
   tileId: string;
@@ -1000,13 +1000,13 @@ export interface DynamicLeafNode {
   sizing?: TilingPaneSizing;
 }
 
-export interface DynamicSplitNode {
+export interface TilingSplitNode {
   kind: "split";
   id: string;
-  axis: DynamicSplitAxis;
+  axis: TilingSplitAxis;
   ratio: number;
-  first: DynamicLayoutNode;
-  second: DynamicLayoutNode;
+  first: TilingLayoutNode;
+  second: TilingLayoutNode;
   gapPx?: number;
   minPaneSizePx?: number;
   /** Per-dimension static/flexible sizing. Undefined dimensions are flexible. */
@@ -1016,7 +1016,7 @@ export interface DynamicSplitNode {
    * split layout — every hand-authored tree + the test baseline is unchanged).
    * `"master"` lays the subtree's descendant slots out as master area + stack.
    */
-  layoutMode?: DynamicLayoutMode;
+  layoutMode?: TilingLayoutMode;
   /**
    * `layoutMode: "master"` only — number of slots in the master area. Undefined
    * → `1`. Clamped to `[1, slotCount]` by the resolver / reducers.
@@ -1027,7 +1027,7 @@ export interface DynamicSplitNode {
    * `"left"`. In master mode the split's `ratio` is reused as the master-area
    * fraction along this orientation's primary axis.
    */
-  masterOrientation?: DynamicMasterOrientation;
+  masterOrientation?: TilingMasterOrientation;
 }
 
 /**
@@ -1038,28 +1038,28 @@ export interface DynamicSplitNode {
  * leaves only (no nested split/group — a group of one is degenerate and collapses
  * back to a bare leaf).
  */
-export interface DynamicGroupNode {
+export interface TilingGroupNode {
   kind: "group";
   id: string;
   /** ≥1 member; array order is the tab order. */
-  members: ReadonlyArray<DynamicLeafNode>;
+  members: ReadonlyArray<TilingLeafNode>;
   /** Always one of `members[].id` — the single rendered/hit-tested member. */
   activeMemberId: string;
   /** A group can be static like a leaf (per-dimension static/flexible sizing). */
   sizing?: TilingPaneSizing;
 }
 
-export type DynamicLayoutNode = DynamicLeafNode | DynamicSplitNode | DynamicGroupNode;
+export type TilingLayoutNode = TilingLeafNode | TilingSplitNode | TilingGroupNode;
 
-export interface DynamicLayoutConfig {
+export interface TilingLayoutConfig {
   gapPx: number;
   minPaneSizePx: number;
   handleSizePx: number;
 }
 
-export interface DynamicRenderTileArgs {
+export interface TilingRenderTileProps {
   leafId: string;
-  tile: DynamicTile;
+  tile: TilingTile;
   /** 1-based pane ordinal in current tab order (for generic pane labels). */
   paneOrdinal: number;
   /** Current pane viewport width in pixels (for responsive header/control density). */
@@ -1073,7 +1073,7 @@ export interface DynamicRenderTileArgs {
    * Canonical pane-body visibility decision resolved by the renderer policy.
    * Keeps custom tile renderers aligned with the default drag/hidden semantics.
    */
-  paneBodyRenderMode: DynamicPaneBodyRenderMode;
+  paneBodyRenderMode: TilingPaneBodyRenderMode;
   isDragSource: boolean;
   isDropTarget: boolean;
   isDropEligible: boolean;
@@ -1091,7 +1091,7 @@ export interface DynamicRenderTileArgs {
    * the moved source will land on (`insertLeafAdjacent` placement). `null` when
    * this pane is not the current move-mode target.
    */
-  moveTargetPlacement: DynamicMovePlacement | null;
+  moveTargetPlacement: TilingMovePlacement | null;
   /** Whether this pane is currently maximized (fills the tiling viewport). */
   isMaximized: boolean;
   /** Whether the maximize capability is enabled (controls header button visibility). */
@@ -1118,11 +1118,11 @@ export interface DynamicRenderTileArgs {
    * pushing matching-axis ancestor dividers toward the limit (siblings clamped
    * to their minimum). Emits via `onLayoutChange` (controlled).
    */
-  onAcquireSpace: (direction: DynamicFocusDirection) => void;
-  dropZone: DynamicLeafDropZone | null;
+  onAcquireSpace: (direction: TilingFocusDirection) => void;
+  dropZone: TilingLeafDropZone | null;
   dropIntentDebugPath: string | null;
-  dropIntentDebugAction: DynamicDropAction | null;
-  preview: DynamicLeafDropPreview | null;
+  dropIntentDebugAction: TilingDropAction | null;
+  preview: TilingLeafDropPreview | null;
   showDropPreviewOverlays: boolean;
   showDropBorderHints: boolean;
   showDropIntentTranslucentBg: boolean;
@@ -1143,9 +1143,9 @@ export interface DynamicRenderTileArgs {
   /** Per-axis VERTICAL swap-zone fraction for the per-pane drop hint overlay (the Y boundaries). Default `0.34`. */
   dropHitZoneCenterRatioY: number;
   paneHitZonesAlpha: number;
-  paneHitZoneDebug: DynamicPaneHitZoneOverlayDebugState | null;
-  observabilityColors: DynamicObservabilityColorConfig;
-  observabilityColorEnables: DynamicObservabilityColorEnableConfig;
+  paneHitZoneDebug: TilingPaneHitZoneOverlayDebugState | null;
+  observabilityColors: TilingObservabilityColorConfig;
+  observabilityColorEnables: TilingObservabilityColorEnableConfig;
   /**
    * Establish single focus on this pane (and clear any in-progress
    * multi-selection). Wire to the pane root's `onFocus`. The renderer reads the
@@ -1197,38 +1197,38 @@ export interface DynamicRenderTileArgs {
   onPointerLeave: (event: React.PointerEvent<HTMLElement>) => void;
 }
 
-export type DynamicLeafDropZone = "center" | "left" | "right" | "top" | "bottom";
-export type DynamicPaneBodyRenderMode =
+export type TilingLeafDropZone = "center" | "left" | "right" | "top" | "bottom";
+export type TilingPaneBodyRenderMode =
   | "render-content"
   | "render-empty"
   | "render-reservation";
-export type DynamicMovePlacement = "left" | "right" | "top" | "bottom";
-export type DynamicFocusDirection = "left" | "right" | "up" | "down";
-export type DynamicLeafPreviewRole = "drag-source-landing-shadow" | "drop-target-result-shadow";
-export type DynamicLeafPreviewMode = "swap" | "edge-insert";
-export type DynamicDropAction =
+export type TilingMovePlacement = "left" | "right" | "top" | "bottom";
+export type TilingFocusDirection = "left" | "right" | "up" | "down";
+export type TilingLeafPreviewRole = "drag-source-landing-shadow" | "drop-target-result-shadow";
+export type TilingLeafPreviewMode = "swap" | "edge-insert";
+export type TilingDropAction =
   | "swap"
   | "edge-insert"
   | "split-container-insert"
   | "group-merge"
   | "none";
 
-export interface DynamicDropIntentTuningState {
+export interface TilingDropIntentTuningState {
   centerRatio: number;
   edgeThresholdRatio: number;
   hysteresisPx: number;
   devicePixelRatio: number;
 }
 
-export interface DynamicDropIntentDebugState {
+export interface TilingDropIntentDebugState {
   leafId: string;
-  zone: DynamicLeafDropZone;
-  action: DynamicDropAction;
-  dominantEdge: Exclude<DynamicLeafDropZone, "center">;
-  finalEdge: Exclude<DynamicLeafDropZone, "center"> | null;
+  zone: TilingLeafDropZone;
+  action: TilingDropAction;
+  dominantEdge: Exclude<TilingLeafDropZone, "center">;
+  finalEdge: Exclude<TilingLeafDropZone, "center"> | null;
   fallbackReason: string | null;
   blockedReason: string | null;
-  axisPath: ReadonlyArray<DynamicSplitAxis>;
+  axisPath: ReadonlyArray<TilingSplitAxis>;
   edgeThresholdRatio: number;
   centerRectWidthPx: number | null;
   centerRectHeightPx: number | null;
@@ -1238,53 +1238,53 @@ export interface DynamicDropIntentDebugState {
   paneLocalY: number | null;
   targetSplitId: string | null;
   targetSplitPlacement: "first" | "second" | null;
-  selectedSplitZone: Exclude<DynamicLeafDropZone, "center"> | null;
+  selectedSplitZone: Exclude<TilingLeafDropZone, "center"> | null;
   selectedSplitDistancePx: number | null;
   rejectedSplitReasons: ReadonlyArray<string>;
-  tuning: DynamicDropIntentTuningState;
+  tuning: TilingDropIntentTuningState;
 }
 
-export interface DynamicLiveHitEdgeDebugState {
-  zone: Exclude<DynamicLeafDropZone, "center">;
+export interface TilingLiveHitEdgeDebugState {
+  zone: Exclude<TilingLeafDropZone, "center">;
   isValid: boolean;
   rejectionReason: string | null;
 }
 
-export interface DynamicViewportCursorState {
+export interface TilingViewportCursorState {
   x: number;
   y: number;
 }
 
-export interface DynamicLiveHitLogState {
+export interface TilingLiveHitLogState {
   hoveredLeafId: string;
   sourceLeafId: string | null;
   dragSourceLeafId: string | null;
-  cursorViewport: DynamicViewportCursorState;
-  sourcePaneFootprint: DynamicPaneFootprint | null;
-  dragSourcePaneFootprint: DynamicPaneFootprint | null;
+  cursorViewport: TilingViewportCursorState;
+  sourcePaneFootprint: TilingPaneFootprint | null;
+  dragSourcePaneFootprint: TilingPaneFootprint | null;
   isDragging: boolean;
-  resolverZone: DynamicLeafDropZone | "none";
+  resolverZone: TilingLeafDropZone | "none";
   centerRatio: number;
   edgeThresholdRatio: number;
   centerRectWidthPx: number;
   centerRectHeightPx: number;
   centerIsValid: boolean;
   centerBlockedReason: string | null;
-  edgeDiagnostics: ReadonlyArray<DynamicLiveHitEdgeDebugState>;
-  intent: DynamicDropIntentDebugState | null;
+  edgeDiagnostics: ReadonlyArray<TilingLiveHitEdgeDebugState>;
+  intent: TilingDropIntentDebugState | null;
   /** Leaf whose in-tree slot the ghost seats into (swap target or edge-insert source). */
   ghostSeatLeafId?: string | null;
   /** Resolved drop action for the active hover target (observability). */
-  presentationDropAction?: DynamicDropAction | null;
+  presentationDropAction?: TilingDropAction | null;
 }
 
-export interface DynamicPaneHitZoneCandidateDebugState {
-  zone: Exclude<DynamicLeafDropZone, "center">;
+export interface TilingPaneHitZoneCandidateDebugState {
+  zone: Exclude<TilingLeafDropZone, "center">;
   isValid: boolean;
   rejectionReason: string | null;
 }
 
-export interface DynamicPaneHitZoneOverlayDebugState {
+export interface TilingPaneHitZoneOverlayDebugState {
   leafId: string;
   dragSourceLeafId: string | null;
   centerRatio: number;
@@ -1296,37 +1296,37 @@ export interface DynamicPaneHitZoneOverlayDebugState {
   centerRectHeightPx: number;
   centerIsValid: boolean;
   centerBlockedReason: string | null;
-  edgeCandidates: ReadonlyArray<DynamicPaneHitZoneCandidateDebugState>;
+  edgeCandidates: ReadonlyArray<TilingPaneHitZoneCandidateDebugState>;
 }
 
-export interface DynamicLeafDropPreview {
-  role: DynamicLeafPreviewRole;
-  mode: DynamicLeafPreviewMode;
-  zone: DynamicLeafDropZone;
+export interface TilingLeafDropPreview {
+  role: TilingLeafPreviewRole;
+  mode: TilingLeafPreviewMode;
+  zone: TilingLeafDropZone;
   partnerLeafId: string;
 }
 
-export interface DynamicInsertionOptions {
+export interface TilingInsertionOptions {
   preserveParentSplitAxis: boolean;
   splitRatio: number;
 }
 
-export interface DynamicDragPaneSnapshot {
+export interface TilingDragPaneSnapshot {
   tileId: string;
   title: string;
   description: string | null;
   /**
    * The rich content slot captured at pickup — the SAME `React.ReactNode` the
-   * live pane renders (`DynamicTile.content`). The ghost paints this so the
+   * live pane renders (`TilingTile.content`). The ghost paints this so the
    * dragged pane's real body (table / chart / form) rides along, falling back to
    * `rows` only when a tile supplies no `content` (the legacy text-row body).
    */
   content: React.ReactNode;
   rows: ReadonlyArray<string>;
-  accent: DynamicTileAccent;
+  accent: TilingTileAccent;
 }
 
-export interface DynamicPaneFootprint {
+export interface TilingPaneFootprint {
   left: number;
   top: number;
   width: number;
@@ -1346,38 +1346,38 @@ export interface DynamicPaneFootprint {
  * - `successor` — the source's former sibling subtree, promoted into the
  *   source's VACATED cell on an insert/move as it absorbs the released space.
  */
-export type DynamicProjectedLandingSubject = "source" | "target" | "successor";
+export type TilingProjectedLandingSubject = "source" | "target" | "successor";
 
-export interface DynamicProjectedLandingOverlay {
-  subject: DynamicProjectedLandingSubject;
+export interface TilingProjectedLandingOverlay {
+  subject: TilingProjectedLandingSubject;
   leafId: string;
-  footprint: DynamicPaneFootprint;
+  footprint: TilingPaneFootprint;
 }
 
-export interface DynamicDragVisualState {
+export interface TilingDragVisualState {
   sourceLeafId: string;
-  sourceFootprint: DynamicPaneFootprint;
+  sourceFootprint: TilingPaneFootprint;
   /** Cursor-following base rect (client coords) — where the ghost sits when not seated. */
-  activeFootprint: DynamicPaneFootprint;
+  activeFootprint: TilingPaneFootprint;
   /**
    * The resolved slot's measured rect (client coords) the single ghost hops INTO
    * and FILLS, or `null` when free-following the cursor (no target / off-screen
    * slot). Drives the hop-in / hop-out FLIP in `DragPaneOverlay`.
    */
-  seatFootprint: DynamicPaneFootprint | null;
+  seatFootprint: TilingPaneFootprint | null;
   pointerAnchorOffsetX: number;
   pointerAnchorOffsetY: number;
-  snapshot: DynamicDragPaneSnapshot;
+  snapshot: TilingDragPaneSnapshot;
 }
 
-export interface DynamicDragCancelVisualState {
+export interface TilingDragCancelVisualState {
   sourceLeafId: string;
-  fromFootprint: DynamicPaneFootprint;
-  toFootprint: DynamicPaneFootprint;
-  snapshot: DynamicDragPaneSnapshot;
+  fromFootprint: TilingPaneFootprint;
+  toFootprint: TilingPaneFootprint;
+  snapshot: TilingDragPaneSnapshot;
 }
 
-export interface DynamicObservabilityColorConfig {
+export interface TilingObservabilityColorConfig {
   dragSourceBorderColorHex: string;
   dragTargetBorderColorHex: string;
   projectedSourceBorderColorHex: string;
@@ -1395,7 +1395,7 @@ export interface DynamicObservabilityColorConfig {
 }
 
 /** Per-subject overlay/border visibility toggles for the showcase observability panel. */
-export interface DynamicObservabilityColorEnableConfig {
+export interface TilingObservabilityColorEnableConfig {
   dragSourceBorderEnabled: boolean;
   dragTargetBorderEnabled: boolean;
   projectedSourceBorderEnabled: boolean;
@@ -1406,16 +1406,16 @@ export interface DynamicObservabilityColorEnableConfig {
   projectedSuccessorFillEnabled: boolean;
 }
 
-export interface DynamicTilingRendererProps {
-  layout: DynamicLayoutNode;
+export interface TilingRendererProps {
+  layout: TilingLayoutNode;
   /**
    * Tile registry, accepted as either an ordered array (resolved by `id`) or a
    * `Map` keyed by tile id. A dashboard can pass a plain `ReadonlyArray` of
    * `{ id, title, content }` tiles; the interactive lab passes a `Map`.
    */
-  tiles: ReadonlyArray<DynamicTile> | ReadonlyMap<string, DynamicTile>;
-  config: DynamicLayoutConfig;
-  onLayoutChange: (layout: DynamicLayoutNode) => void;
+  tiles: ReadonlyArray<TilingTile> | ReadonlyMap<string, TilingTile>;
+  config: TilingLayoutConfig;
+  onLayoutChange: (layout: TilingLayoutNode) => void;
   className?: string;
   /**
    * Active visual theme id. Selects which built-in `TilingTheme` paints every
@@ -1438,19 +1438,19 @@ export interface DynamicTilingRendererProps {
    * Changing this prop at runtime updates renderer behavior immediately.
    */
   interaction?: TilingInteractionCapabilities;
-  renderTile?: (args: DynamicRenderTileArgs) => React.ReactNode;
+  renderTile?: (args: TilingRenderTileProps) => React.ReactNode;
   focusedLeafId?: string | null;
   onFocusedLeafChange?: (leafId: string) => void;
   /**
    * When provided, the top-bar tab strip surfaces an accent palette picker
-   * (the enumerable `DYNAMIC_TILE_ACCENTS` swatches) that recolors the
+   * (the enumerable `TILING_TILE_ACCENTS` swatches) that recolors the
    * currently-focused pane's tile. The renderer resolves the focused tile id;
    * the consumer owns the tile registry and applies the new accent (e.g. by
    * updating its tiles state). Omit to hide the picker — accent remains a
    * static per-tile property. Generic mechanism; the demo palette composition
    * lives with the consumer.
    */
-  onTileAccentChange?: (tileId: string, accent: DynamicTileAccent) => void;
+  onTileAccentChange?: (tileId: string, accent: TilingTileAccent) => void;
   /**
    * Controlled maximized-pane id. `undefined` → uncontrolled (renderer-managed
    * internal state). `null` → controlled, nothing maximized. A leaf id →
@@ -1461,8 +1461,8 @@ export interface DynamicTilingRendererProps {
   onMaximizedLeafChange?: (leafId: string | null) => void;
   onProjectedOverlayCountChange?: (count: number) => void;
   showDropPreviewOverlays?: boolean;
-  observabilityColors?: DynamicObservabilityColorConfig;
-  observabilityColorEnables?: DynamicObservabilityColorEnableConfig;
+  observabilityColors?: TilingObservabilityColorConfig;
+  observabilityColorEnables?: TilingObservabilityColorEnableConfig;
   projectedOverlayBackgroundAlpha?: number;
   /**
    * Master gate for all drag-motion choreography. When `false`, the ghost hop,
@@ -1516,13 +1516,13 @@ export interface DynamicTilingRendererProps {
   showPaneHitZones?: boolean;
   paneHitZonesAlpha?: number;
   paneHitZoneSourceLeafId?: string | null;
-  onDropIntentChange?: (intent: DynamicDropIntentDebugState | null) => void;
-  onLiveHitLogChange?: (state: DynamicLiveHitLogState | null) => void;
+  onDropIntentChange?: (intent: TilingDropIntentDebugState | null) => void;
+  onLiveHitLogChange?: (state: TilingLiveHitLogState | null) => void;
 }
 
-export interface DynamicSplitResizeState {
+export interface TilingSplitResizeState {
   splitId: string;
-  axis: DynamicSplitAxis;
+  axis: TilingSplitAxis;
   containerSizePx: number;
   startPointerPx: number;
   startRatio: number;

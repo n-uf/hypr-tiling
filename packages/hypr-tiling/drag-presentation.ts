@@ -1,8 +1,8 @@
 import type { DragMachineState } from "./drag-machine";
 import type {
-  DynamicDropAction,
-  DynamicLeafDropZone,
-  DynamicPaneBodyRenderMode,
+  TilingDropAction,
+  TilingLeafDropZone,
+  TilingPaneBodyRenderMode,
 } from "./types";
 
 /** Drag phases the presentation derivation observes. */
@@ -19,12 +19,12 @@ export interface DragPresentationInput {
   pickupOriginLeafId: string | null;
   ghostSeatLeafId: string | null;
   /** Resolved action for THIS leaf (null when this leaf is not the drop target). */
-  dropAction: DynamicDropAction | null;
+  dropAction: TilingDropAction | null;
   /** Resolved zone for THIS leaf (null when this leaf is not the drop target). */
-  dropZone: DynamicLeafDropZone | null;
+  dropZone: TilingLeafDropZone | null;
   /** Resolved dominant edge for THIS leaf — the edge chrome falls back to when a
    *  center hit resolves to edge-insert semantics. */
-  dropDominantEdge: DynamicLeafDropZone | null;
+  dropDominantEdge: TilingLeafDropZone | null;
 }
 
 /**
@@ -49,7 +49,7 @@ export interface DragPresentationMode {
   isGhostSeatReservation: boolean;
   isPickupOriginLeaf: boolean;
   isGhostSeatLeaf: boolean;
-  dropChromeZone: DynamicLeafDropZone | null;
+  dropChromeZone: TilingLeafDropZone | null;
 }
 
 /**
@@ -61,7 +61,7 @@ export interface DragPresentationMode {
  * the leaf carrying `data-leaf-id="<ghostSeatLeafId>"`. For this to resolve, the
  * reserved-slot wrapper MUST emit `data-leaf-id={node.id}` — a reserved slot
  * renders `DragSourceSlotReservation` (which carries `data-drag-source-reservation`
- * but no `data-leaf-id`) INSTEAD of `DefaultDynamicTile` (the only emitter of
+ * but no `data-leaf-id`) INSTEAD of `DefaultTilingTile` (the only emitter of
  * `data-leaf-id` on its own article). `cc23956` introduced this scoped selector
  * WITHOUT emitting `data-leaf-id` on the reserved wrapper, so it could never
  * match → `seatFootprint` stayed null → the ghost never hopped and the empty
@@ -102,7 +102,7 @@ export function isDragPresentationActive(
  *   `center`, fall back to the dominant edge; otherwise use the raw zone.
  * - otherwise (center swap / group-merge) → the raw zone.
  */
-function resolveDropChromeZone(input: DragPresentationInput): DynamicLeafDropZone | null {
+function resolveDropChromeZone(input: DragPresentationInput): TilingLeafDropZone | null {
   if (input.dropAction == null || input.dropAction === "none" || input.dropZone == null) {
     return null;
   }
@@ -167,7 +167,7 @@ export function resolveDragPresentation(
 export function resolvePaneBodyRenderMode(
   isGhostSeatReservation: boolean,
   isPaneContentVisible: boolean,
-): DynamicPaneBodyRenderMode {
+): TilingPaneBodyRenderMode {
   if (isGhostSeatReservation) {
     return "render-reservation";
   }

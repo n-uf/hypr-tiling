@@ -1,10 +1,10 @@
 import { addLeafToGroup, findGroupContainingLeaf, insertLeafAdjacent, removeLeafTile, swapLeafTiles } from "./state";
 import { PLACEMENT_BY_DROP_ZONE } from "./projected-layout";
-import type { DynamicDropIntentState, DynamicEdgeZone } from "./drop-intent-resolver";
+import type { TilingDropIntentState, TilingEdgeZone } from "./drop-intent-resolver";
 import type {
-  DynamicLayoutNode,
-  DynamicLeafDropZone,
-  DynamicPaneFootprint,
+  TilingLayoutNode,
+  TilingLeafDropZone,
+  TilingPaneFootprint,
 } from "./types";
 
 /**
@@ -53,12 +53,12 @@ export interface DragMachinePoint {
 }
 
 /**
- * The resolved hover target the FSM tracks. Structurally a `DynamicDropIntentState`
+ * The resolved hover target the FSM tracks. Structurally a `TilingDropIntentState`
  * (the resolver output the renderer already produces), so the renderer can store
  * the full resolved intent verbatim and the candidate-tree derivation / commit
  * both read the SAME object the preview render reads — no second resolution path.
  */
-export type DragResolvedTarget = DynamicDropIntentState;
+export type DragResolvedTarget = TilingDropIntentState;
 
 export type DragSettleOutcome = "commit" | "cancel";
 
@@ -90,7 +90,7 @@ export type DragMachineState =
        */
       touchDrag: boolean;
       sourceLeafId: string;
-      anchorFootprint: DynamicPaneFootprint;
+      anchorFootprint: TilingPaneFootprint;
       pointerAnchorOffset: DragMachinePoint;
       originClient: DragMachinePoint;
     }
@@ -101,9 +101,9 @@ export type DragMachineState =
       /** Carried through from `armed` so the dragging layer can read the device class. */
       touchDrag: boolean;
       sourceLeafId: string;
-      anchorFootprint: DynamicPaneFootprint;
+      anchorFootprint: TilingPaneFootprint;
       pointerAnchorOffset: DragMachinePoint;
-      ghostFootprint: DynamicPaneFootprint;
+      ghostFootprint: TilingPaneFootprint;
       resolvedTarget: DragResolvedTarget | null;
     }
   | {
@@ -111,8 +111,8 @@ export type DragMachineState =
       outcome: DragSettleOutcome;
       sourceLeafId: string;
       resolvedTarget: DragResolvedTarget | null;
-      fromFootprint: DynamicPaneFootprint;
-      toFootprint: DynamicPaneFootprint;
+      fromFootprint: TilingPaneFootprint;
+      toFootprint: TilingPaneFootprint;
     };
 
 export type DragMachineEvent =
@@ -121,7 +121,7 @@ export type DragMachineEvent =
       pointerId: number;
       pointerType: DragPointerType;
       sourceLeafId: string;
-      anchorFootprint: DynamicPaneFootprint;
+      anchorFootprint: TilingPaneFootprint;
       pointerAnchorOffset: DragMachinePoint;
       originClient: DragMachinePoint;
     }
@@ -204,10 +204,10 @@ export function resolveTouchArmedMove(params: {
 
 /** The ghost footprint at the current pointer position (anchored at the pickup grab offset). */
 export function ghostFootprintAt(
-  anchorFootprint: DynamicPaneFootprint,
+  anchorFootprint: TilingPaneFootprint,
   pointerAnchorOffset: DragMachinePoint,
   client: DragMachinePoint,
-): DynamicPaneFootprint {
+): TilingPaneFootprint {
   return {
     left: client.x - pointerAnchorOffset.x,
     top: client.y - pointerAnchorOffset.y,
@@ -220,7 +220,7 @@ export function ghostFootprintAt(
  * The single edge zone a commit / candidate-edge-insert uses for a target —
  * matches the legacy `handleLeafDrop` precedence (`finalEdge ?? selectedSplitZone`).
  */
-export function resolveCommitEdgeZone(target: DragResolvedTarget): DynamicEdgeZone | null {
+export function resolveCommitEdgeZone(target: DragResolvedTarget): TilingEdgeZone | null {
   return target.finalEdge ?? target.selectedSplitZone;
 }
 
@@ -262,10 +262,10 @@ export function isCommittableTarget(
  * - `edge-insert` → `insertLeafAdjacent` at the resolved edge.
  */
 export function deriveCandidateTree(
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   sourceLeafId: string | null,
   resolvedTarget: DragResolvedTarget | null,
-): DynamicLayoutNode {
+): TilingLayoutNode {
   if (sourceLeafId == null) {
     return layout;
   }
@@ -283,7 +283,7 @@ export function deriveCandidateTree(
     return addLeafToGroup(layout, group.id, sourceLeafId);
   }
   if (resolvedTarget.action === "edge-insert") {
-    const edgeZone: DynamicEdgeZone | null = resolveCommitEdgeZone(resolvedTarget);
+    const edgeZone: TilingEdgeZone | null = resolveCommitEdgeZone(resolvedTarget);
     if (edgeZone == null) {
       return removeLeafTile(layout, sourceLeafId);
     }
@@ -416,7 +416,7 @@ export const DEFAULT_DRAG_SLOT_COMMITMENT_MODE: DragSlotCommitmentMode = "delta-
 /**
  * Default movement-delta (CSS px) before `delta-responsive` re-resolves a seated
  * target without requiring a full zone exit. Coarser than the 6px geometric zone
- * hysteresis (`DYNAMIC_DROP_INTENT_CONFIG.hysteresisPx`) on purpose — this gates
+ * hysteresis (`TILING_DROP_INTENT_CONFIG.hysteresisPx`) on purpose — this gates
  * WHETHER to re-run resolution while seated, not WHICH edge resolves, so the two
  * dampers operate on different axes and never double-count.
  */
@@ -582,7 +582,7 @@ export function shouldSuppressCompetingCancel(
 export function previousZoneSeed(
   resolvedTarget: DragResolvedTarget | null,
   hoveredLeafId: string,
-): DynamicLeafDropZone | null {
+): TilingLeafDropZone | null {
   if (resolvedTarget == null || resolvedTarget.leafId !== hoveredLeafId) {
     return null;
   }

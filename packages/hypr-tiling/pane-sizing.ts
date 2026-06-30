@@ -1,7 +1,7 @@
 import type {
-  DynamicLayoutNode,
-  DynamicLeafNode,
-  DynamicSplitAxis,
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingSplitAxis,
   TilingDimension,
   TilingPaneSizing,
   TilingPaneSizingMode,
@@ -51,12 +51,12 @@ export function clampByMinSize(
 }
 
 /** Dimension that runs ALONG a split's main axis (the dimension the ratio distributes). */
-export function splitAxisDimension(axis: DynamicSplitAxis): TilingDimension {
+export function splitAxisDimension(axis: TilingSplitAxis): TilingDimension {
   return axis === "horizontal" ? "width" : "height";
 }
 
 /** Dimension perpendicular to a split's main axis. */
-export function crossAxisDimension(axis: DynamicSplitAxis): TilingDimension {
+export function crossAxisDimension(axis: TilingSplitAxis): TilingDimension {
   return axis === "horizontal" ? "height" : "width";
 }
 
@@ -73,7 +73,7 @@ export function resolveSizingMode(
 
 /** True when the node is content-sized (static) in the given dimension. */
 export function isStaticInDimension(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   dimension: TilingDimension,
 ): boolean {
   return resolveSizingMode(node.sizing, dimension) === "static";
@@ -85,8 +85,8 @@ export function isStaticInDimension(
  * that boundary.
  */
 export function isStaticAlongSplitAxis(
-  node: DynamicLayoutNode,
-  axis: DynamicSplitAxis,
+  node: TilingLayoutNode,
+  axis: TilingSplitAxis,
 ): boolean {
   return isStaticInDimension(node, splitAxisDimension(axis));
 }
@@ -96,8 +96,8 @@ export function isStaticAlongSplitAxis(
  * the cross axis (no stretch) but still participates in the split-axis ratio.
  */
 export function isStaticOnCrossAxis(
-  node: DynamicLayoutNode,
-  axis: DynamicSplitAxis,
+  node: TilingLayoutNode,
+  axis: TilingSplitAxis,
 ): boolean {
   return isStaticInDimension(node, crossAxisDimension(axis));
 }
@@ -110,7 +110,7 @@ export function isStaticOnCrossAxis(
  * (`leaf-geometry.ts`), so a pinned static pane no longer freezes the whole tree
  * (HT-SIZING-STATIC-DRAG-GATING). Retained as a reusable predicate.
  */
-export function layoutContainsStaticPane(node: DynamicLayoutNode): boolean {
+export function layoutContainsStaticPane(node: TilingLayoutNode): boolean {
   const selfStatic: boolean =
     node.sizing != null && (node.sizing.width === "static" || node.sizing.height === "static");
   if (node.kind === "leaf") {
@@ -119,7 +119,7 @@ export function layoutContainsStaticPane(node: DynamicLayoutNode): boolean {
   if (node.kind === "group") {
     return (
       selfStatic ||
-      node.members.some((member: DynamicLeafNode): boolean => layoutContainsStaticPane(member))
+      node.members.some((member: TilingLeafNode): boolean => layoutContainsStaticPane(member))
     );
   }
   return selfStatic || layoutContainsStaticPane(node.first) || layoutContainsStaticPane(node.second);

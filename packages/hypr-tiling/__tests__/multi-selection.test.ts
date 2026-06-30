@@ -19,10 +19,10 @@ import {
   readLeafNodeIds,
 } from "../state";
 import type {
-  DynamicGroupNode,
-  DynamicLayoutNode,
-  DynamicLeafNode,
-  DynamicSplitNode,
+  TilingGroupNode,
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingSplitNode,
   TilingCommand,
 } from "../types";
 
@@ -34,28 +34,28 @@ import type {
  * the reused `group-leaves` command) directly on the pure functions.
  */
 
-function leaf(id: string): DynamicLeafNode {
+function leaf(id: string): TilingLeafNode {
   return { kind: "leaf", id, tileId: `tile-${id}` };
 }
 
 function hsplit(
   id: string,
-  first: DynamicLayoutNode,
-  second: DynamicLayoutNode,
-): DynamicSplitNode {
+  first: TilingLayoutNode,
+  second: TilingLayoutNode,
+): TilingSplitNode {
   return { kind: "split", id, axis: "horizontal", ratio: 0.5, first, second };
 }
 
 function vsplit(
   id: string,
-  first: DynamicLayoutNode,
-  second: DynamicLayoutNode,
-): DynamicSplitNode {
+  first: TilingLayoutNode,
+  second: TilingLayoutNode,
+): TilingSplitNode {
   return { kind: "split", id, axis: "vertical", ratio: 0.5, first, second };
 }
 
 // A 3-leaf right-leaning dwindle tree: split(a, split(b, c)).
-function threeLeafTree(): DynamicSplitNode {
+function threeLeafTree(): TilingSplitNode {
   return hsplit("root", leaf("a"), hsplit("inner", leaf("b"), leaf("c")));
 }
 
@@ -64,7 +64,7 @@ function threeLeafTree(): DynamicSplitNode {
 // DIFFERENT branches (features under `mid`, install under `far`). This is the
 // cross-branch case the reproduction screenshot exercised (03 FEATURES + 05
 // INSTALL), not a toy adjacent pair.
-function homepageTree(): DynamicSplitNode {
+function homepageTree(): TilingSplitNode {
   return hsplit(
     "root",
     vsplit("intro-col", leaf("intro"), leaf("usecases")),
@@ -157,7 +157,7 @@ describe("canGroupMultiSelection (groupable-right-now gate)", (): void => {
     // Group {b, a} first (host b → group-b), then select that group's member `b`
     // plus the loose `c`: under the flatten rework this dissolves group-b and
     // folds {b, a, c} into one flat group — a real change, so it is groupable.
-    const grouped: DynamicLayoutNode = groupLeaves(threeLeafTree(), ["b", "a"]);
+    const grouped: TilingLayoutNode = groupLeaves(threeLeafTree(), ["b", "a"]);
     expect(canGroupMultiSelection(grouped, new Set<string>(["b", "c"]))).toBe(true);
   });
 
@@ -200,8 +200,8 @@ describe("resolveMultiSelectGroupCommand (reuse the existing group-leaves op)", 
     if (command == null || command.kind !== "group-leaves") {
       throw new Error("expected a group-leaves command");
     }
-    const grouped: DynamicLayoutNode = groupLeaves(threeLeafTree(), command.leafIds);
-    const group: DynamicGroupNode | null = findGroupById(grouped, "group-a");
+    const grouped: TilingLayoutNode = groupLeaves(threeLeafTree(), command.leafIds);
+    const group: TilingGroupNode | null = findGroupById(grouped, "group-a");
     expect(group).not.toBeNull();
     expect(readGroupMemberIds(grouped).slice().sort()).toEqual(["a", "b"]);
   });
@@ -219,16 +219,16 @@ describe("resolveMultiSelectGroupCommand (reuse the existing group-leaves op)", 
     if (command == null || command.kind !== "group-leaves") {
       throw new Error("expected a group-leaves command");
     }
-    const grouped: DynamicLayoutNode = groupLeaves(homepageTree(), command.leafIds);
+    const grouped: TilingLayoutNode = groupLeaves(homepageTree(), command.leafIds);
 
     // Exactly ONE group in the whole tree.
-    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(grouped);
+    const groups: ReadonlyArray<TilingGroupNode> = collectGroups(grouped);
     expect(groups.length).toBe(1);
 
     // That group holds EXACTLY the two selected leaves, in selection order, with
     // the anchor (`features`) active — i.e. a usable two-tab stack.
-    const group: DynamicGroupNode = groups[0];
-    expect(group.members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+    const group: TilingGroupNode = groups[0];
+    expect(group.members.map((m: TilingLeafNode): string => m.id)).toEqual([
       "features",
       "install",
     ]);
@@ -253,7 +253,7 @@ describe("resolveMultiSelectGroupCommand (reuse the existing group-leaves op)", 
     if (command == null || command.kind !== "group-leaves") {
       throw new Error("expected a group-leaves command");
     }
-    const grouped: DynamicLayoutNode = groupLeaves(threeLeafTree(), command.leafIds);
+    const grouped: TilingLayoutNode = groupLeaves(threeLeafTree(), command.leafIds);
     // group-a's active member is the anchor `a`; `b` is folded inside, so the
     // outer-slot leaf view is [a, c] — `b` is gone from it.
     const outerIds: ReadonlyArray<string> = readLeafNodeIds(grouped);
@@ -300,18 +300,18 @@ describe("resolveMultiSelectGroupHost (host slot for the merged group)", (): voi
 describe("groupLeaves flatten rework (any combination → ONE flat group at the host slot)", (): void => {
   // A homepage layout where `features` + `model` already form a group and the
   // rest are loose, to exercise group-touching flattens with a known shape.
-  function withFeaturesModelGroup(): DynamicLayoutNode {
+  function withFeaturesModelGroup(): TilingLayoutNode {
     return groupLeaves(homepageTree(), ["features", "model"], { hostLeafId: "features" });
   }
 
   it("loose+loose: folds two loose panes into one flat group at the clicked host slot", (): void => {
-    const next: DynamicLayoutNode = groupLeaves(homepageTree(), ["features", "install"], {
+    const next: TilingLayoutNode = groupLeaves(homepageTree(), ["features", "install"], {
       hostLeafId: "install",
     });
-    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(next);
+    const groups: ReadonlyArray<TilingGroupNode> = collectGroups(next);
     expect(groups.length).toBe(1);
     // Host `install` is first (active) then the remaining selection.
-    expect(groups[0].members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+    expect(groups[0].members.map((m: TilingLeafNode): string => m.id)).toEqual([
       "install",
       "features",
     ]);
@@ -322,16 +322,16 @@ describe("groupLeaves flatten rework (any combination → ONE flat group at the 
   });
 
   it("loose+group: selecting any one member pulls in the WHOLE group, flattened with the loose pane", (): void => {
-    const base: DynamicLayoutNode = withFeaturesModelGroup();
+    const base: TilingLayoutNode = withFeaturesModelGroup();
     // Select the loose `install` (host) plus ONE member (`features`) of the group.
-    const next: DynamicLayoutNode = groupLeaves(base, ["install", "features"], {
+    const next: TilingLayoutNode = groupLeaves(base, ["install", "features"], {
       hostLeafId: "install",
     });
-    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(next);
+    const groups: ReadonlyArray<TilingGroupNode> = collectGroups(next);
     expect(groups.length).toBe(1);
     // Host first, then the loose-host has no group-mates, then the touched
     // group's FULL membership (features, model) in existing order.
-    expect(groups[0].members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+    expect(groups[0].members.map((m: TilingLeafNode): string => m.id)).toEqual([
       "install",
       "features",
       "model",
@@ -341,15 +341,15 @@ describe("groupLeaves flatten rework (any combination → ONE flat group at the 
   });
 
   it("member-of-group host: hosts at the dissolved group's slot, host first then its mates", (): void => {
-    const base: DynamicLayoutNode = withFeaturesModelGroup();
+    const base: TilingLayoutNode = withFeaturesModelGroup();
     // Host is `features`, itself a member of group-features-model; add loose `install`.
-    const next: DynamicLayoutNode = groupLeaves(base, ["features", "install"], {
+    const next: TilingLayoutNode = groupLeaves(base, ["features", "install"], {
       hostLeafId: "features",
     });
-    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(next);
+    const groups: ReadonlyArray<TilingGroupNode> = collectGroups(next);
     expect(groups.length).toBe(1);
     // Host `features` first, then its (now-dissolved) group-mate `model`, then `install`.
-    expect(groups[0].members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+    expect(groups[0].members.map((m: TilingLeafNode): string => m.id)).toEqual([
       "features",
       "model",
       "install",
@@ -360,18 +360,18 @@ describe("groupLeaves flatten rework (any combination → ONE flat group at the 
 
   it("group+group: dissolves BOTH groups into one flat group (no nesting)", (): void => {
     // First group {features, model}; then group {intro, usecases}.
-    let base: DynamicLayoutNode = groupLeaves(homepageTree(), ["features", "model"], {
+    let base: TilingLayoutNode = groupLeaves(homepageTree(), ["features", "model"], {
       hostLeafId: "features",
     });
     base = groupLeaves(base, ["intro", "usecases"], { hostLeafId: "intro" });
     expect(collectGroups(base).length).toBe(2);
     // Select one member of EACH group; host = features.
-    const next: DynamicLayoutNode = groupLeaves(base, ["features", "intro"], {
+    const next: TilingLayoutNode = groupLeaves(base, ["features", "intro"], {
       hostLeafId: "features",
     });
-    const groups: ReadonlyArray<DynamicGroupNode> = collectGroups(next);
+    const groups: ReadonlyArray<TilingGroupNode> = collectGroups(next);
     expect(groups.length).toBe(1);
-    expect(groups[0].members.map((m: DynamicLeafNode): string => m.id)).toEqual([
+    expect(groups[0].members.map((m: TilingLeafNode): string => m.id)).toEqual([
       "features",
       "model",
       "intro",
@@ -385,12 +385,12 @@ describe("groupLeaves flatten rework (any combination → ONE flat group at the 
   });
 
   it("host slot follows the clicked pane: a different click changes the host/active tab", (): void => {
-    const hostFeatures: DynamicLayoutNode = groupLeaves(
+    const hostFeatures: TilingLayoutNode = groupLeaves(
       homepageTree(),
       ["features", "install"],
       { hostLeafId: "features" },
     );
-    const hostInstall: DynamicLayoutNode = groupLeaves(
+    const hostInstall: TilingLayoutNode = groupLeaves(
       homepageTree(),
       ["features", "install"],
       { hostLeafId: "install" },

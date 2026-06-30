@@ -2,7 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 import {
   TILING_KEYMAP_DEFAULTS,
   advancePaneSwitcher,
-  chordHasModifier,
+  chordRequiresModifier,
   commitPaneSwitcher,
   cycleNextIndex,
   cyclePreviousIndex,
@@ -13,7 +13,7 @@ import {
   matchJumpToPaneNumber,
   matchKeyChord,
   matchKeymapAction,
-  modifiersHaveModifier,
+  hasAnyModifier,
   openPaneSwitcher,
   resolveCycledPaneId,
   resolveJumpedPaneId,
@@ -429,15 +429,15 @@ describe("resolveMaximizeToggle", (): void => {
   });
 });
 
-describe("chordHasModifier / modifiersHaveModifier", (): void => {
+describe("chordRequiresModifier / hasAnyModifier", (): void => {
   it("detects a held modifier on a chord", (): void => {
-    expect(chordHasModifier(TILING_KEYMAP_DEFAULTS.nextPane)).toBe(true);
-    expect(chordHasModifier(TILING_KEYMAP_DEFAULTS.restore)).toBe(false);
+    expect(chordRequiresModifier(TILING_KEYMAP_DEFAULTS.nextPane)).toBe(true);
+    expect(chordRequiresModifier(TILING_KEYMAP_DEFAULTS.restore)).toBe(false);
   });
 
   it("detects a held modifier on a modifier set", (): void => {
-    expect(modifiersHaveModifier(ALT_MODIFIERS)).toBe(true);
-    expect(modifiersHaveModifier({ alt: false, ctrl: false, meta: false, shift: false })).toBe(false);
+    expect(hasAnyModifier(ALT_MODIFIERS)).toBe(true);
+    expect(hasAnyModifier({ alt: false, ctrl: false, meta: false, shift: false })).toBe(false);
   });
 });
 

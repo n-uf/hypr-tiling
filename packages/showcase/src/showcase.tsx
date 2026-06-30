@@ -4,26 +4,26 @@ import {
   ANIMATION_CONTROL_DEFAULTS,
   DEFAULT_DRAG_HOP_EASING,
   DEFAULT_TILING_LAYOUT_CONFIG,
-  DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS,
-  DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
-  DynamicTilingRenderer,
+  TILING_OBSERVABILITY_COLOR_DEFAULTS,
+  TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
+  TilingRenderer,
   TilingObservabilityPanel,
   collectSplitNodes,
   findLeafByDirection,
   readLeafNodeIds,
-  readTileOrderByLeaf,
+  tileOrderByLeafId,
   resolveInteractionCapabilities,
-  type DynamicDropIntentDebugState,
-  type DynamicFocusDirection,
-  type DynamicLayoutConfig,
-  type DynamicLayoutNode,
-  type DynamicLiveHitLogState,
-  type DynamicObservabilityColorConfig,
-  type DynamicObservabilityColorEnableConfig,
-  type DynamicPaneFootprint,
-  type DynamicSplitNode,
-  type DynamicTile,
-  type DynamicTileAccent,
+  type TilingDropIntentDebugState,
+  type TilingFocusDirection,
+  type TilingLayoutConfig,
+  type TilingLayoutNode,
+  type TilingLiveHitLogState,
+  type TilingObservabilityColorConfig,
+  type TilingObservabilityColorEnableConfig,
+  type TilingPaneFootprint,
+  type TilingSplitNode,
+  type TilingTile,
+  type TilingTileAccent,
   type ResolvedTilingInteractionCapabilities,
   type ResolvedTilingKeyChord,
   type ResolvedTilingKeyChordModifiers,
@@ -43,7 +43,7 @@ const SHOWCASE_TILE_DEFINITIONS: ReadonlyArray<{
   id: ShowcasePaneId;
   title: string;
   description: string;
-  accent: DynamicTile["accent"];
+  accent: TilingTile["accent"];
 }> = [
   {
     id: "overview",
@@ -77,9 +77,9 @@ const SHOWCASE_TILE_DEFINITIONS: ReadonlyArray<{
   },
 ];
 
-const SHOWCASE_TILES: ReadonlyArray<DynamicTile> =
+const SHOWCASE_TILES: ReadonlyArray<TilingTile> =
   SHOWCASE_TILE_DEFINITIONS.map(
-    (definition): DynamicTile => ({
+    (definition): TilingTile => ({
       id: definition.id,
       title: definition.title,
       description: definition.description,
@@ -346,7 +346,7 @@ function buildControlPaneShortcuts(
   ];
 }
 
-const INITIAL_LAYOUT: DynamicLayoutNode = {
+const INITIAL_LAYOUT: TilingLayoutNode = {
   kind: "split",
   id: "root",
   axis: "horizontal",
@@ -401,7 +401,7 @@ const INITIAL_LAYOUT: DynamicLayoutNode = {
   },
 };
 
-const INITIAL_CONFIG: DynamicLayoutConfig = { ...DEFAULT_TILING_LAYOUT_CONFIG };
+const INITIAL_CONFIG: TilingLayoutConfig = { ...DEFAULT_TILING_LAYOUT_CONFIG };
 const DEFAULT_SHOW_DROP_PREVIEW_LANDING_SHADOWS: boolean = true;
 const LIVE_LEDGER_RETENTION_LIMIT: number = 60;
 /** How long the "preview all hit zones on adjustment" overlay stays up after the last geometry slider input. */
@@ -409,14 +409,14 @@ const HIT_ZONE_GEOMETRY_PREVIEW_MS: number = 1200;
 // Debug-overlay color palette seeded from the library default (single source of
 // truth) — the panel's sliders tune it from here and "reset to defaults" lands
 // back on the same library baseline.
-const DEFAULT_OBSERVABILITY_COLORS: DynamicObservabilityColorConfig =
-  DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS;
+const DEFAULT_OBSERVABILITY_COLORS: TilingObservabilityColorConfig =
+  TILING_OBSERVABILITY_COLOR_DEFAULTS;
 
 function toTileMap(
-  tiles: ReadonlyArray<DynamicTile>,
-): ReadonlyMap<string, DynamicTile> {
-  return new Map<string, DynamicTile>(
-    tiles.map((tile: DynamicTile): [string, DynamicTile] => [tile.id, tile]),
+  tiles: ReadonlyArray<TilingTile>,
+): ReadonlyMap<string, TilingTile> {
+  return new Map<string, TilingTile>(
+    tiles.map((tile: TilingTile): [string, TilingTile] => [tile.id, tile]),
   );
 }
 
@@ -435,7 +435,7 @@ function toFixedOrNone(
 }
 
 function formatViewportCursorLabel(
-  liveHitLog: DynamicLiveHitLogState | null,
+  liveHitLog: TilingLiveHitLogState | null,
 ): string {
   if (liveHitLog == null) {
     return "none";
@@ -444,7 +444,7 @@ function formatViewportCursorLabel(
 }
 
 function formatPaneGeometryLabel(
-  footprint: DynamicPaneFootprint | null | undefined,
+  footprint: TilingPaneFootprint | null | undefined,
 ): string {
   if (footprint == null) {
     return "none";
@@ -452,10 +452,10 @@ function formatPaneGeometryLabel(
   return `x=${footprint.left.toFixed(1)} y=${footprint.top.toFixed(1)} w=${footprint.width.toFixed(1)} h=${footprint.height.toFixed(1)}`;
 }
 
-export function DynamicTilingShowcase(): React.ReactElement {
-  const [layout, setLayout] = React.useState<DynamicLayoutNode>(INITIAL_LAYOUT);
+export function TilingShowcase(): React.ReactElement {
+  const [layout, setLayout] = React.useState<TilingLayoutNode>(INITIAL_LAYOUT);
   const [config, setConfig] =
-    React.useState<DynamicLayoutConfig>(INITIAL_CONFIG);
+    React.useState<TilingLayoutConfig>(INITIAL_CONFIG);
   const [focusedLeafId, setFocusedLeafId] = React.useState<string | null>(null);
   const [themeId, setThemeId] = React.useState<TilingThemeId>("neon-terminal");
   const [isControlPaneCollapsed, setIsControlPaneCollapsed] =
@@ -473,12 +473,12 @@ export function DynamicTilingShowcase(): React.ReactElement {
   const [showDropPreviewOverlays, setShowDropPreviewOverlays] =
     React.useState<boolean>(DEFAULT_SHOW_DROP_PREVIEW_LANDING_SHADOWS);
   const [observabilityColors, setObservabilityColors] =
-    React.useState<DynamicObservabilityColorConfig>(
+    React.useState<TilingObservabilityColorConfig>(
       DEFAULT_OBSERVABILITY_COLORS,
     );
   const [observabilityColorEnables, setObservabilityColorEnables] =
-    React.useState<DynamicObservabilityColorEnableConfig>(
-      DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
+    React.useState<TilingObservabilityColorEnableConfig>(
+      TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
     );
   const [projectedOverlayBgAlphaPercent, setProjectedOverlayBgAlphaPercent] =
     React.useState<number>(90);
@@ -583,23 +583,23 @@ export function DynamicTilingShowcase(): React.ReactElement {
     `${interactionCapabilities.dropHitZoneGeometry.centerRatio}|${interactionCapabilities.dropHitZoneGeometry.centerMinPx}|${interactionCapabilities.dropHitZoneGeometry.hysteresisPx}`,
   );
   const [liveDropIntent, setLiveDropIntent] =
-    React.useState<DynamicDropIntentDebugState | null>(null);
+    React.useState<TilingDropIntentDebugState | null>(null);
   const [liveHitLog, setLiveHitLog] =
-    React.useState<DynamicLiveHitLogState | null>(null);
+    React.useState<TilingLiveHitLogState | null>(null);
   const [observabilityLedgerEntries, setObservabilityLedgerEntries] =
     React.useState<ReadonlyArray<TilingObservabilityLedgerEntry>>([]);
   const previousLedgerSnapshotRef = React.useRef<string>("initial");
   // Tiles are stateful so the top-bar accent picker can recolor a pane's tile.
   const [tiles, setTiles] =
-    React.useState<ReadonlyArray<DynamicTile>>(SHOWCASE_TILES);
-  const tilesMap: ReadonlyMap<string, DynamicTile> = React.useMemo(
-    (): ReadonlyMap<string, DynamicTile> => toTileMap(tiles),
+    React.useState<ReadonlyArray<TilingTile>>(SHOWCASE_TILES);
+  const tilesMap: ReadonlyMap<string, TilingTile> = React.useMemo(
+    (): ReadonlyMap<string, TilingTile> => toTileMap(tiles),
     [tiles],
   );
   const handleTileAccentChange = React.useCallback(
-    (tileId: string, accent: DynamicTileAccent): void => {
-      setTiles((previous: ReadonlyArray<DynamicTile>): ReadonlyArray<DynamicTile> =>
-        previous.map((tile: DynamicTile): DynamicTile =>
+    (tileId: string, accent: TilingTileAccent): void => {
+      setTiles((previous: ReadonlyArray<TilingTile>): ReadonlyArray<TilingTile> =>
+        previous.map((tile: TilingTile): TilingTile =>
           tile.id === tileId ? { ...tile, accent } : tile,
         ),
       );
@@ -616,11 +616,11 @@ export function DynamicTilingShowcase(): React.ReactElement {
     [layout],
   );
   const tileOrder: ReadonlyArray<string> = React.useMemo(
-    (): ReadonlyArray<string> => readTileOrderByLeaf(layout),
+    (): ReadonlyArray<string> => tileOrderByLeafId(layout),
     [layout],
   );
-  const splitNodes: ReadonlyArray<DynamicSplitNode> = React.useMemo(
-    (): ReadonlyArray<DynamicSplitNode> => collectSplitNodes(layout),
+  const splitNodes: ReadonlyArray<TilingSplitNode> = React.useMemo(
+    (): ReadonlyArray<TilingSplitNode> => collectSplitNodes(layout),
     [layout],
   );
   const controlPaneShortcuts: ReadonlyArray<ShowcaseControlShortcut> =
@@ -664,7 +664,7 @@ export function DynamicTilingShowcase(): React.ReactElement {
       return;
     }
     const splitIds: ReadonlyArray<string> = splitNodes.map(
-      (splitNode: DynamicSplitNode): string => splitNode.id,
+      (splitNode: TilingSplitNode): string => splitNode.id,
     );
     if (!splitIds.includes(selectedSplitId)) {
       setSelectedSplitId(splitIds[0]);
@@ -756,7 +756,7 @@ export function DynamicTilingShowcase(): React.ReactElement {
   }, [liveDropIntent, liveHitLog]);
 
   const runDirectionalFocus = React.useCallback(
-    (direction: DynamicFocusDirection): void => {
+    (direction: TilingFocusDirection): void => {
       const fromLeafId: string | null = focusedLeafId ?? selectedSourceLeafId;
       if (fromLeafId == null) {
         return;
@@ -807,9 +807,9 @@ export function DynamicTilingShowcase(): React.ReactElement {
   // successor borders & fills) is forced off so the renderer paints none of
   // them, regardless of the per-color states underneath (which are preserved
   // in `observabilityColorEnables` for re-enabling).
-  const effectiveObservabilityColorEnables: DynamicObservabilityColorEnableConfig =
+  const effectiveObservabilityColorEnables: TilingObservabilityColorEnableConfig =
     React.useMemo(
-      (): DynamicObservabilityColorEnableConfig =>
+      (): TilingObservabilityColorEnableConfig =>
         subjectColorsEnabled
           ? observabilityColorEnables
           : {
@@ -852,7 +852,7 @@ export function DynamicTilingShowcase(): React.ReactElement {
       <section className="flex h-full max-h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-zinc-950/45 p-0.5 backdrop-blur-[1px]">
         <div className="flex h-full max-h-full min-h-0 min-w-0 max-w-full flex-1 flex-row gap-1.5 overflow-hidden">
           <div className="h-full max-h-full min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl bg-transparent p-0">
-            <DynamicTilingRenderer
+            <TilingRenderer
               ref={rendererCommandHandleRef}
               layout={layout}
               tiles={tilesMap}

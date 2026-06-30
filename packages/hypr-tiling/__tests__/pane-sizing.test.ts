@@ -13,9 +13,9 @@ import {
   splitAxisDimension,
   titleBarSizingModeId,
 } from "../pane-sizing";
-import type { DynamicLeafNode, DynamicLayoutNode, TilingPaneSizing } from "../types";
+import type { TilingLeafNode, TilingLayoutNode, TilingPaneSizing } from "../types";
 
-function leaf(id: string, sizing?: TilingPaneSizing): DynamicLeafNode {
+function leaf(id: string, sizing?: TilingPaneSizing): TilingLeafNode {
   return { kind: "leaf", id, tileId: id, sizing };
 }
 
@@ -89,7 +89,7 @@ describe("per-dimension static predicates across vertical vs horizontal parents"
 
 describe("layoutContainsStaticPane (whole-tree drag gate)", () => {
   it("returns false for an all-flexible tree", () => {
-    const tree: DynamicLayoutNode = {
+    const tree: TilingLayoutNode = {
       kind: "split",
       id: "s",
       axis: "vertical",
@@ -101,7 +101,7 @@ describe("layoutContainsStaticPane (whole-tree drag gate)", () => {
   });
 
   it("returns true when any nested leaf is static in any dimension", () => {
-    const tree: DynamicLayoutNode = {
+    const tree: TilingLayoutNode = {
       kind: "split",
       id: "s",
       axis: "vertical",
@@ -120,7 +120,7 @@ describe("layoutContainsStaticPane (whole-tree drag gate)", () => {
   });
 
   it("returns true when a split node itself declares static sizing", () => {
-    const tree: DynamicLayoutNode = {
+    const tree: TilingLayoutNode = {
       kind: "split",
       id: "s",
       axis: "vertical",

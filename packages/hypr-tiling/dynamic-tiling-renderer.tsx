@@ -4,7 +4,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { cn } from "./cn";
 import {
-  DYNAMIC_TILE_ACCENT_SWATCHES,
+  TILING_TILE_ACCENT_SWATCHES,
   TILING_THEMES,
   TilingThemeProvider,
   resolvePaneDropAffordanceClasses,
@@ -62,13 +62,13 @@ import {
   resolvePaneBodyRenderMode,
 } from "./drag-presentation";
 import type {
-  DynamicDropIntentHitZoneDiagnostics,
-  DynamicDropIntentState as DynamicDropState,
-  DynamicEdgeZone,
-  DynamicZoneGeometryConfig,
+  TilingDropIntentHitZoneDiagnostics,
+  TilingDropIntentState as TilingDropState,
+  TilingEdgeZone,
+  TilingZoneGeometryConfig,
 } from "./drop-intent-resolver";
 import {
-  DYNAMIC_DROP_INTENT_CONFIG,
+  TILING_DROP_INTENT_CONFIG,
   buildGroupTabStripMergeIntent,
   paneZoneCenterInsetPercent,
   paneZoneClipPaths,
@@ -145,7 +145,7 @@ import {
 } from "./pane-sizing";
 import {
   advancePaneSwitcher,
-  chordHasModifier,
+  chordRequiresModifier,
   commitPaneSwitcher,
   directionToPlacement,
   isSwitcherHoldReleased,
@@ -157,8 +157,8 @@ import {
   resolveMaximizeToggle,
 } from "./pane-switching";
 import type {
-  DynamicProjectedLandingOverlay,
-  DynamicProjectedLandingSubject,
+  TilingProjectedLandingOverlay,
+  TilingProjectedLandingSubject,
 } from "./projected-layout";
 import {
   resolveProjectedDropLayout,
@@ -211,33 +211,33 @@ import {
   type SurvivorRect,
 } from "./survivor-reflow";
 import type {
-  DynamicDragCancelVisualState,
-  DynamicDragPaneSnapshot,
-  DynamicDragVisualState,
-  DynamicDropIntentDebugState,
-  DynamicFocusDirection,
-  DynamicGroupNode,
-  DynamicLayoutConfig,
-  DynamicLayoutNode,
-  DynamicLeafDropPreview,
-  DynamicLeafDropZone,
-  DynamicLeafNode,
-  DynamicLiveHitLogState,
-  DynamicMovePlacement,
-  DynamicObservabilityColorConfig,
-  DynamicObservabilityColorEnableConfig,
-  DynamicPaneBodyRenderMode,
-  DynamicPaneFootprint,
-  DynamicPaneHitZoneCandidateDebugState,
-  DynamicPaneHitZoneOverlayDebugState,
-  DynamicRenderTileArgs,
-  DynamicSplitAxis,
-  DynamicSplitNode,
-  DynamicSplitResizeState,
-  DynamicTile,
-  DynamicTileAccent,
-  DynamicTileAccentSwatch,
-  DynamicTilingRendererProps,
+  TilingDragCancelVisualState,
+  TilingDragPaneSnapshot,
+  TilingDragVisualState,
+  TilingDropIntentDebugState,
+  TilingFocusDirection,
+  TilingGroupNode,
+  TilingLayoutConfig,
+  TilingLayoutNode,
+  TilingLeafDropPreview,
+  TilingLeafDropZone,
+  TilingLeafNode,
+  TilingLiveHitLogState,
+  TilingMovePlacement,
+  TilingObservabilityColorConfig,
+  TilingObservabilityColorEnableConfig,
+  TilingPaneBodyRenderMode,
+  TilingPaneFootprint,
+  TilingPaneHitZoneCandidateDebugState,
+  TilingPaneHitZoneOverlayDebugState,
+  TilingRenderTileProps,
+  TilingSplitAxis,
+  TilingSplitNode,
+  TilingSplitResizeState,
+  TilingTile,
+  TilingTileAccent,
+  TilingTileAccentSwatch,
+  TilingRendererProps,
   ResolvedTilingDropHitZoneGeometryCapability,
   ResolvedTilingInteractionCapabilities,
   ResolvedTilingKeymap,
@@ -265,13 +265,13 @@ function resolveDragPointerType(pointerType: string): DragPointerType {
  * Build the per-resolve zone-geometry config from the resolved interaction
  * capability (operator-adjustable center swap fraction, center floor, boundary
  * hysteresis) plus the live `devicePixelRatio`. The capability defaults equal
- * `DYNAMIC_DROP_INTENT_CONFIG`, so an unconfigured renderer keeps today's
+ * `TILING_DROP_INTENT_CONFIG`, so an unconfigured renderer keeps today's
  * behavior; `resolvePaneZoneGeometry` clamps `centerRatio` and floors the px
  * knobs, so this stays a thin pass-through.
  */
 function currentGeometryConfig(
   geometry: ResolvedTilingDropHitZoneGeometryCapability,
-): DynamicZoneGeometryConfig {
+): TilingZoneGeometryConfig {
   const devicePixelRatio: number =
     typeof window === "undefined" ? 1 : window.devicePixelRatio;
   return {
@@ -284,12 +284,12 @@ function currentGeometryConfig(
   };
 }
 
-interface DynamicSplitPathEntry {
+interface TilingSplitPathEntry {
   splitId: string;
-  axis: DynamicSplitAxis;
+  axis: TilingSplitAxis;
 }
 
-export const DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS: DynamicObservabilityColorConfig =
+export const TILING_OBSERVABILITY_COLOR_DEFAULTS: TilingObservabilityColorConfig =
   {
     dragSourceBorderColorHex: "#f0abfc",
     dragTargetBorderColorHex: "#67e8f9",
@@ -307,7 +307,7 @@ export const DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS: DynamicObservabilityColorConf
     hitZoneBlockedColorHex: "#fb7185",
   };
 
-export const DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS: DynamicObservabilityColorEnableConfig =
+export const TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS: TilingObservabilityColorEnableConfig =
   {
     dragSourceBorderEnabled: true,
     dragTargetBorderEnabled: true,
@@ -329,7 +329,7 @@ export const DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS: DynamicObservabilityCo
  * `gapPx / 2` margins; each child subtracts `(gapPx + handleSizePx) / 2` of
  * basis — see `splitGapOffsetPx` in the split renderer for the balancing math).
  */
-export const DEFAULT_TILING_LAYOUT_CONFIG: DynamicLayoutConfig = {
+export const DEFAULT_TILING_LAYOUT_CONFIG: TilingLayoutConfig = {
   gapPx: 6,
   minPaneSizePx: 96,
   handleSizePx: 4,
@@ -396,7 +396,7 @@ export function dragSpeedsAtParity(
 }
 
 function hasEnabledProjectedFill(
-  enables: DynamicObservabilityColorEnableConfig,
+  enables: TilingObservabilityColorEnableConfig,
 ): boolean {
   return (
     enables.projectedSourceFillEnabled ||
@@ -406,8 +406,8 @@ function hasEnabledProjectedFill(
 }
 
 function projectedSubjectBorderEnabled(
-  subject: DynamicProjectedLandingSubject,
-  enables: DynamicObservabilityColorEnableConfig,
+  subject: TilingProjectedLandingSubject,
+  enables: TilingObservabilityColorEnableConfig,
 ): boolean {
   if (subject === "source") {
     return enables.projectedSourceBorderEnabled;
@@ -419,8 +419,8 @@ function projectedSubjectBorderEnabled(
 }
 
 function projectedSubjectFillEnabled(
-  subject: DynamicProjectedLandingSubject,
-  enables: DynamicObservabilityColorEnableConfig,
+  subject: TilingProjectedLandingSubject,
+  enables: TilingObservabilityColorEnableConfig,
 ): boolean {
   if (subject === "source") {
     return enables.projectedSourceFillEnabled;
@@ -498,17 +498,17 @@ const DRAG_CURSOR_BADGE_SIZE_PX: number = 30;
  * passes. `resolveTile` reads a tile by id from either.
  */
 function isTileArray(
-  tiles: ReadonlyArray<DynamicTile> | ReadonlyMap<string, DynamicTile>,
-): tiles is ReadonlyArray<DynamicTile> {
+  tiles: ReadonlyArray<TilingTile> | ReadonlyMap<string, TilingTile>,
+): tiles is ReadonlyArray<TilingTile> {
   return Array.isArray(tiles);
 }
 
 function resolveTile(
-  tiles: ReadonlyArray<DynamicTile> | ReadonlyMap<string, DynamicTile>,
+  tiles: ReadonlyArray<TilingTile> | ReadonlyMap<string, TilingTile>,
   tileId: string,
-): DynamicTile | undefined {
+): TilingTile | undefined {
   if (isTileArray(tiles)) {
-    return tiles.find((tile: DynamicTile): boolean => tile.id === tileId);
+    return tiles.find((tile: TilingTile): boolean => tile.id === tileId);
   }
   return tiles.get(tileId);
 }
@@ -516,11 +516,11 @@ function resolveTile(
 // Per-accent class strings, the closed `TilingThemeId` registry, and the
 // active-theme context all live in `./theme`. Accent hue atoms
 // (`TILING_ACCENT_HUES`) + the theme's accent-composition resolvers replace the
-// former inline `DYNAMIC_TILE_ACCENT_THEMES` record and its helper functions;
+// former inline `TILING_TILE_ACCENT_THEMES` record and its helper functions;
 // every renderer surface now reads tokens from the active `TilingTheme` (via
 // `useTilingTheme`) instead of hardcoded class strings.
 
-function dropIntentLabel(zone: DynamicLeafDropZone): string {
+function dropIntentLabel(zone: TilingLeafDropZone): string {
   if (zone === "left") {
     return "left edge insert";
   }
@@ -536,7 +536,7 @@ function dropIntentLabel(zone: DynamicLeafDropZone): string {
   return "center swap";
 }
 
-function edgeZoneShortLabel(zone: DynamicEdgeZone): string {
+function edgeZoneShortLabel(zone: TilingEdgeZone): string {
   if (zone === "left") {
     return "L";
   }
@@ -549,7 +549,7 @@ function edgeZoneShortLabel(zone: DynamicEdgeZone): string {
   return "B";
 }
 
-function edgeZoneLabelPositionClassName(zone: DynamicEdgeZone): string {
+function edgeZoneLabelPositionClassName(zone: TilingEdgeZone): string {
   if (zone === "left") {
     return "absolute left-1 top-1/2 -translate-y-1/2";
   }
@@ -610,9 +610,9 @@ function rgbaFromHex(
 }
 
 function resolveHitZoneColorHex(
-  zone: DynamicEdgeZone,
+  zone: TilingEdgeZone,
   isValid: boolean,
-  observabilityColors: DynamicObservabilityColorConfig,
+  observabilityColors: TilingObservabilityColorConfig,
 ): string {
   if (!isValid) {
     return observabilityColors.hitZoneBlockedColorHex;
@@ -630,7 +630,7 @@ function resolveHitZoneColorHex(
 }
 
 function dropIntentAxisPathLabel(
-  axisPath: ReadonlyArray<DynamicSplitAxis>,
+  axisPath: ReadonlyArray<TilingSplitAxis>,
 ): string {
   if (axisPath.length === 0) {
     return "none";
@@ -652,7 +652,7 @@ function dropIntentAxisPathLabel(
  * which enumerates with the canonical `DROP_EDGE_ZONES`; this paint-order
  * constant is the only place the renderer chooses its own edge ordering.
  */
-const DROP_EDGE_ZONE_PAINT_ORDER: ReadonlyArray<DynamicEdgeZone> = [
+const DROP_EDGE_ZONE_PAINT_ORDER: ReadonlyArray<TilingEdgeZone> = [
   "left",
   "right",
   "top",
@@ -660,10 +660,10 @@ const DROP_EDGE_ZONE_PAINT_ORDER: ReadonlyArray<DynamicEdgeZone> = [
 ];
 
 function readSplitPathToLeaf(
-  node: DynamicLayoutNode,
+  node: TilingLayoutNode,
   leafId: string,
-  currentPath: ReadonlyArray<DynamicSplitPathEntry> = [],
-): ReadonlyArray<DynamicSplitPathEntry> | null {
+  currentPath: ReadonlyArray<TilingSplitPathEntry> = [],
+): ReadonlyArray<TilingSplitPathEntry> | null {
   if (node.kind === "leaf") {
     return node.id === leafId ? currentPath : null;
   }
@@ -674,7 +674,7 @@ function readSplitPathToLeaf(
     return node.activeMemberId === leafId ? currentPath : null;
   }
 
-  const nextPath: ReadonlyArray<DynamicSplitPathEntry> = [
+  const nextPath: ReadonlyArray<TilingSplitPathEntry> = [
     ...currentPath,
     {
       splitId: node.id,
@@ -690,8 +690,8 @@ function readSplitPathToLeaf(
 export function resolveLeafDropPreview(
   leafId: string,
   dragSourceLeafId: string | null,
-  dropState: DynamicDropState | null,
-): DynamicLeafDropPreview | null {
+  dropState: TilingDropState | null,
+): TilingLeafDropPreview | null {
   if (
     dragSourceLeafId == null ||
     dropState == null ||
@@ -756,8 +756,8 @@ export function resolveLeafDropPreviewForMode(
   liveDragModeEnabled: boolean,
   leafId: string,
   dragSourceLeafId: string | null,
-  dropState: DynamicDropState | null,
-): DynamicLeafDropPreview | null {
+  dropState: TilingDropState | null,
+): TilingLeafDropPreview | null {
   if (liveDragModeEnabled) {
     return null;
   }
@@ -771,14 +771,14 @@ export {
   resolvePaneBodyRenderMode,
 } from "./drag-presentation";
 
-type DynamicSplitDividerRenderMode =
+type TilingSplitDividerRenderMode =
   | "render-divider-absent"
   | "render-divider-enabled-visible"
   | "render-divider-enabled-hidden"
   | "render-divider-disabled-visible"
   | "render-divider-disabled-hidden";
 
-interface DynamicSplitDividerRenderPolicyInput {
+interface TilingSplitDividerRenderPolicyInput {
   isBoundaryResizable: boolean;
   resizeHandlesVisible: boolean;
   isResizeAxisEnabled: boolean;
@@ -790,8 +790,8 @@ interface DynamicSplitDividerRenderPolicyInput {
  * visibility decides divider chrome only.
  */
 export function resolveSplitDividerRenderMode(
-  input: DynamicSplitDividerRenderPolicyInput,
-): DynamicSplitDividerRenderMode {
+  input: TilingSplitDividerRenderPolicyInput,
+): TilingSplitDividerRenderMode {
   if (!input.isBoundaryResizable) {
     return "render-divider-absent";
   }
@@ -819,12 +819,12 @@ export function resolveSplitDividerRenderMode(
 export function resolveLiveDisplayLayout(
   liveDragModeEnabled: boolean,
   dragSourceLeafId: string | null,
-  layout: DynamicLayoutNode,
-): DynamicLayoutNode {
+  layout: TilingLayoutNode,
+): TilingLayoutNode {
   if (!liveDragModeEnabled || dragSourceLeafId == null) {
     return layout;
   }
-  const frozen: DynamicLayoutNode = removeLeafTile(layout, dragSourceLeafId);
+  const frozen: TilingLayoutNode = removeLeafTile(layout, dragSourceLeafId);
   return frozen === layout ? layout : frozen;
 }
 
@@ -850,16 +850,16 @@ export function resolveLiveDisplayLayout(
  */
 export function resolveStableDragHitFootprints(
   liveDragModeEnabled: boolean,
-  layout: DynamicLayoutNode,
+  layout: TilingLayoutNode,
   dragSourceLeafId: string | null,
   viewport: { width: number; height: number },
-  config: DynamicLayoutConfig,
-  originalFootprints: ReadonlyMap<string, DynamicPaneFootprint>,
-): ReadonlyMap<string, DynamicPaneFootprint> {
+  config: TilingLayoutConfig,
+  originalFootprints: ReadonlyMap<string, TilingPaneFootprint>,
+): ReadonlyMap<string, TilingPaneFootprint> {
   if (!liveDragModeEnabled || dragSourceLeafId == null) {
     return originalFootprints;
   }
-  const gapClosed: DynamicLayoutNode = removeLeafTile(layout, dragSourceLeafId);
+  const gapClosed: TilingLayoutNode = removeLeafTile(layout, dragSourceLeafId);
   return footprintsByLeafId(
     collectLeafFootprints(
       gapClosed,
@@ -873,8 +873,8 @@ export function resolveStableDragHitFootprints(
 }
 
 export function buildDragPaneSnapshot(
-  tile: DynamicTile,
-): DynamicDragPaneSnapshot {
+  tile: TilingTile,
+): TilingDragPaneSnapshot {
   // Snapshot always comes from canonical tile payload, never from visibility
   // presentation state (`render-empty` / `render-reservation`). Whether the
   // ghost actually paints this captured content is decided later by the uniform
@@ -890,7 +890,7 @@ export function buildDragPaneSnapshot(
 }
 
 export function renderDragPaneShell(
-  snapshot: DynamicDragPaneSnapshot,
+  snapshot: TilingDragPaneSnapshot,
   theme: TilingTheme,
   isPaneContentVisible: boolean,
 ): React.ReactElement {
@@ -986,9 +986,9 @@ export function DragSourceSlotReservation({
   observabilityColorEnables,
 }: {
   theme: TilingTheme;
-  accent: DynamicTileAccent | undefined;
-  observabilityColors: DynamicObservabilityColorConfig;
-  observabilityColorEnables: DynamicObservabilityColorEnableConfig;
+  accent: TilingTileAccent | undefined;
+  observabilityColors: TilingObservabilityColorConfig;
+  observabilityColorEnables: TilingObservabilityColorEnableConfig;
 }): React.ReactElement | null {
   // The seat the single ghost hops into is the dragged pane's landing slot, so
   // it wears the SAME focus frame the ghost carries (accent = the DRAGGED pane's
@@ -1100,7 +1100,7 @@ function DragPaneOverlay({
   isPaneContentVisible,
   frameDeadlineMs,
 }: {
-  dragVisualState: DynamicDragVisualState | null;
+  dragVisualState: TilingDragVisualState | null;
   dragHopDurationMs: number;
   hopEasing: string;
   pickupScaleFactor: number;
@@ -1160,7 +1160,7 @@ function DragPaneOverlay({
         ));
   baseRectRef.current = baseRect;
 
-  const seatFootprint: DynamicPaneFootprint | null =
+  const seatFootprint: TilingPaneFootprint | null =
     dragVisualState?.seatFootprint ?? null;
   // Morph-trigger key: changes on seat open/close + re-seat, NOT on a free-follow
   // cursor move, so steady free-follow never re-runs the morph effect.
@@ -1528,7 +1528,7 @@ function DragCursorOverlay({
   hopEasing,
   prefersReducedMotion,
 }: {
-  dragVisualState: DynamicDragVisualState | null;
+  dragVisualState: TilingDragVisualState | null;
   presentation: DragCursorPresentation;
   dragHopDurationMs: number;
   hopEasing: string;
@@ -1621,7 +1621,7 @@ function DragCancelOverlay({
   cancelVisualState,
   isPaneContentVisible,
 }: {
-  cancelVisualState: DynamicDragCancelVisualState | null;
+  cancelVisualState: TilingDragCancelVisualState | null;
   isPaneContentVisible: boolean;
 }): React.ReactElement | null {
   const theme: TilingTheme = useTilingTheme();
@@ -1684,7 +1684,7 @@ function DragCancelOverlay({
 }
 
 function edgeZoneClipPathStyle(
-  zone: DynamicEdgeZone,
+  zone: TilingEdgeZone,
   centerRatioX: number,
   centerRatioY: number,
 ): React.CSSProperties {
@@ -1718,22 +1718,22 @@ function PaneHitZoneOverlay({
   showDropIntentDebug,
   observabilityColors,
 }: {
-  paneHitZoneDebug: DynamicPaneHitZoneOverlayDebugState;
+  paneHitZoneDebug: TilingPaneHitZoneOverlayDebugState;
   paneHitZonesAlpha: number;
   showDropIntentDebug: boolean;
-  observabilityColors: DynamicObservabilityColorConfig;
+  observabilityColors: TilingObservabilityColorConfig;
 }): React.ReactElement {
   const centerRatio: number = paneHitZoneDebug.centerRatio;
   const centerRatioX: number = paneHitZoneDebug.centerRatioX;
   const centerRatioY: number = paneHitZoneDebug.centerRatioY;
   const edgeCandidateByZone: ReadonlyMap<
-    DynamicEdgeZone,
-    DynamicPaneHitZoneCandidateDebugState
+    TilingEdgeZone,
+    TilingPaneHitZoneCandidateDebugState
   > = new Map(
     paneHitZoneDebug.edgeCandidates.map(
       (
-        candidate: DynamicPaneHitZoneCandidateDebugState,
-      ): [DynamicEdgeZone, DynamicPaneHitZoneCandidateDebugState] => [
+        candidate: TilingPaneHitZoneCandidateDebugState,
+      ): [TilingEdgeZone, TilingPaneHitZoneCandidateDebugState] => [
         candidate.zone,
         candidate,
       ],
@@ -1746,9 +1746,9 @@ function PaneHitZoneOverlay({
     <div className="pointer-events-none absolute inset-0 z-[9] p-1" aria-hidden>
       <div className="relative h-full w-full overflow-hidden rounded-lg border border-white/15 bg-black/10">
         {DROP_EDGE_ZONE_PAINT_ORDER.map(
-          (zone: DynamicEdgeZone): React.ReactElement => {
+          (zone: TilingEdgeZone): React.ReactElement => {
             const edgeCandidate:
-              | DynamicPaneHitZoneCandidateDebugState
+              | TilingPaneHitZoneCandidateDebugState
               | undefined = edgeCandidateByZone.get(zone);
             const isValid: boolean = edgeCandidate?.isValid ?? true;
             const edgeColorHex: string = resolveHitZoneColorHex(
@@ -1861,7 +1861,7 @@ const TITLE_BAR_SIZING_BUTTONS: ReadonlyArray<TitleBarSizingButton> = [
 ];
 
 interface TitleBarAcquireButton {
-  direction: DynamicFocusDirection;
+  direction: TilingFocusDirection;
   glyph: string;
   title: string;
 }
@@ -1910,7 +1910,7 @@ function PaneTitleBarControls({
   activeSizingMode: TilingTitleBarSizingMode;
   compact: boolean;
   onSetSizingMode: (mode: TilingTitleBarSizingMode) => void;
-  onAcquireSpace: (direction: DynamicFocusDirection) => void;
+  onAcquireSpace: (direction: TilingFocusDirection) => void;
 }): React.ReactElement | null {
   if (!isSizingEnabled && !isAcquireSpaceEnabled) {
     return null;
@@ -2002,7 +2002,7 @@ function PaneTitleBarControls({
   );
 }
 
-function DefaultDynamicTile({
+function DefaultTilingTile({
   leafId,
   tile,
   paneWidthPx,
@@ -2045,7 +2045,7 @@ function DefaultDynamicTile({
   onHandlePointerDown,
   onPointerMove,
   onPointerLeave,
-}: DynamicRenderTileArgs): React.ReactElement {
+}: TilingRenderTileProps): React.ReactElement {
   const theme: TilingTheme = useTilingTheme();
   const isNarrowHeader: boolean = paneWidthPx < 430;
   // A selected pane offers the Group control once the selection is groupable
@@ -2411,8 +2411,8 @@ function isPointerLikeEvent(
 }
 
 function projectedSubjectBorderColorHex(
-  subject: DynamicProjectedLandingSubject,
-  observabilityColors: DynamicObservabilityColorConfig,
+  subject: TilingProjectedLandingSubject,
+  observabilityColors: TilingObservabilityColorConfig,
 ): string {
   if (subject === "source") {
     return observabilityColors.projectedSourceBorderColorHex;
@@ -2424,8 +2424,8 @@ function projectedSubjectBorderColorHex(
 }
 
 function projectedSubjectFillColorHex(
-  subject: DynamicProjectedLandingSubject,
-  observabilityColors: DynamicObservabilityColorConfig,
+  subject: TilingProjectedLandingSubject,
+  observabilityColors: TilingObservabilityColorConfig,
 ): string {
   if (subject === "source") {
     return observabilityColors.projectedSourceFillColorHex;
@@ -2437,7 +2437,7 @@ function projectedSubjectFillColorHex(
 }
 
 function projectedSubjectLabel(
-  subject: DynamicProjectedLandingSubject,
+  subject: TilingProjectedLandingSubject,
 ): string {
   if (subject === "source") {
     return "drag source landing overlay (S')";
@@ -2455,10 +2455,10 @@ function ProjectedLandingOverlays({
   observabilityColorEnables,
   projectedOverlayBackgroundAlpha,
 }: {
-  overlays: ReadonlyArray<DynamicProjectedLandingOverlay>;
+  overlays: ReadonlyArray<TilingProjectedLandingOverlay>;
   showLabels: boolean;
-  observabilityColors: DynamicObservabilityColorConfig;
-  observabilityColorEnables: DynamicObservabilityColorEnableConfig;
+  observabilityColors: TilingObservabilityColorConfig;
+  observabilityColorEnables: TilingObservabilityColorEnableConfig;
   projectedOverlayBackgroundAlpha: number;
 }): React.ReactElement | null {
   if (overlays.length === 0) {
@@ -2481,7 +2481,7 @@ function ProjectedLandingOverlays({
     >
       {overlays.map(
         (
-          overlay: DynamicProjectedLandingOverlay,
+          overlay: TilingProjectedLandingOverlay,
         ): React.ReactElement | null => {
           const borderEnabled: boolean = projectedSubjectBorderEnabled(
             overlay.subject,
@@ -2567,12 +2567,12 @@ function ProjectedLandingOverlays({
 
 function buildDraggingLiveHitLogState(params: {
   dragState: Extract<DragMachineState, { phase: "dragging" }>;
-  dropState: DynamicDropState | null;
+  dropState: TilingDropState | null;
   dragSourceLeafId: string;
   ghostSeatLeafId: string | null;
-  leafFootprintsById: ReadonlyMap<string, DynamicPaneFootprint>;
+  leafFootprintsById: ReadonlyMap<string, TilingPaneFootprint>;
   viewportElement: HTMLDivElement | null;
-}): DynamicLiveHitLogState {
+}): TilingLiveHitLogState {
   const clientX: number =
     params.dragState.ghostFootprint.left +
     params.dragState.pointerAnchorOffset.x;
@@ -2581,14 +2581,14 @@ function buildDraggingLiveHitLogState(params: {
     params.dragState.pointerAnchorOffset.y;
   const viewportRect: DOMRect | undefined =
     params.viewportElement?.getBoundingClientRect();
-  const cursorViewport: DynamicLiveHitLogState["cursorViewport"] = {
+  const cursorViewport: TilingLiveHitLogState["cursorViewport"] = {
     x: viewportRect == null ? clientX : clientX - viewportRect.left,
     y: viewportRect == null ? clientY : clientY - viewportRect.top,
   };
-  const dragSourcePaneFootprint: DynamicPaneFootprint | null =
+  const dragSourcePaneFootprint: TilingPaneFootprint | null =
     params.leafFootprintsById.get(params.dragSourceLeafId) ?? null;
   const presentationFields: Pick<
-    DynamicLiveHitLogState,
+    TilingLiveHitLogState,
     "ghostSeatLeafId" | "presentationDropAction"
   > = {
     ghostSeatLeafId: params.ghostSeatLeafId,
@@ -2605,8 +2605,8 @@ function buildDraggingLiveHitLogState(params: {
       dragSourcePaneFootprint,
       isDragging: true,
       resolverZone: "none",
-      centerRatio: DYNAMIC_DROP_INTENT_CONFIG.centerRatio,
-      edgeThresholdRatio: (1 - DYNAMIC_DROP_INTENT_CONFIG.centerRatio) / 2,
+      centerRatio: TILING_DROP_INTENT_CONFIG.centerRatio,
+      edgeThresholdRatio: (1 - TILING_DROP_INTENT_CONFIG.centerRatio) / 2,
       centerRectWidthPx: 0,
       centerRectHeightPx: 0,
       centerIsValid: false,
@@ -2618,9 +2618,9 @@ function buildDraggingLiveHitLogState(params: {
   }
 
   const hoveredLeafId: string = params.dropState.leafId;
-  const sourcePaneFootprint: DynamicPaneFootprint | null =
+  const sourcePaneFootprint: TilingPaneFootprint | null =
     params.leafFootprintsById.get(hoveredLeafId) ?? null;
-  const intent: DynamicDropIntentDebugState = toDropIntentDebugState(
+  const intent: TilingDropIntentDebugState = toDropIntentDebugState(
     params.dropState,
   );
   const centerIsValid: boolean =
@@ -2649,8 +2649,8 @@ function buildDraggingLiveHitLogState(params: {
 }
 
 function toDropIntentDebugState(
-  dropState: DynamicDropState,
-): DynamicDropIntentDebugState {
+  dropState: TilingDropState,
+): TilingDropIntentDebugState {
   return {
     leafId: dropState.leafId,
     zone: dropState.zone,
@@ -2679,7 +2679,7 @@ function toDropIntentDebugState(
 interface PaneTabDescriptor {
   leafId: string;
   title: string;
-  accent: DynamicTile["accent"];
+  accent: TilingTile["accent"];
 }
 
 interface PaneShortcutChipDescriptor {
@@ -2692,7 +2692,7 @@ interface PaneShortcutChipDescriptor {
 interface PaneShortcutContext {
   keymap: ResolvedTilingKeymap;
   commandGates: TilingCommandGates;
-  layout: DynamicLayoutNode;
+  layout: TilingLayoutNode;
   leafIds: ReadonlyArray<string>;
   activeFocusedLeafId: string | null;
   activeMaximizedLeafId: string | null;
@@ -2784,7 +2784,7 @@ function resolvePaneShortcutChips(
   const activeFocusedLeafId: string | null = context.activeFocusedLeafId;
   const hasFocusedLeaf: boolean = activeFocusedLeafId != null;
   const focusedLeafId: string = activeFocusedLeafId ?? "";
-  const focusedGroup: DynamicGroupNode | null = hasFocusedLeaf
+  const focusedGroup: TilingGroupNode | null = hasFocusedLeaf
     ? findGroupContainingLeaf(context.layout, focusedLeafId)
     : null;
   const isFocusedLeafGrouped: boolean = focusedGroup != null;
@@ -3105,8 +3105,8 @@ function resolvePaneShortcutChips(
  * the focused tile id.
  */
 interface PaneTabStripAccentPicker {
-  activeAccent: DynamicTileAccent;
-  onSelect: (accent: DynamicTileAccent) => void;
+  activeAccent: TilingTileAccent;
+  onSelect: (accent: TilingTileAccent) => void;
 }
 
 /**
@@ -3192,8 +3192,8 @@ function PaneTabStrip({
           aria-label="focused pane accent palette"
           className={theme.topBar.pickerGroup}
         >
-          {DYNAMIC_TILE_ACCENT_SWATCHES.map(
-            (swatch: DynamicTileAccentSwatch): React.ReactElement => {
+          {TILING_TILE_ACCENT_SWATCHES.map(
+            (swatch: TilingTileAccentSwatch): React.ReactElement => {
               const isActiveAccent: boolean =
                 swatch.accent === accentPicker.activeAccent;
               return (
@@ -3349,7 +3349,7 @@ function PaneSwitcherOverlay({
 }
 
 /** Edge-bar position class for the pending move-mode insert placement. */
-function moveEdgeBarClassName(placement: DynamicMovePlacement): string {
+function moveEdgeBarClassName(placement: TilingMovePlacement): string {
   if (placement === "left") {
     return "left-0 top-0 h-full w-1.5";
   }
@@ -3373,7 +3373,7 @@ function MovePaneAffordance({
   moveTargetPlacement,
 }: {
   isMoveSource: boolean;
-  moveTargetPlacement: DynamicMovePlacement | null;
+  moveTargetPlacement: TilingMovePlacement | null;
 }): React.ReactElement {
   return (
     <div
@@ -3404,10 +3404,10 @@ function MovePaneAffordance({
   );
 }
 
-export const DynamicTilingRenderer = React.forwardRef<
+export const TilingRenderer = React.forwardRef<
   TilingCommandHandle,
-  DynamicTilingRendererProps
->(function DynamicTilingRenderer(
+  TilingRendererProps
+>(function TilingRenderer(
   {
     layout,
     tiles,
@@ -3425,8 +3425,8 @@ export const DynamicTilingRenderer = React.forwardRef<
     onMaximizedLeafChange,
     onProjectedOverlayCountChange,
     showDropPreviewOverlays = true,
-    observabilityColors = DYNAMIC_OBSERVABILITY_COLOR_DEFAULTS,
-    observabilityColorEnables = DYNAMIC_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
+    observabilityColors = TILING_OBSERVABILITY_COLOR_DEFAULTS,
+    observabilityColorEnables = TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
     projectedOverlayBackgroundAlpha = 0.9,
     dragAnimationEnabled = true,
     dragHopEasing,
@@ -3442,7 +3442,7 @@ export const DynamicTilingRenderer = React.forwardRef<
     paneHitZoneSourceLeafId = null,
     onDropIntentChange,
     onLiveHitLogChange,
-  }: DynamicTilingRendererProps,
+  }: TilingRendererProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
 ): React.ReactElement {
   // Active theme resolved from the prop (or the library default). The registry
@@ -3619,7 +3619,7 @@ export const DynamicTilingRenderer = React.forwardRef<
     height: 0,
   });
   const [resizeState, setResizeState] =
-    React.useState<DynamicSplitResizeState | null>(null);
+    React.useState<TilingSplitResizeState | null>(null);
   // SINGLE drag-lifecycle owner (Pointer Events + explicit FSM). Replaces the
   // scattered HTML5-DnD state slots (`dragSourceLeafId` / `dropState` /
   // `dragHoverLeafId` / `dragVisualState` useStates + `didDropSucceedRef` /
@@ -3635,16 +3635,16 @@ export const DynamicTilingRenderer = React.forwardRef<
   // The ghost snapshot is captured once on pickup (the source content rides the
   // cursor); held in a ref so the cancel fly-back can read it after the FSM has
   // already advanced past `dragging`.
-  const dragSnapshotRef = React.useRef<DynamicDragPaneSnapshot | null>(null);
+  const dragSnapshotRef = React.useRef<TilingDragPaneSnapshot | null>(null);
   // The pointerId the drag captured on the stable root element, for release on settle.
   const capturedPointerIdRef = React.useRef<number | null>(null);
   const [cancelVisualState, setCancelVisualState] =
-    React.useState<DynamicDragCancelVisualState | null>(null);
+    React.useState<TilingDragCancelVisualState | null>(null);
   // The measured rect (client coords) of the resolved slot's reservation — the
   // single ghost hops INTO and FILLS this. `null` while free-following the
   // cursor (no target) or when the slot is off-screen/degenerate (§10 clamp).
   const [seatFootprint, setSeatFootprint] =
-    React.useState<DynamicPaneFootprint | null>(null);
+    React.useState<TilingPaneFootprint | null>(null);
   // The cursor position captured when the current slot became seated — the
   // anchor the `delta-responsive` commitment policy measures re-aim travel from.
   const seatAnchorRef = React.useRef<DragMachinePoint | null>(null);
@@ -3656,7 +3656,7 @@ export const DynamicTilingRenderer = React.forwardRef<
   // re-resolution (over a gap / off the gap-closed hit footprint). Being a ref
   // written in the sample task, it is also free of the passive-effect lag that
   // `dragStateRef` carries. Cleared at settle. See `drag-machine.ts`.
-  const committableSeatRef = React.useRef<DynamicDropState | null>(null);
+  const committableSeatRef = React.useRef<TilingDropState | null>(null);
   // Decaying "last committable seat" fallback for the release latch. The final
   // processed move can transiently clear `committableSeatRef` to null (a
   // sub-pixel / footprint-edge jitter at release); this carries the most-recent
@@ -3673,7 +3673,7 @@ export const DynamicTilingRenderer = React.forwardRef<
   // `lostpointercapture`, `blur`, `visibilitychange`) NO-OPs
   // (`shouldSuppressCompetingCancel`) and cannot revert the seated drop under
   // frame starvation / first-terminal-event-wins. Cleared at settle.
-  const releaseCommitLatchedRef = React.useRef<DynamicDropState | null>(null);
+  const releaseCommitLatchedRef = React.useRef<TilingDropState | null>(null);
   // The live M3 idle-watchdog handle, mirrored into a ref so `handlePointerMove`
   // can input-GROUND it (re-arm on raw pointer input, not only on effect re-runs)
   // and `handlePointerUp` can cancel it SYNCHRONOUSLY outside the effect cleanup,
@@ -3747,10 +3747,10 @@ export const DynamicTilingRenderer = React.forwardRef<
   // Selectors off the single FSM state — the renderer reads these exactly where
   // it used to read the old useState slots.
   const dragSourceLeafId: string | null = activeDragSourceLeafId(dragState);
-  const dropState: DynamicDropState | null = activeResolvedTarget(dragState);
+  const dropState: TilingDropState | null = activeResolvedTarget(dragState);
   const presentationSourceLeafId: string | null =
     presentationDragSourceLeafId(dragState);
-  const presentationDropState: DynamicDropState | null =
+  const presentationDropState: TilingDropState | null =
     presentationResolvedTarget(dragState);
   const dragSettlingOutcome: "commit" | "cancel" | null =
     dragState.phase === "settling" ? dragState.outcome : null;
@@ -3852,7 +3852,7 @@ export const DynamicTilingRenderer = React.forwardRef<
   // already at the edge) `annexDirection` falls through to the ratio-only claim.
   // Controlled.
   const acquireLeafSpace = React.useCallback(
-    (targetLeafId: string, direction: DynamicFocusDirection): void => {
+    (targetLeafId: string, direction: TilingFocusDirection): void => {
       const viewportRect: DOMRect | undefined =
         viewportRef.current?.getBoundingClientRect();
       const isHorizontalAnnex: boolean =
@@ -3934,9 +3934,9 @@ export const DynamicTilingRenderer = React.forwardRef<
       leafIds,
     );
   }, [leafIds]);
-  const leafFootprintsById: ReadonlyMap<string, DynamicPaneFootprint> =
+  const leafFootprintsById: ReadonlyMap<string, TilingPaneFootprint> =
     React.useMemo(
-      (): ReadonlyMap<string, DynamicPaneFootprint> =>
+      (): ReadonlyMap<string, TilingPaneFootprint> =>
         footprintsByLeafId(
           collectLeafFootprints(
             layout,
@@ -3964,8 +3964,8 @@ export const DynamicTilingRenderer = React.forwardRef<
   const paneTabs: ReadonlyArray<PaneTabDescriptor> = React.useMemo(
     (): ReadonlyArray<PaneTabDescriptor> =>
       leafIds.map((leafId: string): PaneTabDescriptor => {
-        const leaf: DynamicLeafNode | null = findLeafById(layout, leafId);
-        const tile: DynamicTile | undefined =
+        const leaf: TilingLeafNode | null = findLeafById(layout, leafId);
+        const tile: TilingTile | undefined =
           leaf != null ? resolveTile(tiles, leaf.tileId) : undefined;
         return {
           leafId,
@@ -3979,19 +3979,19 @@ export const DynamicTilingRenderer = React.forwardRef<
   // recolors. Null when nothing is focused or the focused leaf has no tile.
   const focusedTileAccentTarget: {
     tileId: string;
-    accent: DynamicTileAccent;
+    accent: TilingTileAccent;
   } | null = React.useMemo(() => {
     if (activeFocusedLeafId == null) {
       return null;
     }
-    const leaf: DynamicLeafNode | null = findLeafById(
+    const leaf: TilingLeafNode | null = findLeafById(
       layout,
       activeFocusedLeafId,
     );
     if (leaf == null) {
       return null;
     }
-    const tile: DynamicTile | undefined = resolveTile(tiles, leaf.tileId);
+    const tile: TilingTile | undefined = resolveTile(tiles, leaf.tileId);
     if (tile == null) {
       return null;
     }
@@ -4005,7 +4005,7 @@ export const DynamicTilingRenderer = React.forwardRef<
       const targetTileId: string = focusedTileAccentTarget.tileId;
       return {
         activeAccent: focusedTileAccentTarget.accent,
-        onSelect: (accent: DynamicTileAccent): void =>
+        onSelect: (accent: TilingTileAccent): void =>
           onTileAccentChange(targetTileId, accent),
       };
     }, [focusedTileAccentTarget, onTileAccentChange]);
@@ -4045,8 +4045,8 @@ export const DynamicTilingRenderer = React.forwardRef<
         isLeafRearrangeEligible,
       ],
     );
-  const projectedDropLayout: DynamicLayoutNode | null = React.useMemo(
-    (): DynamicLayoutNode | null =>
+  const projectedDropLayout: TilingLayoutNode | null = React.useMemo(
+    (): TilingLayoutNode | null =>
       resolveProjectedDropLayout(layout, dragSourceLeafId, dropState),
     [dragSourceLeafId, dropState, layout],
   );
@@ -4059,9 +4059,9 @@ export const DynamicTilingRenderer = React.forwardRef<
   // paints the projected overlays on top (System A/B). See drag-machine.ts.
   const resolvedTargetLeafId: string | null =
     presentationDropState?.leafId ?? null;
-  const resolvedTargetZone: DynamicLeafDropZone | null =
+  const resolvedTargetZone: TilingLeafDropZone | null =
     presentationDropState?.zone ?? null;
-  const resolvedTargetAction: DynamicDropState["action"] | null =
+  const resolvedTargetAction: TilingDropState["action"] | null =
     presentationDropState?.action ?? null;
   // The candidate-tree leaf that CARRIES the dragged content — the slot the
   // single ghost reserves + hops into. For `swap` this is the resolved TARGET
@@ -4074,8 +4074,8 @@ export const DynamicTilingRenderer = React.forwardRef<
     presentationSourceLeafId,
     presentationDropState,
   );
-  const liveCandidateDisplayLayout: DynamicLayoutNode = React.useMemo(
-    (): DynamicLayoutNode =>
+  const liveCandidateDisplayLayout: TilingLayoutNode = React.useMemo(
+    (): TilingLayoutNode =>
       deriveCandidateTree(layout, dragSourceLeafId, dropState),
     // dropState identity changes on every pointer move (ghost), so key on the
     // load-bearing resolve triple instead — identical resolves are free.
@@ -4099,8 +4099,8 @@ export const DynamicTilingRenderer = React.forwardRef<
   // opened). A CANCEL settle deliberately does NOT take this branch, so the
   // display falls back to the original `layout` and the survivors glide back to
   // re-accommodate the restored source.
-  const settlingCommitCandidate: DynamicLayoutNode | null =
-    React.useMemo((): DynamicLayoutNode | null => {
+  const settlingCommitCandidate: TilingLayoutNode | null =
+    React.useMemo((): TilingLayoutNode | null => {
       if (
         !liveDragModeEnabled ||
         dragState.phase !== "settling" ||
@@ -4115,7 +4115,7 @@ export const DynamicTilingRenderer = React.forwardRef<
         dragState.resolvedTarget,
       );
     }, [dragState, layout, liveDragModeEnabled]);
-  const displayLayout: DynamicLayoutNode =
+  const displayLayout: TilingLayoutNode =
     liveDragModeEnabled && dragSourceLeafId != null
       ? liveCandidateDisplayLayout
       : (settlingCommitCandidate ?? layout);
@@ -4128,8 +4128,8 @@ export const DynamicTilingRenderer = React.forwardRef<
     (dragState.phase === "dragging" || isSurvivorReflowAnimating);
   // The cursor-following ghost is derived from the FSM dragging state + the
   // pickup snapshot ref (no separate ghost useState to keep in sync).
-  const dragVisualState: DynamicDragVisualState | null =
-    React.useMemo((): DynamicDragVisualState | null => {
+  const dragVisualState: TilingDragVisualState | null =
+    React.useMemo((): TilingDragVisualState | null => {
       if (dragState.phase !== "dragging" || dragSnapshotRef.current == null) {
         return null;
       }
@@ -4548,9 +4548,9 @@ export const DynamicTilingRenderer = React.forwardRef<
   // memo deps are exactly the stable-reference inputs (layout / source / viewport
   // / config) — `dropState`/candidate is deliberately ABSENT, so reflow cannot
   // shift the hit geometry. See `resolveStableDragHitFootprints`.
-  const liveHitFootprintsById: ReadonlyMap<string, DynamicPaneFootprint> =
+  const liveHitFootprintsById: ReadonlyMap<string, TilingPaneFootprint> =
     React.useMemo(
-      (): ReadonlyMap<string, DynamicPaneFootprint> =>
+      (): ReadonlyMap<string, TilingPaneFootprint> =>
         resolveStableDragHitFootprints(
           liveDragModeEnabled,
           layout,
@@ -4568,9 +4568,9 @@ export const DynamicTilingRenderer = React.forwardRef<
         viewportSize,
       ],
     );
-  const projectedLandingOverlays: ReadonlyArray<DynamicProjectedLandingOverlay> =
+  const projectedLandingOverlays: ReadonlyArray<TilingProjectedLandingOverlay> =
     React.useMemo(
-      (): ReadonlyArray<DynamicProjectedLandingOverlay> =>
+      (): ReadonlyArray<TilingProjectedLandingOverlay> =>
         resolveProjectedLandingOverlays(
           layout,
           projectedDropLayout,
@@ -4592,32 +4592,32 @@ export const DynamicTilingRenderer = React.forwardRef<
     );
   const paneHitZoneDebugByLeafId: ReadonlyMap<
     string,
-    DynamicPaneHitZoneOverlayDebugState
+    TilingPaneHitZoneOverlayDebugState
   > = React.useMemo((): ReadonlyMap<
     string,
-    DynamicPaneHitZoneOverlayDebugState
+    TilingPaneHitZoneOverlayDebugState
   > => {
     if (!showPaneHitZones || !isRearrangeEnabled) {
-      return new Map<string, DynamicPaneHitZoneOverlayDebugState>();
+      return new Map<string, TilingPaneHitZoneOverlayDebugState>();
     }
     const hitZoneSourceLeafId: string | null =
       dragSourceLeafId ??
       paneHitZoneSourceLeafId ??
       activeFocusedLeafId ??
       null;
-    const hitZoneByLeafId: Map<string, DynamicPaneHitZoneOverlayDebugState> =
-      new Map<string, DynamicPaneHitZoneOverlayDebugState>();
+    const hitZoneByLeafId: Map<string, TilingPaneHitZoneOverlayDebugState> =
+      new Map<string, TilingPaneHitZoneOverlayDebugState>();
     for (const leafId of leafIds) {
       // A statically-gated leaf is not a drop participant — no hit zones for it.
       if (rearrangeGatedLeafIds.has(leafId)) {
         continue;
       }
-      const targetFootprint: DynamicPaneFootprint | undefined =
+      const targetFootprint: TilingPaneFootprint | undefined =
         leafFootprintsById.get(leafId);
       if (targetFootprint == null) {
         continue;
       }
-      const hitZoneDiagnostics: DynamicDropIntentHitZoneDiagnostics =
+      const hitZoneDiagnostics: TilingDropIntentHitZoneDiagnostics =
         resolveDropIntentHitZoneDiagnostics({
           paneSize: {
             width: targetFootprint.width,
@@ -4627,7 +4627,7 @@ export const DynamicTilingRenderer = React.forwardRef<
             interactionCapabilities.dropHitZoneGeometry,
           ),
           evaluateZone: (
-            zone: DynamicLeafDropZone,
+            zone: TilingLeafDropZone,
           ): { isValid: boolean; rejectionReason: string | null } =>
             evaluateZoneCandidate({
               zone,
@@ -4640,9 +4640,9 @@ export const DynamicTilingRenderer = React.forwardRef<
               viewportHeight: viewportSize.height,
             }),
         });
-      const edgeCandidates: ReadonlyArray<DynamicPaneHitZoneCandidateDebugState> =
+      const edgeCandidates: ReadonlyArray<TilingPaneHitZoneCandidateDebugState> =
         hitZoneDiagnostics.edgeZones.map(
-          (edgeZoneDiagnostic): DynamicPaneHitZoneCandidateDebugState => ({
+          (edgeZoneDiagnostic): TilingPaneHitZoneCandidateDebugState => ({
             zone: edgeZoneDiagnostic.zone,
             isValid: edgeZoneDiagnostic.isValid,
             rejectionReason: edgeZoneDiagnostic.rejectionReason,
@@ -4829,7 +4829,7 @@ export const DynamicTilingRenderer = React.forwardRef<
   const beginResize = React.useCallback(
     (
       event: React.PointerEvent<HTMLDivElement>,
-      node: DynamicSplitNode,
+      node: TilingSplitNode,
       resolvedGapPx: number,
       resolvedMinPaneSizePx: number,
     ): void => {
@@ -4889,7 +4889,7 @@ export const DynamicTilingRenderer = React.forwardRef<
   const handleSeparatorKeyDown = React.useCallback(
     (
       event: React.KeyboardEvent<HTMLDivElement>,
-      node: DynamicSplitNode,
+      node: TilingSplitNode,
       containerSizePx: number,
       resolvedGapPx: number,
       resolvedMinPaneSizePx: number,
@@ -5052,7 +5052,7 @@ export const DynamicTilingRenderer = React.forwardRef<
   }, []);
 
   const aimMoveMode = React.useCallback(
-    (direction: DynamicFocusDirection): void => {
+    (direction: TilingFocusDirection): void => {
       setMoveModeState(
         (current: TilingMoveModeState | null): TilingMoveModeState | null => {
           if (current == null) {
@@ -5297,7 +5297,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           if (targetSplitId == null) {
             return false;
           }
-          let next: DynamicLayoutNode = layout;
+          let next: TilingLayoutNode = layout;
           switch (command.kind) {
             case "set-layout-mode":
               next = setSplitLayoutMode(layout, targetSplitId, command.mode);
@@ -5323,10 +5323,10 @@ export const DynamicTilingRenderer = React.forwardRef<
               );
               break;
             case "cycle-master-orientation": {
-              let workingLayout: DynamicLayoutNode = layout;
-              const targetSplit: DynamicSplitNode | undefined =
+              let workingLayout: TilingLayoutNode = layout;
+              const targetSplit: TilingSplitNode | undefined =
                 collectSplitNodes(workingLayout).find(
-                  (split: DynamicSplitNode): boolean =>
+                  (split: TilingSplitNode): boolean =>
                     split.id === targetSplitId,
                 );
               if (
@@ -5353,7 +5353,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           return true;
         }
         case "group-leaves": {
-          const next: DynamicLayoutNode = groupLeaves(layout, command.leafIds, {
+          const next: TilingLayoutNode = groupLeaves(layout, command.leafIds, {
             hostLeafId: command.hostLeafId,
           });
           if (next === layout) {
@@ -5372,7 +5372,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           }
           const existingGroup = findGroupContainingLeaf(layout, focusLeafId);
           if (existingGroup != null) {
-            const next: DynamicLayoutNode = ungroupNode(
+            const next: TilingLayoutNode = ungroupNode(
               layout,
               existingGroup.id,
             );
@@ -5391,7 +5391,7 @@ export const DynamicTilingRenderer = React.forwardRef<
             focusIndex + 1 < outerIds.length
               ? outerIds[focusIndex + 1]
               : outerIds[focusIndex - 1];
-          const next: DynamicLayoutNode = groupLeaves(layout, [
+          const next: TilingLayoutNode = groupLeaves(layout, [
             focusLeafId,
             neighborId,
           ]);
@@ -5411,7 +5411,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           if (groupId == null) {
             return false;
           }
-          const next: DynamicLayoutNode = ungroupNode(layout, groupId);
+          const next: TilingLayoutNode = ungroupNode(layout, groupId);
           if (next === layout) {
             return false;
           }
@@ -5419,7 +5419,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           return true;
         }
         case "add-to-group": {
-          const next: DynamicLayoutNode = addLeafToGroup(
+          const next: TilingLayoutNode = addLeafToGroup(
             layout,
             command.groupId,
             command.sourceLeafId,
@@ -5431,7 +5431,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           return true;
         }
         case "remove-from-group": {
-          const next: DynamicLayoutNode = removeMemberFromGroup(
+          const next: TilingLayoutNode = removeMemberFromGroup(
             layout,
             command.groupId,
             command.memberId,
@@ -5453,7 +5453,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           if (groupId == null) {
             return false;
           }
-          const next: DynamicLayoutNode = cycleActiveGroupMember(
+          const next: TilingLayoutNode = cycleActiveGroupMember(
             layout,
             groupId,
             command.direction,
@@ -5487,7 +5487,7 @@ export const DynamicTilingRenderer = React.forwardRef<
             return false;
           }
           const memberId: string = targetGroup.members[memberIndex].id;
-          const next: DynamicLayoutNode = setActiveGroupMember(
+          const next: TilingLayoutNode = setActiveGroupMember(
             layout,
             groupId,
             memberId,
@@ -5728,7 +5728,7 @@ export const DynamicTilingRenderer = React.forwardRef<
         // activating immediately. The selection commits on modifier release.
         // This is a keyboard-only modal interaction, so it stays out of
         // `dispatchCommand` (a direct `focus-cycle` dispatch always activates).
-        if (showSwitcherOverlay && chordHasModifier(cycleChord)) {
+        if (showSwitcherOverlay && chordRequiresModifier(cycleChord)) {
           const holdModifiers = {
             alt: cycleChord.alt,
             ctrl: cycleChord.ctrl,
@@ -5990,7 +5990,7 @@ export const DynamicTilingRenderer = React.forwardRef<
   }, [activeMaximizedLeafId]);
 
   const beginCancelFlyBackAnimation = React.useCallback(
-    (activeState: DynamicDragVisualState): void => {
+    (activeState: TilingDragVisualState): void => {
       if (clearCancelVisualTimeoutRef.current != null) {
         window.clearTimeout(clearCancelVisualTimeoutRef.current);
         clearCancelVisualTimeoutRef.current = null;
@@ -6068,8 +6068,8 @@ export const DynamicTilingRenderer = React.forwardRef<
       clientX: number,
       clientY: number,
       sourceLeafId: string,
-      previousTarget: DynamicDropState | null,
-    ): DynamicDropState | null => {
+      previousTarget: TilingDropState | null,
+    ): TilingDropState | null => {
       if (!isRearrangeEnabled) {
         return null;
       }
@@ -6080,7 +6080,7 @@ export const DynamicTilingRenderer = React.forwardRef<
       }
       const localX: number = clientX - viewportRect.left;
       const localY: number = clientY - viewportRect.top;
-      const hitFootprints: ReadonlyMap<string, DynamicPaneFootprint> =
+      const hitFootprints: ReadonlyMap<string, TilingPaneFootprint> =
         liveDragModeEnabled ? liveHitFootprintsById : leafFootprintsById;
       // Tab-strip hits take priority over the group body: the strip sits above the
       // active-member footprint and is the Hyprland groupbar merge target.
@@ -6088,7 +6088,7 @@ export const DynamicTilingRenderer = React.forwardRef<
         const tabStripHit = resolveGroupTabStripHit(
           clientX,
           clientY,
-          collectGroups(layout).map((group: DynamicGroupNode) => {
+          collectGroups(layout).map((group: TilingGroupNode) => {
             const stripElement: HTMLDivElement | undefined =
               groupTabStripRefs.current.get(group.id);
             const stripRect: DOMRect | undefined =
@@ -6112,7 +6112,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           tabStripHit != null &&
           tabStripHit.activeMemberLeafId !== sourceLeafId
         ) {
-          const targetFootprint: DynamicPaneFootprint | undefined =
+          const targetFootprint: TilingPaneFootprint | undefined =
             hitFootprints.get(tabStripHit.activeMemberLeafId);
           if (targetFootprint != null) {
             return buildGroupTabStripMergeIntent({
@@ -6136,7 +6136,7 @@ export const DynamicTilingRenderer = React.forwardRef<
         }
       }
       let hitLeafId: string | null = null;
-      let hitFootprint: DynamicPaneFootprint | undefined;
+      let hitFootprint: TilingPaneFootprint | undefined;
       for (const leafId of leafIds) {
         // Skip the source and any statically-gated leaf: a gated target has no
         // trustworthy footprint, so it resolves to no target (→ cancel-on-release
@@ -6144,7 +6144,7 @@ export const DynamicTilingRenderer = React.forwardRef<
         if (leafId === sourceLeafId || rearrangeGatedLeafIds.has(leafId)) {
           continue;
         }
-        const footprint: DynamicPaneFootprint | undefined =
+        const footprint: TilingPaneFootprint | undefined =
           hitFootprints.get(leafId);
         if (
           footprint != null &&
@@ -6161,10 +6161,10 @@ export const DynamicTilingRenderer = React.forwardRef<
       if (hitLeafId == null || hitFootprint == null) {
         return null;
       }
-      const splitPath: ReadonlyArray<DynamicSplitPathEntry> =
+      const splitPath: ReadonlyArray<TilingSplitPathEntry> =
         readSplitPathToLeaf(layout, hitLeafId) ?? [];
-      const axisPath: ReadonlyArray<DynamicSplitAxis> = splitPath.map(
-        (pathEntry: DynamicSplitPathEntry): DynamicSplitAxis => pathEntry.axis,
+      const axisPath: ReadonlyArray<TilingSplitAxis> = splitPath.map(
+        (pathEntry: TilingSplitPathEntry): TilingSplitAxis => pathEntry.axis,
       );
       const paneLocalPoint = toPaneLocalPoint(
         { x: localX, y: localY },
@@ -6173,7 +6173,7 @@ export const DynamicTilingRenderer = React.forwardRef<
       // Seed the geometric hysteresis band from the prior resolved zone (only for
       // the same hovered leaf) so zone flips must overcome the band — the
       // anti-thrash damper that makes live reflow stable.
-      const previousZone: DynamicLeafDropZone | null = previousZoneSeed(
+      const previousZone: TilingLeafDropZone | null = previousZoneSeed(
         previousTarget,
         hitLeafId,
       );
@@ -6188,14 +6188,14 @@ export const DynamicTilingRenderer = React.forwardRef<
         ),
         previousZone,
         evaluateZone: (
-          zone: DynamicLeafDropZone,
+          zone: TilingLeafDropZone,
         ): { isValid: boolean; rejectionReason: string | null } =>
           evaluateZoneCandidate({
             zone,
             layout,
             sourceLeafId,
             targetLeafId: hitLeafId as string,
-            targetFootprint: hitFootprint as DynamicPaneFootprint,
+            targetFootprint: hitFootprint as TilingPaneFootprint,
             config,
             viewportWidth: viewportSize.width,
             viewportHeight: viewportSize.height,
@@ -6298,7 +6298,7 @@ export const DynamicTilingRenderer = React.forwardRef<
               pointerId: owningPointerId,
               client,
             });
-            const firstTarget: DynamicDropState | null = resolvePointerTarget(
+            const firstTarget: TilingDropState | null = resolvePointerTarget(
               client.x,
               client.y,
               current.sourceLeafId,
@@ -6350,13 +6350,13 @@ export const DynamicTilingRenderer = React.forwardRef<
               pointerId: owningPointerId,
               client,
             });
-            const freshTarget: DynamicDropState | null = resolvePointerTarget(
+            const freshTarget: TilingDropState | null = resolvePointerTarget(
               client.x,
               client.y,
               current.sourceLeafId,
               current.resolvedTarget,
             );
-            const seatedTarget: DynamicDropState | null =
+            const seatedTarget: TilingDropState | null =
               current.resolvedTarget;
             // Slot-commitment policy: once the ghost has hopped into a seated slot,
             // hold it (no retarget) until the policy says re-resolve. `zone-exit-hold`
@@ -6365,7 +6365,7 @@ export const DynamicTilingRenderer = React.forwardRef<
             // seat anchor. The delta gates WHETHER to re-run resolution (a coarse
             // re-aim gate) — it is NOT fed into `resolveDropIntent`'s zone
             // hysteresis, so the two dampers never double-count.
-            let nextTarget: DynamicDropState | null = freshTarget;
+            let nextTarget: TilingDropState | null = freshTarget;
             if (
               seatedTarget != null &&
               isCommittableTarget(seatedTarget, current.sourceLeafId)
@@ -6470,7 +6470,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           }
         }
         dispatchDrag({ type: "LONG_PRESS", pointerId: owningPointerId });
-        const firstTarget: DynamicDropState | null = resolvePointerTarget(
+        const firstTarget: TilingDropState | null = resolvePointerTarget(
           held.originClient.x,
           held.originClient.y,
           held.sourceLeafId,
@@ -6534,7 +6534,7 @@ export const DynamicTilingRenderer = React.forwardRef<
       // sample dispatches the latched seat verbatim, and held in
       // `releaseCommitLatchedRef` so any late cancel no-ops
       // (`shouldSuppressCompetingCancel`) and cannot override the commit.
-      const latchedSeat: DynamicDropState | null = resolveReleaseCommitSeat(
+      const latchedSeat: TilingDropState | null = resolveReleaseCommitSeat(
         committableSeatRef.current,
         committableSeatFallbackRef.current,
       );
@@ -6704,7 +6704,7 @@ export const DynamicTilingRenderer = React.forwardRef<
     survivorTransformSettleGuardRef.current = null;
     stripSurvivorTransientStyles();
 
-    const committedTree: DynamicLayoutNode | null =
+    const committedTree: TilingLayoutNode | null =
       dragState.outcome === "commit" && dragState.resolvedTarget != null
         ? deriveCandidateTree(
             layout,
@@ -6826,10 +6826,10 @@ export const DynamicTilingRenderer = React.forwardRef<
         clientY: number;
       },
       hoveredLeafId: string,
-    ): DynamicLiveHitLogState | null => {
+    ): TilingLiveHitLogState | null => {
       const pointerX: number = event.clientX;
       const pointerY: number = event.clientY;
-      const targetFootprint: DynamicPaneFootprint | undefined =
+      const targetFootprint: TilingPaneFootprint | undefined =
         leafFootprintsById.get(hoveredLeafId);
       if (targetFootprint == null) {
         return null;
@@ -6840,7 +6840,7 @@ export const DynamicTilingRenderer = React.forwardRef<
         { left: paneRect.left, top: paneRect.top },
       );
       const paneSize = { width: paneRect.width, height: paneRect.height };
-      const geometryConfig: DynamicZoneGeometryConfig = currentGeometryConfig(
+      const geometryConfig: TilingZoneGeometryConfig = currentGeometryConfig(
         interactionCapabilities.dropHitZoneGeometry,
       );
       const viewportRect: DOMRect | undefined =
@@ -6854,16 +6854,16 @@ export const DynamicTilingRenderer = React.forwardRef<
         paneHitZoneSourceLeafId ??
         activeFocusedLeafId ??
         null;
-      const dragSourcePaneFootprint: DynamicPaneFootprint | null =
+      const dragSourcePaneFootprint: TilingPaneFootprint | null =
         dragSourceLeafId == null
           ? null
           : (leafFootprintsById.get(dragSourceLeafId) ?? null);
-      const hitZoneDiagnostics: DynamicDropIntentHitZoneDiagnostics =
+      const hitZoneDiagnostics: TilingDropIntentHitZoneDiagnostics =
         resolveDropIntentHitZoneDiagnostics({
           paneSize,
           geometryConfig,
           evaluateZone: (
-            zone: DynamicLeafDropZone,
+            zone: TilingLeafDropZone,
           ): { isValid: boolean; rejectionReason: string | null } =>
             evaluateZoneCandidate({
               zone,
@@ -6876,7 +6876,7 @@ export const DynamicTilingRenderer = React.forwardRef<
               viewportHeight: viewportSize.height,
             }),
         });
-      const edgeDiagnostics: DynamicLiveHitLogState["edgeDiagnostics"] =
+      const edgeDiagnostics: TilingLiveHitLogState["edgeDiagnostics"] =
         hitZoneDiagnostics.edgeZones.map((edgeZoneDiagnostic) => ({
           zone: edgeZoneDiagnostic.zone,
           isValid: edgeZoneDiagnostic.isValid,
@@ -6912,16 +6912,16 @@ export const DynamicTilingRenderer = React.forwardRef<
         };
       }
 
-      const splitPath: ReadonlyArray<DynamicSplitPathEntry> =
+      const splitPath: ReadonlyArray<TilingSplitPathEntry> =
         readSplitPathToLeaf(layout, hoveredLeafId) ?? [];
-      const axisPath: ReadonlyArray<DynamicSplitAxis> = splitPath.map(
-        (pathEntry: DynamicSplitPathEntry): DynamicSplitAxis => pathEntry.axis,
+      const axisPath: ReadonlyArray<TilingSplitAxis> = splitPath.map(
+        (pathEntry: TilingSplitPathEntry): TilingSplitAxis => pathEntry.axis,
       );
-      const previousZone: DynamicLeafDropZone | null = previousZoneSeed(
+      const previousZone: TilingLeafDropZone | null = previousZoneSeed(
         dropState,
         hoveredLeafId,
       );
-      const resolvedIntent: DynamicDropState = resolveDropIntent({
+      const resolvedIntent: TilingDropState = resolveDropIntent({
         leafId: hoveredLeafId,
         paneLocalX: paneLocalPoint.x,
         paneLocalY: paneLocalPoint.y,
@@ -6930,7 +6930,7 @@ export const DynamicTilingRenderer = React.forwardRef<
         geometryConfig,
         previousZone,
         evaluateZone: (
-          zone: DynamicLeafDropZone,
+          zone: TilingLeafDropZone,
         ): { isValid: boolean; rejectionReason: string | null } =>
           evaluateZoneCandidate({
             zone,
@@ -6943,7 +6943,7 @@ export const DynamicTilingRenderer = React.forwardRef<
             viewportHeight: viewportSize.height,
           }),
       });
-      const intent: DynamicDropIntentDebugState =
+      const intent: TilingDropIntentDebugState =
         toDropIntentDebugState(resolvedIntent);
 
       return {
@@ -6980,13 +6980,13 @@ export const DynamicTilingRenderer = React.forwardRef<
 
   const renderBranch = React.useCallback(
     (
-      node: DynamicLayoutNode,
+      node: TilingLayoutNode,
       containerWidthPx: number,
       containerHeightPx: number,
     ): React.ReactElement => {
       if (node.kind === "leaf") {
-        const tile: DynamicTile | undefined = resolveTile(tiles, node.tileId);
-        const tileForDisplay: DynamicTile = tile ?? {
+        const tile: TilingTile | undefined = resolveTile(tiles, node.tileId);
+        const tileForDisplay: TilingTile = tile ?? {
           id: `missing-${node.tileId}`,
           title: `missing tile ${node.tileId}`,
           description: "no tile matched this leaf id",
@@ -6995,7 +6995,7 @@ export const DynamicTilingRenderer = React.forwardRef<
         };
 
         const isMoveSource: boolean = moveModeState?.sourceLeafId === node.id;
-        const moveTargetPlacement: DynamicMovePlacement | null =
+        const moveTargetPlacement: TilingMovePlacement | null =
           moveModeState != null && moveModeState.targetLeafId === node.id
             ? moveModeState.placement
             : null;
@@ -7024,7 +7024,7 @@ export const DynamicTilingRenderer = React.forwardRef<
         // The uniform pane-body rule: a ghost-seat reservation is a content-less
         // seat (drag mechanic); every other slot honors the CONTENT toggle
         // identically to a resting pane.
-        const paneBodyRenderMode: DynamicPaneBodyRenderMode =
+        const paneBodyRenderMode: TilingPaneBodyRenderMode =
           resolvePaneBodyRenderMode(
             leafPresentation.isGhostSeatReservation,
             isPaneContentVisible,
@@ -7033,10 +7033,10 @@ export const DynamicTilingRenderer = React.forwardRef<
           dropState?.leafId === node.id && dropState.action !== "none";
         // The drop-target chrome zone (edge-insert-vs-center already resolved in
         // the presentation SSOT — no caller-side ternary).
-        const effectiveDropZone: DynamicLeafDropZone | null =
+        const effectiveDropZone: TilingLeafDropZone | null =
           leafPresentation.dropChromeZone;
 
-        const tileArgs: DynamicRenderTileArgs = {
+        const tileArgs: TilingRenderTileProps = {
           leafId: node.id,
           tile: tileForDisplay,
           paneOrdinal: Math.max(1, leafIds.indexOf(node.id) + 1),
@@ -7065,7 +7065,7 @@ export const DynamicTilingRenderer = React.forwardRef<
           onSetSizingMode: (mode: TilingTitleBarSizingMode): void => {
             setLeafSizingFromBbox(node.id, mode);
           },
-          onAcquireSpace: (direction: DynamicFocusDirection): void => {
+          onAcquireSpace: (direction: TilingFocusDirection): void => {
             acquireLeafSpace(node.id, direction);
           },
           dropZone: effectiveDropZone,
@@ -7236,7 +7236,7 @@ export const DynamicTilingRenderer = React.forwardRef<
             if (dragStateRef.current.phase !== "idle") {
               return;
             }
-            const liveHitLogState: DynamicLiveHitLogState | null =
+            const liveHitLogState: TilingLiveHitLogState | null =
               resolveLiveHitLogState(event, node.id);
             onLiveHitLogChange?.(liveHitLogState);
           },
@@ -7313,7 +7313,7 @@ export const DynamicTilingRenderer = React.forwardRef<
             style={leafWrapperStyle}
             // A reserved slot renders `DragSourceSlotReservation` (which carries
             // `data-drag-source-reservation` but no `data-leaf-id`) INSTEAD of
-            // `DefaultDynamicTile` (the sole `data-leaf-id` emitter), so the seat
+            // `DefaultTilingTile` (the sole `data-leaf-id` emitter), so the seat
             // measurement's SCOPED selector (`dragSourceReservationSelector`)
             // would have no `data-leaf-id` ancestor to resolve against — the
             // `cc23956` regression. Emit it on the reserved wrapper so the scoped
@@ -7330,7 +7330,7 @@ export const DynamicTilingRenderer = React.forwardRef<
                 observabilityColorEnables={observabilityColorEnables}
               />
             ) : renderTile == null ? (
-              <DefaultDynamicTile {...tileArgs} />
+              <DefaultTilingTile {...tileArgs} />
             ) : (
               renderTile(tileArgs)
             )}
@@ -7349,10 +7349,10 @@ export const DynamicTilingRenderer = React.forwardRef<
       // renders below (the stacking contract). Tabs switch the active member via
       // the `group-tab-jump` command (routed through the same `dispatchCommand`).
       if (node.kind === "group") {
-        const groupNode: DynamicGroupNode = node;
-        const activeMember: DynamicLeafNode =
+        const groupNode: TilingGroupNode = node;
+        const activeMember: TilingLeafNode =
           groupNode.members.find(
-            (member: DynamicLeafNode): boolean =>
+            (member: TilingLeafNode): boolean =>
               member.id === groupNode.activeMemberId,
           ) ?? groupNode.members[0];
         const isGroupMergeTarget: boolean =
@@ -7387,10 +7387,10 @@ export const DynamicTilingRenderer = React.forwardRef<
             >
               {groupNode.members.map(
                 (
-                  member: DynamicLeafNode,
+                  member: TilingLeafNode,
                   memberIndex: number,
                 ): React.ReactElement => {
-                  const memberTile: DynamicTile | undefined = resolveTile(
+                  const memberTile: TilingTile | undefined = resolveTile(
                     tiles,
                     member.tileId,
                   );
@@ -7473,7 +7473,7 @@ export const DynamicTilingRenderer = React.forwardRef<
       // footprints can never diverge. Dwindle (the default) falls through to the
       // recursive flex spine below.
       if (node.layoutMode === "master") {
-        const masterSlots: ReadonlyArray<DynamicLayoutNode> =
+        const masterSlots: ReadonlyArray<TilingLayoutNode> =
           collectMasterSlots(node);
         const masterFootprints = footprintsByLeafId(
           resolveMasterStackFootprints(
@@ -7499,7 +7499,7 @@ export const DynamicTilingRenderer = React.forwardRef<
             )}
           >
             {masterSlots.map(
-              (slot: DynamicLayoutNode): React.ReactElement | null => {
+              (slot: TilingLayoutNode): React.ReactElement | null => {
                 const slotFootprint = masterFootprints.get(
                   slotRepresentativeLeafId(slot),
                 );
@@ -7569,7 +7569,7 @@ export const DynamicTilingRenderer = React.forwardRef<
         interactionCapabilities.resize,
         node.axis,
       );
-      const dividerRenderMode: DynamicSplitDividerRenderMode =
+      const dividerRenderMode: TilingSplitDividerRenderMode =
         resolveSplitDividerRenderMode({
           isBoundaryResizable: !firstStaticAlongAxis && !secondStaticAlongAxis,
           resizeHandlesVisible: interactionCapabilities.resizeHandlesVisible,
@@ -7834,7 +7834,7 @@ export const DynamicTilingRenderer = React.forwardRef<
     ],
   );
 
-  const maximizedLeaf: DynamicLeafNode | null =
+  const maximizedLeaf: TilingLeafNode | null =
     activeMaximizedLeafId != null
       ? findLeafById(layout, activeMaximizedLeafId)
       : null;
@@ -7975,8 +7975,8 @@ export const DynamicTilingRenderer = React.forwardRef<
   );
 });
 
-export function readTileOrderByLeaf(
-  node: DynamicLayoutNode,
+export function tileOrderByLeafId(
+  node: TilingLayoutNode,
 ): ReadonlyArray<string> {
   if (node.kind === "leaf") {
     return [node.tileId];
@@ -7985,15 +7985,15 @@ export function readTileOrderByLeaf(
   if (node.kind === "group") {
     // Every grouped tile still exists in the layout (the group only changes how
     // they share a slot), so all member tiles are reported in tab order.
-    return node.members.map((member: DynamicLeafNode): string => member.tileId);
+    return node.members.map((member: TilingLeafNode): string => member.tileId);
   }
 
   return [
-    ...readTileOrderByLeaf(node.first),
-    ...readTileOrderByLeaf(node.second),
+    ...tileOrderByLeafId(node.first),
+    ...tileOrderByLeafId(node.second),
   ];
 }
 
-export function isLeafNode(node: DynamicLayoutNode): node is DynamicLeafNode {
+export function isLeafNode(node: TilingLayoutNode): node is TilingLeafNode {
   return node.kind === "leaf";
 }

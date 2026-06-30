@@ -2,7 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 import { createElement } from "react";
 import type { ReactElement } from "react";
 import { buildDragPaneSnapshot } from "../dynamic-tiling-renderer";
-import type { DynamicDragPaneSnapshot, DynamicTile } from "../types";
+import type { TilingDragPaneSnapshot, TilingTile } from "../types";
 
 /**
  * Ghost-content sourcing invariant: the drag-pane snapshot captured on pickup
@@ -15,7 +15,7 @@ import type { DynamicDragPaneSnapshot, DynamicTile } from "../types";
 describe("drag-pane ghost content sourcing — snapshot carries the rich content slot", (): void => {
   it("captures the tile's content node so the ghost paints what the live pane paints", (): void => {
     const content: ReactElement = createElement("table", { "data-testid": "events-table" });
-    const tile: DynamicTile = {
+    const tile: TilingTile = {
       id: "tile-events",
       title: "Events",
       description: "live event stream",
@@ -23,7 +23,7 @@ describe("drag-pane ghost content sourcing — snapshot carries the rich content
       content,
     };
 
-    const snapshot: DynamicDragPaneSnapshot = buildDragPaneSnapshot(tile);
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(tile);
 
     expect(snapshot.content).toBe(content);
     expect(snapshot.tileId).toBe("tile-events");
@@ -31,13 +31,13 @@ describe("drag-pane ghost content sourcing — snapshot carries the rich content
   });
 
   it("falls back to null content for a legacy rows-only tile (rows still captured)", (): void => {
-    const tile: DynamicTile = {
+    const tile: TilingTile = {
       id: "tile-debug",
       title: "Debug",
       rows: ["line one", "line two", "line three"],
     };
 
-    const snapshot: DynamicDragPaneSnapshot = buildDragPaneSnapshot(tile);
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(tile);
 
     expect(snapshot.content).toBeNull();
     expect(snapshot.rows).toEqual(["line one", "line two", "line three"]);
@@ -46,14 +46,14 @@ describe("drag-pane ghost content sourcing — snapshot carries the rich content
 
   it("captures both content and rows when a tile supplies both (content wins at render)", (): void => {
     const content: ReactElement = createElement("div", { "data-testid": "graph" });
-    const tile: DynamicTile = {
+    const tile: TilingTile = {
       id: "tile-graph",
       title: "Graph",
       content,
       rows: ["fallback row"],
     };
 
-    const snapshot: DynamicDragPaneSnapshot = buildDragPaneSnapshot(tile);
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(tile);
 
     expect(snapshot.content).toBe(content);
     expect(snapshot.rows).toEqual(["fallback row"]);

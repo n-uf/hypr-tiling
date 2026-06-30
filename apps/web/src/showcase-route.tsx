@@ -1,8 +1,8 @@
 import * as React from "react";
-import { DynamicTilingShowcase } from "hypr-tiling-showcase";
+import { TilingShowcase } from "hypr-tiling-showcase";
 
 // `/showcase` route: the original full interactive showcase
-// (`DynamicTilingShowcase` from the `hypr-tiling-showcase` package), preserved
+// (`TilingShowcase` from the `hypr-tiling-showcase` package), preserved
 // at its own URL distinct from the redesigned docs homepage at `/`. Client-only
 // (not part of the homepage SEO prerender). A floating link returns to home.
 
@@ -31,7 +31,7 @@ export function ShowcaseRoute({
         </span>
         home
       </a>
-      <DynamicTilingShowcase />
+      <TilingShowcase />
     </div>
   );
 }
