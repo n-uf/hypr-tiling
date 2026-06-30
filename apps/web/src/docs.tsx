@@ -21,6 +21,13 @@ export const SITE_URL: string = "https://hypr-tiling.n-uf.com/";
 export const SHOWCASE_URL: string = "https://hypr-tiling.n-uf.com/showcase";
 export const REPO_URL: string = "https://github.com/n-uf/hypr-tiling";
 
+// License, sourced from packages/hypr-tiling/package.json (SPDX
+// `PolyForm-Perimeter-1.0.0`) and the repo-root LICENSE text. The canonical
+// PolyForm URL matches the JSON-LD `license` field in entry-server.tsx.
+export const LICENSE_NAME: string = "PolyForm Perimeter 1.0.0";
+export const LICENSE_URL: string =
+  "https://polyformproject.org/licenses/perimeter/1.0.0/";
+
 export const PAGE_TITLE: string = "hypr-tiling — dynamic tiling for React";
 
 // One canonical sentence an LLM can quote verbatim.
@@ -314,7 +321,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     title: "install",
     accent: "amber",
     summary:
-      "Install with pnpm add @n-uf/hypr-tiling react react-dom. React 19 peer deps. Render DynamicTilingRenderer with controlled layout state.",
+      "Install with pnpm add @n-uf/hypr-tiling react react-dom. React 19 peer deps. Render DynamicTilingRenderer with controlled layout state. Licensed under PolyForm Perimeter 1.0.0.",
     content: (
       <div className="flex flex-col gap-4">
         <SectionHeading>Install &amp; integrate</SectionHeading>
@@ -329,6 +336,9 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
           <Code>onLayoutChange</Code>.
         </SectionLead>
         <Pre>{INTEGRATION_EXAMPLE}</Pre>
+        <p className="text-[12px] leading-[1.6] text-stone-400">
+          License: <Link href={LICENSE_URL}>{LICENSE_NAME}</Link>
+        </p>
       </div>
     ),
   },
@@ -431,6 +441,7 @@ export function buildLlmsTxt(): string {
   lines.push(`Showcase: ${SHOWCASE_URL}`);
   lines.push(`Repository: ${REPO_URL}`);
   lines.push(`Install: ${INSTALL_SNIPPET}`);
+  lines.push(`License: ${LICENSE_NAME} (${LICENSE_URL})`);
   lines.push("");
   for (const pane of DOC_PANES) {
     lines.push(`## ${pane.title}`);
