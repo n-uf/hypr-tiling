@@ -260,7 +260,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     summary:
       "Dynamic tiling for React. A recursive split-tree renderer for runtime-rearrangeable, resizable panes.",
     content: (
-      <div className="flex flex-col gap-5">
+      <div className="flex min-h-full flex-col gap-5">
         <div className="flex flex-col gap-3">
           <Eyebrow>dynamic tiling · for react</Eyebrow>
           <h1 className="font-display text-[clamp(2rem,3.4vw,2.9rem)] font-medium leading-[1.02] tracking-[-0.015em] text-stone-50">
@@ -280,6 +280,10 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
           header, resize the dividers, maximize it — or drive it from the live
           controls pane.
         </p>
+        <footer className="mt-auto border-t border-white/[0.08] pt-3 text-[11px] leading-[1.5] text-stone-500">
+          <Link href={LICENSE_URL}>{LICENSE_NAME}</Link> · source-available ·
+          free commercial use · no competing use
+        </footer>
       </div>
     ),
   },
@@ -321,7 +325,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     title: "install",
     accent: "amber",
     summary:
-      "Install with pnpm add @n-uf/hypr-tiling react react-dom. React 19 peer deps. Render DynamicTilingRenderer with controlled layout state. Licensed under PolyForm Perimeter 1.0.0.",
+      "Install with pnpm add @n-uf/hypr-tiling react react-dom. React 19 peer deps. Render DynamicTilingRenderer with controlled layout state.",
     content: (
       <div className="flex flex-col gap-4">
         <SectionHeading>Install &amp; integrate</SectionHeading>
@@ -336,9 +340,6 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
           <Code>onLayoutChange</Code>.
         </SectionLead>
         <Pre>{INTEGRATION_EXAMPLE}</Pre>
-        <p className="text-[12px] leading-[1.6] text-stone-400">
-          License: <Link href={LICENSE_URL}>{LICENSE_NAME}</Link>
-        </p>
       </div>
     ),
   },
