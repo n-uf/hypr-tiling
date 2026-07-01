@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/n-uf/hypr-tiling/main/assets/hypr-tiling-logo.png" alt="hypr-tiling" width="180" />
+  <img src="../../assets/hypr-tiling-logo-transparent.png" alt="hypr-tiling" width="180" />
 </p>
 
 # @n-uf/hypr-tiling
