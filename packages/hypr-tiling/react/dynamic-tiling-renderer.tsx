@@ -79,7 +79,6 @@ import {
   evaluateZoneCandidate,
 } from "../core/drop-validity";
 import {
-  EMPTY_FOCUS_HISTORY,
   pruneFocusHistory,
   pushFocusHistory,
   resolveFocusCurrentOrLast,
@@ -3911,40 +3910,32 @@ export const TilingRenderer = React.forwardRef<
   // the instant the FSM returns to `idle`, so normal text selection in panes
   // still works at rest.
   const isDragGestureActive: boolean = dragState.phase !== "idle";
-  const [internalFocusedLeafId, setInternalFocusedLeafId] = React.useState<
-    string | null
-  >(null);
-  const [internalMaximizedLeafId, setInternalMaximizedLeafId] = React.useState<
-    string | null
-  >(null);
-  const [paneSwitcherState, setPaneSwitcherState] =
-    React.useState<TilingPaneSwitcherState | null>(null);
-  const paneSwitcherStateRef = React.useRef<TilingPaneSwitcherState | null>(
-    null,
-  );
-  // Keyboard MOVE MODE — the accessible analog of a drag pickup. Held in state
-  // (drives the visual affordance) + mirrored to a ref so the document keydown
-  // listener reads the latest without re-subscribing on every arrow press.
-  const [moveModeState, setMoveModeState] =
-    React.useState<TilingMoveModeState | null>(null);
-  const moveModeStateRef = React.useRef<TilingMoveModeState | null>(null);
+  // Interaction slices now OWNED by the controller store (folded out of the
+  // renderer's `useState`/`useRef` per the Stage-7 state-collapse). They are
+  // read off the same `useSyncExternalStore` snapshot as the drag FSM; the
+  // render-time values are destructured into locals below (identical names, so
+  // every downstream read/effect-dep is unchanged) and mutated via the
+  // `controller.set*` setters. Document-listener closures that need the LATEST
+  // (not render-time) value read `controller.getState().*` directly.
+  //
+  // The controlled/uncontrolled prop merge stays HOST-side and byte-identical:
+  // the controller owns only the UNCONTROLLED fallback (`state.focus` /
+  // `state.maximize`); `activeFocusedLeafId` / `controlledMaximizedLeafId`
+  // resolve the merge below exactly as before.
+  const internalFocusedLeafId: string | null = controllerState.focus;
+  const internalMaximizedLeafId: string | null = controllerState.maximize;
+  const paneSwitcherState: TilingPaneSwitcherState | null =
+    controllerState.switcher;
+  // Keyboard MOVE MODE — the accessible analog of a drag pickup. Drives the
+  // visual affordance; the document keydown listener reads the latest via
+  // `controller.getState().moveMode`.
+  const moveModeState: TilingMoveModeState | null = controllerState.moveMode;
   // Alt/Opt+click header multi-selection set (HT — paneSwitching.multiSelectGrouping).
   // Insertion order is the group-member order (host slot resolves to the clicked
-  // pane, or focused-else-first for Alt+G). Mirrored to a ref so the document
-  // keydown listener (Escape) and the
-  // header pointer handlers can clear it without re-subscribing.
-  const [multiSelectedLeafIds, setMultiSelectedLeafIds] = React.useState<
-    ReadonlySet<string>
-  >(() => new Set<string>());
-  const multiSelectedLeafIdsRef = React.useRef<ReadonlySet<string>>(
-    multiSelectedLeafIds,
-  );
-  multiSelectedLeafIdsRef.current = multiSelectedLeafIds;
-  // MRU focus history (HT-NAV-MRU-FOCUS-TOGGLE). A ref, not state: pushing on
-  // every focus change must not re-render, and the `focus-current-or-last`
-  // command reads the latest synchronously at dispatch time. Pruned against the
-  // live leaf-id set on layout change so a removed pane is never re-focused.
-  const focusHistoryRef = React.useRef<FocusHistory>(EMPTY_FOCUS_HISTORY);
+  // pane, or focused-else-first for Alt+G). The document keydown listener
+  // (Escape) and the header pointer handlers read the latest via
+  // `controller.getState().multiSelect`.
+  const multiSelectedLeafIds: ReadonlySet<string> = controllerState.multiSelect;
   const paneHitZonesAlphaSafe: number = clampUnitInterval(paneHitZonesAlpha);
 
   // PART 2 — STATIC captures the actual current bbox. On a title-bar STATIC
@@ -4035,14 +4026,6 @@ export const TilingRenderer = React.forwardRef<
   );
 
   React.useEffect((): void => {
-    paneSwitcherStateRef.current = paneSwitcherState;
-  }, [paneSwitcherState]);
-
-  React.useEffect((): void => {
-    moveModeStateRef.current = moveModeState;
-  }, [moveModeState]);
-
-  React.useEffect((): void => {
     dragStateRef.current = dragState;
   }, [dragState]);
 
@@ -4075,11 +4058,10 @@ export const TilingRenderer = React.forwardRef<
   // Prune the MRU focus history whenever the live leaf-id set changes so a pane
   // removed from the tree is never returned by the focus-current-or-last toggle.
   React.useEffect((): void => {
-    focusHistoryRef.current = pruneFocusHistory(
-      focusHistoryRef.current,
-      leafIds,
+    controller.updateFocusHistory((history: FocusHistory): FocusHistory =>
+      pruneFocusHistory(history, leafIds),
     );
-  }, [leafIds]);
+  }, [controller, leafIds]);
   const leafFootprintsById: ReadonlyMap<string, TilingPaneFootprint> =
     React.useMemo(
       (): ReadonlyMap<string, TilingPaneFootprint> =>
@@ -4178,7 +4160,7 @@ export const TilingRenderer = React.forwardRef<
           leafIds,
           activeFocusedLeafId,
           activeMaximizedLeafId,
-          focusHistory: focusHistoryRef.current,
+          focusHistory: controller.getFocusHistory(),
           isLeafRearrangeEligible,
         }),
       [
@@ -4634,13 +4616,13 @@ export const TilingRenderer = React.forwardRef<
       return;
     }
     if (leafIds.length === 0) {
-      setInternalFocusedLeafId(null);
+      controller.setFocus(null);
       return;
     }
     const firstLeafId: string = leafIds[0];
-    setInternalFocusedLeafId(firstLeafId);
+    controller.setFocus(firstLeafId);
     onFocusedLeafChange?.(firstLeafId);
-  }, [activeFocusedLeafId, leafIds, onFocusedLeafChange]);
+  }, [activeFocusedLeafId, controller, leafIds, onFocusedLeafChange]);
 
   React.useEffect((): (() => void) | void => {
     const viewportElement: HTMLDivElement | null = viewportRef.current;
@@ -4849,23 +4831,23 @@ export const TilingRenderer = React.forwardRef<
       if (!isFocusSelectionEnabled) {
         return;
       }
-      focusHistoryRef.current = pushFocusHistory(
-        focusHistoryRef.current,
-        leafId,
+      controller.updateFocusHistory((history: FocusHistory): FocusHistory =>
+        pushFocusHistory(history, leafId),
       );
-      setInternalFocusedLeafId(leafId);
+      controller.setFocus(leafId);
       onFocusedLeafChange?.(leafId);
     },
-    [isFocusSelectionEnabled, onFocusedLeafChange],
+    [controller, isFocusSelectionEnabled, onFocusedLeafChange],
   );
 
   // Empty the multi-selection. A no-op (same reference) when already empty so a
   // clear-on-every-interaction wiring never schedules a pointless re-render.
   const clearMultiSelection = React.useCallback((): void => {
-    setMultiSelectedLeafIds((current: ReadonlySet<string>): ReadonlySet<string> =>
-      current.size === 0 ? current : new Set<string>(),
+    controller.setMultiSelect(
+      (current: ReadonlySet<string>): ReadonlySet<string> =>
+        current.size === 0 ? current : new Set<string>(),
     );
-  }, []);
+  }, [controller]);
 
   // Toggle one pane in/out of the multi-selection set (Alt/Opt+click). A no-op
   // when the feature is disabled. Does NOT touch focus — multi-selection and the
@@ -4875,11 +4857,12 @@ export const TilingRenderer = React.forwardRef<
       if (!isMultiSelectGroupingEnabled) {
         return;
       }
-      setMultiSelectedLeafIds((current: ReadonlySet<string>): ReadonlySet<string> =>
-        toggleLeafMultiSelection(current, leafId),
+      controller.setMultiSelect(
+        (current: ReadonlySet<string>): ReadonlySet<string> =>
+          toggleLeafMultiSelection(current, leafId),
       );
     },
-    [isMultiSelectGroupingEnabled],
+    [controller, isMultiSelectGroupingEnabled],
   );
 
   const setMaximizedLeaf = React.useCallback(
@@ -4887,10 +4870,10 @@ export const TilingRenderer = React.forwardRef<
       if (!isMaximizeEnabled) {
         return;
       }
-      setInternalMaximizedLeafId(nextLeafId);
+      controller.setMaximize(nextLeafId);
       onMaximizedLeafChange?.(nextLeafId);
     },
-    [isMaximizeEnabled, onMaximizedLeafChange],
+    [controller, isMaximizeEnabled, onMaximizedLeafChange],
   );
 
   const toggleMaximizeLeaf = React.useCallback(
@@ -4919,20 +4902,20 @@ export const TilingRenderer = React.forwardRef<
 
   // Commit the in-flight switcher: activate the highlighted pane (focus +
   // switch the maximized pane when maximized) and close the overlay. Reads the
-  // latest selection from a ref so the document keyup listener need not
-  // re-subscribe on every highlight advance.
+  // latest selection off the controller store so the document keyup listener
+  // need not re-subscribe on every highlight advance.
   const commitPaneSwitcherSelection = React.useCallback((): void => {
     const switcherState: TilingPaneSwitcherState | null =
-      paneSwitcherStateRef.current;
+      controller.getState().switcher;
     if (switcherState != null) {
       activateLeaf(commitPaneSwitcher(switcherState));
     }
-    setPaneSwitcherState(null);
-  }, [activateLeaf]);
+    controller.setSwitcher(null);
+  }, [activateLeaf, controller]);
 
   const cancelPaneSwitcher = React.useCallback((): void => {
-    setPaneSwitcherState(null);
-  }, []);
+    controller.setSwitcher(null);
+  }, [controller]);
 
   // Move DOM focus onto a pane element so the document listener's
   // focus-within engagement check keeps holding after keyboard focus nav (no
@@ -4952,17 +4935,24 @@ export const TilingRenderer = React.forwardRef<
   // (`isLeafRearrangeEligible`): a statically-gated source cannot enter move mode
   // and a gated neighbor is never aimed, so `insertLeafAdjacent` never runs
   // against an unresolvable-geometry pane.
-  const enterMoveMode = React.useCallback((sourceLeafId: string): void => {
-    setMoveModeState({ sourceLeafId, targetLeafId: null, placement: null });
-  }, []);
+  const enterMoveMode = React.useCallback(
+    (sourceLeafId: string): void => {
+      controller.setMoveMode({
+        sourceLeafId,
+        targetLeafId: null,
+        placement: null,
+      });
+    },
+    [controller],
+  );
 
   const cancelMoveMode = React.useCallback((): void => {
-    setMoveModeState(null);
-  }, []);
+    controller.setMoveMode(null);
+  }, [controller]);
 
   const aimMoveMode = React.useCallback(
     (direction: TilingFocusDirection): void => {
-      setMoveModeState(
+      controller.setMoveMode(
         (current: TilingMoveModeState | null): TilingMoveModeState | null => {
           if (current == null) {
             return current;
@@ -4983,12 +4973,12 @@ export const TilingRenderer = React.forwardRef<
         },
       );
     },
-    [layout, rearrangeGatedLeafIds],
+    [controller, layout, rearrangeGatedLeafIds],
   );
 
   const commitMoveMode = React.useCallback((): void => {
-    const current: TilingMoveModeState | null = moveModeStateRef.current;
-    setMoveModeState(null);
+    const current: TilingMoveModeState | null = controller.getState().moveMode;
+    controller.setMoveMode(null);
     if (
       current == null ||
       current.targetLeafId == null ||
@@ -5005,7 +4995,7 @@ export const TilingRenderer = React.forwardRef<
       ),
     );
     setFocusedLeaf(current.sourceLeafId);
-  }, [layout, onLayoutChange, setFocusedLeaf]);
+  }, [controller, layout, onLayoutChange, setFocusedLeaf]);
 
   // The ONE effectful command router (HT-API-COMMAND-KEYBOARD-SURFACE §7). Both
   // the keyboard layer and the imperative `dispatch` handle funnel a
@@ -5072,7 +5062,7 @@ export const TilingRenderer = React.forwardRef<
         }
         case "focus-current-or-last": {
           const target: string | null = resolveFocusCurrentOrLast(
-            focusHistoryRef.current,
+            controller.getFocusHistory(),
             activeFocusedLeafId,
           );
           if (target == null || findLeafById(layout, target) == null) {
@@ -5114,21 +5104,21 @@ export const TilingRenderer = React.forwardRef<
           return true;
         }
         case "move-aim": {
-          if (moveModeStateRef.current == null) {
+          if (controller.getState().moveMode == null) {
             return false;
           }
           aimMoveMode(command.direction);
           return true;
         }
         case "commit-move-mode": {
-          if (moveModeStateRef.current == null) {
+          if (controller.getState().moveMode == null) {
             return false;
           }
           commitMoveMode();
           return true;
         }
         case "cancel-move-mode": {
-          if (moveModeStateRef.current == null) {
+          if (controller.getState().moveMode == null) {
             return false;
           }
           cancelMoveMode();
@@ -5421,6 +5411,7 @@ export const TilingRenderer = React.forwardRef<
       cancelMoveMode,
       commandGates,
       commitMoveMode,
+      controller,
       enterMoveMode,
       focusLeafElement,
       isLeafRearrangeEligible,
@@ -5455,7 +5446,7 @@ export const TilingRenderer = React.forwardRef<
       if (!isMultiSelectGroupingEnabled) {
         return false;
       }
-      const selection: ReadonlySet<string> = multiSelectedLeafIdsRef.current;
+      const selection: ReadonlySet<string> = controller.getState().multiSelect;
       // Host slot: the clicked pane (header Group button) when supplied; else
       // (Alt+G, no click target) the focused pane if it is in the selection,
       // else the first-selected pane.
@@ -5480,6 +5471,7 @@ export const TilingRenderer = React.forwardRef<
     [
       activeFocusedLeafId,
       clearMultiSelection,
+      controller,
       dispatchCommand,
       isMultiSelectGroupingEnabled,
     ],
@@ -5489,10 +5481,11 @@ export const TilingRenderer = React.forwardRef<
   // leaf set (e.g. it was grouped away, removed, or folded into a group), so a
   // vanished pane never lingers selected or re-highlights if its id reappears.
   React.useEffect((): void => {
-    setMultiSelectedLeafIds((current: ReadonlySet<string>): ReadonlySet<string> =>
-      pruneMultiSelection(current, leafIds),
+    controller.setMultiSelect(
+      (current: ReadonlySet<string>): ReadonlySet<string> =>
+        pruneMultiSelection(current, leafIds),
     );
-  }, [leafIds]);
+  }, [controller, leafIds]);
 
   // Public imperative handle (HT-API-COMMAND-KEYBOARD-SURFACE half A): a consumer
   // holds a `ref` and drives the tiler programmatically (the Hyprland `dispatch`
@@ -5526,7 +5519,7 @@ export const TilingRenderer = React.forwardRef<
     ): void => {
       // While the switcher is open, Escape cancels the switch (without falling
       // through to maximize-restore), regardless of which capability owns Escape.
-      if (paneSwitcherStateRef.current != null && event.code === "Escape") {
+      if (controller.getState().switcher != null && event.code === "Escape") {
         preventDefault();
         cancelPaneSwitcher();
         return;
@@ -5534,7 +5527,7 @@ export const TilingRenderer = React.forwardRef<
       // Move mode is modal: while it is open, Escape cancels, bare Enter commits
       // (`insertLeafAdjacent`), the focus-direction bindings aim the destination,
       // and every other key is swallowed so the move stays predictable.
-      if (moveModeStateRef.current != null) {
+      if (controller.getState().moveMode != null) {
         if (event.code === "Escape") {
           preventDefault();
           cancelMoveMode();
@@ -5579,7 +5572,7 @@ export const TilingRenderer = React.forwardRef<
       // without also triggering an unrelated Escape binding (e.g. restore).
       if (
         event.code === "Escape" &&
-        multiSelectedLeafIdsRef.current.size > 0
+        controller.getState().multiSelect.size > 0
       ) {
         preventDefault();
         clearMultiSelection();
@@ -5645,7 +5638,7 @@ export const TilingRenderer = React.forwardRef<
             shift: cycleChord.shift,
           };
           const currentSwitcherState: TilingPaneSwitcherState | null =
-            paneSwitcherStateRef.current;
+            controller.getState().switcher;
           if (currentSwitcherState == null) {
             const opened: TilingPaneSwitcherState | null = openPaneSwitcher(
               leafIds,
@@ -5657,11 +5650,11 @@ export const TilingRenderer = React.forwardRef<
               return;
             }
             preventDefault();
-            setPaneSwitcherState(opened);
+            controller.setSwitcher(opened);
             return;
           }
           preventDefault();
-          setPaneSwitcherState(
+          controller.setSwitcher(
             advancePaneSwitcher(leafIds, currentSwitcherState, direction),
           );
           return;
@@ -5676,7 +5669,7 @@ export const TilingRenderer = React.forwardRef<
         // highlight (commit still happens on modifier release); otherwise it
         // routes through the command router as a direct focus-jump.
         const currentSwitcherState: TilingPaneSwitcherState | null =
-          paneSwitcherStateRef.current;
+          controller.getState().switcher;
         if (showSwitcherOverlay && currentSwitcherState != null) {
           const nextSwitcherState: TilingPaneSwitcherState = jumpPaneSwitcher(
             leafIds,
@@ -5684,7 +5677,7 @@ export const TilingRenderer = React.forwardRef<
             action.paneNumber,
           );
           preventDefault();
-          setPaneSwitcherState(nextSwitcherState);
+          controller.setSwitcher(nextSwitcherState);
           return;
         }
         if (
@@ -5723,6 +5716,7 @@ export const TilingRenderer = React.forwardRef<
       cancelMoveMode,
       cancelPaneSwitcher,
       commitMoveMode,
+      controller,
       dispatchCommand,
       interactionCapabilities.keyBindings,
       isFocusSelectionEnabled,
@@ -5781,9 +5775,10 @@ export const TilingRenderer = React.forwardRef<
       const focusWithinRoot: boolean = rootElement.contains(
         document.activeElement,
       );
+      const controllerSnapshot: TilingControllerState = controller.getState();
       const engaged: boolean =
-        paneSwitcherStateRef.current != null ||
-        moveModeStateRef.current != null ||
+        controllerSnapshot.switcher != null ||
+        controllerSnapshot.moveMode != null ||
         activeMaximizedLeafId != null ||
         focusWithinRoot ||
         isPointerWithinRootRef.current;
@@ -5798,6 +5793,7 @@ export const TilingRenderer = React.forwardRef<
     };
   }, [
     activeMaximizedLeafId,
+    controller,
     isFocusSelectionEnabled,
     isGroupingEnabled,
     isMasterLayoutEnabled,
@@ -5841,9 +5837,15 @@ export const TilingRenderer = React.forwardRef<
       !showSwitcherOverlay ||
       !leafIds.includes(paneSwitcherState.selectedLeafId)
     ) {
-      setPaneSwitcherState(null);
+      controller.setSwitcher(null);
     }
-  }, [isPaneSwitchingEnabled, leafIds, paneSwitcherState, showSwitcherOverlay]);
+  }, [
+    controller,
+    isPaneSwitchingEnabled,
+    leafIds,
+    paneSwitcherState,
+    showSwitcherOverlay,
+  ]);
 
   // Close move mode if it loses its footing: drag-rearrange turned off, the
   // source pane got statically gated (e.g. it became a static pane via the
@@ -5857,9 +5859,9 @@ export const TilingRenderer = React.forwardRef<
       !isLeafRearrangeEligible(moveModeState.sourceLeafId) ||
       !leafIds.includes(moveModeState.sourceLeafId)
     ) {
-      setMoveModeState(null);
+      controller.setMoveMode(null);
     }
-  }, [isLeafRearrangeEligible, leafIds, moveModeState]);
+  }, [controller, isLeafRearrangeEligible, leafIds, moveModeState]);
 
   // Move DOM focus into the maximized pane when a maximize begins, and back to
   // the tiling root on restore — so Escape (and every shortcut) keeps reaching
@@ -6720,7 +6722,7 @@ export const TilingRenderer = React.forwardRef<
             // button seems to have no trigger" defect. The control's effect
             // lives in its own `onClick`, so swallowing this focus is inert.
             if (
-              multiSelectedLeafIdsRef.current.size > 0 &&
+              controller.getState().multiSelect.size > 0 &&
               event?.target instanceof Element &&
               event.target.closest("button") != null
             ) {
@@ -7383,6 +7385,7 @@ export const TilingRenderer = React.forwardRef<
     },
     [
       beginResize,
+      controller,
       handleSeparatorKeyDown,
       moveModeState,
       config.gapPx,
@@ -7568,7 +7571,7 @@ export const TilingRenderer = React.forwardRef<
             tabs={paneTabs}
             selectedLeafId={paneSwitcherState.selectedLeafId}
             onSelect={(leafId: string): void => {
-              setPaneSwitcherState(null);
+              controller.setSwitcher(null);
               activateLeaf(leafId);
             }}
           />

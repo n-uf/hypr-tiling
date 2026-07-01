@@ -5,11 +5,33 @@ import {
   type DragResolvedTarget,
   dragMachineReducer,
 } from "./drag-machine";
+import { EMPTY_FOCUS_HISTORY, type FocusHistory } from "./focus-history";
 import {
   type DragInputDriver,
   type DragInputDriverSlotCommitment,
   createDragInputDriver,
 } from "./input-driver";
+import type { TilingMoveModeState, TilingPaneSwitcherState } from "./types";
+
+/**
+ * A store-slice update: either the next value outright, or a functional updater
+ * `(prev) => next`. Mirrors React's `useState` setter contract exactly — the
+ * renderer's existing functional-updater calls (e.g.
+ * `setMultiSelect((current) => toggleLeafMultiSelection(current, id))`) transfer
+ * verbatim, and the `Object.is(next, prev)` bail-out below reproduces
+ * `useState`'s no-op re-render suppression (e.g. `clearMultiSelection`'s
+ * return-`current`-when-already-empty).
+ */
+export type TilingControllerSliceUpdate<T> = T | ((previous: T) => T);
+
+function resolveSliceUpdate<T>(
+  update: TilingControllerSliceUpdate<T>,
+  previous: T,
+): T {
+  return typeof update === "function"
+    ? (update as (previous: T) => T)(previous)
+    : update;
+}
 
 /**
  * The runtime seam the controller's {@link DragInputDriver} resolves through —
@@ -34,16 +56,41 @@ export interface TilingControllerHost {
 /**
  * The controller-owned interaction state, exposed as a single immutable
  * snapshot the host subscribes to. The reference is STABLE across no-op
- * dispatches (the reducer returns its input verbatim on a no-op, so the
- * snapshot is only rebuilt on an actual transition) — this is the contract
- * `useSyncExternalStore` requires to avoid an infinite render loop.
+ * updates (each mutator rebuilds the snapshot ONLY when its slice actually
+ * changes under `Object.is`, so a dropped event / no-op set leaves the
+ * reference untouched) — this is the contract `useSyncExternalStore` requires
+ * to avoid an infinite render loop.
  *
- * Currently the drag FSM (`drag`). Layout stays controlled by the host (read
- * via the host's `getLayout`, intents emitted via `onLayoutChange`) and is NOT
- * mirrored here.
+ * Slices:
+ * - `drag` — the drag FSM (pickup → seat → commit).
+ * - `focus` — the UNCONTROLLED focused-leaf id. The host resolves the
+ *   controlled/uncontrolled merge itself (`focusedLeafId ?? state.focus`); the
+ *   controller owns only the internal fallback, so the prop-merge semantics
+ *   stay host-side and unchanged.
+ * - `maximize` — the UNCONTROLLED maximized-leaf id (host merge:
+ *   `maximizedLeafId !== undefined ? maximizedLeafId : state.maximize`, i.e. a
+ *   controlled `null` is honoured as "explicitly restored"; only `undefined`
+ *   falls back to this internal slice).
+ * - `switcher` — the in-flight macOS-style pane-switcher overlay (`null` when
+ *   closed).
+ * - `moveMode` — the in-flight keyboard move-mode pickup (`null` when idle).
+ * - `multiSelect` — the Alt/Opt+click multi-selection set (empty when none).
+ *
+ * The MRU focus history is owned by the controller too but kept OUT of this
+ * snapshot (see `getFocusHistory` / `updateFocusHistory`): pushing on every
+ * focus change must NOT notify subscribers, matching the ref semantics the
+ * renderer relied on.
+ *
+ * Layout stays controlled by the host (read via the host's `getLayout`, intents
+ * emitted via `onLayoutChange`) and is NOT mirrored here.
  */
 export interface TilingControllerState {
   readonly drag: DragMachineState;
+  readonly focus: string | null;
+  readonly maximize: string | null;
+  readonly switcher: TilingPaneSwitcherState | null;
+  readonly moveMode: TilingMoveModeState | null;
+  readonly multiSelect: ReadonlySet<string>;
 }
 
 /**
@@ -72,6 +119,36 @@ export interface TilingController {
   subscribe(listener: () => void): () => void;
   dispatch(event: DragMachineEvent): void;
   readonly input: DragInputDriver;
+  /**
+   * Set the UNCONTROLLED focused-leaf id. Value or functional updater; a no-op
+   * (result `Object.is`-equal to the current value) does not notify.
+   */
+  setFocus(update: TilingControllerSliceUpdate<string | null>): void;
+  /** Set the UNCONTROLLED maximized-leaf id. Value or updater; no-op-safe. */
+  setMaximize(update: TilingControllerSliceUpdate<string | null>): void;
+  /** Set the pane-switcher overlay slice (`null` closes). Value or updater; no-op-safe. */
+  setSwitcher(
+    update: TilingControllerSliceUpdate<TilingPaneSwitcherState | null>,
+  ): void;
+  /** Set the keyboard move-mode slice (`null` exits). Value or updater; no-op-safe. */
+  setMoveMode(
+    update: TilingControllerSliceUpdate<TilingMoveModeState | null>,
+  ): void;
+  /** Set the multi-selection set. Value or updater; no-op-safe (reference-equal result does not notify). */
+  setMultiSelect(
+    update: TilingControllerSliceUpdate<ReadonlySet<string>>,
+  ): void;
+  /**
+   * Read the current MRU focus history synchronously. NOT part of the notified
+   * snapshot — reading it never subscribes the caller to re-renders.
+   */
+  getFocusHistory(): FocusHistory;
+  /**
+   * Update the MRU focus history in place WITHOUT notifying subscribers
+   * (pushing on every focus change must not re-render — the renderer previously
+   * held this in a ref for exactly this reason).
+   */
+  updateFocusHistory(updater: (previous: FocusHistory) => FocusHistory): void;
   onViewportResize(): void;
   dispose(): void;
 }
@@ -84,16 +161,44 @@ export function createTilingController(
   config: TilingControllerConfig,
 ): TilingController {
   let dragState: DragMachineState = DRAG_MACHINE_INITIAL_STATE;
-  // Cached immutable snapshot. Rebuilt ONLY on an actual FSM transition so its
-  // reference stays stable across no-op dispatches — the `useSyncExternalStore`
+  let focus: string | null = null;
+  let maximize: string | null = null;
+  let switcher: TilingPaneSwitcherState | null = null;
+  let moveMode: TilingMoveModeState | null = null;
+  let multiSelect: ReadonlySet<string> = new Set<string>();
+  // MRU focus history — controller-owned but deliberately OUTSIDE the notified
+  // snapshot so a push does NOT trigger a re-render (the ref semantics the
+  // renderer relied on). Read synchronously via `getFocusHistory`.
+  let focusHistory: FocusHistory = EMPTY_FOCUS_HISTORY;
+  // Cached immutable snapshot. Rebuilt ONLY when a slice actually changes (each
+  // mutator bails out under `Object.is` before rebuilding) so its reference
+  // stays stable across no-op dispatches / sets — the `useSyncExternalStore`
   // stability contract.
-  let snapshot: TilingControllerState = { drag: dragState };
+  let snapshot: TilingControllerState = {
+    drag: dragState,
+    focus,
+    maximize,
+    switcher,
+    moveMode,
+    multiSelect,
+  };
   const listeners: Set<() => void> = new Set<() => void>();
 
   const notify = (): void => {
     for (const listener of listeners) {
       listener();
     }
+  };
+
+  const rebuildSnapshot = (): void => {
+    snapshot = {
+      drag: dragState,
+      focus,
+      maximize,
+      switcher,
+      moveMode,
+      multiSelect,
+    };
   };
 
   const dispatch = (event: DragMachineEvent): void => {
@@ -105,8 +210,82 @@ export function createTilingController(
       return;
     }
     dragState = next;
-    snapshot = { drag: dragState };
+    rebuildSnapshot();
     notify();
+  };
+
+  const setFocus = (
+    update: TilingControllerSliceUpdate<string | null>,
+  ): void => {
+    const next: string | null = resolveSliceUpdate(update, focus);
+    if (Object.is(next, focus)) {
+      return;
+    }
+    focus = next;
+    rebuildSnapshot();
+    notify();
+  };
+
+  const setMaximize = (
+    update: TilingControllerSliceUpdate<string | null>,
+  ): void => {
+    const next: string | null = resolveSliceUpdate(update, maximize);
+    if (Object.is(next, maximize)) {
+      return;
+    }
+    maximize = next;
+    rebuildSnapshot();
+    notify();
+  };
+
+  const setSwitcher = (
+    update: TilingControllerSliceUpdate<TilingPaneSwitcherState | null>,
+  ): void => {
+    const next: TilingPaneSwitcherState | null = resolveSliceUpdate(
+      update,
+      switcher,
+    );
+    if (Object.is(next, switcher)) {
+      return;
+    }
+    switcher = next;
+    rebuildSnapshot();
+    notify();
+  };
+
+  const setMoveMode = (
+    update: TilingControllerSliceUpdate<TilingMoveModeState | null>,
+  ): void => {
+    const next: TilingMoveModeState | null = resolveSliceUpdate(
+      update,
+      moveMode,
+    );
+    if (Object.is(next, moveMode)) {
+      return;
+    }
+    moveMode = next;
+    rebuildSnapshot();
+    notify();
+  };
+
+  const setMultiSelect = (
+    update: TilingControllerSliceUpdate<ReadonlySet<string>>,
+  ): void => {
+    const next: ReadonlySet<string> = resolveSliceUpdate(update, multiSelect);
+    if (Object.is(next, multiSelect)) {
+      return;
+    }
+    multiSelect = next;
+    rebuildSnapshot();
+    notify();
+  };
+
+  const getFocusHistory = (): FocusHistory => focusHistory;
+
+  const updateFocusHistory = (
+    updater: (previous: FocusHistory) => FocusHistory,
+  ): void => {
+    focusHistory = updater(focusHistory);
   };
 
   const input: DragInputDriver = createDragInputDriver({
@@ -149,6 +328,13 @@ export function createTilingController(
     subscribe,
     dispatch,
     input,
+    setFocus,
+    setMaximize,
+    setSwitcher,
+    setMoveMode,
+    setMultiSelect,
+    getFocusHistory,
+    updateFocusHistory,
     onViewportResize,
     dispose,
   };
