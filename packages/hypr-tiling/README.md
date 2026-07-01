@@ -1,13 +1,8 @@
-<table>
-  <tr>
-    <td>
-      <img src="../../assets/hypr-tiling-logo-transparent.png" alt="hypr-tiling" width="180" />
-    </td>
-    <td>
-      <h1>@n-uf/hypr-tiling</h1>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="../../assets/hypr-tiling-logo-transparent.png" alt="hypr-tiling" width="112" />
+</p>
+<h1 align="center">@n-uf/hypr-tiling</h1>
+<p align="center">Dynamic tiling for React</p>
 
 Dynamic tiling for React: a recursive split-tree renderer for drag/drop,
 resizable, keyboard-controlled panes — inspired by
