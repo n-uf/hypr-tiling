@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    name: build / api:check / typecheck / test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build first so api:check has the emitted dist/index.d.ts to analyze,
+      # and so the web prerender step runs.
+      - name: Build (packages + web, incl. prerender)
+        run: pnpm build
+
+      # API Extractor leak gate: fails if the checked-in report is out of date
+      # or if an @internal symbol leaks back onto the public entry point.
+      - name: API Extractor leak gate
+        run: pnpm --filter @n-uf/hypr-tiling api:check
+
+      - name: Typecheck (packages + web)
+        run: pnpm typecheck
+
+      - name: Test suite
+        run: pnpm test
