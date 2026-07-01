@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../core/state";
-import { resolveLiveDisplayLayout } from "../react/dynamic-tiling-renderer";
+import { resolveLiveDisplayLayout } from "../react/tiling-renderer";
 import {
   DRAG_MACHINE_INITIAL_STATE,
   deriveCandidateTree,

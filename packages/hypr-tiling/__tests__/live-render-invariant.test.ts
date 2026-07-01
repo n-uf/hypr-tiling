@@ -4,7 +4,7 @@ import {
   resolveLeafDropPreview,
   resolveLeafDropPreviewForMode,
   resolveStableDragHitFootprints,
-} from "../react/dynamic-tiling-renderer";
+} from "../react/tiling-renderer";
 import { deriveCandidateTree } from "../core/drag-machine";
 import { PLACEMENT_BY_DROP_ZONE } from "../core/projected-layout";
 import { collectLeafFootprints, footprintsByLeafId } from "../core/leaf-geometry";

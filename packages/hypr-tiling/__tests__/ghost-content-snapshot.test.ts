@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 import { createElement } from "react";
 import type { ReactElement } from "react";
-import { buildDragPaneSnapshot } from "../react/dynamic-tiling-renderer";
+import { buildDragPaneSnapshot } from "../react/tiling-renderer";
 import type { TilingDragPaneSnapshot, TilingTile } from "../core/types";
 
 /**

@@ -24,7 +24,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "@jest/globals";
 import * as React from "react";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { TilingRenderer } from "../react/dynamic-tiling-renderer";
+import { TilingRenderer } from "../react/tiling-renderer";
 import { isMultiSelectModifierActive } from "../core/multi-selection";
 import { collectGroups } from "../core/state";
 import type {

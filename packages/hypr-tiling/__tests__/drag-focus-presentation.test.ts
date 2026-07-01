@@ -7,7 +7,7 @@ import {
   DragSourceSlotReservation,
   buildDragPaneSnapshot,
   renderDragPaneShell,
-} from "../react/dynamic-tiling-renderer";
+} from "../react/tiling-renderer";
 import { resolveDragCommitFocusLeafId } from "../core/drag-machine";
 import {
   TILING_THEME_REGISTRY,

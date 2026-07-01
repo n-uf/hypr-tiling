@@ -5,7 +5,7 @@ import {
   DRAG_ANIMATION_SPEED_MIN_PERCENT,
   dragSpeedsAtParity,
   resolveDragAnimationDurationMs,
-} from "../react/dynamic-tiling-renderer";
+} from "../react/tiling-renderer";
 
 describe("dynamic-tiling-renderer — resolveDragAnimationDurationMs", () => {
   it("returns the baseline at 100%", () => {

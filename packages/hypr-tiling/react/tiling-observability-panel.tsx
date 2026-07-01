@@ -6,7 +6,7 @@ import {
   DRAG_ANIMATION_SPEED_MIN_PERCENT,
   resolveDragAnimationDurationMs,
   usePrefersReducedMotion,
-} from "./dynamic-tiling-renderer";
+} from "./tiling-renderer";
 import {
   DEFAULT_GHOST_PICKUP_SCALE_PERCENT,
   GHOST_PICKUP_SCALE_MAX_PERCENT,

@@ -3,7 +3,7 @@ import {
   DEFAULT_TILING_LAYOUT_CONFIG,
   resolvePointerTargetFromMeasurement,
   resolveSeatFootprint,
-} from "../react/dynamic-tiling-renderer";
+} from "../react/tiling-renderer";
 import { resolveInteractionCapabilities } from "../core/interaction-capabilities";
 import type { MeasurementPort } from "../core/measurement-port";
 import type {

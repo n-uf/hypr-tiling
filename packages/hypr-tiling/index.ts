@@ -1,4 +1,4 @@
-export { TilingRenderer } from "./react/dynamic-tiling-renderer";
+export { TilingRenderer } from "./react/tiling-renderer";
 export {
   BASELINE_DRAG_HOP_DURATION_MS,
   DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
@@ -9,7 +9,7 @@ export {
   dragSpeedsAtParity,
   tileOrderByLeafId,
   resolveDragAnimationDurationMs,
-} from "./react/dynamic-tiling-renderer";
+} from "./react/tiling-renderer";
 export {
   DEFAULT_TILE_ACCENT,
   DEFAULT_TILING_THEME_ID,

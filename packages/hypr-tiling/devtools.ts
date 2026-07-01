@@ -24,4 +24,4 @@ export {
 export {
   TILING_OBSERVABILITY_COLOR_DEFAULTS,
   TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
-} from "./react/dynamic-tiling-renderer";
+} from "./react/tiling-renderer";
