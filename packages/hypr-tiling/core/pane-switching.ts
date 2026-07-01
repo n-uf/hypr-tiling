@@ -358,7 +358,10 @@ export function jumpToPaneIndex(paneNumber: number, count: number): number | nul
   return paneNumber - 1;
 }
 
-/** Resolve the cycled (next/previous, wraparound) leaf id, or `null` if empty. */
+/**
+ * Resolve the cycled (next/previous, wraparound) leaf id, or `null` if empty.
+ * @internal
+ */
 export function resolveCycledPaneId(
   leafIds: ReadonlyArray<string>,
   currentLeafId: string | null,
@@ -425,6 +428,7 @@ export function hasAnyModifier(modifiers: ResolvedTilingKeyChordModifiers): bool
  * Open the switcher from a cycle press: seed from the focused pane and advance
  * once in `direction` (so the first `Alt+]` already highlights the next pane,
  * matching the macOS Cmd+Tab feel). Returns `null` when there are no panes.
+ * @internal
  */
 export function openPaneSwitcher(
   leafIds: ReadonlyArray<string>,
@@ -439,7 +443,10 @@ export function openPaneSwitcher(
   return { selectedLeafId, holdModifiers };
 }
 
-/** Advance the open switcher's highlight one step in `direction` (wraparound). */
+/**
+ * Advance the open switcher's highlight one step in `direction` (wraparound).
+ * @internal
+ */
 export function advancePaneSwitcher(
   leafIds: ReadonlyArray<string>,
   state: TilingPaneSwitcherState,
@@ -456,6 +463,7 @@ export function advancePaneSwitcher(
  * Set the open switcher's highlight to a 1-based pane number. Out-of-range
  * requests are a no-op (the highlight is unchanged), mirroring the
  * non-clamping jump semantics.
+ * @internal
  */
 export function jumpPaneSwitcher(
   leafIds: ReadonlyArray<string>,
@@ -469,7 +477,10 @@ export function jumpPaneSwitcher(
   return { ...state, selectedLeafId: jumpedLeafId };
 }
 
-/** The pane id to activate when the switcher commits. */
+/**
+ * The pane id to activate when the switcher commits.
+ * @internal
+ */
 export function commitPaneSwitcher(state: TilingPaneSwitcherState): string {
   return state.selectedLeafId;
 }

@@ -50,12 +50,18 @@ export function clampByMinSize(
   return Math.min(Math.max(ratio, boundedMin), boundedMax);
 }
 
-/** Dimension that runs ALONG a split's main axis (the dimension the ratio distributes). */
+/**
+ * Dimension that runs ALONG a split's main axis (the dimension the ratio distributes).
+ * @internal
+ */
 export function splitAxisDimension(axis: TilingSplitAxis): TilingDimension {
   return axis === "horizontal" ? "width" : "height";
 }
 
-/** Dimension perpendicular to a split's main axis. */
+/**
+ * Dimension perpendicular to a split's main axis.
+ * @internal
+ */
 export function crossAxisDimension(axis: TilingSplitAxis): TilingDimension {
   return axis === "horizontal" ? "height" : "width";
 }
@@ -189,12 +195,16 @@ export function renormalizeFlexibleRatios(
   return weights;
 }
 
-/** Main-axis sizing instruction for one child of a binary split. */
+/**
+ * Main-axis sizing instruction for one child of a binary split.
+ * @internal
+ */
 export type SplitChildMainSizing =
   | { kind: "content" }
   | { kind: "fill" }
   | { kind: "ratio"; basisFraction: number };
 
+/** @internal */
 export interface BinarySplitDistribution {
   first: SplitChildMainSizing;
   second: SplitChildMainSizing;
@@ -217,6 +227,7 @@ export interface BinarySplitDistribution {
  * both-static tree reaches the renderer by an unnormalized path (hand-authored
  * `INITIAL_LAYOUT`, persistence, a future mutation that forgets to normalize),
  * the `second` child FILLS so the axis still re-absorbs the delta and cannot gap.
+ * @internal
  */
 export function resolveBinarySplitDistribution(
   firstStaticAlongAxis: boolean,

@@ -10,18 +10,7 @@ import * as React_2 from 'react';
 export function accentHue(accent: TilingTileAccent | undefined): TilingAccentHue;
 
 // @public
-export function advancePaneSwitcher(leafIds: ReadonlyArray<string>, state: TilingPaneSwitcherState, direction: TilingPaneCycleDirection): TilingPaneSwitcherState;
-
-// @public
 export const BASELINE_DRAG_HOP_DURATION_MS: number;
-
-// @public (undocumented)
-export interface BinarySplitDistribution {
-    // (undocumented)
-    first: SplitChildMainSizing;
-    // (undocumented)
-    second: SplitChildMainSizing;
-}
 
 // @public
 export function canGroupMultiSelection(layout: TilingLayoutNode, selection: ReadonlySet<string>): boolean;
@@ -40,12 +29,6 @@ export function collectSplitNodes(node: TilingLayoutNode): ReadonlyArray<TilingS
 
 // @public
 export function commandRequiredCapability(command: TilingCommand): keyof TilingCommandGates | null;
-
-// @public
-export function commitPaneSwitcher(state: TilingPaneSwitcherState): string;
-
-// @public
-export function crossAxisDimension(axis: TilingSplitAxis): TilingDimension;
 
 // @public (undocumented)
 export const DEFAULT_DRAG_ANIMATION_SPEED_PERCENT: number;
@@ -181,9 +164,6 @@ export function isStaticOnCrossAxis(node: TilingLayoutNode, axis: TilingSplitAxi
 export function isStructurallyValidLayout(node: TilingLayoutNode): boolean;
 
 // @public
-export function jumpPaneSwitcher(leafIds: ReadonlyArray<string>, state: TilingPaneSwitcherState, paneNumber: number): TilingPaneSwitcherState;
-
-// @public
 export function keyboardActionToCommand(action: TilingKeyboardAction): TilingCommand;
 
 // @public
@@ -214,9 +194,6 @@ export interface MultiSelectModifierState {
 }
 
 // @public
-export function openPaneSwitcher(leafIds: ReadonlyArray<string>, focusedLeafId: string | null, direction: TilingPaneCycleDirection, holdModifiers: ResolvedTilingKeyChordModifiers): TilingPaneSwitcherState | null;
-
-// @public
 export function pruneFocusHistory(history: FocusHistory, validLeafIds: ReadonlyArray<string>): FocusHistory;
 
 // @public
@@ -233,12 +210,6 @@ export function removeLeafTile(layout: TilingLayoutNode, leafId: string): Tiling
 
 // @public
 export function renormalizeFlexibleRatios(children: ReadonlyArray<FlexibleRatioChild>): number[];
-
-// @public
-export function resolveBinarySplitDistribution(firstStaticAlongAxis: boolean, secondStaticAlongAxis: boolean, ratio: number): BinarySplitDistribution;
-
-// @public
-export function resolveCycledPaneId(leafIds: ReadonlyArray<string>, currentLeafId: string | null, direction: TilingPaneCycleDirection): string | null;
 
 // @public (undocumented)
 export function resolveDragAnimationDurationMs(speedPercent: number): number;
@@ -478,9 +449,6 @@ export function shouldRenderSplitDivider(input: SplitBoundaryStaticFlags): boole
 // @public
 export function siblingSubtreeForLeaf(node: TilingLayoutNode, leafId: string): TilingLayoutNode | null;
 
-// @public
-export function splitAxisDimension(axis: TilingSplitAxis): TilingDimension;
-
 // @public (undocumented)
 export interface SplitBoundaryStaticFlags {
     // (undocumented)
@@ -490,16 +458,6 @@ export interface SplitBoundaryStaticFlags {
     // (undocumented)
     secondStaticAlongAxis: boolean;
 }
-
-// @public
-export type SplitChildMainSizing = {
-    kind: "content";
-} | {
-    kind: "fill";
-} | {
-    kind: "ratio";
-    basisFraction: number;
-};
 
 // @public (undocumented)
 export function swapLeafTiles(node: TilingLayoutNode, firstLeafId: string, secondLeafId: string): TilingLayoutNode;
