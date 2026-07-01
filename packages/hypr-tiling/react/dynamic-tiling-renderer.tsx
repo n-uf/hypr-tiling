@@ -27,14 +27,12 @@ import {
 } from "../core/drag-cursor";
 import { DEFAULT_DRAG_HOP_EASING, resolveDragEasing } from "../core/drag-easing";
 import {
-  DRAG_MACHINE_INITIAL_STATE,
   activeDragSourceLeafId,
   activeResolvedTarget,
   presentationDragSourceLeafId,
   presentationResolvedTarget,
   createFrameCoalescer,
   deriveCandidateTree,
-  dragMachineReducer,
   isCommittableTarget,
   previousZoneSeed,
   resolveDragCommitFocusLeafId,
@@ -46,9 +44,14 @@ import {
 } from "../core/drag-machine";
 import {
   type DragInputDriver,
-  createDragInputDriver,
   shouldArmIdleWatchdog,
 } from "../core/input-driver";
+import {
+  type TilingController,
+  type TilingControllerHost,
+  type TilingControllerState,
+  createTilingController,
+} from "../core/controller";
 import {
   isDragPresentationActive,
   resolveDragPresentation,
@@ -3772,10 +3775,52 @@ export const TilingRenderer = React.forwardRef<
   // `dragHoverLeafId` / `dragVisualState` useStates + `didDropSucceedRef` /
   // `stableDropStateRef`). Every terminal pointer event routes
   // `dragging → settling → idle`, so a teardown edge can never be missed.
-  const [dragState, dispatchDrag] = React.useReducer(
-    dragMachineReducer,
-    DRAG_MACHINE_INITIAL_STATE,
+  // The framework-free interaction controller (`core/controller.ts`) owns the
+  // drag FSM store + the seat/latch input driver. The renderer CONSUMES it: the
+  // FSM is read via `useSyncExternalStore`, DOM events are forwarded into
+  // `controller.input.*` / `controller.dispatch`. The controller is created
+  // ONCE (its in-flight seat/latch must survive the pointer effect's per-drag
+  // re-subscribes); its host seam (DOM target resolution, pointer capture, live
+  // slot-commitment) is populated below once `resolvePointerTarget` exists, and
+  // the driver reads it LAZILY through `controllerHostRef` so creation order is
+  // decoupled from the host wiring.
+  const controllerHostRef = React.useRef<TilingControllerHost | null>(null);
+  const controllerRef = React.useRef<TilingController | null>(null);
+  if (controllerRef.current == null) {
+    controllerRef.current = createTilingController({
+      host: {
+        resolveTarget: (
+          clientX: number,
+          clientY: number,
+          sourceLeafId: string,
+          previousTarget: TilingDropState | null,
+        ): TilingDropState | null =>
+          controllerHostRef.current?.resolveTarget(
+            clientX,
+            clientY,
+            sourceLeafId,
+            previousTarget,
+          ) ?? null,
+        capturePointer: (pointerId: number): void => {
+          controllerHostRef.current?.capturePointer(pointerId);
+        },
+        getSlotCommitment: () =>
+          controllerHostRef.current?.getSlotCommitment() ?? {
+            mode: "delta-responsive",
+            reresolveDeltaPx: 24,
+          },
+      },
+    });
+  }
+  const controller: TilingController = controllerRef.current;
+  const controllerState: TilingControllerState = React.useSyncExternalStore(
+    controller.subscribe,
+    controller.getState,
+    controller.getState,
   );
+  const dragState: DragMachineState = controllerState.drag;
+  const dispatchDrag: (event: Parameters<TilingController["dispatch"]>[0]) => void =
+    controller.dispatch;
   // Latest FSM state mirrored to a ref so the window-level pointer listeners read
   // the current phase synchronously without re-subscribing on every move.
   const dragStateRef = React.useRef<DragMachineState>(dragState);
@@ -5974,36 +6019,36 @@ export const TilingRenderer = React.forwardRef<
   const resolvePointerTargetRef = React.useRef(resolvePointerTarget);
   resolvePointerTargetRef.current = resolvePointerTarget;
 
-  // The framework-free FSM input driver: it owns the seat/latch cluster and runs
-  // the lifted `processPointerSample` + release-latch pipeline. Created ONCE (so
-  // the cluster survives the pointer effect's per-drag re-subscribes) with a host
-  // whose methods read live refs / the stable dispatch — so it never goes stale.
-  const inputDriverRef = React.useRef<DragInputDriver | null>(null);
-  if (inputDriverRef.current == null) {
-    inputDriverRef.current = createDragInputDriver({
-      getState: (): DragMachineState => dragStateRef.current,
-      dispatch: dispatchDrag,
-      resolveTarget: (
-        clientX: number,
-        clientY: number,
-        sourceLeafId: string,
-        previousTarget: TilingDropState | null,
-      ): TilingDropState | null =>
-        resolvePointerTargetRef.current(clientX, clientY, sourceLeafId, previousTarget),
-      capturePointer: (pointerId: number): void => {
-        // Mirror the captured-id bookkeeping only when the (best-effort) root
-        // capture actually ran — the port swallows a thrown/absent capture.
-        if (pointerCapturePort.capture(pointerId)) {
-          capturedPointerIdRef.current = pointerId;
-        }
-      },
-      getSlotCommitment: () => ({
-        mode: slotCommitmentRef.current.mode,
-        reresolveDeltaPx: slotCommitmentRef.current.reresolveDeltaPx,
-      }),
-    });
-  }
-  const inputDriver: DragInputDriver = inputDriverRef.current;
+  // Populate the interaction controller's host seam now that
+  // `resolvePointerTarget` exists. Assigned on every render (identity-stable
+  // reads through live refs / the stable pointer-capture port) so the once-
+  // created driver always resolves through the LIVE callback without re-creating
+  // the driver and losing the in-flight seat/latch. The driver only INVOKES
+  // these during an active drag — long after the first render populates the ref.
+  controllerHostRef.current = {
+    resolveTarget: (
+      clientX: number,
+      clientY: number,
+      sourceLeafId: string,
+      previousTarget: TilingDropState | null,
+    ): TilingDropState | null =>
+      resolvePointerTargetRef.current(clientX, clientY, sourceLeafId, previousTarget),
+    capturePointer: (pointerId: number): void => {
+      // Mirror the captured-id bookkeeping only when the (best-effort) root
+      // capture actually ran — the port swallows a thrown/absent capture.
+      if (pointerCapturePort.capture(pointerId)) {
+        capturedPointerIdRef.current = pointerId;
+      }
+    },
+    getSlotCommitment: () => ({
+      mode: slotCommitmentRef.current.mode,
+      reresolveDeltaPx: slotCommitmentRef.current.reresolveDeltaPx,
+    }),
+  };
+  // The framework-free FSM input driver (owns the seat/latch cluster + the
+  // lifted `processPointerSample` + release-latch pipeline), obtained from the
+  // controller.
+  const inputDriver: DragInputDriver = controller.input;
 
   // The drag input layer. Active for the WHOLE armed/dragging lifetime. The
   // captured pointer (on the STABLE root, not a candidate-tree tile that
