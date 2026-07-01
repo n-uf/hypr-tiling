@@ -32,7 +32,13 @@ export {
   type TilingThemeRootTokens,
   type TilingThemeTopBarTokens,
 } from "./react/theme";
-export { TILING_DROP_INTENT_CONFIG } from "./core/drop-intent-resolver";
+export {
+  TILING_DROP_INTENT_CONFIG,
+  type TilingDropIntentBaseConfig,
+  type TilingDropIntentState,
+  type TilingEdgeZone,
+} from "./core/drop-intent-resolver";
+export type { DragResolvedTarget } from "./core/drag-machine";
 export {
   commandRequiredCapability,
   isCommandEnabled,
@@ -130,6 +136,7 @@ export {
   toggleSplitAxis,
   ungroupNode,
   updateSplitRatio,
+  type GroupLeavesOptions,
 } from "./core/state";
 export type {
   TilingDropAction,
@@ -191,4 +198,16 @@ export type {
   TilingResizeCapability,
   TilingSlotCommitmentCapability,
   TilingSlotCommitmentMode,
+  TilingLayoutMode,
+  TilingMasterOrientation,
+  TilingTitleBarSizingMode,
+  TilingLeafDropPreview,
+  TilingLeafPreviewMode,
+  TilingLeafPreviewRole,
+  TilingDropHitZoneGeometryCapability,
+  ResolvedTilingDropHitZoneGeometryCapability,
+  TilingPaneTitleBarControlsCapability,
+  ResolvedTilingPaneTitleBarControlsCapability,
+  TilingTouchDragCapability,
+  ResolvedTilingTouchDragCapability,
 } from "./core/types";

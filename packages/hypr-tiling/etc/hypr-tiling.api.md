@@ -107,6 +107,9 @@ export interface DragCursorViewportBounds {
 }
 
 // @public
+export type DragResolvedTarget = TilingDropIntentState;
+
+// @public
 export function dragSpeedsAtParity(ghostTransitSpeedPercent: number, survivorReflowSpeedPercent: number): boolean;
 
 // @public
@@ -135,10 +138,14 @@ export interface FocusHistory {
     readonly entries: ReadonlyArray<string>;
 }
 
-// Warning: (ae-forgotten-export) The symbol "GroupLeavesOptions" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function groupLeaves(layout: TilingLayoutNode, leafIds: ReadonlyArray<string>, options?: GroupLeavesOptions): TilingLayoutNode;
+
+// @public
+export interface GroupLeavesOptions {
+    groupId?: string;
+    hostLeafId?: string;
+}
 
 // @public
 export function hasAnyModifier(modifiers: ResolvedTilingKeyChordModifiers): boolean;
@@ -236,8 +243,6 @@ export function resolveCycledPaneId(leafIds: ReadonlyArray<string>, currentLeafI
 // @public (undocumented)
 export function resolveDragAnimationDurationMs(speedPercent: number): number;
 
-// Warning: (ae-forgotten-export) The symbol "DragResolvedTarget" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function resolveDragCursorPresentation(resolvedTarget: DragResolvedTarget | null, sourceLeafId: string): DragCursorPresentation;
 
@@ -257,6 +262,20 @@ export interface ResolvedTilingDragRecoveryCapability {
 }
 
 // @public
+export interface ResolvedTilingDropHitZoneGeometryCapability {
+    // (undocumented)
+    centerMinPx: number;
+    // (undocumented)
+    centerRatio: number;
+    // (undocumented)
+    centerRatioX: number;
+    // (undocumented)
+    centerRatioY: number;
+    // (undocumented)
+    hysteresisPx: number;
+}
+
+// @public
 export interface ResolvedTilingInteractionCapabilities {
     // (undocumented)
     coherentTransit: boolean;
@@ -266,8 +285,6 @@ export interface ResolvedTilingInteractionCapabilities {
     dragMode: TilingDragMode;
     // (undocumented)
     dragRecovery: ResolvedTilingDragRecoveryCapability;
-    // Warning: (ae-forgotten-export) The symbol "ResolvedTilingDropHitZoneGeometryCapability" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     dropHitZoneGeometry: ResolvedTilingDropHitZoneGeometryCapability;
     // (undocumented)
@@ -285,8 +302,6 @@ export interface ResolvedTilingInteractionCapabilities {
     maximize: ResolvedTilingMaximizeCapability;
     // (undocumented)
     paneSwitching: ResolvedTilingPaneSwitchingCapability;
-    // Warning: (ae-forgotten-export) The symbol "ResolvedTilingPaneTitleBarControlsCapability" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     paneTitleBarControls: ResolvedTilingPaneTitleBarControlsCapability;
     // (undocumented)
@@ -299,8 +314,6 @@ export interface ResolvedTilingInteractionCapabilities {
     slotCommitment: ResolvedTilingSlotCommitmentCapability;
     // (undocumented)
     slotHopInEnabled: boolean;
-    // Warning: (ae-forgotten-export) The symbol "ResolvedTilingTouchDragCapability" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     touchDrag: ResolvedTilingTouchDragCapability;
 }
@@ -406,11 +419,27 @@ export interface ResolvedTilingPaneSwitchingCapability {
 }
 
 // @public
+export interface ResolvedTilingPaneTitleBarControlsCapability {
+    // (undocumented)
+    acquireSpace: boolean;
+    // (undocumented)
+    sizing: boolean;
+}
+
+// @public
 export interface ResolvedTilingSlotCommitmentCapability {
     // (undocumented)
     mode: TilingSlotCommitmentMode;
     // (undocumented)
     reresolveDeltaPx: number;
+}
+
+// @public
+export interface ResolvedTilingTouchDragCapability {
+    // (undocumented)
+    enable: boolean;
+    // (undocumented)
+    longPressMs: number;
 }
 
 // @public
@@ -484,8 +513,6 @@ export const TILING_ACCENT_HUES: Record<TilingTileAccent, TilingAccentHue>;
 // @public
 export const TILING_DASHBOARD_PRESET: TilingInteractionCapabilities;
 
-// Warning: (ae-forgotten-export) The symbol "TilingDropIntentBaseConfig" needs to be exported by the entry point index.d.ts
-//
 // @public (undocumented)
 export const TILING_DROP_INTENT_CONFIG: TilingDropIntentBaseConfig;
 
@@ -678,6 +705,24 @@ export interface TilingDragRecoveryCapability {
 // @public (undocumented)
 export type TilingDropAction = "swap" | "edge-insert" | "split-container-insert" | "group-merge" | "none";
 
+// @public
+export interface TilingDropHitZoneGeometryCapability {
+    centerMinPx?: number;
+    centerRatio?: number;
+    centerRatioX?: number;
+    centerRatioY?: number;
+    hysteresisPx?: number;
+}
+
+// @public (undocumented)
+export interface TilingDropIntentBaseConfig {
+    centerMinPx: number;
+    centerRatio: number;
+    centerRatioX?: number;
+    centerRatioY?: number;
+    hysteresisPx: number;
+}
+
 // @public (undocumented)
 export interface TilingDropIntentDebugState {
     // (undocumented)
@@ -725,6 +770,52 @@ export interface TilingDropIntentDebugState {
 }
 
 // @public (undocumented)
+export interface TilingDropIntentState {
+    // (undocumented)
+    action: TilingDropAction;
+    // (undocumented)
+    axisPath: ReadonlyArray<TilingSplitAxis>;
+    // (undocumented)
+    blockedReason: string | null;
+    // (undocumented)
+    centerDistancePx: number;
+    // (undocumented)
+    centerRectHeightPx: number;
+    // (undocumented)
+    centerRectWidthPx: number;
+    // (undocumented)
+    dominantEdge: TilingEdgeZone;
+    // (undocumented)
+    edgeThresholdRatio: number;
+    // (undocumented)
+    fallbackReason: string | null;
+    // (undocumented)
+    finalEdge: TilingEdgeZone | null;
+    // (undocumented)
+    leafId: string;
+    // (undocumented)
+    nearestEdgeDistancePx: number;
+    // (undocumented)
+    paneLocalX: number;
+    // (undocumented)
+    paneLocalY: number;
+    // (undocumented)
+    rejectedSplitReasons: ReadonlyArray<string>;
+    // (undocumented)
+    selectedSplitDistancePx: number | null;
+    // (undocumented)
+    selectedSplitZone: TilingEdgeZone | null;
+    // (undocumented)
+    targetSplitId: string | null;
+    // (undocumented)
+    targetSplitPlacement: "first" | "second" | null;
+    // (undocumented)
+    tuning: TilingDropIntentTuningState;
+    // (undocumented)
+    zone: TilingLeafDropZone;
+}
+
+// @public (undocumented)
 export interface TilingDropIntentTuningState {
     // (undocumented)
     centerRatio: number;
@@ -735,6 +826,9 @@ export interface TilingDropIntentTuningState {
     // (undocumented)
     hysteresisPx: number;
 }
+
+// @public (undocumented)
+export type TilingEdgeZone = Exclude<TilingLeafDropZone, "center">;
 
 // @public (undocumented)
 export type TilingFocusDirection = "left" | "right" | "up" | "down";
@@ -764,7 +858,6 @@ export interface TilingInteractionCapabilities {
     customCursor?: boolean;
     dragMode?: TilingDragMode;
     dragRecovery?: TilingDragRecoveryCapability;
-    // Warning: (ae-forgotten-export) The symbol "TilingDropHitZoneGeometryCapability" needs to be exported by the entry point index.d.ts
     dropHitZoneGeometry?: TilingDropHitZoneGeometryCapability;
     focus?: boolean;
     ghostPickupScalePercent?: number;
@@ -774,14 +867,12 @@ export interface TilingInteractionCapabilities {
     masterLayout?: boolean;
     maximize?: TilingMaximizeCapability;
     paneSwitching?: TilingPaneSwitchingCapability;
-    // Warning: (ae-forgotten-export) The symbol "TilingPaneTitleBarControlsCapability" needs to be exported by the entry point index.d.ts
     paneTitleBarControls?: TilingPaneTitleBarControlsCapability;
     rearrange?: boolean;
     resize?: TilingResizeCapability;
     resizeHandlesVisible?: boolean;
     slotCommitment?: TilingSlotCommitmentCapability;
     slotHopInEnabled?: boolean;
-    // Warning: (ae-forgotten-export) The symbol "TilingTouchDragCapability" needs to be exported by the entry point index.d.ts
     touchDrag?: TilingTouchDragCapability;
 }
 
@@ -929,8 +1020,23 @@ export interface TilingLayoutConfig {
     minPaneSizePx: number;
 }
 
+// @public
+export type TilingLayoutMode = "dwindle" | "master";
+
 // @public (undocumented)
 export type TilingLayoutNode = TilingLeafNode | TilingSplitNode | TilingGroupNode;
+
+// @public (undocumented)
+export interface TilingLeafDropPreview {
+    // (undocumented)
+    mode: TilingLeafPreviewMode;
+    // (undocumented)
+    partnerLeafId: string;
+    // (undocumented)
+    role: TilingLeafPreviewRole;
+    // (undocumented)
+    zone: TilingLeafDropZone;
+}
 
 // @public (undocumented)
 export type TilingLeafDropZone = "center" | "left" | "right" | "top" | "bottom";
@@ -945,6 +1051,12 @@ export interface TilingLeafNode {
     // (undocumented)
     tileId: string;
 }
+
+// @public (undocumented)
+export type TilingLeafPreviewMode = "swap" | "edge-insert";
+
+// @public (undocumented)
+export type TilingLeafPreviewRole = "drag-source-landing-shadow" | "drop-target-result-shadow";
 
 // @public (undocumented)
 export interface TilingLiveHitEdgeDebugState {
@@ -993,6 +1105,9 @@ export interface TilingLiveHitLogState {
     // (undocumented)
     sourcePaneFootprint: TilingPaneFootprint | null;
 }
+
+// @public
+export type TilingMasterOrientation = "left" | "right" | "top" | "bottom";
 
 // @public
 export interface TilingMaximizeCapability {
@@ -1147,6 +1262,12 @@ export interface TilingPaneSwitchingCapability {
     tabDoubleClickMaximize?: boolean;
 }
 
+// @public
+export interface TilingPaneTitleBarControlsCapability {
+    acquireSpace?: boolean;
+    sizing?: boolean;
+}
+
 // @public (undocumented)
 export const TilingRenderer: React_2.ForwardRefExoticComponent<TilingRendererProps & React_2.RefAttributes<TilingCommandHandle>>;
 
@@ -1266,8 +1387,6 @@ export interface TilingRenderTileProps {
     paneHitZonesAlpha: number;
     paneOrdinal: number;
     paneWidthPx: number;
-    // Warning: (ae-forgotten-export) The symbol "TilingLeafDropPreview" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     preview: TilingLeafDropPreview | null;
     // (undocumented)
@@ -1438,6 +1557,15 @@ export interface TilingTileAccentSwatch {
     swatchClassName: string;
 }
 
+// @public
+export type TilingTitleBarSizingMode = "flexible" | "static-height" | "static-width" | "static-both";
+
+// @public
+export interface TilingTouchDragCapability {
+    enable?: boolean;
+    longPressMs?: number;
+}
+
 // @public (undocumented)
 export interface TilingViewportCursorState {
     // (undocumented)
@@ -1460,12 +1588,6 @@ export function updateSplitRatio(node: TilingLayoutNode, splitId: string, ratio:
 
 // @public
 export function useTilingTheme(): TilingTheme;
-
-// Warnings were encountered during analysis:
-//
-// dist/dynamic-tiling-renderer-CNJNaFMe.d.ts:488:5 - (ae-forgotten-export) The symbol "TilingTitleBarSizingMode" needs to be exported by the entry point index.d.ts
-// dist/dynamic-tiling-renderer-CNJNaFMe.d.ts:499:5 - (ae-forgotten-export) The symbol "TilingLayoutMode" needs to be exported by the entry point index.d.ts
-// dist/dynamic-tiling-renderer-CNJNaFMe.d.ts:514:5 - (ae-forgotten-export) The symbol "TilingMasterOrientation" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
