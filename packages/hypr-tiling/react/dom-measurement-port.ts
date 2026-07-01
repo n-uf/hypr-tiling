@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { ElementRef } from "../core/element-ref";
 import type { MeasurementPort } from "../core/measurement-port";
 import { dragSourceReservationSelector } from "../core/drag-presentation";
 
@@ -7,9 +7,9 @@ import { dragSourceReservationSelector } from "../core/drag-presentation";
  * `rootRef` / `viewportRef` / `groupTabStripRefs` the renderer already owns.
  */
 export interface DomMeasurementRefs {
-  rootRef: RefObject<HTMLDivElement | null>;
-  viewportRef: RefObject<HTMLDivElement | null>;
-  groupTabStripRefs: RefObject<Map<string, HTMLDivElement>>;
+  rootRef: ElementRef<HTMLDivElement | null>;
+  viewportRef: ElementRef<HTMLDivElement | null>;
+  groupTabStripRefs: ElementRef<Map<string, HTMLDivElement>>;
 }
 
 /**

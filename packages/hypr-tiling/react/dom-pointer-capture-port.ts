@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { ElementRef } from "../core/element-ref";
 import type { PointerCapturePort } from "../core/pointer-capture-port";
 
 /**
@@ -15,7 +15,7 @@ import type { PointerCapturePort } from "../core/pointer-capture-port";
  *   - `has`      ← `rootRef.current.hasPointerCapture?.(id) ?? false`.
  */
 export function createDomPointerCapturePort(
-  rootRef: RefObject<HTMLDivElement | null>,
+  rootRef: ElementRef<HTMLDivElement | null>,
 ): PointerCapturePort {
   return {
     capture: (pointerId: number): boolean => {

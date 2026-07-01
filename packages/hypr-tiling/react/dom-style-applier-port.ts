@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { ElementRef } from "../core/element-ref";
 import {
   type CancelableHandle,
   type TransitionEndSource,
@@ -46,7 +46,7 @@ function toSurvivorRect(rect: DOMRect): SurvivorRect {
  * `viewport.getBoundingClientRect()` reflow, and `stripTransientDragStyles`).
  */
 export function createDomStyleApplierPort(
-  viewportRef: RefObject<HTMLDivElement | null>,
+  viewportRef: ElementRef<HTMLDivElement | null>,
 ): StyleApplierPort {
   const collectElements = (): ReadonlyArray<HTMLElement> => {
     const viewport: HTMLDivElement | null = viewportRef.current;
