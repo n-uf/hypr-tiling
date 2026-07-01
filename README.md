@@ -1,8 +1,13 @@
-<p align="center">
-  <img src="assets/hypr-tiling-logo-transparent.png" alt="hypr-tiling" width="180" />
-</p>
-
-# hypr-tiling — dynamic tiling for React
+<table>
+  <tr>
+    <td>
+      <img src="assets/hypr-tiling-logo-transparent.png" alt="hypr-tiling" width="180" />
+    </td>
+    <td>
+      <h1>hypr-tiling — dynamic tiling for React</h1>
+    </td>
+  </tr>
+</table>
 
 `@n-uf/hypr-tiling` is a dynamic tiling layout engine for React: a recursive
 split-tree renderer that lets users drag, drop, resize, group, maximize, and
