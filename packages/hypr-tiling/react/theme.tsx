@@ -170,13 +170,21 @@ export interface TilingThemeTopBarTokens {
  * spends on the resting surface, title text, focus frame, and active tab.
  */
 export interface TilingTheme {
+  /** The theme's id (matches a `TilingThemeId` member). */
   readonly id: TilingThemeId;
+  /** Human-readable theme label (e.g. for a theme picker). */
   readonly label: string;
+  /** Renderer-root + viewport surface tokens. */
   readonly root: TilingThemeRootTokens;
+  /** Pane host shell surface + interaction-state tokens. */
   readonly paneShell: TilingThemePaneShellTokens;
+  /** Pane header chrome tokens. */
   readonly paneHeader: TilingThemePaneHeaderTokens;
+  /** Drag-ghost shell tokens. */
   readonly ghost: TilingThemeGhostTokens;
+  /** Split-divider / gap handle tokens. */
   readonly divider: TilingThemeDividerTokens;
+  /** Top-bar / tab-strip chrome tokens. */
   readonly topBar: TilingThemeTopBarTokens;
   /** Resting pane accent composition (border tint + colored shadow). */
   readonly resolvePaneAccentSurface: (

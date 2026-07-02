@@ -23,6 +23,7 @@
  * end rather than duplicating).
  */
 export interface FocusHistory {
+  /** Leaf ids in MRU order: oldest-first, most-recently-focused last. */
   readonly entries: ReadonlyArray<string>;
 }
 

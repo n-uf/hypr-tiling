@@ -131,9 +131,13 @@ export function layoutContainsStaticPane(node: TilingLayoutNode): boolean {
   return selfStatic || layoutContainsStaticPane(node.first) || layoutContainsStaticPane(node.second);
 }
 
+/** Inputs deciding whether a split boundary renders a draggable resize divider. */
 export interface SplitBoundaryStaticFlags {
+  /** Whether divider resize is enabled for this boundary. */
   resizeEnabled: boolean;
+  /** Whether the first child is static along the split axis. */
   firstStaticAlongAxis: boolean;
+  /** Whether the second child is static along the split axis. */
   secondStaticAlongAxis: boolean;
 }
 
@@ -150,8 +154,11 @@ export function shouldRenderSplitDivider({
   return resizeEnabled && !firstStaticAlongAxis && !secondStaticAlongAxis;
 }
 
+/** One child's ratio + static-along-axis flag, input to ratio renormalization. */
 export interface FlexibleRatioChild {
+  /** The child's declared split-axis ratio. */
   ratio: number;
+  /** Whether the child is static along the split axis (weight 0 in distribution). */
   staticAlongAxis: boolean;
 }
 

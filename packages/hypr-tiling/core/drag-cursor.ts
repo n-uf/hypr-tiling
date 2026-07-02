@@ -34,6 +34,7 @@ export type DragCursorKind = "grab" | "insert" | "swap" | "invalid";
 /** Color tone the cursor adopts, derived from drop validity. */
 export type DragCursorTone = "neutral" | "valid" | "invalid";
 
+/** The semantic presentation of the custom drag cursor: its state plus its tone. */
 export interface DragCursorPresentation {
   /** The semantic operation/validity state the cursor conveys (drives the glyph). */
   kind: DragCursorKind;
@@ -77,15 +78,23 @@ export function resolveDragCursorPresentation(
   return GRAB_PRESENTATION;
 }
 
+/** A pointer point in viewport (client) coordinates. */
 export interface DragCursorPoint {
+  /** Client X (CSS px). */
   x: number;
+  /** Client Y (CSS px). */
   y: number;
 }
 
+/** Viewport edge bounds (client coords) used to clamp the pinned cursor point. */
 export interface DragCursorViewportBounds {
+  /** Left edge (client X). */
   left: number;
+  /** Top edge (client Y). */
   top: number;
+  /** Right edge (client X). */
   right: number;
+  /** Bottom edge (client Y). */
   bottom: number;
 }
 

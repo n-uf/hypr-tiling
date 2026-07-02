@@ -29,10 +29,19 @@ jobs:
       - name: Build (packages + web, incl. prerender)
         run: pnpm build
 
-      # API Extractor leak gate: fails if the checked-in report is out of date
-      # or if an @internal symbol leaks back onto the public entry point.
-      - name: API Extractor leak gate
+      # API Extractor leak + TSDoc-coverage gate: fails if the checked-in report
+      # is out of date, if an @internal symbol leaks back onto the public entry
+      # point, OR if any public symbol lacks a doc summary (ae-undocumented is
+      # set to `error` in api-extractor.json).
+      - name: API Extractor leak + TSDoc-coverage gate
         run: pnpm --filter @n-uf/hypr-tiling api:check
+
+      # Generated API reference must not drift from the source TSDoc: regenerate
+      # and fail on any diff to the committed snapshot.
+      - name: API docs snapshot up to date
+        run: |
+          pnpm --filter @n-uf/hypr-tiling api:docs
+          git diff --exit-code -- apps/web/src/api-reference/generated.ts
 
       - name: Typecheck (packages + web)
         run: pnpm typecheck

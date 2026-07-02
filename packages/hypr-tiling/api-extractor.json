@@ -16,7 +16,8 @@
   },
 
   "docModel": {
-    "enabled": false
+    "enabled": true,
+    "apiJsonFilePath": "<projectFolder>/temp/<unscopedPackageName>.api.json"
   },
 
   "dtsRollup": {
@@ -44,6 +45,10 @@
       },
       "ae-missing-release-tag": {
         "logLevel": "none"
+      },
+      "ae-undocumented": {
+        "logLevel": "error",
+        "addToApiReportFile": false
       },
       "ae-forgotten-export": {
         "logLevel": "warning",

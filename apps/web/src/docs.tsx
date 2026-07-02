@@ -1,5 +1,6 @@
 import * as React from "react";
 import type { TilingTileAccent } from "@n-uf/hypr-tiling";
+import { API_REFERENCE_SECTIONS } from "./api-reference/generated";
 
 // Single source of truth for the homepage's documentation surface. The same
 // section content is rendered (a) inside the tiling panes for the interactive
@@ -20,6 +21,17 @@ export const PACKAGE_NAME: string = "@n-uf/hypr-tiling";
 export const SITE_URL: string = "https://hypr-tiling.n-uf.com/";
 export const SHOWCASE_URL: string = "https://hypr-tiling.n-uf.com/showcase";
 export const REPO_URL: string = "https://github.com/n-uf/hypr-tiling";
+// The prerendered documentation route (guides + generated API reference). Its
+// own static HTML lives at `dist/docs/index.html` (see prerender.mjs).
+export const DOCS_URL: string = `${SITE_URL.replace(/\/$/, "")}/docs`;
+export const API_REFERENCE_URL: string =
+  "https://github.com/n-uf/hypr-tiling/blob/main/packages/hypr-tiling/etc/hypr-tiling.api.md";
+export const CHANGELOG_URL: string =
+  "https://github.com/n-uf/hypr-tiling/blob/main/packages/hypr-tiling/CHANGELOG.md";
+export const SOCIAL_IMAGE_PATH: string = "/social/hypr-tiling-social-preview.png";
+export const SOCIAL_IMAGE_URL: string = `${SITE_URL.replace(/\/$/, "")}${SOCIAL_IMAGE_PATH}`;
+export const TWITTER_SITE_HANDLE: string = "@n_uf";
+export const TWITTER_CREATOR_HANDLE: string = "@n_uf";
 
 // License, sourced from packages/hypr-tiling/package.json
 // (`LicenseRef-PolyForm-Perimeter-1.0.1`) and the repo-root LICENSE text.
@@ -85,6 +97,28 @@ export const FEATURE_FACTS: ReadonlyArray<FeatureFact> = [
     term: "Self-healing drag recovery",
     detail:
       "A frame-deadline animation backstop, an idle watchdog, transient-style teardown, and a visibilitychange reconcile guarantee a drag never strands the tree mid-transition.",
+  },
+];
+
+interface SeoFaqItem {
+  readonly question: string;
+  readonly answer: string;
+}
+
+export const SEO_FAQ_ITEMS: ReadonlyArray<SeoFaqItem> = [
+  {
+    question: "Does hypr-tiling render semantic HTML for docs pages?",
+    answer:
+      "Yes. The docs content is emitted as semantic DOM inside panes and prerendered to static HTML so crawlers can read it without executing JavaScript.",
+  },
+  {
+    question: "How do I install hypr-tiling in a React app?",
+    answer: "Run: pnpm add @n-uf/hypr-tiling react react-dom",
+  },
+  {
+    question: "Can I control layout state myself?",
+    answer:
+      "Yes. TilingRenderer is controlled: your app owns the layout tree and applies updates via onLayoutChange.",
   },
 ];
 
@@ -183,7 +217,7 @@ interface DocPaneSpec {
 
 // --- Mosaic typography primitives -----------------------------------------
 
-function Eyebrow({ children }: { children: React.ReactNode }): React.ReactElement {
+export function Eyebrow({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
     <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-amber-300/80">
       {children}
@@ -193,7 +227,7 @@ function Eyebrow({ children }: { children: React.ReactNode }): React.ReactElemen
 
 // Section heading: Fraunces display serif preceded by a short gold tick — the
 // coherent form vocabulary marker used across every pane (no icons).
-function SectionHeading({
+export function SectionHeading({
   children,
 }: {
   children: React.ReactNode;
@@ -211,7 +245,7 @@ function SectionHeading({
   );
 }
 
-function SectionLead({
+export function SectionLead({
   children,
 }: {
   children: React.ReactNode;
@@ -223,7 +257,7 @@ function SectionLead({
   );
 }
 
-function Code({ children }: { children: React.ReactNode }): React.ReactElement {
+export function Code({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
     <code className="rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 font-mono text-[12px] text-amber-200/90">
       {children}
@@ -240,7 +274,7 @@ function isExternalHref(href: string): boolean {
   return /^https?:\/\//i.test(href);
 }
 
-function Link({
+export function Link({
   href,
   children,
 }: {
@@ -261,7 +295,7 @@ function Link({
   );
 }
 
-function Pre({ children }: { children: string }): React.ReactElement {
+export function Pre({ children }: { children: string }): React.ReactElement {
   return (
     <pre className="overflow-x-auto rounded-md border border-white/[0.08] bg-[#0a0b0d] p-3.5 font-mono text-[12px] leading-relaxed text-stone-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       <code>{children}</code>
@@ -524,7 +558,59 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
   },
 ];
 
-// Plain-text content mirror for /llms.txt (Markdown, LLM-fetch friendly).
+interface DocsGuideTopic {
+  // Stable anchor id on the /docs route (e.g. `getting-started`).
+  readonly id: string;
+  // Sidebar / heading label.
+  readonly title: string;
+  // Plain-text summary mirrored into llms.txt for LLM discoverability.
+  readonly summary: string;
+}
+
+// Hand-written guide topics rendered on the /docs route. This is the single
+// source for the docs sidebar, the llms.txt guide index, and the sitemap; the
+// prose bodies themselves live in docs-page.tsx (JSX), keyed by these ids.
+export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
+  {
+    id: "getting-started",
+    title: "Getting started",
+    summary:
+      "Install @n-uf/hypr-tiling with its React 19 peers, then render TilingRenderer as a controlled component: hold the layout tree in state and apply every edit from onLayoutChange.",
+  },
+  {
+    id: "install",
+    title: "Install & Tailwind setup",
+    summary:
+      "pnpm add @n-uf/hypr-tiling react react-dom. The library ships Tailwind utility classes; a Tailwind consumer must add node_modules/@n-uf/hypr-tiling/dist to the Tailwind content globs so the pane/divider/ghost classes are not purged.",
+  },
+  {
+    id: "core-concepts",
+    title: "Core concepts",
+    summary:
+      "The layout is a recursive tree of leaf, split, and group nodes you own in state. Interaction capabilities (drag, resize, keyboard, grouping, maximize) are configured through the single interaction prop. Theming is driven by themeId plus the TilingThemeProvider/useTilingTheme API.",
+  },
+  {
+    id: "recipes",
+    title: "Recipes",
+    summary:
+      "Multi-select grouping via canGroupMultiSelection + groupLeaves; the Hyprland-style detach/ghost/FLIP drag behavior and its self-healing recovery; and /devtools observability overlays for drop-intent and hit-zone debugging.",
+  },
+  {
+    id: "migration",
+    title: "Migration & changelog",
+    summary:
+      "hypr-tiling follows calendar versioning; breaking changes and release notes are tracked in the package CHANGELOG.md. The curated public API surface is enforced by API Extractor and mirrored in the API reference below.",
+  },
+  {
+    id: "api-reference",
+    title: "API reference",
+    summary:
+      "Generated reference for the curated public API surface (TilingRenderer, TilingRendererProps, TilingInteractionCapabilities and its Resolved variant, the layout-node types, the state.ts layout operations, theming, and drop-preview types). Generated from source TSDoc via API Extractor + API Documenter.",
+  },
+];
+
+type ApiReferenceKind = "variable" | "function" | "interface" | "type";
+
 export function buildLlmsTxt(): string {
   const lines: string[] = [];
   lines.push(`# ${PACKAGE_NAME}`);
@@ -537,24 +623,67 @@ export function buildLlmsTxt(): string {
   lines.push(`Install: ${INSTALL_SNIPPET}`);
   lines.push(`License: ${LICENSE_NAME} (${LICENSE_URL})`);
   lines.push("");
+
   for (const pane of DOC_PANES) {
     lines.push(`## ${pane.title}`);
     lines.push("");
     lines.push(pane.summary);
     lines.push("");
   }
+
   lines.push("## Features");
   lines.push("");
   for (const fact of FEATURE_FACTS) {
     lines.push(`- ${fact.term}: ${fact.detail}`);
   }
   lines.push("");
+
   lines.push("## Roadmap (planned, not yet shipped)");
   lines.push("");
   for (const item of ROADMAP_ITEMS) {
     lines.push(`- ${item.term}: ${item.detail}`);
   }
   lines.push("");
+
+  lines.push(`## Documentation (${DOCS_URL})`);
+  lines.push("");
+  lines.push(
+    "Guides and the generated API reference are published as prerendered static HTML at the /docs route:",
+  );
+  lines.push("");
+  for (const topic of DOCS_GUIDE_TOPICS) {
+    lines.push(`- [${topic.title}](${DOCS_URL}#${topic.id}): ${topic.summary}`);
+  }
+  lines.push("");
+
+  lines.push("## API reference");
+  lines.push("");
+  lines.push(
+    `The curated public API surface (generated from source TSDoc). Full report: ${API_REFERENCE_URL}`,
+  );
+  lines.push("");
+
+  const kinds: ReadonlyArray<ApiReferenceKind> = [
+    "variable",
+    "function",
+    "interface",
+    "type",
+  ];
+  for (const kind of kinds) {
+    const inKind = API_REFERENCE_SECTIONS.filter(
+      (section): boolean => section.kind === kind,
+    );
+    if (inKind.length === 0) {
+      continue;
+    }
+    lines.push(`### ${kind}s`);
+    lines.push("");
+    for (const section of inKind) {
+      lines.push(`- [${section.name}](${DOCS_URL}#${section.id})`);
+    }
+    lines.push("");
+  }
+
   lines.push("## Contributing");
   lines.push("");
   lines.push(
@@ -563,3 +692,4 @@ export function buildLlmsTxt(): string {
   lines.push("");
   return lines.join("\n");
 }
+

@@ -3,9 +3,11 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "@n-uf/hypr-tiling": ["../hypr-tiling/index.ts"]
+      "@n-uf/hypr-tiling": ["../hypr-tiling/index.ts"],
+      "@n-uf/hypr-tiling/devtools": ["../hypr-tiling/devtools.ts"]
     },
     "jsx": "react-jsx",
     "strict": true,

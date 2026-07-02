@@ -11,4 +11,19 @@ export default defineConfig({
       "hypr-tiling-showcase": resolve(__dirname, "../../packages/showcase/src/index.ts"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Keep the large generated API-reference bundle in its own chunk so it
+        // is only fetched with the code-split /docs route, never hoisted into
+        // the homepage entry chunk.
+        manualChunks(id: string): string | undefined {
+          if (id.includes("src/api-reference/generated")) {
+            return "api-reference";
+          }
+          return undefined;
+        },
+      },
+    },
+  },
 });

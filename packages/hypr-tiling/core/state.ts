@@ -35,6 +35,10 @@ function clampRatio(value: number): number {
   return Math.min(Math.max(value, MIN_RATIO), MAX_RATIO);
 }
 
+/**
+ * Return a copy of the tree with split node `splitId`'s divider `ratio` set
+ * (clamped to the legal range). Unchanged when no split with that id exists.
+ */
 export function updateSplitRatio(
   node: TilingLayoutNode,
   splitId: string,
@@ -219,6 +223,7 @@ export function setLeafSizing(
   return normalizeStaticAxisFill(writeLeafSizing(node, leafId, sizing));
 }
 
+/** Find the leaf with id `leafId` anywhere in the tree (including inside a group), or `null`. */
 export function findLeafById(
   node: TilingLayoutNode,
   leafId: string,
@@ -234,6 +239,10 @@ export function findLeafById(
   return findLeafById(node.first, leafId) ?? findLeafById(node.second, leafId);
 }
 
+/**
+ * Return a copy of the tree with the two leaves' tiles exchanged in place.
+ * Unchanged when the ids are equal or either leaf is missing.
+ */
 export function swapLeafTiles(
   node: TilingLayoutNode,
   firstLeafId: string,
@@ -259,6 +268,7 @@ export function swapLeafTiles(
   return replaceLeafTileById(withFirstReplaced, secondLeafId, firstLeaf.tileId);
 }
 
+/** Every split node in the tree (depth-first, reading order). */
 export function collectSplitNodes(node: TilingLayoutNode): ReadonlyArray<TilingSplitNode> {
   if (node.kind === "leaf" || node.kind === "group") {
     return [];
@@ -654,6 +664,11 @@ function insertLeafIntoSplitContainer(
   };
 }
 
+/**
+ * Move `sourceLeafId` adjacent to `targetLeafId`, wrapping them in a new split
+ * on the resolved axis with the source on the `placement` side. Unchanged when
+ * the source and target are the same or the source cannot be extracted.
+ */
 export function insertLeafAdjacent(
   layout: TilingLayoutNode,
   sourceLeafId: string,
@@ -718,6 +733,11 @@ export function removeLeafTile(
   return normalizeStaticAxisFill(extraction.nextNode);
 }
 
+/**
+ * Move `sourceLeafId` out to a new root-level split, placing it on the
+ * `placement` side alongside the remainder of the tree. Unchanged when the
+ * source cannot be extracted.
+ */
 export function moveLeafToRoot(
   layout: TilingLayoutNode,
   sourceLeafId: string,
@@ -740,6 +760,10 @@ export function moveLeafToRoot(
   });
 }
 
+/**
+ * Move `sourceLeafId` into the existing split container `targetSplitId` on the
+ * `placement` side. Unchanged when the source cannot be extracted.
+ */
 export function moveLeafToSplitContainer(
   layout: TilingLayoutNode,
   sourceLeafId: string,
@@ -764,6 +788,10 @@ export function moveLeafToSplitContainer(
   );
 }
 
+/**
+ * Return a copy of the tree with split node `splitId`'s axis flipped
+ * (horizontal ↔ vertical). Unchanged when no split with that id exists.
+ */
 export function toggleSplitAxis(
   node: TilingLayoutNode,
   splitId: string,
@@ -1075,6 +1103,27 @@ function flatGroupMemberOrder(
  * other involved slot closes and the tree reflows. Returns the layout UNCHANGED
  * when fewer than two distinct resolvable leaves result (a group needs ≥2
  * members) or the host is unresolvable.
+ *
+ * @remarks
+ * The no-op return (same reference) is load-bearing: gate a "Group" control on
+ * {@link canGroupMultiSelection}, which detects groupability by checking whether
+ * this operation would actually change the tree. Pass `options.hostLeafId` to
+ * pin which pane keeps the slot and becomes the active tab; otherwise the first
+ * resolvable id in `leafIds` is the host.
+ *
+ * @example
+ * ```ts
+ * import { groupLeaves, canGroupMultiSelection } from "@n-uf/hypr-tiling";
+ *
+ * // `selection` is a ReadonlySet<string> of leaf ids in insertion order.
+ * if (canGroupMultiSelection(layout, selection)) {
+ *   const next = groupLeaves(layout, [...selection]);
+ *   setLayout(next);
+ * }
+ * ```
+ *
+ * @see {@link canGroupMultiSelection} to test groupability before calling.
+ * @see {@link GroupLeavesOptions} for the host-pinning option.
  */
 export function groupLeaves(
   layout: TilingLayoutNode,
@@ -1310,6 +1359,11 @@ function directionalScore(
   return primaryDistance + secondaryDistance * 0.25 + overlapBoost;
 }
 
+/**
+ * Id of the nearest focusable leaf from `fromLeafId` in the given spatial
+ * `direction` (geometric nearest-neighbour over the laid-out rectangles), or
+ * `null` when no leaf lies that way. Powers directional keyboard focus.
+ */
 export function findLeafByDirection(
   layout: TilingLayoutNode,
   fromLeafId: string,

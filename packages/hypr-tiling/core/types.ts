@@ -1,5 +1,10 @@
 import type * as React from "react";
 
+/**
+ * Orientation of a binary split. `"horizontal"` places its two children
+ * side-by-side (a `flex-row`, resized by a width divider); `"vertical"` stacks
+ * them (a `flex-col`, resized by a height divider).
+ */
 export type TilingSplitAxis = "horizontal" | "vertical";
 
 /**
@@ -53,7 +58,9 @@ export type TilingPaneSizingMode = "static" | "flexible";
  * `"flexible"` explicitly rather than only inferred from absence.
  */
 export interface TilingPaneSizing {
+  /** Sizing mode for the WIDTH dimension. Undefined → `"flexible"`. */
   width?: TilingPaneSizingMode;
+  /** Sizing mode for the HEIGHT dimension. Undefined → `"flexible"`. */
   height?: TilingPaneSizingMode;
   /**
    * Pinned WIDTH in CSS px, captured from the pane's measured bounding box at the
@@ -163,7 +170,9 @@ export interface TilingSlotCommitmentCapability {
 
 /** Fully-resolved slot-commitment configuration (no optional fields). */
 export interface ResolvedTilingSlotCommitmentCapability {
+  /** Resolved re-resolution policy after the ghost seats in a slot. */
   mode: TilingSlotCommitmentMode;
+  /** Resolved `delta-responsive` re-aim threshold in CSS px. */
   reresolveDeltaPx: number;
 }
 
@@ -189,7 +198,9 @@ export interface TilingTouchDragCapability {
 
 /** Fully-resolved touch-drag configuration (no optional fields). */
 export interface ResolvedTilingTouchDragCapability {
+  /** Resolved touch-drag enable flag. */
   enable: boolean;
+  /** Resolved long-press delay (ms) before a held touch becomes a drag. */
   longPressMs: number;
 }
 
@@ -231,9 +242,13 @@ export interface TilingDragRecoveryCapability {
 
 /** Fully-resolved drag-recovery configuration (no optional fields). */
 export interface ResolvedTilingDragRecoveryCapability {
+  /** Resolved self-healing recovery enable flag. */
   enable: boolean;
+  /** Resolved idle-watchdog deadline (ms). */
   maxDraggingIdleMs: number;
+  /** Resolved rAF-fallback slack (ms). */
   frameDeadlineMs: number;
+  /** Resolved transition-completion slack (ms). */
   transitionSlackMs: number;
 }
 
@@ -268,9 +283,13 @@ export interface TilingKeyChord {
  * codes); only the modifier state is configurable.
  */
 export interface TilingKeyChordModifiers {
+  /** Require the Alt key. Default `false`. */
   alt?: boolean;
+  /** Require the Ctrl key. Default `false`. */
   ctrl?: boolean;
+  /** Require the Meta (Cmd / Win) key. Default `false`. */
   meta?: boolean;
+  /** Require the Shift key. Default `false`. */
   shift?: boolean;
 }
 
@@ -348,42 +367,71 @@ export interface TilingKeymap {
 
 /** Fully-resolved key chord (every modifier explicit). Matches `KeyboardEvent.code`. */
 export interface ResolvedTilingKeyChord {
+  /** Physical `KeyboardEvent.code` this chord matches. */
   code: string;
+  /** Whether the Alt key must be held. */
   alt: boolean;
+  /** Whether the Ctrl key must be held. */
   ctrl: boolean;
+  /** Whether the Meta (Cmd / Win) key must be held. */
   meta: boolean;
+  /** Whether the Shift key must be held. */
   shift: boolean;
 }
 
 /** Fully-resolved jump-to-pane modifier set. */
 export interface ResolvedTilingKeyChordModifiers {
+  /** Whether the Alt key must be held. */
   alt: boolean;
+  /** Whether the Ctrl key must be held. */
   ctrl: boolean;
+  /** Whether the Meta (Cmd / Win) key must be held. */
   meta: boolean;
+  /** Whether the Shift key must be held. */
   shift: boolean;
 }
 
 /** Fully-resolved keymap (no optional fields). */
 export interface ResolvedTilingKeymap {
+  /** Resolved chord to toggle maximize on the focused pane. */
   toggleMaximize: ResolvedTilingKeyChord;
+  /** Resolved chord to restore from maximize. */
   restore: ResolvedTilingKeyChord;
+  /** Resolved chord to cycle to the previous pane. */
   previousPane: ResolvedTilingKeyChord;
+  /** Resolved chord to cycle to the next pane. */
   nextPane: ResolvedTilingKeyChord;
+  /** Resolved modifier set for the `Alt+1`..`Alt+9` jump family. */
   jumpToPane: ResolvedTilingKeyChordModifiers;
+  /** Resolved chord to move focus to the LEFT neighbor. */
   focusLeft: ResolvedTilingKeyChord;
+  /** Resolved chord to move focus to the RIGHT neighbor. */
   focusRight: ResolvedTilingKeyChord;
+  /** Resolved chord to move focus to the neighbor ABOVE. */
   focusUp: ResolvedTilingKeyChord;
+  /** Resolved chord to move focus to the neighbor BELOW. */
   focusDown: ResolvedTilingKeyChord;
+  /** Resolved chord to enter keyboard move mode. */
   enterMoveMode: ResolvedTilingKeyChord;
+  /** Resolved chord for the MRU focus current-or-last toggle. */
   focusCurrentOrLast: ResolvedTilingKeyChord;
+  /** Resolved chord to toggle the focused subtree dwindle ⇄ master. */
   cycleLayoutMode: ResolvedTilingKeyChord;
+  /** Resolved chord to cycle the master-area orientation. */
   cycleMasterOrientation: ResolvedTilingKeyChord;
+  /** Resolved chord to add one tile to the master area. */
   incrementMasterCount: ResolvedTilingKeyChord;
+  /** Resolved chord to remove one tile from the master area. */
   decrementMasterCount: ResolvedTilingKeyChord;
+  /** Resolved chord to grow the master-area fraction. */
   incrementMasterRatio: ResolvedTilingKeyChord;
+  /** Resolved chord to shrink the master-area fraction. */
   decrementMasterRatio: ResolvedTilingKeyChord;
+  /** Resolved chord to group/ungroup the focused pane. */
   toggleGroup: ResolvedTilingKeyChord;
+  /** Resolved chord to activate the next member tab of the focused group. */
   groupTabNext: ResolvedTilingKeyChord;
+  /** Resolved chord to activate the previous member tab of the focused group. */
   groupTabPrevious: ResolvedTilingKeyChord;
 }
 
@@ -393,11 +441,17 @@ export interface ResolvedTilingKeymap {
  * and is NOT consulted by `matchKeyChord` / `matchJumpToPaneNumber`.
  */
 export interface TilingKeyboardEventLike {
+  /** Physical `KeyboardEvent.code` (the key that matching consults). */
   code: string;
+  /** Produced `KeyboardEvent.key` glyph; diagnostic only, never matched. */
   key: string;
+  /** Whether the Alt key was held. */
   altKey: boolean;
+  /** Whether the Ctrl key was held. */
   ctrlKey: boolean;
+  /** Whether the Meta (Cmd / Win) key was held. */
   metaKey: boolean;
+  /** Whether the Shift key was held. */
   shiftKey: boolean;
 }
 
@@ -406,9 +460,13 @@ export interface TilingKeyboardEventLike {
  * flow (the macOS Cmd+Tab-style pane switcher) should commit on key release.
  */
 export interface TilingKeyboardModifierState {
+  /** Whether the Alt key is held. */
   altKey: boolean;
+  /** Whether the Ctrl key is held. */
   ctrlKey: boolean;
+  /** Whether the Meta (Cmd / Win) key is held. */
   metaKey: boolean;
+  /** Whether the Shift key is held. */
   shiftKey: boolean;
 }
 
@@ -493,6 +551,7 @@ export type TilingCommand =
  * disabled-capability command is a safe no-op (it never mutates the layout).
  */
 export interface TilingCommandHandle {
+  /** Route a {@link TilingCommand} through the renderer's command router. */
   dispatch: (command: TilingCommand) => void;
 }
 
@@ -504,7 +563,9 @@ export interface TilingCommandHandle {
  * like `TilingKeyChord`.
  */
 export interface TilingKeyBinding {
+  /** The chord that triggers this binding (matched on `KeyboardEvent.code`). */
   chord: TilingKeyChord;
+  /** The command dispatched when the chord matches. */
   command: TilingCommand;
 }
 
@@ -514,6 +575,7 @@ export interface TilingKeyBinding {
  * suppresses the built-in keymap path entirely so ONLY these bindings are live.
  */
 export interface TilingKeyBindings {
+  /** Consumer chord→command bindings; augment (or override on collision) the defaults. */
   bindings?: ReadonlyArray<TilingKeyBinding>;
   /** When `true`, the default keymap bindings are NOT consulted. Default `false` (augment). */
   replaceDefaults?: boolean;
@@ -626,22 +688,31 @@ export interface TilingPaneTitleBarControlsCapability {
 
 /** Resolved per-pane title-bar control capability (no optional fields). */
 export interface ResolvedTilingPaneTitleBarControlsCapability {
+  /** Whether the per-pane FLEX / STATIC H / STATIC W / BOTH sizing control renders. */
   sizing: boolean;
+  /** Whether the per-pane directional acquire-space controls render. */
   acquireSpace: boolean;
 }
 
 /** Resolved maximize capability (no optional fields). */
 export interface ResolvedTilingMaximizeCapability {
+  /** Whether the maximize/restore control + shortcuts are live. */
   enable: boolean;
 }
 
 /** Resolved pane-switching capability (no optional fields). */
 export interface ResolvedTilingPaneSwitchingCapability {
+  /** Whether pane switching (tab strip + cycle/jump shortcuts) is live. */
   enable: boolean;
+  /** Whether the tab strip renders. */
   showTabStrip: boolean;
+  /** Whether the tab strip's pane-content visibility checkbox renders. */
   showContentToggle: boolean;
+  /** Whether the Cmd+Tab-style switcher overlay renders while cycling. */
   showSwitcherOverlay: boolean;
+  /** Whether double-clicking a tab toggles that pane's maximize state. */
   tabDoubleClickMaximize: boolean;
+  /** Whether Alt/Opt+click header multi-selection grouping is live. */
   multiSelectGrouping: boolean;
 }
 
@@ -657,7 +728,9 @@ export interface ResolvedTilingPaneSwitchingCapability {
  *   custom non-Alt cycle binding still commits on release of its own modifier).
  */
 export interface TilingPaneSwitcherState {
+  /** The pane the highlight currently rests on; commit activates it. */
   selectedLeafId: string;
+  /** Modifier set captured from the opening chord; commit fires on their release. */
   holdModifiers: ResolvedTilingKeyChordModifiers;
 }
 
@@ -674,8 +747,11 @@ export interface TilingPaneSwitcherState {
  *   any arrow. Commit is a no-op when either is `null`.
  */
 export interface TilingMoveModeState {
+  /** The pane being moved (the keyboard "drag source"). */
   sourceLeafId: string;
+  /** Destination neighbor chosen by the last focus-arrow press, or `null` before any arrow. */
   targetLeafId: string | null;
+  /** Edge of the target the source lands on when committed, or `null` before any arrow. */
   placement: TilingMovePlacement | null;
 }
 
@@ -745,10 +821,15 @@ export interface TilingDropHitZoneGeometryCapability {
  * actually consumes.
  */
 export interface ResolvedTilingDropHitZoneGeometryCapability {
+  /** Resolved symmetric/representative center swap-zone fraction. */
   centerRatio: number;
+  /** Resolved per-axis HORIZONTAL swap-zone fraction the resolver consumes. */
   centerRatioX: number;
+  /** Resolved per-axis VERTICAL swap-zone fraction the resolver consumes. */
   centerRatioY: number;
+  /** Resolved floor (CSS px) for the center rectangle extent. */
   centerMinPx: number;
+  /** Resolved boundary stickiness (pane-local CSS px). */
   hysteresisPx: number;
 }
 
@@ -906,22 +987,39 @@ export interface TilingInteractionCapabilities {
  * and passed straight back into the `interaction` prop.
  */
 export interface ResolvedTilingInteractionCapabilities {
+  /** Resolved divider resize capability. */
   resize: TilingResizeCapability;
+  /** Whether split-divider resize handles are visibly rendered. */
   resizeHandlesVisible: boolean;
+  /** Whether the single ghost hops into and fills the resolved slot. */
   slotHopInEnabled: boolean;
+  /** Whether drag-to-rearrange is enabled. */
   rearrange: boolean;
+  /** Resolved drag feedback mode (`"preview"` vs `"live"`). */
   dragMode: TilingDragMode;
+  /** Resolved live-drag slot-commitment configuration. */
   slotCommitment: ResolvedTilingSlotCommitmentCapability;
+  /** Resolved touch-drag hardening configuration. */
   touchDrag: ResolvedTilingTouchDragCapability;
+  /** Resolved drag/transition self-healing recovery configuration. */
   dragRecovery: ResolvedTilingDragRecoveryCapability;
+  /** Whether the custom-rendered drag cursor is used during live drag. */
   customCursor: boolean;
+  /** Resolved ghost pickup scale as a percent of the source pane bbox. */
   ghostPickupScalePercent: number;
+  /** Whether coherent non-intersecting transit is enabled. */
   coherentTransit: boolean;
+  /** Whether pane focus selection is enabled. */
   focus: boolean;
+  /** Resolved maximize-to-viewport capability. */
   maximize: ResolvedTilingMaximizeCapability;
+  /** Resolved tab-like pane-switching capability. */
   paneSwitching: ResolvedTilingPaneSwitchingCapability;
+  /** Resolved per-pane title-bar controls capability. */
   paneTitleBarControls: ResolvedTilingPaneTitleBarControlsCapability;
+  /** Resolved adjustable drop hit-zone geometry. */
   dropHitZoneGeometry: ResolvedTilingDropHitZoneGeometryCapability;
+  /** Resolved keymap (every chord explicit). */
   keymap: ResolvedTilingKeymap;
   /**
    * Resolved consumer key bindings (the raw registry passed through; an empty
@@ -929,13 +1027,17 @@ export interface ResolvedTilingInteractionCapabilities {
    * these before the default keymap path.
    */
   keyBindings: ResolvedTilingKeyBindings;
+  /** Whether the master/stack layout engine is enabled. */
   masterLayout: boolean;
+  /** Whether group / tabbed-stacking is enabled. */
   grouping: boolean;
 }
 
 /** Fully-resolved key-binding registry (no optional fields). */
 export interface ResolvedTilingKeyBindings {
+  /** Resolved consumer chord→command bindings (empty when none supplied). */
   bindings: ReadonlyArray<TilingKeyBinding>;
+  /** Whether the default keymap bindings are suppressed. */
   replaceDefaults: boolean;
 }
 
@@ -970,8 +1072,11 @@ export type TilingThemeId = "neon-terminal" | "clean-flat" | "mosaic";
  * (e.g. the showcase top-bar picker) iterates to offer accent selection.
  */
 export interface TilingTileAccentSwatch {
+  /** The accent this swatch selects. */
   accent: TilingTileAccent;
+  /** Human-readable label for the swatch (e.g. in a picker). */
   label: string;
+  /** Tailwind background class rendering the solid swatch dot. */
   swatchClassName: string;
 }
 
@@ -984,30 +1089,57 @@ export interface TilingTileAccentSwatch {
  * default tile surface. `content` is the slot a custom `renderTile` reads.
  */
 export interface TilingTile {
+  /** Stable tile identity; leaf nodes reference a tile by this `id`. */
   id: string;
+  /** Title shown in the pane header / tab. */
   title: string;
+  /** Optional one-line description surfaced by the default tile chrome. */
   description?: string;
+  /** Optional per-tile identity accent. Falls back to `"cyan"` when omitted. */
   accent?: TilingTileAccent;
+  /** Optional text rows for the default tile body. Falls back to `[]`. */
   rows?: ReadonlyArray<string>;
+  /** Rich body a custom `renderTile` reads (and the drag ghost paints). */
   content?: React.ReactNode;
 }
 
+/**
+ * A leaf slot: a single pane that renders one tile. The renderer's smallest
+ * addressable layout unit — focus, drag, resize, and sizing all target a leaf
+ * by its `id`.
+ */
 export interface TilingLeafNode {
+  /** Node discriminant. Always `"leaf"`. */
   kind: "leaf";
+  /** Stable node identity, unique within the layout tree. */
   id: string;
+  /** The `TilingTile.id` this leaf renders. */
   tileId: string;
   /** Per-dimension static/flexible sizing. Undefined dimensions are flexible. */
   sizing?: TilingPaneSizing;
 }
 
+/**
+ * A binary split node: divides its region between two child subtrees along
+ * `axis` by `ratio`. In `layoutMode: "master"` the binary structure defines
+ * slot membership/order while the master resolver drives geometry.
+ */
 export interface TilingSplitNode {
+  /** Node discriminant. Always `"split"`. */
   kind: "split";
+  /** Stable node identity, unique within the layout tree. */
   id: string;
+  /** Split orientation (`"horizontal"` = side-by-side, `"vertical"` = stacked). */
   axis: TilingSplitAxis;
+  /** Fraction `[0, 1]` of the region allotted to `first` along `axis`. */
   ratio: number;
+  /** The first (top/left) child subtree. */
   first: TilingLayoutNode;
+  /** The second (bottom/right) child subtree. */
   second: TilingLayoutNode;
+  /** Optional per-split gap override (CSS px) between the two children. */
   gapPx?: number;
+  /** Optional per-split minimum pane extent (CSS px) enforced on resize. */
   minPaneSizePx?: number;
   /** Per-dimension static/flexible sizing. Undefined dimensions are flexible. */
   sizing?: TilingPaneSizing;
@@ -1039,7 +1171,9 @@ export interface TilingSplitNode {
  * back to a bare leaf).
  */
 export interface TilingGroupNode {
+  /** Node discriminant. Always `"group"`. */
   kind: "group";
+  /** Stable node identity, unique within the layout tree. */
   id: string;
   /** ≥1 member; array order is the tab order. */
   members: ReadonlyArray<TilingLeafNode>;
@@ -1049,16 +1183,33 @@ export interface TilingGroupNode {
   sizing?: TilingPaneSizing;
 }
 
+/**
+ * A node in the layout tree: a leaf (single pane), a split (two subtrees), or a
+ * group (tabbed leaves in one slot). The recursive union you own in state and
+ * feed to `TilingRenderer` via the `layout` prop.
+ */
 export type TilingLayoutNode = TilingLeafNode | TilingSplitNode | TilingGroupNode;
 
+/** Global geometry configuration for the renderer (the `config` prop). */
 export interface TilingLayoutConfig {
+  /** Gap (CSS px) painted in the gutters between panes. */
   gapPx: number;
+  /** Minimum pane extent (CSS px) a resize divider will not shrink a pane below. */
   minPaneSizePx: number;
+  /** Resize-handle hit-target thickness (CSS px). */
   handleSizePx: number;
 }
 
+/**
+ * The argument object passed to a custom `renderTile`. Carries the tile
+ * payload, this pane's derived state (focus / drag / drop / sizing), the
+ * observability flags, and the imperative callbacks a custom pane surface wires
+ * to its header, drag handle, and controls.
+ */
 export interface TilingRenderTileProps {
+  /** The leaf node id this render targets. */
   leafId: string;
+  /** The resolved tile payload for this leaf. */
   tile: TilingTile;
   /** 1-based pane ordinal in current tab order (for generic pane labels). */
   paneOrdinal: number;
@@ -1074,12 +1225,19 @@ export interface TilingRenderTileProps {
    * Keeps custom tile renderers aligned with the default drag/hidden semantics.
    */
   paneBodyRenderMode: TilingPaneBodyRenderMode;
+  /** Whether this pane is the source of the in-flight drag. */
   isDragSource: boolean;
+  /** Whether this pane is the resolved drop target of the in-flight drag. */
   isDropTarget: boolean;
+  /** Whether this pane is a valid drop destination for the current drag. */
   isDropEligible: boolean;
+  /** Whether the cursor is currently hovering this pane as a drop candidate. */
   isHoveringDropCandidate: boolean;
+  /** Whether the current hover over this pane would be an invalid drop. */
   isInvalidDrop: boolean;
+  /** Whether this pane currently holds focus. */
   isFocused: boolean;
+  /** Whether drag-to-rearrange is enabled (drives handle affordance). */
   isRearrangeEnabled: boolean;
   /**
    * Whether this pane is the SOURCE of an in-flight keyboard move (the keyboard
@@ -1119,13 +1277,21 @@ export interface TilingRenderTileProps {
    * to their minimum). Emits via `onLayoutChange` (controlled).
    */
   onAcquireSpace: (direction: TilingFocusDirection) => void;
+  /** The resolved drop zone under the cursor for this pane, or `null`. */
   dropZone: TilingLeafDropZone | null;
+  /** Human-readable drop-intent resolution path (debug overlay), or `null`. */
   dropIntentDebugPath: string | null;
+  /** The resolved drop action for the debug overlay, or `null`. */
   dropIntentDebugAction: TilingDropAction | null;
+  /** The projected landing/result preview for this pane, or `null`. */
   preview: TilingLeafDropPreview | null;
+  /** Whether translucent projected landing overlays are shown. */
   showDropPreviewOverlays: boolean;
+  /** Whether drop border hints are painted on candidate panes. */
   showDropBorderHints: boolean;
+  /** Whether the translucent drop-intent background tint is shown. */
   showDropIntentTranslucentBg: boolean;
+  /** Whether the drop-intent debug overlay is shown. */
   showDropIntentDebug: boolean;
   /**
    * Center swap-zone fraction of the adjustable drop hit-zone geometry. Drives
@@ -1142,9 +1308,13 @@ export interface TilingRenderTileProps {
   dropHitZoneCenterRatioX: number;
   /** Per-axis VERTICAL swap-zone fraction for the per-pane drop hint overlay (the Y boundaries). Default `0.34`. */
   dropHitZoneCenterRatioY: number;
+  /** Opacity `[0, 1]` for the pane hit-zone debug overlay. */
   paneHitZonesAlpha: number;
+  /** Per-pane hit-zone overlay debug state, or `null` when not shown. */
   paneHitZoneDebug: TilingPaneHitZoneOverlayDebugState | null;
+  /** Resolved observability overlay colors (hex) for this pane's overlays. */
   observabilityColors: TilingObservabilityColorConfig;
+  /** Per-subject observability overlay visibility toggles. */
   observabilityColorEnables: TilingObservabilityColorEnableConfig;
   /**
    * Establish single focus on this pane (and clear any in-progress
@@ -1194,18 +1364,36 @@ export interface TilingRenderTileProps {
   onHandlePointerDown: (event: React.PointerEvent<HTMLElement>) => void;
   /** Pre-drag hover telemetry (drop-intent hit-log); inert while a drag is in flight. */
   onPointerMove: (event: React.PointerEvent<HTMLElement>) => void;
+  /** Clears this pane's hover telemetry when the pointer leaves it. */
   onPointerLeave: (event: React.PointerEvent<HTMLElement>) => void;
 }
 
+/** The five drop regions of a pane: a central swap zone plus four insert edges. */
 export type TilingLeafDropZone = "center" | "left" | "right" | "top" | "bottom";
+/**
+ * Resolved pane-body render decision:
+ * - `"render-content"` — paint the tile body,
+ * - `"render-empty"` — hidden body (content toggle off),
+ * - `"render-reservation"` — empty ghost-seat reservation slot during a drag.
+ */
 export type TilingPaneBodyRenderMode =
   | "render-content"
   | "render-empty"
   | "render-reservation";
+/** Which edge of a target pane an inserted/moved pane lands on. */
 export type TilingMovePlacement = "left" | "right" | "top" | "bottom";
+/** A directional focus / move target relative to the current pane. */
 export type TilingFocusDirection = "left" | "right" | "up" | "down";
+/** Which side of a preview a shadow represents (drag source vs drop target). */
 export type TilingLeafPreviewRole = "drag-source-landing-shadow" | "drop-target-result-shadow";
+/** Whether a preview depicts a swap or an edge-insert result. */
 export type TilingLeafPreviewMode = "swap" | "edge-insert";
+/**
+ * The outcome a drop resolves to: exchange tiles (`"swap"`), insert at an edge
+ * (`"edge-insert"`), insert into an existing split container
+ * (`"split-container-insert"`), merge into a tabbed group (`"group-merge"`), or
+ * no valid action (`"none"`).
+ */
 export type TilingDropAction =
   | "swap"
   | "edge-insert"
@@ -1213,64 +1401,119 @@ export type TilingDropAction =
   | "group-merge"
   | "none";
 
+/** Snapshot of the tuning knobs that shaped a drop-intent resolution. */
 export interface TilingDropIntentTuningState {
+  /** Symmetric center swap-zone fraction in effect. */
   centerRatio: number;
+  /** Edge threshold fraction derived from the center ratio. */
   edgeThresholdRatio: number;
+  /** Boundary stickiness (pane-local CSS px) in effect. */
   hysteresisPx: number;
+  /** `window.devicePixelRatio` the geometry snapped to. */
   devicePixelRatio: number;
 }
 
+/** Full diagnostic snapshot of a single drop-intent resolution (observability). */
 export interface TilingDropIntentDebugState {
+  /** The hovered leaf this resolution targets. */
   leafId: string;
+  /** The resolved drop zone under the cursor. */
   zone: TilingLeafDropZone;
+  /** The resolved drop action. */
   action: TilingDropAction;
+  /** The nearest edge the cursor points toward (pre-fallback). */
   dominantEdge: Exclude<TilingLeafDropZone, "center">;
+  /** The edge finally selected after fallbacks, or `null`. */
   finalEdge: Exclude<TilingLeafDropZone, "center"> | null;
+  /** Why the dominant edge was replaced by a fallback, or `null`. */
   fallbackReason: string | null;
+  /** Why the action was blocked, or `null` when unblocked. */
   blockedReason: string | null;
+  /** Split axes from the root to the target, describing the containment path. */
   axisPath: ReadonlyArray<TilingSplitAxis>;
+  /** Edge threshold fraction in effect. */
   edgeThresholdRatio: number;
+  /** Center rectangle width (CSS px), or `null` when unmeasured. */
   centerRectWidthPx: number | null;
+  /** Center rectangle height (CSS px), or `null` when unmeasured. */
   centerRectHeightPx: number | null;
+  /** Cursor distance to the center rectangle (CSS px), or `null`. */
   centerDistancePx: number | null;
+  /** Cursor distance to the nearest edge (CSS px), or `null`. */
   nearestEdgeDistancePx: number | null;
+  /** Pane-local cursor X (CSS px), or `null`. */
   paneLocalX: number | null;
+  /** Pane-local cursor Y (CSS px), or `null`. */
   paneLocalY: number | null;
+  /** The ancestor split chosen for a split-container insert, or `null`. */
   targetSplitId: string | null;
+  /** Which child slot of that split the insert targets, or `null`. */
   targetSplitPlacement: "first" | "second" | null;
+  /** The edge zone selected on the chosen split, or `null`. */
   selectedSplitZone: Exclude<TilingLeafDropZone, "center"> | null;
+  /** Cursor distance to the selected split edge (CSS px), or `null`. */
   selectedSplitDistancePx: number | null;
+  /** Reasons candidate splits were rejected during resolution. */
   rejectedSplitReasons: ReadonlyArray<string>;
+  /** The tuning knobs that shaped this resolution. */
   tuning: TilingDropIntentTuningState;
 }
 
+/** Per-edge validity diagnostic for the live drag hit-log. */
 export interface TilingLiveHitEdgeDebugState {
+  /** The edge zone this diagnostic describes. */
   zone: Exclude<TilingLeafDropZone, "center">;
+  /** Whether an insert on this edge is currently valid. */
   isValid: boolean;
+  /** Why the edge was rejected, or `null` when valid. */
   rejectionReason: string | null;
 }
 
+/** A cursor position in viewport (client) coordinates. */
 export interface TilingViewportCursorState {
+  /** Client X (CSS px). */
   x: number;
+  /** Client Y (CSS px). */
   y: number;
 }
 
+/**
+ * Live drag/hover hit-log snapshot streamed via `onLiveHitLogChange` — the
+ * observability feed the `/devtools` panel renders. `null` when there is no
+ * active hover/drag.
+ */
 export interface TilingLiveHitLogState {
+  /** The leaf currently under the cursor. */
   hoveredLeafId: string;
+  /** The pre-drag hover source leaf, or `null`. */
   sourceLeafId: string | null;
+  /** The in-flight drag source leaf, or `null` when not dragging. */
   dragSourceLeafId: string | null;
+  /** Current cursor position (client coords). */
   cursorViewport: TilingViewportCursorState;
+  /** Measured footprint of the hover source pane, or `null`. */
   sourcePaneFootprint: TilingPaneFootprint | null;
+  /** Measured footprint of the drag source pane, or `null`. */
   dragSourcePaneFootprint: TilingPaneFootprint | null;
+  /** Whether a drag is currently in flight. */
   isDragging: boolean;
+  /** The resolver's zone under the cursor, or `"none"`. */
   resolverZone: TilingLeafDropZone | "none";
+  /** Symmetric center swap-zone fraction in effect. */
   centerRatio: number;
+  /** Edge threshold fraction in effect. */
   edgeThresholdRatio: number;
+  /** Center rectangle width (CSS px). */
   centerRectWidthPx: number;
+  /** Center rectangle height (CSS px). */
   centerRectHeightPx: number;
+  /** Whether the center (swap) zone is currently a valid target. */
   centerIsValid: boolean;
+  /** Why the center zone is blocked, or `null`. */
   centerBlockedReason: string | null;
+  /** Per-edge validity diagnostics for the four insert edges. */
   edgeDiagnostics: ReadonlyArray<TilingLiveHitEdgeDebugState>;
+  /** The full resolved drop-intent snapshot, or `null`. */
   intent: TilingDropIntentDebugState | null;
   /** Leaf whose in-tree slot the ghost seats into (swap target or edge-insert source). */
   ghostSeatLeafId?: string | null;
@@ -1278,36 +1521,57 @@ export interface TilingLiveHitLogState {
   presentationDropAction?: TilingDropAction | null;
 }
 
+/** Per-edge validity candidate for the pane hit-zone overlay. */
 export interface TilingPaneHitZoneCandidateDebugState {
+  /** The edge zone this candidate describes. */
   zone: Exclude<TilingLeafDropZone, "center">;
+  /** Whether an insert on this edge is currently valid. */
   isValid: boolean;
+  /** Why the edge was rejected, or `null` when valid. */
   rejectionReason: string | null;
 }
 
+/** Per-pane hit-zone overlay state driving the five-region debug visualization. */
 export interface TilingPaneHitZoneOverlayDebugState {
+  /** The leaf this overlay is drawn over. */
   leafId: string;
+  /** The active drag source leaf, or `null`. */
   dragSourceLeafId: string | null;
+  /** Symmetric center swap-zone fraction. */
   centerRatio: number;
   /** Per-axis HORIZONTAL swap-zone fraction (drives the X clip-path boundaries). */
   centerRatioX: number;
   /** Per-axis VERTICAL swap-zone fraction (drives the Y clip-path boundaries). */
   centerRatioY: number;
+  /** Center rectangle width (CSS px). */
   centerRectWidthPx: number;
+  /** Center rectangle height (CSS px). */
   centerRectHeightPx: number;
+  /** Whether the center (swap) zone is a valid target. */
   centerIsValid: boolean;
+  /** Why the center zone is blocked, or `null`. */
   centerBlockedReason: string | null;
+  /** Per-edge validity candidates for the four insert edges. */
   edgeCandidates: ReadonlyArray<TilingPaneHitZoneCandidateDebugState>;
 }
 
+/** A projected landing/result preview shown on a pane during a drag. */
 export interface TilingLeafDropPreview {
+  /** Whether this preview is the drag-source landing or the drop-target result. */
   role: TilingLeafPreviewRole;
+  /** Whether the preview depicts a swap or an edge-insert. */
   mode: TilingLeafPreviewMode;
+  /** The drop zone the preview corresponds to. */
   zone: TilingLeafDropZone;
+  /** The other leaf involved (swap counterpart or insert neighbor). */
   partnerLeafId: string;
 }
 
+/** Options controlling how `insertLeafAdjacent` places an inserted leaf. */
 export interface TilingInsertionOptions {
+  /** When `true`, reuse the parent split's axis instead of the placement axis. */
   preserveParentSplitAxis: boolean;
+  /** Ratio `[0, 1]` allotted to the inserted leaf in the new split. */
   splitRatio: number;
 }
 
@@ -1326,10 +1590,15 @@ export interface TilingDragPaneSnapshot {
   accent: TilingTileAccent;
 }
 
+/** A measured pane rectangle in client coordinates (CSS px). */
 export interface TilingPaneFootprint {
+  /** Left edge (client X). */
   left: number;
+  /** Top edge (client Y). */
   top: number;
+  /** Width (CSS px). */
   width: number;
+  /** Height (CSS px). */
   height: number;
 }
 
@@ -1379,36 +1648,96 @@ export interface TilingDragCancelVisualState {
   snapshot: TilingDragPaneSnapshot;
 }
 
+/**
+ * Hex colors for the drag/drop observability overlays (borders, projected
+ * landing fills, and hit-zone tints). Consumed by the renderer overlays and the
+ * `/devtools` observability panel; see `TILING_OBSERVABILITY_COLOR_DEFAULTS`.
+ */
 export interface TilingObservabilityColorConfig {
+  /** Border color of the drag source pane. */
   dragSourceBorderColorHex: string;
+  /** Border color of the drag target pane. */
   dragTargetBorderColorHex: string;
+  /** Border color of the projected source (S') landing. */
   projectedSourceBorderColorHex: string;
+  /** Border color of the projected target (T') landing. */
   projectedTargetBorderColorHex: string;
+  /** Border color of the projected successor landing. */
   projectedSuccessorBorderColorHex: string;
+  /** Fill color of the projected source (S') landing. */
   projectedSourceFillColorHex: string;
+  /** Fill color of the projected target (T') landing. */
   projectedTargetFillColorHex: string;
+  /** Fill color of the projected successor landing. */
   projectedSuccessorFillColorHex: string;
+  /** Tint of the left insert hit zone. */
   hitZoneLeftColorHex: string;
+  /** Tint of the right insert hit zone. */
   hitZoneRightColorHex: string;
+  /** Tint of the top insert hit zone. */
   hitZoneTopColorHex: string;
+  /** Tint of the bottom insert hit zone. */
   hitZoneBottomColorHex: string;
+  /** Tint of the center swap hit zone. */
   hitZoneCenterColorHex: string;
+  /** Tint applied when a hit zone is blocked. */
   hitZoneBlockedColorHex: string;
 }
 
 /** Per-subject overlay/border visibility toggles for the showcase observability panel. */
 export interface TilingObservabilityColorEnableConfig {
+  /** Whether the drag source border overlay is drawn. */
   dragSourceBorderEnabled: boolean;
+  /** Whether the drag target border overlay is drawn. */
   dragTargetBorderEnabled: boolean;
+  /** Whether the projected source (S') border overlay is drawn. */
   projectedSourceBorderEnabled: boolean;
+  /** Whether the projected target (T') border overlay is drawn. */
   projectedTargetBorderEnabled: boolean;
+  /** Whether the projected source (S') fill overlay is drawn. */
   projectedSourceFillEnabled: boolean;
+  /** Whether the projected target (T') fill overlay is drawn. */
   projectedTargetFillEnabled: boolean;
+  /** Whether the projected successor border overlay is drawn. */
   projectedSuccessorBorderEnabled: boolean;
+  /** Whether the projected successor fill overlay is drawn. */
   projectedSuccessorFillEnabled: boolean;
 }
 
+/**
+ * Props for the {@link TilingRenderer} component — the full controlled-component
+ * surface. `layout` + `tiles` + `config` + `onLayoutChange` are the four
+ * required props; everything else is optional and resolves to a documented
+ * default.
+ *
+ * @remarks
+ * The renderer is a CONTROLLED component: you hold the layout tree in state and
+ * apply every edit it reports through `onLayoutChange`. Focus, maximize, theme,
+ * and accent can each be left uncontrolled (renderer-managed) or lifted into
+ * your state via the matching `on*Change` callback. Interaction behavior is
+ * tuned entirely through the single `interaction` prop
+ * ({@link TilingInteractionCapabilities}); the many `show*` / `observability*`
+ * props drive the optional drag/drop observability overlays and are inert unless
+ * a drag is in flight.
+ *
+ * @example
+ * ```tsx
+ * const [layout, setLayout] = useState<TilingLayoutNode>(initialLayout);
+ * return (
+ *   <TilingRenderer
+ *     layout={layout}
+ *     tiles={tiles}
+ *     config={DEFAULT_TILING_LAYOUT_CONFIG}
+ *     onLayoutChange={setLayout}
+ *   />
+ * );
+ * ```
+ *
+ * @see {@link TilingRenderer}
+ * @see {@link TilingInteractionCapabilities}
+ */
 export interface TilingRendererProps {
+  /** The controlled layout tree to render. Apply every reported edit back here. */
   layout: TilingLayoutNode;
   /**
    * Tile registry, accepted as either an ordered array (resolved by `id`) or a
@@ -1416,8 +1745,11 @@ export interface TilingRendererProps {
    * `{ id, title, content }` tiles; the interactive lab passes a `Map`.
    */
   tiles: ReadonlyArray<TilingTile> | ReadonlyMap<string, TilingTile>;
+  /** Global geometry configuration (gap, min pane size, handle size). */
   config: TilingLayoutConfig;
+  /** Called with the next layout tree whenever the renderer edits it (controlled). */
   onLayoutChange: (layout: TilingLayoutNode) => void;
+  /** Optional class name applied to the tiling root element. */
   className?: string;
   /**
    * Active visual theme id. Selects which built-in `TilingTheme` paints every
@@ -1440,8 +1772,11 @@ export interface TilingRendererProps {
    * Changing this prop at runtime updates renderer behavior immediately.
    */
   interaction?: TilingInteractionCapabilities;
+  /** Custom pane renderer. Receives {@link TilingRenderTileProps}; omit to use the default tile. */
   renderTile?: (args: TilingRenderTileProps) => React.ReactNode;
+  /** Controlled focused-leaf id. `undefined` → uncontrolled; `null` → nothing focused. */
   focusedLeafId?: string | null;
+  /** Notified whenever the focused leaf changes. */
   onFocusedLeafChange?: (leafId: string) => void;
   /**
    * When provided, the top-bar tab strip surfaces an accent palette picker
@@ -1461,10 +1796,15 @@ export interface TilingRendererProps {
   maximizedLeafId?: string | null;
   /** Notified whenever the maximized pane changes (`null` on restore). */
   onMaximizedLeafChange?: (leafId: string | null) => void;
+  /** Observability hook: notified with the current projected-overlay count. */
   onProjectedOverlayCountChange?: (count: number) => void;
+  /** Whether translucent projected landing overlays are shown during a drag. */
   showDropPreviewOverlays?: boolean;
+  /** Override colors (hex) for the drag/drop observability overlays. */
   observabilityColors?: TilingObservabilityColorConfig;
+  /** Per-subject visibility toggles for the observability overlays. */
   observabilityColorEnables?: TilingObservabilityColorEnableConfig;
+  /** Background opacity `[0, 1]` for the projected landing overlays. */
   projectedOverlayBackgroundAlpha?: number;
   /**
    * Master gate for all drag-motion choreography. When `false`, the ghost hop,
@@ -1512,13 +1852,21 @@ export interface TilingRendererProps {
    * `[0, 100]`. Default `0`. Skipped under `prefers-reduced-motion`.
    */
   swapBounceMagnitudePercent?: number;
+  /** Whether drop border hints are painted on candidate panes during a drag. */
   showDropBorderHints?: boolean;
+  /** Whether the translucent drop-intent background tint is shown during a drag. */
   showDropIntentTranslucentBg?: boolean;
+  /** Whether the drop-intent debug overlay is shown. */
   showDropIntentDebug?: boolean;
+  /** Whether the five-region pane hit-zone debug overlay is shown. */
   showPaneHitZones?: boolean;
+  /** Opacity `[0, 1]` for the pane hit-zone debug overlay. */
   paneHitZonesAlpha?: number;
+  /** Force the hit-zone overlay to treat this leaf as the drag source (debug). */
   paneHitZoneSourceLeafId?: string | null;
+  /** Observability hook: notified with the resolved drop intent (or `null`). */
   onDropIntentChange?: (intent: TilingDropIntentDebugState | null) => void;
+  /** Observability hook: notified with the live drag/hover hit-log (or `null`). */
   onLiveHitLogChange?: (state: TilingLiveHitLogState | null) => void;
 }
 

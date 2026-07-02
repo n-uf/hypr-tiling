@@ -2,8 +2,26 @@
   "name": "hypr-tiling-showcase",
   "version": "26.6.1",
   "private": false,
-  "description": "Showcase package for hypr-tiling.",
+  "description": "Interactive React showcase for hypr-tiling layouts, commands, keyboard flows, and runtime pane orchestration.",
+  "keywords": [
+    "react",
+    "tiling",
+    "showcase",
+    "interactive-demo",
+    "resizable-panes",
+    "window-manager-ui",
+    "layout-engine",
+    "hyprland"
+  ],
   "license": "LicenseRef-PolyForm-Perimeter-1.0.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/n-uf/hypr-tiling.git"
+  },
+  "homepage": "https://hypr-tiling.n-uf.com/showcase",
+  "bugs": {
+    "url": "https://github.com/n-uf/hypr-tiling/issues"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -30,10 +48,10 @@
     "react-dom": "^19"
   },
   "devDependencies": {
-    "@types/node": "^26.0.1",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "tsup": "^8.5.0",
-    "typescript": "^5.9.3"
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
   }
 }

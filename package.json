@@ -6,6 +6,7 @@
   "license": "LicenseRef-PolyForm-Perimeter-1.0.1",
   "packageManager": "pnpm@10.12.1",
   "scripts": {
+    "dev": "pnpm --filter hypr-tiling-web dev",
     "build": "pnpm -r --filter './packages/*' build && pnpm --filter hypr-tiling-web build",
     "typecheck": "pnpm -r --filter './packages/*' typecheck && pnpm --filter hypr-tiling-web typecheck",
     "test": "pnpm --filter @n-uf/hypr-tiling test",

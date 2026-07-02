@@ -4,9 +4,11 @@
     "module": "ESNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "moduleResolution": "bundler",
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
       "@n-uf/hypr-tiling": ["../../packages/hypr-tiling/index.ts"],
+      "@n-uf/hypr-tiling/devtools": ["../../packages/hypr-tiling/devtools.ts"],
       "hypr-tiling-showcase": ["../../packages/showcase/src/index.ts"]
     },
     "jsx": "react-jsx",

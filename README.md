@@ -13,6 +13,14 @@ Reach for it when users need to rearrange dense, multi-panel screens at runtime
 — IDE-like tools, trading and operator consoles, analytics dashboards — while
 your app keeps strict, controlled ownership of the layout state.
 
+## Quick links
+
+- Documentation homepage: <https://hypr-tiling.n-uf.com/>
+- Interactive showcase route: <https://hypr-tiling.n-uf.com/showcase>
+- Package README: [`packages/hypr-tiling/README.md`](packages/hypr-tiling/README.md)
+- API report index: [`packages/hypr-tiling/etc/hypr-tiling.api.md`](packages/hypr-tiling/etc/hypr-tiling.api.md)
+- GitHub issues: <https://github.com/n-uf/hypr-tiling/issues>
+
 ## Use cases
 
 hypr-tiling is built for screens where users live across multiple panels and
@@ -110,6 +118,13 @@ export function Workspace(): JSX.Element {
   );
 }
 ```
+
+## API reference
+
+Public API docs and export signatures live in:
+
+- Human guide: [`packages/hypr-tiling/README.md`](packages/hypr-tiling/README.md)
+- Extracted API report: [`packages/hypr-tiling/etc/hypr-tiling.api.md`](packages/hypr-tiling/etc/hypr-tiling.api.md)
 
 ## Features
 

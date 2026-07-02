@@ -204,7 +204,9 @@ export function matchJumpToPaneNumber(
 
 /** Capability enable flags consulted while matching a keyboard action. */
 export interface TilingKeymapActionGuards {
+  /** Gates the maximize/restore actions (`toggleMaximize` / `restore`). */
   maximizeEnabled: boolean;
+  /** Gates the pane-switching actions (`previousPane` / `nextPane` / `jumpToPane`). */
   paneSwitchingEnabled: boolean;
   /** Gates the directional focus actions (`focusLeft/Right/Up/Down`). */
   focusEnabled: boolean;

@@ -5,6 +5,7 @@ import type {
   TilingSplitAxis,
 } from "./types";
 
+/** A pane's four directional insert edges (the drop zones excluding `"center"`). */
 export type TilingEdgeZone = Exclude<TilingLeafDropZone, "center">;
 
 /**
@@ -48,6 +49,7 @@ export interface TilingClientRectOrigin {
   top: number;
 }
 
+/** Base drop hit-zone geometry: center swap fraction, floor, and hysteresis. */
 export interface TilingDropIntentBaseConfig {
   /**
    * Fraction of each pane axis spanned by the center (swap) rectangle. Acts as
@@ -99,27 +101,53 @@ export interface TilingPaneZoneGeometry {
   devicePixelRatio: number;
 }
 
+/**
+ * The resolver's full drop-intent result for one pane hover: the resolved zone
+ * and action plus the geometry/diagnostic fields that explain how it was
+ * reached. Emitted (as {@link TilingDropIntentDebugState}) to `onDropIntentChange`.
+ */
 export interface TilingDropIntentState {
+  /** The hovered leaf this resolution targets. */
   leafId: string;
+  /** The resolved drop zone under the cursor. */
   zone: TilingLeafDropZone;
+  /** The resolved drop action. */
   action: TilingDropAction;
+  /** The nearest edge the cursor points toward (pre-fallback). */
   dominantEdge: TilingEdgeZone;
+  /** The edge finally selected after fallbacks, or `null`. */
   finalEdge: TilingEdgeZone | null;
+  /** Why the dominant edge was replaced by a fallback, or `null`. */
   fallbackReason: string | null;
+  /** Why the action was blocked, or `null` when unblocked. */
   blockedReason: string | null;
+  /** Split axes from the root to the target (containment path). */
   axisPath: ReadonlyArray<TilingSplitAxis>;
+  /** Edge threshold fraction in effect. */
   edgeThresholdRatio: number;
+  /** Center rectangle width (CSS px). */
   centerRectWidthPx: number;
+  /** Center rectangle height (CSS px). */
   centerRectHeightPx: number;
+  /** Cursor distance to the center rectangle (CSS px). */
   centerDistancePx: number;
+  /** Cursor distance to the nearest edge (CSS px). */
   nearestEdgeDistancePx: number;
+  /** Pane-local cursor X (CSS px). */
   paneLocalX: number;
+  /** Pane-local cursor Y (CSS px). */
   paneLocalY: number;
+  /** The ancestor split chosen for a split-container insert, or `null`. */
   targetSplitId: string | null;
+  /** Which child slot of that split the insert targets, or `null`. */
   targetSplitPlacement: "first" | "second" | null;
+  /** The edge zone selected on the chosen split, or `null`. */
   selectedSplitZone: TilingEdgeZone | null;
+  /** Cursor distance to the selected split edge (CSS px), or `null`. */
   selectedSplitDistancePx: number | null;
+  /** Reasons candidate splits were rejected during resolution. */
   rejectedSplitReasons: ReadonlyArray<string>;
+  /** The tuning knobs that shaped this resolution. */
   tuning: TilingDropIntentTuningState;
 }
 
@@ -154,6 +182,11 @@ export interface TilingDropIntentHitZoneDiagnostics {
   edgeZones: ReadonlyArray<TilingDropIntentHitZoneDiagnosticEntry>;
 }
 
+/**
+ * The default drop hit-zone geometry: a `0.34` center swap fraction, a `24`px
+ * center floor, and `6`px boundary hysteresis. The baseline
+ * `dropHitZoneGeometry` capability resolves to these values.
+ */
 export const TILING_DROP_INTENT_CONFIG: TilingDropIntentBaseConfig = {
   centerRatio: 0.34,
   centerMinPx: 24,

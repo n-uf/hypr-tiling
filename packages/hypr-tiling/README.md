@@ -12,6 +12,13 @@ Reach for it when users need to rearrange dense, multi-panel screens at runtime
 — IDE-like tools, trading and operator consoles, analytics dashboards — while
 your app keeps strict, controlled ownership of the layout state.
 
+## Quick links
+
+- Documentation homepage: <https://hypr-tiling.n-uf.com/>
+- Interactive showcase route: <https://hypr-tiling.n-uf.com/showcase>
+- API report index: [`etc/hypr-tiling.api.md`](etc/hypr-tiling.api.md)
+- Repository issues: <https://github.com/n-uf/hypr-tiling/issues>
+
 ## Install
 
 ```bash
@@ -27,6 +34,13 @@ yarn add @n-uf/hypr-tiling react react-dom
 ```
 
 `react` and `react-dom` are peer dependencies (version `^19`).
+
+## Compatibility
+
+- React: `^19`
+- React DOM: `^19`
+- Tailwind scanning: required (`content` glob or v4 `@source`)
+- Runtime: browser DOM (React renderer package)
 
 ### Tailwind content requirement
 
@@ -136,6 +150,9 @@ import {
 
 Other layout-tree helpers are exported for advanced/internal use, but the
 reducers above are the stable, documented surface for application code.
+
+For complete generated API signatures, see
+[`etc/hypr-tiling.api.md`](etc/hypr-tiling.api.md).
 
 ## Features
 

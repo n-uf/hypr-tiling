@@ -23,12 +23,19 @@ import type { TilingCommand, TilingKeyboardAction } from "./types";
  * also touches. The renderer builds this from its resolved capabilities.
  */
 export interface TilingCommandGates {
+  /** Maximize / restore commands. */
   maximizeEnabled: boolean;
+  /** Pane-switching (focus-cycle / focus-jump) commands. */
   paneSwitchingEnabled: boolean;
+  /** Focus selection commands. */
   focusEnabled: boolean;
+  /** Drag/keyboard rearrange (move / swap / insert) commands. */
   rearrangeEnabled: boolean;
+  /** Per-pane title-bar sizing (`set-sizing`) command. */
   sizingEnabled: boolean;
+  /** Directional acquire-space command. */
   acquireSpaceEnabled: boolean;
+  /** Divider resize (`set-split-ratio` / `toggle-split-axis`) commands. */
   resizeEnabled: boolean;
   /** Master/stack layout-mode commands (HT-LAYOUT-MASTER-STACK). */
   layoutEnabled: boolean;

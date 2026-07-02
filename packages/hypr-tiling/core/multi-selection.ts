@@ -37,6 +37,7 @@ export const MULTI_SELECT_GROUP_MIN_MEMBERS: number = 2;
  * Windows/Linux.
  */
 export interface MultiSelectModifierState {
+  /** Whether Alt/Opt was held (the multi-select discriminator). */
   readonly altKey: boolean;
 }
 

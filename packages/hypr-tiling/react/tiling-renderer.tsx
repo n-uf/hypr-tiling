@@ -334,12 +334,19 @@ export const DEFAULT_TILING_LAYOUT_CONFIG: TilingLayoutConfig = {
 
 /** Baseline ghost-hop / survivor-reflow duration at `DEFAULT_DRAG_ANIMATION_SPEED_PERCENT`. */
 export const BASELINE_DRAG_HOP_DURATION_MS: number = 170;
+/** Default drag animation speed percent (`100` = the baseline duration). */
 export const DEFAULT_DRAG_ANIMATION_SPEED_PERCENT: number = 100;
 
-/** Slowest (floor) / fastest (ceiling) drag animation speed percents the slider + clamp allow. */
+/** Slowest (floor) drag animation speed percent the slider + clamp allow. */
 export const DRAG_ANIMATION_SPEED_MIN_PERCENT: number = 10;
+/** Fastest (ceiling) drag animation speed percent the slider + clamp allow. */
 export const DRAG_ANIMATION_SPEED_MAX_PERCENT: number = 400;
 
+/**
+ * Convert a drag animation speed percent to a duration (ms): `100` returns the
+ * baseline, lower is slower, higher is faster. The percent is clamped to
+ * `[DRAG_ANIMATION_SPEED_MIN_PERCENT, DRAG_ANIMATION_SPEED_MAX_PERCENT]`.
+ */
 export function resolveDragAnimationDurationMs(speedPercent: number): number {
   const clampedPercent: number = Math.min(
     Math.max(speedPercent, DRAG_ANIMATION_SPEED_MIN_PERCENT),
@@ -3544,6 +3551,56 @@ function MovePaneAffordance({
   );
 }
 
+/**
+ * The dynamic tiling renderer: a controlled React component that projects a
+ * {@link TilingLayoutNode} tree to pixels and drives drag/drop, resize, group,
+ * maximize, and keyboard interaction. The library's single entry component.
+ *
+ * @remarks
+ * `TilingRenderer` is CONTROLLED: hold the layout tree in state and apply every
+ * edit it reports via `onLayoutChange`. Supply the tiles it references through
+ * `tiles`, geometry through `config`, and tune behavior through the single
+ * `interaction` prop ({@link TilingInteractionCapabilities}). It forwards a
+ * {@link TilingCommandHandle} via `ref` so you can dispatch commands
+ * imperatively. All state (focus, maximize, theme, accent) can be left
+ * uncontrolled or lifted via the matching `on*Change` callback.
+ *
+ * The renderer emits real semantic DOM (not canvas), so tiled content stays
+ * crawlable and prerenderable.
+ *
+ * @example
+ * ```tsx
+ * import { TilingRenderer, DEFAULT_TILING_LAYOUT_CONFIG } from "@n-uf/hypr-tiling";
+ * import type { TilingLayoutNode, TilingTile } from "@n-uf/hypr-tiling";
+ * import { useState } from "react";
+ *
+ * const tiles: TilingTile[] = [
+ *   { id: "a", title: "editor", content: <Editor /> },
+ *   { id: "b", title: "preview", content: <Preview /> },
+ * ];
+ * const initial: TilingLayoutNode = {
+ *   kind: "split", id: "root", axis: "horizontal", ratio: 0.5,
+ *   first: { kind: "leaf", id: "l", tileId: "a" },
+ *   second: { kind: "leaf", id: "r", tileId: "b" },
+ * };
+ *
+ * export function Workspace() {
+ *   const [layout, setLayout] = useState(initial);
+ *   return (
+ *     <TilingRenderer
+ *       layout={layout}
+ *       tiles={tiles}
+ *       config={DEFAULT_TILING_LAYOUT_CONFIG}
+ *       onLayoutChange={setLayout}
+ *     />
+ *   );
+ * }
+ * ```
+ *
+ * @see {@link TilingRendererProps}
+ * @see {@link TilingInteractionCapabilities}
+ * @see {@link TilingCommandHandle}
+ */
 export const TilingRenderer = React.forwardRef<
   TilingCommandHandle,
   TilingRendererProps
@@ -7582,6 +7639,11 @@ export const TilingRenderer = React.forwardRef<
   );
 });
 
+/**
+ * Flatten a layout tree to the tile ids it renders, in reading order (group
+ * members reported in tab order). Handy for driving tile-order-dependent UI
+ * (e.g. a tab strip or an external index).
+ */
 export function tileOrderByLeafId(
   node: TilingLayoutNode,
 ): ReadonlyArray<string> {

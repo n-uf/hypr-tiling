@@ -8,6 +8,11 @@
     "tiling",
     "dynamic-tiling",
     "split-layout",
+    "split-pane",
+    "pane-layout",
+    "react-layout",
+    "dock-layout",
+    "window-manager-ui",
     "resizable-panes",
     "drag-and-drop",
     "tiling-window-manager",
@@ -20,7 +25,7 @@
     "type": "git",
     "url": "git+https://github.com/n-uf/hypr-tiling.git"
   },
-  "homepage": "https://hypr-tiling.n-uf.com",
+  "homepage": "https://hypr-tiling.n-uf.com/",
   "bugs": {
     "url": "https://github.com/n-uf/hypr-tiling/issues"
   },
@@ -49,6 +54,7 @@
     "check": "pnpm typecheck && pnpm test",
     "api:check": "api-extractor run --verbose",
     "api:update": "api-extractor run --local --verbose",
+    "api:docs": "node ./scripts/generate-api-docs.mjs",
     "prepublishOnly": "pnpm build",
     "release": "if [ \"$npm_config_nobump\" = \"true\" ]; then npm publish --access public; else node ./scripts/calendar-version-bump.mjs --apply && npm publish --access public; fi",
     "typecheck": "tsc --project tsconfig.json",
@@ -65,8 +71,10 @@
   },
   "devDependencies": {
     "@jest/globals": "^30.2.0",
+    "@microsoft/api-documenter": "^7.30.7",
     "@microsoft/api-extractor": "^7.58.9",
     "@testing-library/react": "^16.3.2",
+    "marked": "^18.0.5",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.0.1",
     "@types/react": "^19",
