@@ -19,6 +19,7 @@ import { CanvasTile } from "./canvas-tile";
 import { CanvasPaneContent } from "./content-canvas";
 import { CANVAS_TICKS } from "./canvas-theme";
 import { HomeShortcuts } from "./shortcuts";
+import { type HomeTileProps } from "./group-switcher";
 
 // The homepage is a live hypr-tiling layout that can present in three SKINS — a
 // "skin" being a whole bundled look (theme + pane chrome + content presentation),
@@ -383,16 +384,13 @@ function HomeTopBar({
 }
 
 // Per-skin chrome for the page-level bottom bar. The bar is present in ALL three
-// skins now: it carries a live pane count + focused-pane readout, HOSTS the
-// keyboard-shortcut chips (relocated out of the old standalone controls pane),
-// and keeps the "double-click tab to maximize" hint — each styled in its skin's
+// skins: it now leads with only a minimal per-skin accent mark (the wordy
+// PANES / FOCUS / MODEL & KUDOS readout is gone — decluttered so the shortcut
+// chips are the bar's primary content), HOSTS the keyboard-shortcut chips, and
+// keeps the "double-click tab to maximize" hint — each styled in its skin's
 // vocabulary (Mosaic dark ink, Editorial paper, Canvas squared LED-engineering).
 interface SkinBottomBarTokens {
   readonly bar: string;
-  readonly countStrong: string;
-  readonly countLabel: string;
-  readonly dot: string;
-  readonly focusStrong: string;
   readonly hintKbd: string;
   readonly hintText: string;
 }
@@ -400,30 +398,18 @@ interface SkinBottomBarTokens {
 const SKIN_BOTTOM_BAR: Record<HomeSkin, SkinBottomBarTokens> = {
   mosaic: {
     bar: "flex shrink-0 items-center gap-3 rounded-lg border border-white/[0.07] bg-[#121316]/90 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-stone-500 shadow-[0_14px_36px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur",
-    countStrong: "text-stone-200",
-    countLabel: "text-stone-500",
-    dot: "text-stone-700",
-    focusStrong: "text-stone-200",
     hintKbd:
       "rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-[9px] leading-none text-stone-400",
     hintText: "text-stone-500",
   },
   editorial: {
     bar: "flex shrink-0 items-center gap-3 rounded-[4px] border border-[#e2dac6] bg-[#fbf9f2] px-3.5 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[#8c8069] shadow-[0_1px_0_rgba(36,31,23,0.03),0_10px_28px_-24px_rgba(36,31,23,0.4)]",
-    countStrong: "text-[#241f17]",
-    countLabel: "text-[#a89c83]",
-    dot: "text-[#c9bd9f]",
-    focusStrong: "text-[#241f17]",
     hintKbd:
       "rounded-[2px] border border-[#ddd4bf] bg-[#efe8d6] px-1.5 py-0.5 text-[9px] leading-none text-[#6b6250]",
     hintText: "text-[#a89c83]",
   },
   canvas: {
     bar: "flex shrink-0 items-center gap-3 rounded-lg border border-slate-200 bg-white/90 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur",
-    countStrong: "text-slate-700",
-    countLabel: "text-slate-400",
-    dot: "text-slate-300",
-    focusStrong: "text-slate-700",
     hintKbd:
       "rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] leading-none text-slate-500",
     hintText: "text-slate-400",
@@ -454,11 +440,11 @@ function BottomBarAccent({ skin }: { skin: HomeSkin }): React.ReactElement {
   return <span aria-hidden className="h-px w-5 shrink-0 bg-[#c9bd9f]" />;
 }
 
-// The page-level bottom bar, present in every skin. Left: a skin accent + a live
-// pane count and focused-pane readout (read from the public layout query).
-// Center: the keyboard-shortcut strip (`HomeShortcuts`), horizontally scrollable
-// so a dense set of actionable commands never crowds the readouts. Right: the
-// "double-click tab to maximize" hint.
+// The page-level bottom bar, present in every skin. Left: only a minimal
+// per-skin accent mark (the old wordy pane-count / focused-pane / section
+// readout is removed — decluttered). Center: the keyboard-shortcut strip
+// (`HomeShortcuts`), horizontally scrollable and now the bar's primary content.
+// Right: the "double-click tab to maximize" hint.
 function HomeBottomBar({
   skin,
   commandHandleRef,
@@ -466,7 +452,6 @@ function HomeBottomBar({
   layout,
   focusedLeafId,
   maximizedLeafId,
-  tilesById,
 }: {
   skin: HomeSkin;
   commandHandleRef: React.RefObject<TilingCommandHandle | null>;
@@ -474,33 +459,12 @@ function HomeBottomBar({
   layout: TilingLayoutNode;
   focusedLeafId: string | null;
   maximizedLeafId: string | null;
-  tilesById: ReadonlyMap<string, TilingTile>;
 }): React.ReactElement {
   const tokens: SkinBottomBarTokens = SKIN_BOTTOM_BAR[skin];
-  const query: TilingLayoutQuery = queryTilingLayout(layout);
-  const focusedIndex: number =
-    focusedLeafId == null ? -1 : query.leafIds.indexOf(focusedLeafId);
-  const focusedTileId: string | null =
-    focusedIndex >= 0 ? (query.tileOrder[focusedIndex] ?? null) : null;
-  const focusedTitle: string =
-    focusedTileId != null ? (tilesById.get(focusedTileId)?.title ?? "—") : "—";
 
   return (
     <div className={tokens.bar}>
-      <span className="flex shrink-0 items-center gap-2.5">
-        <BottomBarAccent skin={skin} />
-        <span className="flex items-center gap-2">
-          <span className={tokens.countStrong}>{query.leafIds.length}</span>
-          <span className={tokens.countLabel}>panes</span>
-          <span aria-hidden className={tokens.dot}>
-            ·
-          </span>
-          <span className="truncate">
-            {maximizedLeafId != null ? "max · " : "focus · "}
-            <span className={tokens.focusStrong}>{focusedTitle}</span>
-          </span>
-        </span>
-      </span>
+      <BottomBarAccent skin={skin} />
       <HomeShortcuts
         commandHandleRef={commandHandleRef}
         layout={layout}
@@ -630,15 +594,26 @@ export function HomePage({
           onFocusedLeafChange={setFocusedLeafId}
           maximizedLeafId={maximizedLeafId}
           onMaximizedLeafChange={setMaximizedLeafId}
-          renderTile={(args: TilingRenderTileProps): React.ReactNode =>
-            skin === "editorial" ? (
-              <EditorialTile {...args} />
+          renderTile={(args: TilingRenderTileProps): React.ReactNode => {
+            // Thread the live layout + the SAME command-dispatch ref the shortcut
+            // bar uses + the tile registry into each skin's renderer, so every
+            // skin paints its OWN grouped-stack representation (the library's
+            // default group tab strip is suppressed). No public API is added —
+            // group commands route through the existing `TilingCommandHandle`.
+            const homeArgs: HomeTileProps = {
+              ...args,
+              layout,
+              dispatch,
+              tilesById,
+            };
+            return skin === "editorial" ? (
+              <EditorialTile {...homeArgs} />
             ) : skin === "canvas" ? (
-              <CanvasTile {...args} />
+              <CanvasTile {...homeArgs} />
             ) : (
-              <DocTile {...args} />
-            )
-          }
+              <DocTile {...homeArgs} />
+            );
+          }}
         />
       </div>
       <HomeBottomBar
@@ -648,7 +623,6 @@ export function HomePage({
         layout={layout}
         focusedLeafId={focusedLeafId}
         maximizedLeafId={maximizedLeafId}
-        tilesById={tilesById}
       />
     </main>
   );

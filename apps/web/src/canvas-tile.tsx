@@ -4,10 +4,20 @@ import {
   TilingDragHandle,
   TilingPaneAction,
   TilingPaneBody,
+  type TilingCommand,
+  type TilingGroupNode,
   type TilingRenderTileProps,
+  type TilingTile,
 } from "@n-uf/hypr-tiling";
 import { CANVAS_THEME } from "./canvas-theme";
 import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
+import {
+  groupCommands,
+  groupMemberViews,
+  resolveActiveGroup,
+  type GroupMemberView,
+  type HomeTileProps,
+} from "./group-switcher";
 
 // The CANVAS skin's pane chrome — an ENGINEERING INSTRUMENT panel, LED-lit.
 // This supersedes the earlier standup desktop-window frame entirely (no
@@ -21,16 +31,17 @@ import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
 //
 // Three exact bands, each an instrument readout — not a header + body:
 //
-//   1. HEADER RAIL — a compact control-panel row. On the LEFT, two squared,
-//      UNIFORM-color instrument keys (fullscreen/maximize, then select-for-
-//      grouping) — deliberately one neutral slate for EVERY pane, not the
-//      per-pane LED hue, so the controls read as a consistent key row; then the
-//      pane's own status LED (dim slate at rest, its saturated hue LIT with a
-//      glow on focus), a hairline column rule, and a short monospace label. On
-//      the RIGHT, a tabular pane index and — only while a groupable
-//      multi-selection exists — the squared LED-keycap Group action. This is
-//      the drag surface and owns the Alt/Opt+click multi-select toggle via
-//      `TilingDragHandle`.
+//   1. HEADER RAIL — a compact control-panel row. On the LEFT, a small COLORED
+//      traffic-light cluster of two squared instrument keys (fullscreen/maximize,
+//      then select-for-grouping) drawn from the Canvas LED palette (pink for
+//      maximize, amber for select) — squared right angles (engineering, not
+//      round macOS discs), dimmed at rest and LIT/filled with a hue glow when
+//      the key's state is active (maximized / selected). Then the pane's own
+//      status LED (dim slate at rest, its saturated hue LIT with a glow on
+//      focus), a hairline column rule, and a short monospace label. On the
+//      RIGHT, a tabular pane index and — only while a groupable multi-selection
+//      exists — the squared LED-keycap Group action. This is the drag surface
+//      and owns the Alt/Opt+click multi-select toggle via `TilingDragHandle`.
 //   2. BODY — a flat neutral panel field (no card rounding, no shadow) that
 //      renders `tile.content` through `TilingPaneBody` so the drag ghost reuses
 //      the same render path.
@@ -143,23 +154,108 @@ const HEADER_RAIL: string =
 const LED_KEYCAP: string =
   "flex h-[18px] shrink-0 items-center justify-center rounded-[1px] border border-slate-300 bg-white px-1.5 font-mono text-[9px] uppercase leading-none tracking-[0.14em] text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-800";
 
-// The two squared control keys on the header LEFT (fullscreen, then select).
-// Their base color is ONE neutral slate shared by EVERY pane — deliberately not
-// the per-pane LED hue — so the control row reads as consistent instrument keys
-// across a tiled workspace. Outline at rest; filled slate when the key's state
-// is active (maximized / selected).
-const CONTROL_SQUARE: string =
-  "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[1px] border font-mono text-[10px] leading-none transition-colors";
-const CONTROL_SQUARE_REST: string =
-  "border-slate-300 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-800";
-const CONTROL_SQUARE_ACTIVE: string =
-  "border-slate-700 bg-slate-700 text-white hover:border-slate-800";
+// The two squared control keys on the header LEFT (fullscreen · select) — a
+// small COLORED traffic-light cluster (the macOS titlebar analog, but squared
+// for the engineering aesthetic, not round). Each key is a colored square drawn
+// from the Canvas LED palette — pink for fullscreen/maximize, amber for
+// select-for-grouping — dimmed (translucent fill, no glow) at REST and
+// LIT/filled with its saturated hue + a glow when the key's state is ACTIVE
+// (maximized / selected). The tiny glyph is hidden at rest and reveals (white)
+// on hover or when active, mirroring the macOS "glyphs appear on hover" idiom.
+const CONTROL_SQUARE_BASE: string =
+  "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[1px] border font-mono text-[8px] leading-none transition-all";
+const MAXIMIZE_LIGHT_REST: string =
+  "border-pink-400/50 bg-pink-400/25 text-transparent hover:bg-pink-400/45 hover:text-white";
+const MAXIMIZE_LIGHT_ACTIVE: string =
+  "border-pink-500 bg-pink-400 text-white shadow-[0_0_5px_0_rgba(244,114,182,0.85)]";
+const SELECT_LIGHT_REST: string =
+  "border-amber-400/55 bg-amber-400/25 text-transparent hover:bg-amber-400/45 hover:text-white";
+const SELECT_LIGHT_ACTIVE: string =
+  "border-amber-500 bg-amber-400 text-white shadow-[0_0_5px_0_rgba(251,191,36,0.85)]";
 
 // Body field — flat neutral panel; text tokens from the consumer theme.
 const PANEL_BODY: string = CANVAS_THEME.paneShell.bodyText;
 
-export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
+// The Canvas grouped-stack representation: a row of squared LEDs in the pane
+// FOOTER, one per group member, with the active member's LED lit in its hue +
+// glow (the rest dim slate). Click an LED → `group-tab-jump` activates that
+// member; hover a member LED → a small squared "×" reveals to eject it
+// (`remove-from-group`); a trailing "ungroup" key dissolves the whole group
+// (`ungroup`). All three route through the SAME `TilingCommandHandle.dispatch`
+// the shortcut bar uses (passed down as `dispatch`); no public API is added.
+// This replaces the library's suppressed default group tab strip for the Canvas
+// skin. Only renders for a group's active member (the one pane that renders).
+function CanvasGroupLeds({
+  group,
+  tilesById,
+  dispatch,
+}: {
+  group: TilingGroupNode;
+  tilesById: ReadonlyMap<string, TilingTile>;
+  dispatch: (command: TilingCommand) => void;
+}): React.ReactElement {
+  const members: ReadonlyArray<GroupMemberView> = groupMemberViews(
+    group,
+    tilesById,
+  );
+  const commands = groupCommands(group.id);
+  return (
+    <span className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden">
+      <span
+        aria-hidden
+        className="shrink-0 font-mono text-[9px] uppercase tracking-[0.18em] text-slate-400"
+      >
+        grp
+      </span>
+      <span className="flex shrink items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {members.map((member: GroupMemberView): React.ReactElement => {
+          const memberLed: CanvasLed = paneLed(member.memberNumber);
+          return (
+            <span
+              key={member.memberId}
+              className="group/led relative flex shrink-0 items-center"
+            >
+              <TilingPaneAction
+                onClick={(): void => dispatch(commands.jump(member.memberNumber))}
+                aria-label={`activate ${member.title}`}
+                aria-pressed={member.isActive}
+                title={member.title}
+                className={`h-3 w-3 rounded-[1px] border transition-all ${
+                  member.isActive
+                    ? `border-transparent ${memberLed.bar} ${memberLed.litGlow}`
+                    : "border-slate-300 bg-slate-200 hover:bg-slate-300"
+                }`}
+              />
+              <TilingPaneAction
+                onClick={(): void => dispatch(commands.remove(member.memberId))}
+                aria-label={`remove ${member.title} from group`}
+                title={`remove ${member.title} from group`}
+                className="absolute -right-1.5 -top-1.5 hidden h-3 w-3 items-center justify-center rounded-[1px] border border-slate-300 bg-white font-mono text-[9px] leading-none text-slate-500 transition-colors hover:border-rose-400 hover:text-rose-500 group-hover/led:flex"
+              >
+                <span aria-hidden>{"\u00d7"}</span>
+              </TilingPaneAction>
+            </span>
+          );
+        })}
+      </span>
+      <TilingPaneAction
+        onClick={(): void => dispatch(commands.ungroup())}
+        aria-label={`ungroup ${group.id}`}
+        title="ungroup this stack"
+        className="shrink-0 rounded-[1px] border border-slate-300 bg-white px-1 py-0.5 font-mono text-[8px] uppercase leading-none tracking-[0.14em] text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-800"
+      >
+        ungroup
+      </TilingPaneAction>
+    </span>
+  );
+}
+
+export function CanvasTile(args: HomeTileProps): React.ReactElement {
   const led: CanvasLed = paneLed(args.paneOrdinal);
+  const group: TilingGroupNode | null = resolveActiveGroup(
+    args.layout,
+    args.leafId,
+  );
   const dropRing: string = dropStateRing(args);
   // Drop-state rings take precedence over the resting focus glow during a drag.
   const ring: string =
@@ -202,15 +298,15 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
             hairline rule + the per-pane status LED (lit on focus) + label. */}
         <span className="flex min-w-0 items-center gap-2.5 justify-self-start">
           {hasControls ? (
-            <span className="flex shrink-0 items-center gap-1.5">
+            <span className="flex shrink-0 items-center gap-1">
               {args.isMaximizeEnabled ? (
                 <TilingPaneAction
                   onClick={(): void => args.onToggleMaximize()}
                   aria-label={args.isMaximized ? "restore pane" : "maximize pane"}
                   aria-pressed={args.isMaximized}
                   title={args.isMaximized ? "restore pane (Esc)" : "maximize pane"}
-                  className={`${CONTROL_SQUARE} ${
-                    args.isMaximized ? CONTROL_SQUARE_ACTIVE : CONTROL_SQUARE_REST
+                  className={`${CONTROL_SQUARE_BASE} ${
+                    args.isMaximized ? MAXIMIZE_LIGHT_ACTIVE : MAXIMIZE_LIGHT_REST
                   }`}
                 >
                   <span aria-hidden>{args.isMaximized ? "\u2013" : "\u2922"}</span>
@@ -230,10 +326,10 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
                       ? "selected — click to deselect (Alt/Opt+click also toggles)"
                       : "select for grouping"
                   }
-                  className={`${CONTROL_SQUARE} ${
+                  className={`${CONTROL_SQUARE_BASE} ${
                     args.isMultiSelected
-                      ? CONTROL_SQUARE_ACTIVE
-                      : CONTROL_SQUARE_REST
+                      ? SELECT_LIGHT_ACTIVE
+                      : SELECT_LIGHT_REST
                   }`}
                 >
                   <span aria-hidden>{args.isMultiSelected ? "\u2713" : "\u25a1"}</span>
@@ -315,6 +411,13 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
             {index}
           </span>
         </span>
+        {group != null ? (
+          <CanvasGroupLeds
+            group={group}
+            tilesById={args.tilesById}
+            dispatch={args.dispatch}
+          />
+        ) : null}
         {metrics != null ? (
           <span
             aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(

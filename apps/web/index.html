@@ -62,6 +62,20 @@
           scroll-behavior: auto !important;
         }
       }
+      /* Homepage grouped-stack representation: suppress the library's default
+         in-group tab strip. The renderer capability
+         `paneSwitching.showTabStrip: false` only gates the TOP-LEVEL pane tab
+         strip; the per-group `.hpt-group-tab-strip` renders unconditionally
+         inside a group node. The homepage paints its OWN per-skin group UI
+         instead (Canvas footer LEDs, Mosaic/Editorial footer member switchers)
+         via the public command-dispatch ref, so the built-in strip is hidden.
+         Scoped under `.mosaic-rise` (the HomePage shell root) so it never
+         affects the standalone `/showcase` renderer. `display:none` yields a
+         zero-height measured strip, which the layout/measurement port
+         tolerates (a missing/zero rect falls through its null-handling). */
+      .mosaic-rise .hpt-group-tab-strip {
+        display: none;
+      }
     </style>
   </head>
   <body class="m-0 text-stone-100">

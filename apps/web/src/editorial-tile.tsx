@@ -4,9 +4,19 @@ import {
   TilingDragHandle,
   TilingPaneAction,
   TilingPaneBody,
+  type TilingCommand,
+  type TilingGroupNode,
   type TilingRenderTileProps,
+  type TilingTile,
 } from "@n-uf/hypr-tiling";
 import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
+import {
+  groupCommands,
+  groupMemberViews,
+  resolveActiveGroup,
+  type GroupMemberView,
+  type HomeTileProps,
+} from "./group-switcher";
 
 // The EDITORIAL skin's pane chrome — the "paper & ink" counterpart to the
 // Mosaic `DocTile`. It is a deliberate departure in EVERY chrome axis, not a
@@ -54,8 +64,83 @@ function dropStateRing(args: TilingRenderTileProps): string {
   return "";
 }
 
-export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
+// The Editorial grouped-stack representation: a printed folio-run of member
+// entries in the pane FOOTER — a "NN title" per member in the paper/ink
+// vocabulary, the active member set in ink with an ink underline, the rest in
+// quiet clay. Replaces the library's suppressed default group tab strip for the
+// Editorial skin. Click an entry → `group-tab-jump`; a hover-revealed "×" ejects
+// a member (`remove-from-group`); a trailing "ungroup" dissolves the group
+// (`ungroup`). Routes through the shared `dispatch` ref — no public API added.
+function EditorialGroupSwitcher({
+  group,
+  tilesById,
+  dispatch,
+}: {
+  group: TilingGroupNode;
+  tilesById: ReadonlyMap<string, TilingTile>;
+  dispatch: (command: TilingCommand) => void;
+}): React.ReactElement {
+  const members: ReadonlyArray<GroupMemberView> = groupMemberViews(
+    group,
+    tilesById,
+  );
+  const commands = groupCommands(group.id);
+  return (
+    <span className="flex min-w-0 shrink items-baseline gap-2 overflow-hidden font-mono text-[10px] uppercase tracking-[0.14em]">
+      <span aria-hidden className="shrink-0 text-[#b0a487]">
+        grp
+      </span>
+      <span className="flex shrink items-baseline gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {members.map((member: GroupMemberView): React.ReactElement => (
+          <span
+            key={member.memberId}
+            className="group/folio flex shrink-0 items-baseline gap-1"
+          >
+            <TilingPaneAction
+              onClick={(): void => dispatch(commands.jump(member.memberNumber))}
+              aria-label={`activate ${member.title}`}
+              aria-pressed={member.isActive}
+              title={member.title}
+              className={`flex items-baseline gap-1 transition-colors ${
+                member.isActive
+                  ? "text-[#241f17] underline decoration-[#241f17] underline-offset-[3px]"
+                  : "text-[#9c8f77] hover:text-[#241f17]"
+              }`}
+            >
+              <span className="tabular-nums text-[#b0a487]">
+                {String(member.memberNumber).padStart(2, "0")}
+              </span>
+              <span className="max-w-[9ch] truncate">{member.title}</span>
+            </TilingPaneAction>
+            <TilingPaneAction
+              onClick={(): void => dispatch(commands.remove(member.memberId))}
+              aria-label={`remove ${member.title} from group`}
+              title={`remove ${member.title} from group`}
+              className="hidden text-[#a89c83] transition-colors hover:text-[#a8543a] group-hover/folio:inline"
+            >
+              <span aria-hidden>{"\u00d7"}</span>
+            </TilingPaneAction>
+          </span>
+        ))}
+      </span>
+      <TilingPaneAction
+        onClick={(): void => dispatch(commands.ungroup())}
+        aria-label={`ungroup ${group.id}`}
+        title="ungroup this stack"
+        className="shrink-0 text-[#9c8f77] underline decoration-transparent underline-offset-[3px] transition-colors hover:text-[#241f17] hover:decoration-[#241f17]"
+      >
+        ungroup
+      </TilingPaneAction>
+    </span>
+  );
+}
+
+export function EditorialTile(args: HomeTileProps): React.ReactElement {
   const dropRing: string = dropStateRing(args);
+  const group: TilingGroupNode | null = resolveActiveGroup(
+    args.layout,
+    args.leafId,
+  );
   const ring: string =
     dropRing !== ""
       ? dropRing
@@ -155,6 +240,13 @@ export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
           {"\u2116 "}
           {folio}
         </span>
+        {group != null ? (
+          <EditorialGroupSwitcher
+            group={group}
+            tilesById={args.tilesById}
+            dispatch={args.dispatch}
+          />
+        ) : null}
         {metrics != null ? (
           <span
             aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(
