@@ -111,10 +111,13 @@ copyFileSync(faviconSource, resolve(distDir, "favicon.png"));
 const docsDir = resolve(distDir, "docs");
 mkdirSync(docsDir, { recursive: true });
 const showcaseHtmlPath = resolve(distDir, "showcase.html");
+const showcaseDir = resolve(distDir, "showcase");
+mkdirSync(showcaseDir, { recursive: true });
 
 writeFileSync(templatePath, finalHtml, "utf8");
 writeFileSync(resolve(docsDir, "index.html"), docsFinalHtml, "utf8");
 writeFileSync(showcaseHtmlPath, showcaseFinalHtml, "utf8");
+writeFileSync(resolve(showcaseDir, "index.html"), showcaseFinalHtml, "utf8");
 writeFileSync(resolve(distDir, "llms.txt"), llmsTxt(), "utf8");
 writeFileSync(resolve(distDir, "robots.txt"), robotsTxt, "utf8");
 writeFileSync(resolve(distDir, "sitemap.xml"), sitemapXml, "utf8");
