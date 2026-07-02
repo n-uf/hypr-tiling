@@ -609,6 +609,13 @@ export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
       "Pass a renderTile callback (TilingRenderTileProps) to paint each pane's body and chrome. Root the pane on article[data-leaf-id] and forward onFocus / onHandlePointerDown / onPointerMove so drag, focus, and resize keep working while you own the visuals.",
   },
   {
+    id: "howto-custom-chrome",
+    title: "Render your own pane frame & header",
+    section: "howto",
+    summary:
+      "renderTile is a FULL-PANE render prop, not a content slot — it returns the whole pane (frame + header + body) and receives every handle and state flag, so you can own the ENTIRE pane look-and-feel. Root on article[data-leaf-id]; wire onHandlePointerDown on your header (drag), onToggleMaximize, onFocus, and onToggleMultiSelect + onGroupMultiSelection (Alt/Opt+click grouping); style from isFocused / isMaximized / isDragSource and compose with theme tokens from useTilingTheme (resolveAccentText, resolveFocusFrame). Render the body only when paneBodyRenderMode is render-content so the drag ghost stays in sync.",
+  },
+  {
     id: "howto-theming",
     title: "Theme & color panes",
     section: "howto",

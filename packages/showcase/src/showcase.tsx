@@ -574,6 +574,12 @@ export function TilingShowcase(): React.ReactElement {
           paneSwitching: {
             enable: true,
             showTabStrip: true,
+            // Opt back into the group tab strip's "show pane body" checkbox: it
+            // is a dev/demo affordance suppressed by the library default
+            // (`showContentToggle: false`), and the showcase exists to exercise
+            // it — no consumer app wants an end-user control that blanks its
+            // pane content.
+            showContentToggle: true,
             showSwitcherOverlay: false,
           },
         }),

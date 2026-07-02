@@ -12,33 +12,93 @@ import { HomePage } from "./page";
 // Tiny client-side router. `/` renders the redesigned docs homepage (the SEO /
 // prerender surface); `/docs` renders the prerendered guides + generated API
 // reference; `/showcase` renders the original full interactive showcase. The
-// showcase and docs chunks are code-split (React.lazy) so the homepage bundle
-// stays light — the docs chunk (which carries the generated reference bundle)
-// is preloaded in main.tsx before hydrating the prerendered /docs markup, so
-// the lazy component resolves synchronously and hydration matches. Navigation
-// is pushState-based (no full reload) with a popstate listener.
+// showcase and docs chunks are code-split so the homepage bundle stays light.
+// Navigation is pushState-based (no full reload) with a popstate listener.
 
-const ShowcaseRoute = React.lazy(
-  (): Promise<{ default: React.ComponentType<{ navigate?: (to: string) => void }> }> =>
+interface RouteProps {
+  readonly navigate?: (to: string) => void;
+}
+
+type RouteComponent = React.ComponentType<RouteProps>;
+
+interface PreloadableRoute {
+  (props: RouteProps): React.ReactElement;
+  readonly preload: () => Promise<void>;
+  // True once the chunk has resolved and the route renders synchronously. Used
+  // to skip the Suspense wrapper on the hydrated route so the client tree matches
+  // the server (which renders the route eagerly, with no Suspense boundary).
+  readonly isLoaded: () => boolean;
+}
+
+// A code-split route that renders SYNCHRONOUSLY once its chunk has been
+// preloaded. `React.lazy` always suspends on its FIRST render — its factory
+// promise resolves a microtask after the synchronous render — so hydrating a
+// route the server rendered eagerly makes the first client render the Suspense
+// fallback, which mismatches the prerendered HTML and forces React to discard
+// and regenerate the whole tree. Instead we keep the dynamic `import()` (the
+// bundle stays split) but hold the resolved component in a module cache and
+// render it directly. `main.tsx` awaits `preload()` before `hydrateRoot`, so on
+// the hydrated route the first client render IS the real component, matching the
+// server tree byte-for-byte. Client-side navigation into a not-yet-preloaded
+// route still suspends (the render throws the load promise), so the enclosing
+// Suspense boundary shows the fallback until the chunk arrives.
+function preloadableRoute(
+  load: () => Promise<{ default: RouteComponent }>,
+): PreloadableRoute {
+  let Loaded: RouteComponent | null = null;
+  let pending: Promise<void> | null = null;
+  const preload = (): Promise<void> => {
+    if (pending == null) {
+      pending = load().then((module): void => {
+        Loaded = module.default;
+      });
+    }
+    return pending;
+  };
+  const Route = (props: RouteProps): React.ReactElement => {
+    const Resolved: RouteComponent | null = Loaded;
+    if (Resolved == null) {
+      throw preload();
+    }
+    return <Resolved {...props} />;
+  };
+  const route: PreloadableRoute = Object.assign(Route, {
+    preload,
+    isLoaded: (): boolean => Loaded != null,
+  });
+  return route;
+}
+
+const ShowcaseRoute: PreloadableRoute = preloadableRoute(
+  (): Promise<{ default: RouteComponent }> =>
     import("./showcase-route").then(
-      (module): { default: React.ComponentType<{ navigate?: (to: string) => void }> } => ({
-        default: module.ShowcaseRoute,
-      }),
+      (module): { default: RouteComponent } => ({ default: module.ShowcaseRoute }),
     ),
 );
 
-const DocsRoute = React.lazy(
-  (): Promise<{ default: React.ComponentType<{ navigate?: (to: string) => void }> }> =>
+const DocsRoute: PreloadableRoute = preloadableRoute(
+  (): Promise<{ default: RouteComponent }> =>
     import("./docs-page").then(
-      (module): { default: React.ComponentType<{ navigate?: (to: string) => void }> } => ({
-        default: module.DocsPage,
-      }),
+      (module): { default: RouteComponent } => ({ default: module.DocsPage }),
     ),
 );
 
 function normalizePath(pathname: string): string {
   const trimmed: string = pathname.replace(/\/+$/, "");
   return trimmed.length === 0 ? "/" : trimmed;
+}
+
+// Preload the code-split chunk for a route so the caller can `await` it before
+// hydrating — the key to a clean hydration of the prerendered /docs markup.
+export function preloadRoute(path: string): Promise<void> {
+  const normalized: string = normalizePath(path);
+  if (normalized === "/docs") {
+    return DocsRoute.preload();
+  }
+  if (normalized === "/showcase") {
+    return ShowcaseRoute.preload();
+  }
+  return Promise.resolve();
 }
 
 function ShowcaseFallback(): React.ReactElement {
@@ -155,6 +215,12 @@ export function App(): React.ReactElement {
   }, [path]);
 
   if (path === "/showcase") {
+    // Already loaded (preloaded before hydrate, or a prior visit) → render
+    // directly so the tree matches an eager SSR/prerender; otherwise suspend
+    // while the chunk loads on a client navigation.
+    if (ShowcaseRoute.isLoaded()) {
+      return <ShowcaseRoute navigate={navigate} />;
+    }
     return (
       <React.Suspense fallback={<ShowcaseFallback />}>
         <ShowcaseRoute navigate={navigate} />
@@ -162,6 +228,9 @@ export function App(): React.ReactElement {
     );
   }
   if (path === "/docs") {
+    if (DocsRoute.isLoaded()) {
+      return <DocsRoute navigate={navigate} />;
+    }
     return (
       <React.Suspense fallback={<DocsFallback />}>
         <DocsRoute navigate={navigate} />

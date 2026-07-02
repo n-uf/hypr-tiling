@@ -1,15 +1,22 @@
-import { useState, type ReactElement, type ReactNode } from "react";
+import { useState, type ReactElement } from "react";
 import {
   TilingRenderer,
   DEFAULT_TILING_LAYOUT_CONFIG,
   type TilingLayoutNode,
   type TilingTile,
-  type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
 
 // A whole runnable dashboard: four metric/detail panes in a master-stack shape,
 // each with its own accent and content. Copy this file wholesale — it's a
 // complete, controlled TilingRenderer app.
+//
+// No `renderTile` is passed, so the renderer supplies its DEFAULT pane chrome —
+// a themed frame + header that is fully interactive out of the box: drag a header
+// to rearrange, drag a divider to resize, Alt/Opt+click headers then "Group" to
+// tab them, and maximize. Each pane paints its `tile.content` in the body (the
+// dev-only content toggle is off by the library default, so content shows at
+// rest). Reach for a `renderTile` callback only when you want to own the pane
+// frame yourself — see the "custom look-and-feel" guide.
 
 interface Metric {
   readonly label: string;
@@ -66,7 +73,6 @@ export function DashboardApp(): ReactElement {
       config={DEFAULT_TILING_LAYOUT_CONFIG}
       themeId="clean-flat"
       onLayoutChange={setLayout}
-      renderTile={({ tile }: TilingRenderTileProps): ReactNode => tile.content}
     />
   );
 }

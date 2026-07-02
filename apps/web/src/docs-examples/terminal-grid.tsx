@@ -1,15 +1,16 @@
-import { useState, type ReactElement, type ReactNode } from "react";
+import { useState, type ReactElement } from "react";
 import {
   TilingRenderer,
   DEFAULT_TILING_LAYOUT_CONFIG,
   type TilingLayoutNode,
   type TilingTile,
-  type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
 
 // A whole runnable "terminal grid" — the Hyprland homage made literal: several
 // monospace shell panes a user splits, stacks and rearranges at runtime. Copy
-// this file wholesale.
+// this file wholesale. No `renderTile` is passed, so the renderer's default pane
+// chrome (fully interactive: drag / resize / group / maximize) frames each
+// terminal and paints its `tile.content` body at rest.
 
 function Terminal({ lines }: { lines: ReadonlyArray<string> }): ReactElement {
   return (
@@ -62,7 +63,6 @@ export function TerminalGridApp(): ReactElement {
       config={DEFAULT_TILING_LAYOUT_CONFIG}
       themeId="neon-terminal"
       onLayoutChange={setLayout}
-      renderTile={({ tile }: TilingRenderTileProps): ReactNode => tile.content}
     />
   );
 }

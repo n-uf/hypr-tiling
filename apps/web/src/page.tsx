@@ -6,21 +6,18 @@ import {
   type TilingRenderTileProps,
   type TilingTile,
   type TilingCommandHandle,
-  type TilingInteractionCapabilities,
 } from "@n-uf/hypr-tiling";
 import { DOC_PANES, REPO_URL } from "./docs";
 import { DocTile } from "./tile";
 import { ShortcutsPane } from "./shortcuts";
 
-// Homepage interaction config. All capabilities stay at their (all-enabled)
-// defaults except the tab strip's pane-content checkbox, which is suppressed via
-// the library `paneSwitching.showContentToggle` flag — the homepage always
-// paints its own documentation content through `DocTile`, so the toggle is inert
-// chrome here. The same object feeds the shortcuts pane so its command gates
-// match the renderer exactly.
-const INTERACTION: TilingInteractionCapabilities = {
-  paneSwitching: { showContentToggle: false },
-};
+// The homepage keeps every interaction at its library default and passes no
+// `interaction` prop. It always paints its own documentation content through
+// `DocTile`, and the tab strip's dev-only "show pane body" checkbox is off by
+// default (`paneSwitching.showContentToggle` defaults to `false`), which pins
+// panes content-visible at rest — so the SEO/prerendered body carries the docs
+// text with zero configuration. The shortcuts pane likewise reads the defaults
+// (no `interaction` prop), so its command gates match the renderer exactly.
 
 const LAYOUT_CONFIG: TilingLayoutConfig = {
   gapPx: 14,
@@ -206,7 +203,6 @@ export function HomePage({
           layout={layout}
           focusedLeafId={focusedLeafId}
           maximizedLeafId={maximizedLeafId}
-          interaction={INTERACTION}
         />
       ),
     },
@@ -223,7 +219,6 @@ export function HomePage({
         tiles={allTiles}
         config={LAYOUT_CONFIG}
         onLayoutChange={setLayout}
-        interaction={INTERACTION}
         themeId="mosaic"
         focusedLeafId={focusedLeafId}
         onFocusedLeafChange={setFocusedLeafId}

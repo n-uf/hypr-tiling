@@ -44,7 +44,12 @@ The package exposes three import paths through `package.json#exports`
   the public entry — they live on `@n-uf/hypr-tiling/engine`.
 - **Interaction & presets** — `TilingInteractionCapabilities`,
   `resolveInteractionCapabilities`, `TILING_DASHBOARD_PRESET`, and the theming
-  registry constants.
+  registry constants. Every interaction is **on by default** and narrowed by
+  passing a partial `interaction` prop; the single opt-IN exception is the group
+  tab strip's dev/demo "show pane body" checkbox
+  (`paneSwitching.showContentToggle`, default `false`), so a consumer that
+  renders its own pane content never surfaces an end-user control that blanks it
+  and panes paint content at rest with no wiring.
 - **Hand-authored facade** — 104 public API items. Engine-grade internals are
   physically layered under `engine/` and reached only through the `.` facade (via
   `react/`) or the explicit `./engine` entry. An

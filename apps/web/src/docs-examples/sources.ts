@@ -14,6 +14,7 @@
 import quickstartSource from "./quickstart.tsx?raw";
 import initialLayoutSource from "./initial-layout.tsx?raw";
 import renderTileSource from "./render-tile.tsx?raw";
+import customChromeSource from "./custom-chrome.tsx?raw";
 import themingSource from "./theming.tsx?raw";
 import capabilitiesSource from "./capabilities.tsx?raw";
 import saveRestoreSource from "./save-restore.tsx?raw";
@@ -29,6 +30,7 @@ export const EXAMPLE_SOURCES = {
   quickstart: quickstartSource,
   "initial-layout": initialLayoutSource,
   "render-tile": renderTileSource,
+  "custom-chrome": customChromeSource,
   theming: themingSource,
   capabilities: capabilitiesSource,
   "save-restore": saveRestoreSource,

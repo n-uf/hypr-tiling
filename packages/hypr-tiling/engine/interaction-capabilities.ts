@@ -24,6 +24,15 @@ import type {
 /**
  * All-enabled defaults. An undefined capability config (or any undefined field)
  * resolves to these via `resolveInteractionCapabilities`.
+ *
+ * The lone opt-IN exception is `paneSwitching.showContentToggle`: it defaults to
+ * `false`. That checkbox (a group tab strip's "show pane body" toggle) is a
+ * development / demo affordance — a consumer app renders its own pane content
+ * and never wants an end-user control that blanks it. Suppressed by default, the
+ * initial pane-content-visible flag pins ON (see `resolveInitialPaneContentVisible`),
+ * so panes paint their content at rest with no wiring. A tooling surface that
+ * genuinely wants the toggle (e.g. the interactive showcase) opts back in with
+ * `paneSwitching: { showContentToggle: true }`.
  */
 export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   resize: "both",
@@ -53,7 +62,7 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
   paneSwitching: {
     enable: true,
     showTabStrip: true,
-    showContentToggle: true,
+    showContentToggle: false,
     showSwitcherOverlay: true,
     tabDoubleClickMaximize: true,
     multiSelectGrouping: true,

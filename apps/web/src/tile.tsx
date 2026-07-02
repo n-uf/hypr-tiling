@@ -4,16 +4,18 @@ import {
   type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
 
-// Custom pane renderer for the homepage ("mosaic" identity). The body honors
-// the renderer's canonical `paneBodyRenderMode` (the single source of truth
-// shared by every drag surface), so the in-tree pane and the drag ghost paint
-// identically and the ghost is never an empty-bodied shell. Because the homepage
-// suppresses the content toggle (`paneSwitching.showContentToggle: false`), the
-// renderer pins content-visible by default, so `render-content` resolves at rest
-// — the prerendered HTML still carries the documentation content (SEO intact).
-// The renderer still owns layout, splits, resize, drag mechanics, focus, and
-// keyboard control; this component only paints one pane's chrome + content and
-// forwards the drag/focus handles.
+// Custom pane renderer for the homepage ("mosaic" identity) — a worked example
+// of a fully custom pane frame + header (see the /docs "custom look-and-feel"
+// guide). The body honors the renderer's canonical `paneBodyRenderMode` (the
+// single source of truth shared by every drag surface), so the in-tree pane and
+// the drag ghost paint identically and the ghost is never an empty-bodied shell.
+// The content toggle is off by the library default
+// (`paneSwitching.showContentToggle: false`), so the renderer pins
+// content-visible at rest and `render-content` resolves without any config — the
+// prerendered HTML still carries the documentation content (SEO intact). The
+// renderer still owns layout, splits, resize, drag mechanics, focus, and keyboard
+// control; this component only paints one pane's chrome + content and forwards
+// the drag/focus/maximize/multi-select handles.
 //
 // Form vocabulary: a flat matte ink surface (no glass blur), a hairline rim, a
 // monospace workspace ordinal (01, 02, …) echoing a tiling-WM workspace index,

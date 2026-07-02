@@ -21,6 +21,7 @@ import {
 import { EXAMPLE_SOURCES, type ExampleId } from "./docs-examples/sources";
 import { Quickstart } from "./docs-examples/quickstart";
 import { RenderTileExample } from "./docs-examples/render-tile";
+import { CustomChromeExample } from "./docs-examples/custom-chrome";
 import { ThemingExample } from "./docs-examples/theming";
 import { CapabilitiesExample } from "./docs-examples/capabilities";
 import { CommandsExample } from "./docs-examples/commands";
@@ -36,19 +37,25 @@ import { TerminalGridApp } from "./docs-examples/terminal-grid";
 // `/engine` escape hatch live off this site — see CONTRIBUTING.md and
 // apps/web/_agent/docs-ia.md.
 //
-// Governing principle: consumer docs are TASK-FIRST, not symbol-first. A reader
-// must grasp-and-run immediately, never reverse-engineer intent from a bare
-// signature. Code is the primary medium; prose frames it. Reading order leads
-// with the graceful path and DEMOTES the generated reference to last:
+// NAV MODEL — the left sidebar is the SPINE. It mirrors the ENTIRE content tree
+// (Get started · Guides · Concepts · Examples · a collapsible API reference tree
+// grouped by category) and tracks the reader with an IntersectionObserver
+// scroll-spy: the active anchor highlights, the sidebar auto-scrolls it into
+// view, and clicking a leaf smooth-scrolls to its anchor. A right-rail
+// "on this page" mini-TOC lists the leaves of the current section. Every anchor
+// is a plain `#id` so the single prerendered page stays SEO / LLM-crawlable with
+// no JS; the scroll-spy is a hydration enhancement layered on top.
 //
-//   1. Hero        — one value sentence + a live layout + its copy-paste source.
+// Governing principle: consumer docs are TASK-FIRST, not symbol-first. Reading
+// order leads with the graceful path and DEMOTES the generated reference to last:
+//   1. Overview    — one value sentence + a live layout + its copy-paste source.
 //   2. Quickstart  — the golden path, numbered + runnable, to a working layout.
-//   3. How do I…    — outcome-framed recipes (the heart): each a goal sentence, a
-//                    complete compiled snippet, the knobs, and related links.
+//   3. How do I…    — outcome-framed recipes (the heart).
 //   4. Concepts    — only what unblocks the recipes (tree / ownership / caps).
 //   5. Examples    — whole runnable apps to copy wholesale.
-//   6. Reference   — the generated per-symbol reference, DEMOTED and tiered Core
-//                    vs Advanced: "for when you already know the name."
+//   6. Reference   — the generated per-symbol reference, DEMOTED and grouped by
+//                    category (Renderer · Layout & query · Theming · Commands ·
+//                    Advanced helpers): "for when you already know the name."
 //
 // The guide snippets are the RAW SOURCE of real, type-checked modules under
 // `docs-examples/` (embedded via Vite `?raw`, inlined at build for the SSR
@@ -57,8 +64,7 @@ import { TerminalGridApp } from "./docs-examples/terminal-grid";
 //
 // Styling reuses the homepage "mosaic" vocabulary (graphite canvas, single gold
 // accent, Fraunces headings, Inter body, JetBrains Mono code). The injected API
-// HTML is styled through the scoped `.ht-api` rules below. The reference bundle
-// stays code-split.
+// HTML is styled through the scoped `.ht-api` rules below.
 
 // Authored config snippet (a Tailwind config, not a runnable module — kept as an
 // authored string). The runnable TS/TSX snippets are all compiled examples.
@@ -117,19 +123,30 @@ function GuideSection({
 // A sized, bordered frame that hosts a LIVE demo. The demo is a real, controlled
 // TilingRenderer app from `docs-examples/`; the same file's source is shown next
 // to it. TilingRenderer renders its pre-measurement tree during SSR (no effects),
-// so the frame prerenders cleanly and hydrates.
+// so the frame prerenders cleanly and hydrates. Every embedded demo uses default
+// or fully-wired pane chrome, so the whole surface is interactive — the hint
+// advertises the three headline gestures.
 function DemoFrame({
   height = 300,
+  hint = "drag \u00b7 resize \u00b7 group",
   children,
 }: {
   height?: number;
+  hint?: string;
   children: React.ReactNode;
 }): React.ReactElement {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber-300/70">
-        live result
-      </span>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber-300/70">
+          live result
+        </span>
+        {hint !== "" ? (
+          <span className="font-mono text-[10px] tracking-[0.1em] text-stone-500">
+            {hint}
+          </span>
+        ) : null}
+      </div>
       <div
         className="overflow-hidden rounded-lg border border-white/[0.08] bg-[#0a0b0d] p-2"
         style={{ height }}
@@ -196,6 +213,7 @@ function HowTo({
   goal,
   exampleId,
   demo,
+  demoHeight,
   knobs,
   symbols,
 }: {
@@ -204,6 +222,7 @@ function HowTo({
   goal: React.ReactNode;
   exampleId: ExampleId;
   demo?: React.ReactNode;
+  demoHeight?: number;
   knobs: React.ReactNode;
   symbols: ReadonlyArray<string>;
 }): React.ReactElement {
@@ -214,7 +233,7 @@ function HowTo({
       </h3>
       <SectionLead>{goal}</SectionLead>
       <ExampleSource id={exampleId} />
-      {demo != null ? <DemoFrame>{demo}</DemoFrame> : null}
+      {demo != null ? <DemoFrame height={demoHeight}>{demo}</DemoFrame> : null}
       <p className="max-w-[62ch] text-[12px] leading-[1.7] text-stone-400">
         {knobs}
       </p>
@@ -223,7 +242,545 @@ function HowTo({
   );
 }
 
-// --- Navigation -----------------------------------------------------------
+// --- Nav model ------------------------------------------------------------
+// A single tree that BOTH the sidebar spine and the "on this page" rail read
+// from, and whose flattened anchor ids drive the scroll-spy. Content sections
+// carry leaves; the reference section carries categories (each a group of symbol
+// leaves) so the generated reference is browsable from the nav, collapsed.
+
+interface NavLeaf {
+  readonly id: string;
+  readonly label: string;
+}
+
+interface NavCategory {
+  readonly id: string;
+  readonly label: string;
+  readonly leaves: ReadonlyArray<NavLeaf>;
+}
+
+interface NavSection {
+  readonly id: string;
+  readonly label: string;
+  readonly leaves?: ReadonlyArray<NavLeaf>;
+  readonly categories?: ReadonlyArray<NavCategory>;
+  readonly collapsible?: boolean;
+}
+
+// Reference categorization. The four Core categories are name-sets; every other
+// public symbol falls through to Advanced, so the grouping covers the WHOLE
+// generated surface with no symbol dropped.
+const REFERENCE_CORE_CATEGORIES: ReadonlyArray<{
+  readonly id: string;
+  readonly label: string;
+  readonly names: ReadonlySet<string>;
+}> = [
+  {
+    id: "reference-renderer",
+    label: "Renderer & tiles",
+    names: new Set<string>([
+      "TilingRenderer",
+      "TilingRendererProps",
+      "TilingRenderTileProps",
+      "TilingTile",
+      "TilingTileAccent",
+    ]),
+  },
+  {
+    id: "reference-layout",
+    label: "Layout & query",
+    names: new Set<string>([
+      "TilingLayoutNode",
+      "TilingLeafNode",
+      "TilingSplitNode",
+      "TilingGroupNode",
+      "TilingLayoutConfig",
+      "DEFAULT_TILING_LAYOUT_CONFIG",
+      "queryTilingLayout()",
+      "TilingLayoutQuery",
+    ]),
+  },
+  {
+    id: "reference-theming",
+    label: "Theming",
+    names: new Set<string>([
+      "TilingThemeProvider()",
+      "TilingTheme",
+      "useTilingTheme()",
+      "TilingThemeId",
+      "TILING_THEMES",
+      "DEFAULT_TILING_THEME_ID",
+      "resolveTilingTheme()",
+    ]),
+  },
+  {
+    id: "reference-commands",
+    label: "Commands",
+    names: new Set<string>(["TilingCommand", "TilingCommandHandle"]),
+  },
+];
+
+const REFERENCE_ADVANCED_CATEGORY_ID: string = "reference-advanced";
+const REFERENCE_ADVANCED_LABEL: string = "Advanced helpers";
+
+function referenceCategoryIdForSection(section: ApiReferenceSection): string {
+  const core = REFERENCE_CORE_CATEGORIES.find((category): boolean =>
+    category.names.has(section.name),
+  );
+  return core != null ? core.id : REFERENCE_ADVANCED_CATEGORY_ID;
+}
+
+interface ReferenceGroup {
+  readonly id: string;
+  readonly label: string;
+  readonly sections: ReadonlyArray<ApiReferenceSection>;
+}
+
+// The reference groups in display order: the four Core categories, then Advanced.
+const REFERENCE_GROUPS: ReadonlyArray<ReferenceGroup> = [
+  ...REFERENCE_CORE_CATEGORIES.map(
+    (category): ReferenceGroup => ({
+      id: category.id,
+      label: category.label,
+      sections: API_REFERENCE_SECTIONS.filter(
+        (section): boolean => category.names.has(section.name),
+      ),
+    }),
+  ),
+  {
+    id: REFERENCE_ADVANCED_CATEGORY_ID,
+    label: REFERENCE_ADVANCED_LABEL,
+    sections: API_REFERENCE_SECTIONS.filter(
+      (section): boolean =>
+        referenceCategoryIdForSection(section) === REFERENCE_ADVANCED_CATEGORY_ID,
+    ),
+  },
+];
+
+const GUIDE_LEAVES: ReadonlyArray<NavLeaf> = DOCS_GUIDE_TOPICS.filter(
+  (topic): boolean => topic.section === "howto",
+).map((topic): NavLeaf => ({ id: topic.id, label: topic.title }));
+
+const CONCEPT_LEAVES: ReadonlyArray<NavLeaf> = [
+  { id: "concept-tree", label: "Layout tree" },
+  { id: "concept-interactions", label: "Interactions" },
+  { id: "concept-capabilities", label: "Capabilities" },
+];
+
+const EXAMPLE_LEAVES: ReadonlyArray<NavLeaf> = [
+  { id: "examples-dashboard", label: "Metrics dashboard" },
+  { id: "examples-terminal", label: "Terminal grid" },
+];
+
+const NAV_SECTIONS: ReadonlyArray<NavSection> = [
+  {
+    id: "get-started",
+    label: "Get started",
+    leaves: [
+      { id: "overview", label: "Overview" },
+      { id: "quickstart", label: "Quickstart" },
+    ],
+  },
+  { id: "howto", label: "Guides", leaves: GUIDE_LEAVES },
+  { id: "concepts", label: "Concepts", leaves: CONCEPT_LEAVES },
+  { id: "examples", label: "Examples", leaves: EXAMPLE_LEAVES },
+  {
+    id: "reference",
+    label: "API reference",
+    collapsible: true,
+    categories: REFERENCE_GROUPS.map(
+      (group): NavCategory => ({
+        id: group.id,
+        label: group.label,
+        leaves: group.sections.map(
+          (section): NavLeaf => ({ id: section.id, label: section.name }),
+        ),
+      }),
+    ),
+  },
+];
+
+interface AnchorMeta {
+  readonly sectionId: string;
+  readonly categoryId?: string;
+}
+
+// id → its owning section (+ category for reference symbols), and the full
+// document-ordered anchor list the scroll-spy observes.
+function buildAnchorIndex(): {
+  order: ReadonlyArray<string>;
+  meta: ReadonlyMap<string, AnchorMeta>;
+} {
+  const order: Array<string> = [];
+  const meta = new Map<string, AnchorMeta>();
+  for (const section of NAV_SECTIONS) {
+    order.push(section.id);
+    meta.set(section.id, { sectionId: section.id });
+    for (const leaf of section.leaves ?? []) {
+      order.push(leaf.id);
+      meta.set(leaf.id, { sectionId: section.id });
+    }
+    for (const category of section.categories ?? []) {
+      order.push(category.id);
+      meta.set(category.id, { sectionId: section.id, categoryId: category.id });
+      for (const leaf of category.leaves) {
+        order.push(leaf.id);
+        meta.set(leaf.id, { sectionId: section.id, categoryId: category.id });
+      }
+    }
+  }
+  return { order, meta };
+}
+
+const ANCHOR_INDEX: {
+  order: ReadonlyArray<string>;
+  meta: ReadonlyMap<string, AnchorMeta>;
+} = buildAnchorIndex();
+
+// Smooth-scroll to an anchor, enhancing the plain `#id` link (which already works
+// with JS disabled / before hydration). scroll-mt on every target absorbs the
+// sticky header offset.
+function scrollToAnchor(
+  event: React.MouseEvent<HTMLAnchorElement>,
+  id: string,
+): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+  const target = document.getElementById(id);
+  if (target == null) {
+    return;
+  }
+  event.preventDefault();
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (typeof history !== "undefined") {
+    history.replaceState(null, "", `#${id}`);
+  }
+}
+
+// --- Scroll-spy -----------------------------------------------------------
+// One IntersectionObserver over every anchor. The active band sits just below the
+// sticky header (top) and ~60% down the viewport (bottom); the FIRST anchor (in
+// document order) intersecting that band wins. Between anchors the last active id
+// is held. SSR + first client render both start at the first anchor, so there is
+// no hydration mismatch; the observer refines it after mount.
+function useScrollSpy(order: ReadonlyArray<string>): string {
+  const [activeId, setActiveId] = React.useState<string>(order[0] ?? "");
+  React.useEffect((): (() => void) | undefined => {
+    if (typeof IntersectionObserver === "undefined") {
+      return undefined;
+    }
+    const intersecting = new Set<string>();
+    const rank = new Map<string, number>(
+      order.map((id, index): [string, number] => [id, index]),
+    );
+    const observer = new IntersectionObserver(
+      (entries): void => {
+        for (const entry of entries) {
+          const id = entry.target.id;
+          if (entry.isIntersecting) {
+            intersecting.add(id);
+          } else {
+            intersecting.delete(id);
+          }
+        }
+        let best: string | null = null;
+        let bestRank = Number.POSITIVE_INFINITY;
+        for (const id of intersecting) {
+          const r = rank.get(id) ?? Number.POSITIVE_INFINITY;
+          if (r < bestRank) {
+            bestRank = r;
+            best = id;
+          }
+        }
+        if (best != null) {
+          setActiveId(best);
+        }
+      },
+      { rootMargin: "-72px 0px -55% 0px", threshold: 0 },
+    );
+    for (const id of order) {
+      const element = document.getElementById(id);
+      if (element != null) {
+        observer.observe(element);
+      }
+    }
+    return (): void => observer.disconnect();
+  }, [order]);
+  return activeId;
+}
+
+// --- Sidebar spine --------------------------------------------------------
+
+function SidebarLeaf({
+  leaf,
+  active,
+  onNavigate,
+}: {
+  leaf: NavLeaf;
+  active: boolean;
+  onNavigate: (event: React.MouseEvent<HTMLAnchorElement>, id: string) => void;
+}): React.ReactElement {
+  return (
+    <a
+      href={`#${leaf.id}`}
+      data-nav-id={leaf.id}
+      onClick={(event): void => onNavigate(event, leaf.id)}
+      className={`block truncate rounded px-2 py-[3px] transition-colors ${
+        active
+          ? "bg-amber-300/10 text-amber-100"
+          : "text-stone-400 hover:text-amber-100"
+      }`}
+    >
+      {leaf.label}
+    </a>
+  );
+}
+
+function ReferenceTreeNav({
+  section,
+  activeId,
+  activeMeta,
+  onNavigate,
+}: {
+  section: NavSection;
+  activeId: string;
+  activeMeta: AnchorMeta | undefined;
+  onNavigate: (event: React.MouseEvent<HTMLAnchorElement>, id: string) => void;
+}): React.ReactElement {
+  const activeInReference = activeMeta?.sectionId === section.id;
+  const [open, setOpen] = React.useState<boolean>(false);
+  const [openCategories, setOpenCategories] = React.useState<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+  // Auto-open the tree and the active symbol's category when scroll-spy lands
+  // inside the reference (keeps the collapsed default but follows the reader).
+  React.useEffect((): void => {
+    if (activeInReference) {
+      setOpen(true);
+      if (activeMeta?.categoryId != null) {
+        const categoryId = activeMeta.categoryId;
+        setOpenCategories((prev): ReadonlySet<string> => {
+          if (prev.has(categoryId)) {
+            return prev;
+          }
+          const next = new Set<string>(prev);
+          next.add(categoryId);
+          return next;
+        });
+      }
+    }
+  }, [activeInReference, activeMeta?.categoryId]);
+  const toggleCategory = (categoryId: string): void => {
+    setOpenCategories((prev): ReadonlySet<string> => {
+      const next = new Set<string>(prev);
+      if (next.has(categoryId)) {
+        next.delete(categoryId);
+      } else {
+        next.add(categoryId);
+      }
+      return next;
+    });
+  };
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={(): void => setOpen((value): boolean => !value)}
+        className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.28em] text-amber-300/70 transition-colors hover:text-amber-200"
+        aria-expanded={open}
+      >
+        <span
+          aria-hidden
+          className={`inline-block transition-transform ${open ? "rotate-90" : ""}`}
+        >
+          {"\u203a"}
+        </span>
+        {section.label}
+      </button>
+      {open ? (
+        <div className="flex flex-col gap-1 pl-1.5">
+          {(section.categories ?? []).map((category): React.ReactElement => {
+            const categoryOpen = openCategories.has(category.id);
+            return (
+              <div key={category.id} className="flex flex-col">
+                <button
+                  type="button"
+                  onClick={(): void => toggleCategory(category.id)}
+                  className={`flex items-center gap-1.5 rounded px-1.5 py-[3px] text-left text-[12px] transition-colors ${
+                    activeId === category.id
+                      ? "text-amber-100"
+                      : "text-stone-300 hover:text-amber-100"
+                  }`}
+                  aria-expanded={categoryOpen}
+                >
+                  <span
+                    aria-hidden
+                    className={`inline-block text-[9px] text-stone-500 transition-transform ${
+                      categoryOpen ? "rotate-90" : ""
+                    }`}
+                  >
+                    {"\u203a"}
+                  </span>
+                  {category.label}
+                  <span className="text-[10px] text-stone-600">
+                    {category.leaves.length}
+                  </span>
+                </button>
+                {categoryOpen ? (
+                  <div className="ml-3 flex flex-col border-l border-white/[0.06] pl-2 font-mono text-[11px]">
+                    {category.leaves.map(
+                      (leaf): React.ReactElement => (
+                        <SidebarLeaf
+                          key={leaf.id}
+                          leaf={leaf}
+                          active={activeId === leaf.id}
+                          onNavigate={onNavigate}
+                        />
+                      ),
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Sidebar({
+  activeId,
+  onNavigate,
+}: {
+  activeId: string;
+  onNavigate: (event: React.MouseEvent<HTMLAnchorElement>, id: string) => void;
+}): React.ReactElement {
+  const navRef = React.useRef<HTMLElement>(null);
+  const activeMeta = ANCHOR_INDEX.meta.get(activeId);
+  // Auto-scroll the active nav item into view WITHIN the sidebar (not the page).
+  React.useEffect((): void => {
+    const container = navRef.current;
+    if (container == null) {
+      return;
+    }
+    const activeElement = container.querySelector<HTMLElement>(
+      `[data-nav-id="${activeId}"]`,
+    );
+    if (activeElement != null) {
+      activeElement.scrollIntoView({ block: "nearest" });
+    }
+  }, [activeId]);
+  return (
+    <aside className="hidden lg:block">
+      <nav
+        ref={navRef}
+        aria-label="Documentation"
+        className="sticky top-[68px] flex max-h-[calc(100vh-84px)] flex-col gap-5 overflow-y-auto pr-2 pb-10 text-[13px]"
+      >
+        {NAV_SECTIONS.map((section): React.ReactElement => {
+          if (section.collapsible === true) {
+            return (
+              <ReferenceTreeNav
+                key={section.id}
+                section={section}
+                activeId={activeId}
+                activeMeta={activeMeta}
+                onNavigate={onNavigate}
+              />
+            );
+          }
+          return (
+            <div key={section.id} className="flex flex-col gap-1.5">
+              <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-amber-300/70">
+                {section.label}
+              </span>
+              {(section.leaves ?? []).map(
+                (leaf): React.ReactElement => (
+                  <SidebarLeaf
+                    key={leaf.id}
+                    leaf={leaf}
+                    active={activeId === leaf.id}
+                    onNavigate={onNavigate}
+                  />
+                ),
+              )}
+            </div>
+          );
+        })}
+      </nav>
+    </aside>
+  );
+}
+
+// --- Right rail: "on this page" -------------------------------------------
+// Lists the leaves of the section the reader is currently in. Inside the
+// reference it narrows to the active category's symbols so the rail never
+// balloons to the full generated surface.
+function OnThisPage({
+  activeId,
+}: {
+  activeId: string;
+}): React.ReactElement | null {
+  const meta = ANCHOR_INDEX.meta.get(activeId);
+  const section = NAV_SECTIONS.find(
+    (candidate): boolean => candidate.id === meta?.sectionId,
+  );
+  if (section == null) {
+    return null;
+  }
+  let leaves: ReadonlyArray<NavLeaf> = section.leaves ?? [];
+  let heading: string = section.label;
+  if (section.categories != null) {
+    const category = section.categories.find(
+      (candidate): boolean => candidate.id === meta?.categoryId,
+    );
+    if (category != null) {
+      leaves = category.leaves;
+      heading = category.label;
+    } else {
+      leaves = section.categories.map(
+        (candidate): NavLeaf => ({ id: candidate.id, label: candidate.label }),
+      );
+    }
+  }
+  if (leaves.length === 0) {
+    return null;
+  }
+  return (
+    <aside className="hidden xl:block">
+      <div className="sticky top-[68px] flex max-h-[calc(100vh-84px)] flex-col gap-2 overflow-y-auto pb-10 text-[12px]">
+        <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-stone-500">
+          On this page
+        </span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-amber-300/60">
+          {heading}
+        </span>
+        <div className="flex flex-col gap-0.5 border-l border-white/[0.08] pl-2.5">
+          {leaves.map(
+            (leaf): React.ReactElement => (
+              <a
+                key={leaf.id}
+                href={`#${leaf.id}`}
+                onClick={(event): void => scrollToAnchor(event, leaf.id)}
+                className={`truncate transition-colors ${
+                  activeId === leaf.id
+                    ? "text-amber-100"
+                    : "text-stone-500 hover:text-amber-100"
+                }`}
+              >
+                {leaf.label}
+              </a>
+            ),
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// --- Top nav bar ----------------------------------------------------------
 
 function DocsNav({
   navigate,
@@ -232,7 +789,7 @@ function DocsNav({
 }): React.ReactElement {
   return (
     <header className="sticky top-0 z-20 border-b border-white/[0.08] bg-[#0c0d0f]/90 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3.5">
+      <div className="mx-auto flex max-w-[92rem] items-center justify-between gap-4 px-5 py-3.5">
         <a
           href="/"
           onClick={(event: React.MouseEvent<HTMLAnchorElement>): void => {
@@ -291,107 +848,10 @@ function DocsNav({
   );
 }
 
-const SECTION_LABEL: Record<string, string> = {
-  quickstart: "Start here",
-  howto: "How do I…",
-  concepts: "Concepts",
-  examples: "Examples",
-  reference: "Reference",
-};
-
-const SECTION_ORDER: ReadonlyArray<string> = [
-  "quickstart",
-  "howto",
-  "concepts",
-  "examples",
-  "reference",
-];
-
-function SidebarGroup({
-  section,
-}: {
-  section: string;
-}): React.ReactElement | null {
-  const topics = DOCS_GUIDE_TOPICS.filter(
-    (topic): boolean => topic.section === section,
-  );
-  if (topics.length === 0) {
-    return null;
-  }
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-amber-300/70">
-        {SECTION_LABEL[section] ?? section}
-      </span>
-      {topics.map((topic) => (
-        <a
-          key={topic.id}
-          href={`#${topic.id}`}
-          className="text-stone-400 transition-colors hover:text-amber-100"
-        >
-          {topic.title}
-        </a>
-      ))}
-    </div>
-  );
-}
-
-function DocsSidebar(): React.ReactElement {
-  return (
-    <aside className="hidden lg:block">
-      <nav className="sticky top-[68px] flex max-h-[calc(100vh-84px)] flex-col gap-5 overflow-y-auto pr-2 pb-10 text-[13px]">
-        {SECTION_ORDER.map(
-          (section): React.ReactElement | null => (
-            <SidebarGroup key={section} section={section} />
-          ),
-        )}
-      </nav>
-    </aside>
-  );
-}
-
 // --- API reference (DEMOTED, last) ----------------------------------------
-// The generated per-symbol reference, tiered Core vs Advanced. Core = the
-// front-line consumer surface (the renderer, the layout tree + queryTilingLayout,
-// theming, commands/dispatch). Advanced = the power-user helpers and the resolved
-// / debug / keymap type surface (isCommandEnabled, capability + query utilities).
-
-const CORE_REFERENCE_NAMES: ReadonlySet<string> = new Set<string>([
-  // Renderer & tiles
-  "TilingRenderer",
-  "TilingRendererProps",
-  "TilingRenderTileProps",
-  "TilingTile",
-  "TilingTileAccent",
-  // Layout tree + read
-  "TilingLayoutNode",
-  "TilingLeafNode",
-  "TilingSplitNode",
-  "TilingGroupNode",
-  "TilingLayoutConfig",
-  "DEFAULT_TILING_LAYOUT_CONFIG",
-  "queryTilingLayout()",
-  "TilingLayoutQuery",
-  // Commands / dispatch
-  "TilingCommand",
-  "TilingCommandHandle",
-  // Theming
-  "TilingThemeProvider()",
-  "TilingTheme",
-  "useTilingTheme()",
-  "TilingThemeId",
-  "TILING_THEMES",
-  "DEFAULT_TILING_THEME_ID",
-  "resolveTilingTheme()",
-  // Interaction (front-line)
-  "TilingInteractionCapabilities",
-  "TILING_DASHBOARD_PRESET",
-  "resolveInteractionCapabilities()",
-]);
-
-function isCoreSection(section: ApiReferenceSection): boolean {
-  return CORE_REFERENCE_NAMES.has(section.name);
-}
+// The generated per-symbol reference, grouped by the same categories the nav
+// tree exposes: Core (Renderer & tiles · Layout & query · Theming · Commands)
+// then Advanced helpers. Every public symbol lands in exactly one group.
 
 function ReferenceCard({
   section,
@@ -416,29 +876,57 @@ function ReferenceCard({
   );
 }
 
-function ReferenceTier({
-  id,
-  eyebrow,
-  title,
-  lead,
-  sections,
+const REFERENCE_GROUP_LEADS: Record<string, React.ReactNode> = {
+  "reference-renderer": (
+    <>
+      The <Code>TilingRenderer</Code> component, its props, and the tile + custom
+      render-prop contract.
+    </>
+  ),
+  "reference-layout": (
+    <>
+      The layout tree node kinds you own in state, the config, and{" "}
+      <Code>queryTilingLayout</Code> for reading structure back out.
+    </>
+  ),
+  "reference-theming": (
+    <>
+      Built-in themes, per-pane accents, the theme provider, and{" "}
+      <Code>useTilingTheme</Code> for reading tokens inside a custom pane.
+    </>
+  ),
+  "reference-commands": (
+    <>
+      The imperative command handle and the typed command union you dispatch from
+      your own controls.
+    </>
+  ),
+  "reference-advanced": (
+    <>
+      Power-user helpers and the resolved / capability / keymap / debug type
+      surface — <Code>isCommandEnabled</Code>, the interaction-capability shapes,
+      and the query utilities you reach for only when building custom command
+      bars, keyboard layers, and observability. Each carries a consumer-usage{" "}
+      <Code>@example</Code> in its hover-docs.
+    </>
+  ),
+};
+
+function ReferenceGroupBlock({
+  group,
 }: {
-  id: string;
-  eyebrow: string;
-  title: string;
-  lead: React.ReactNode;
-  sections: ReadonlyArray<ApiReferenceSection>;
+  group: ReferenceGroup;
 }): React.ReactElement {
   return (
-    <div className="flex flex-col gap-5 scroll-mt-24" id={id}>
+    <div className="flex flex-col gap-5 scroll-mt-24" id={group.id}>
       <div className="flex flex-col gap-2">
-        <Eyebrow>{eyebrow}</Eyebrow>
+        <Eyebrow>reference · {group.label.toLowerCase()}</Eyebrow>
         <h3 className="font-display text-[20px] font-medium leading-tight tracking-[-0.01em] text-stone-100">
-          {title}
+          {group.label}
         </h3>
-        <SectionLead>{lead}</SectionLead>
+        <SectionLead>{REFERENCE_GROUP_LEADS[group.id]}</SectionLead>
       </div>
-      {sections.map(
+      {group.sections.map(
         (section): React.ReactElement => (
           <ReferenceCard key={section.id} section={section} />
         ),
@@ -448,55 +936,30 @@ function ReferenceTier({
 }
 
 function ApiReference(): React.ReactElement {
-  const core: ReadonlyArray<ApiReferenceSection> =
-    API_REFERENCE_SECTIONS.filter(isCoreSection);
-  const advanced: ReadonlyArray<ApiReferenceSection> =
-    API_REFERENCE_SECTIONS.filter(
-      (section): boolean => !isCoreSection(section),
-    );
   return (
     <section className="flex flex-col gap-8 border-t border-white/[0.08] pt-10">
-      <GuideHeading id="reference" eyebrow="reference · for when you already know the name">
+      <GuideHeading
+        id="reference"
+        eyebrow="reference · for when you already know the name"
+      >
         API reference
       </GuideHeading>
       <SectionLead>
         The generated per-symbol reference for the curated public API surface,
         produced from the library&rsquo;s source TSDoc via API Extractor and API
-        Documenter. This is a <em className="not-italic text-stone-200">fallback</em>{" "}
-        — reach for it once you already know a symbol name; the guides above are
-        the way in. Internal and devtools-only symbols are excluded, so every
-        entry is part of the supported consumer contract. The full
-        machine-readable report lives in the{" "}
+        Documenter. This is a{" "}
+        <em className="not-italic text-stone-200">fallback</em> — reach for it
+        once you already know a symbol name; the guides above are the way in.
+        Internal and devtools-only symbols are excluded, so every entry is part of
+        the supported consumer contract, grouped by category and browsable from
+        the sidebar tree. The full machine-readable report lives in the{" "}
         <Link href={API_REFERENCE_URL}>API report</Link>.
       </SectionLead>
-      <ReferenceTier
-        id="reference-core"
-        eyebrow="reference · core"
-        title="Core"
-        lead={
-          <>
-            The symbols you reach for first: the{" "}
-            <Code>TilingRenderer</Code>, the layout tree and{" "}
-            <Code>queryTilingLayout</Code>, theming, and commands / dispatch.
-          </>
-        }
-        sections={core}
-      />
-      <ReferenceTier
-        id="reference-advanced"
-        eyebrow="reference · advanced helpers"
-        title="Advanced helpers"
-        lead={
-          <>
-            Power-user helpers and the resolved / capability / debug type surface
-            — <Code>isCommandEnabled</Code> and the capability + query utilities
-            you only need for custom command bars, keyboard layers, and
-            observability. Each carries a consumer-usage <Code>@example</Code> in
-            its hover-docs.
-          </>
-        }
-        sections={advanced}
-      />
+      {REFERENCE_GROUPS.map(
+        (group): React.ReactElement => (
+          <ReferenceGroupBlock key={group.id} group={group} />
+        ),
+      )}
     </section>
   );
 }
@@ -548,14 +1011,19 @@ function Step({
 // --- Concepts card --------------------------------------------------------
 
 function ConceptCard({
+  id,
   term,
   children,
 }: {
+  id: string;
   term: string;
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.015] p-4">
+    <div
+      id={id}
+      className="flex scroll-mt-24 flex-col gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.015] p-4"
+    >
       <span className="text-[13px] font-medium text-stone-100">{term}</span>
       <span className="max-w-[62ch] text-[12px] leading-[1.7] text-stone-400">
         {children}
@@ -569,15 +1037,16 @@ export function DocsPage({
 }: {
   navigate?: (to: string) => void;
 }): React.ReactElement {
+  const activeId = useScrollSpy(ANCHOR_INDEX.order);
   return (
     <div className="min-h-screen bg-[#0c0d0f] font-sans text-stone-100">
       <style dangerouslySetInnerHTML={{ __html: API_PROSE_STYLES }} />
       <DocsNav navigate={navigate} />
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-5 py-10 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <DocsSidebar />
+      <div className="mx-auto grid max-w-[92rem] grid-cols-1 gap-10 px-5 py-10 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_200px]">
+        <Sidebar activeId={activeId} onNavigate={scrollToAnchor} />
         <main className="flex min-w-0 flex-col gap-10">
-          {/* 1. HERO — one value sentence + a live layout + its copy-paste source. */}
-          <div className="flex flex-col gap-5" id="hero">
+          {/* 1. OVERVIEW — one value sentence + a live layout + its copy-paste source. */}
+          <div className="flex scroll-mt-24 flex-col gap-5" id="overview">
             <div className="flex flex-col gap-4">
               <Eyebrow>consumer documentation</Eyebrow>
               <h1 className="font-display text-[clamp(2rem,3vw,2.6rem)] font-medium leading-[1.05] tracking-[-0.015em] text-stone-50">
@@ -620,11 +1089,10 @@ export function DocsPage({
             </Step>
             <Step n={3} title="Render a controlled TilingRenderer">
               <SectionLead>
-                Own the layout tree in state, pass a <Code>config</Code> and a{" "}
-                <Code>renderTile</Code> callback, and apply every edit the renderer
-                reports through <Code>onLayoutChange</Code>. This is the exact
-                source behind the live panes above — resize them by dragging the
-                divider.
+                Own the layout tree in state, pass a <Code>config</Code>, and apply
+                every edit the renderer reports through <Code>onLayoutChange</Code>.
+                This is the exact source behind the live panes above — drag a
+                header to rearrange, drag the divider to resize.
               </SectionLead>
               <ExampleSource id="quickstart" />
             </Step>
@@ -693,10 +1161,58 @@ export function DocsPage({
                   on your drag handle (the header). Everything else on{" "}
                   <Code>TilingRenderTileProps</Code> (<Code>isFocused</Code>,{" "}
                   <Code>isMaximized</Code>, the <Code>tile</Code> payload) is
-                  presentation state you style from.
+                  presentation state you style from. <Code>renderTile</Code> is a{" "}
+                  full-pane render prop, not a content slot — to draw your own
+                  header, buttons, and frame, see{" "}
+                  <Link href="#howto-custom-chrome">
+                    Render your own pane frame &amp; header
+                  </Link>
+                  .
                 </>
               }
               symbols={["TilingRenderTileProps", "TilingRendererProps", "TilingTile"]}
+            />
+
+            <HowTo
+              id="howto-custom-chrome"
+              title="Render your own pane frame & header (full custom look-and-feel)"
+              goal={
+                <>
+                  Own the ENTIRE pane, not just its body: draw your own frame,
+                  header, and controls, and wire them to the renderer&rsquo;s drag,
+                  maximize, focus, and grouping handlers. Same generic{" "}
+                  <Code>renderTile</Code> prop as above — it returns the whole pane
+                  and hands you every interaction handle and state flag, so no
+                  showcase-only prop is involved.
+                </>
+              }
+              exampleId="custom-chrome"
+              demo={<CustomChromeExample />}
+              knobs={
+                <>
+                  Root on <Code>article[data-leaf-id]</Code> (the renderer resolves
+                  the drag source from it) and forward <Code>onFocus</Code>,{" "}
+                  <Code>onPointerMove</Code>, <Code>onPointerLeave</Code>. Put{" "}
+                  <Code>onHandlePointerDown</Code> on your header, expose{" "}
+                  <Code>onToggleMaximize</Code>, and add Alt/Opt+click grouping via{" "}
+                  <Code>onToggleMultiSelect</Code> + <Code>onGroupMultiSelection</Code>{" "}
+                  (gate with <Code>isMultiSelectModifierActive</Code>). Style from{" "}
+                  the state flags (<Code>isFocused</Code>, <Code>isMaximized</Code>,{" "}
+                  <Code>isDragSource</Code>) and compose with theme tokens from{" "}
+                  <Code>useTilingTheme()</Code> (<Code>resolveAccentText</Code>,{" "}
+                  <Code>resolveFocusFrame</Code>). Render the body only when{" "}
+                  <Code>paneBodyRenderMode</Code> is <Code>"render-content"</Code> so
+                  the drag ghost mirrors your pane. The homepage&rsquo;s own tiles
+                  are built exactly this way.
+                </>
+              }
+              symbols={[
+                "TilingRenderTileProps",
+                "useTilingTheme",
+                "TilingTheme",
+                "isMultiSelectModifierActive",
+                "TilingPaneBodyRenderMode",
+              ]}
             />
 
             <HowTo
@@ -748,6 +1264,10 @@ export function DocsPage({
                   <Code>TILING_DASHBOARD_PRESET</Code> and override.{" "}
                   <Code>resolveInteractionCapabilities</Code> returns the
                   fully-defaulted shape when you need to read effective values.
+                  Every interaction is on by default; the lone opt-in is the tab
+                  strip&rsquo;s dev-only content toggle
+                  (<Code>paneSwitching.showContentToggle</Code>), off unless you ask
+                  for it.
                 </>
               }
               symbols={[
@@ -873,25 +1393,32 @@ export function DocsPage({
               there is no architecture here.
             </SectionLead>
             <div className="flex flex-col gap-3">
-              <ConceptCard term="The layout is a tree you own">
+              <ConceptCard id="concept-tree" term="The layout is a tree you own">
                 A layout is a recursive tree of three node kinds:{" "}
                 <Code>leaf</Code> (one tile), <Code>split</Code> (two children
                 divided by a ratio along an axis), and <Code>group</Code> (leaves
                 stacked behind a tab strip). It is plain, serialisable data held in{" "}
                 <em className="not-italic text-stone-200">your</em> state.
               </ConceptCard>
-              <ConceptCard term="The renderer runs interactions; you own the tree">
+              <ConceptCard
+                id="concept-interactions"
+                term="The renderer runs interactions; you own the tree"
+              >
                 <Code>TilingRenderer</Code> is controlled. It performs drag, resize,
                 grouping, focus, and keyboard control, then reports the resulting
                 tree through <Code>onLayoutChange</Code> — it never mutates state
                 behind your back. You apply the edit (or persist / diff / veto it).
               </ConceptCard>
-              <ConceptCard term="Interactions are capabilities, on by default">
+              <ConceptCard
+                id="concept-capabilities"
+                term="Interactions are capabilities, on by default"
+              >
                 Every interaction is enabled unless you narrow it. The single{" "}
                 <Code>interaction</Code> prop (
                 <Code>TilingInteractionCapabilities</Code>) subtracts or reshapes
                 behavior; presets are just pre-filled partials. You configure by
-                turning things off, not wiring things on.
+                turning things off, not wiring things on — the one opt-in is the
+                dev-only pane-content toggle, off by default.
               </ConceptCard>
             </div>
           </GuideSection>
@@ -901,7 +1428,9 @@ export function DocsPage({
             <SectionLead>
               Complete, controlled <Code>TilingRenderer</Code> apps. Each file is
               runnable as-is and type-checked against the public API — copy one and
-              start editing.
+              start editing. Neither passes <Code>renderTile</Code>, so each uses
+              the renderer&rsquo;s default pane chrome and is fully interactive:
+              drag a header, drag a divider, Alt/Opt-click headers then group.
             </SectionLead>
 
             <div className="flex flex-col gap-4 scroll-mt-24" id="examples-dashboard">
@@ -934,7 +1463,7 @@ export function DocsPage({
             </div>
           </GuideSection>
 
-          {/* 6. REFERENCE — DEMOTED, last, tiered Core vs Advanced. */}
+          {/* 6. REFERENCE — DEMOTED, last, grouped by category. */}
           <ApiReference />
 
           <footer className="border-t border-white/[0.08] pt-6 text-[12px] leading-[1.7] text-stone-500">
@@ -945,6 +1474,7 @@ export function DocsPage({
             no competing use.
           </footer>
         </main>
+        <OnThisPage activeId={activeId} />
       </div>
     </div>
   );

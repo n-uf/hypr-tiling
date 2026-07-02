@@ -194,7 +194,7 @@ export const API_REFERENCE_SECTIONS: ReadonlyArray<ApiReferenceSection> =
       "id": "api-tiling_interaction_capability_defaults",
       "name": "TILING_INTERACTION_CAPABILITY_DEFAULTS",
       "kind": "variable",
-      "html": "<p>All-enabled defaults. An undefined capability config (or any undefined field) resolves to these via <code>resolveInteractionCapabilities</code>.</p>\n<p><strong>Signature:</strong></p>\n<pre><code class=\"language-typescript\">TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCapabilities\n</code></pre>"
+      "html": "<p>All-enabled defaults. An undefined capability config (or any undefined field) resolves to these via <code>resolveInteractionCapabilities</code>.</p>\n<p>The lone opt-IN exception is <code>paneSwitching.showContentToggle</code>: it defaults to <code>false</code>. That checkbox (a group tab strip&#39;s &quot;show pane body&quot; toggle) is a development / demo affordance — a consumer app renders its own pane content and never wants an end-user control that blanks it. Suppressed by default, the initial pane-content-visible flag pins ON (see <code>resolveInitialPaneContentVisible</code>), so panes paint their content at rest with no wiring. A tooling surface that genuinely wants the toggle (e.g. the interactive showcase) opts back in with <code>paneSwitching: { showContentToggle: true }</code>.</p>\n<p><strong>Signature:</strong></p>\n<pre><code class=\"language-typescript\">TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCapabilities\n</code></pre>"
     },
     {
       "id": "api-tiling_theme_registry",

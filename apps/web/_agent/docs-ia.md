@@ -36,17 +36,18 @@ Rendered by `apps/web/src/docs-page.tsx`. Reading order leads with the graceful
 path and demotes the reference to last:
 
 ```
-1. Hero          one value sentence + a LIVE minimal layout + its copy-paste source
+1. Overview      one value sentence + a LIVE minimal layout + its copy-paste source
    │
 2. Quickstart    the golden path, numbered + runnable:
    │             install → Tailwind content glob → minimal controlled
-   │             <TilingRenderer> + renderTile → the live result above
+   │             <TilingRenderer> → the live result above
    │
 3. How do I…      the heart — outcome-framed recipes, each:
    │             goal sentence → complete compiled snippet → the 2–3 knobs →
    │             related reference links (+ a live demo where it helps):
    │   ├─ Define the initial layout            (leaf / split / group tree)
-   │   ├─ Render your own content in a pane    (renderTile)
+   │   ├─ Render your own content in a pane    (renderTile — body)
+   │   ├─ Render your own pane frame & header  (renderTile — FULL pane chrome + theme tokens)
    │   ├─ Theme & color panes                  (themeId / accent / useTilingTheme)
    │   ├─ Choose which interactions are allowed(interaction caps / presets)
    │   ├─ Save & restore a layout              (onLayoutChange persistence)
@@ -60,10 +61,13 @@ path and demotes the reference to last:
    │
 5. Examples      whole runnable apps to copy wholesale (dashboard, terminal grid)
    │
-6. API reference DEMOTED, last. "For when you already know the name." Tiered:
-                 Core (TilingRenderer, layout + queryTilingLayout, theming,
-                 commands/dispatch) vs Advanced helpers (isCommandEnabled,
-                 capability/query utilities).
+6. API reference DEMOTED, last. "For when you already know the name." Grouped by
+                 category — Core (Renderer & tiles · Layout & query · Theming ·
+                 Commands) then Advanced helpers (isCommandEnabled, the
+                 interaction-capability shapes, query/keymap/debug utilities).
+                 Every public symbol lands in exactly one group (Core is
+                 name-set-matched; everything else falls through to Advanced), so
+                 the grouping covers the whole generated surface with none dropped.
 ```
 
 `DOCS_GUIDE_TOPICS` (in `docs.tsx`) carries a `section` field
@@ -75,6 +79,59 @@ Each recipe's related-links row uses `ReferenceLinks`, which resolves each symbo
 name against `API_REFERENCE_SECTIONS` and emits a link only when the symbol is
 actually on the public barrel — so broken anchors and accidental `@internal`
 references are structurally impossible.
+
+## Navigation model — sidebar spine + scroll-spy + on-this-page rail
+
+The left sidebar is the BACKBONE of the page, not a flat section list. It mirrors
+the entire content tree and is driven by a single scroll-spy so the menu follows
+the reader. Built from one `NAV_SECTIONS` model in `docs-page.tsx` (which the
+sidebar, the right rail, and the scroll-spy all read), so the three stay in sync:
+
+- **Sections**: Get started (Overview · Quickstart) · Guides (the "How do I…"
+  recipes, derived from `DOCS_GUIDE_TOPICS` where `section === "howto"`) ·
+  Concepts (Layout tree · Interactions · Capabilities) · Examples (Metrics
+  dashboard · Terminal grid) · **API reference** — a COLLAPSIBLE tree (collapsed
+  by default so it doesn't drown the guides) with a per-category group
+  (Renderer & tiles · Layout & query · Theming · Commands · Advanced helpers),
+  **each symbol a navigable leaf** under its category.
+- **Scroll-spy** (`useScrollSpy`): one `IntersectionObserver` over every
+  section / category / symbol anchor (document-ordered `ANCHOR_INDEX.order`). The
+  active band sits just below the sticky header down to ~45% of the viewport; the
+  first anchor intersecting it wins. The active nav item highlights AND
+  auto-scrolls into view WITHIN the sidebar (`scrollIntoView({block:"nearest"})`);
+  scrolling into the reference auto-expands the tree + the active symbol's
+  category. Clicking any leaf smooth-scrolls to its anchor (`scrollToAnchor`), a
+  hydration enhancement over the plain `#id` link.
+- **Right rail** (`OnThisPage`): an "on this page" mini-TOC listing the leaves of
+  the current section; inside the reference it narrows to the active category's
+  symbols so it never balloons to the full generated surface.
+- SSR + first client render both start at the first anchor, so there is **no
+  hydration mismatch**; the observer refines the active id after mount. Every
+  anchor is a plain `#id`, so the single prerendered page stays SEO / LLM-
+  crawlable with JS disabled; the spine and spy are progressive enhancement.
+
+## Live demos + default pane chrome + the content-toggle default
+
+Every embedded "live result" is a real, controlled `TilingRenderer` (the same
+compiled module whose source is shown), interactive on the prerendered page after
+hydration. The generic rule that keeps them interactive: an example that does NOT
+need custom chrome passes **no `renderTile`**, so the renderer supplies its
+default pane frame + header — fully wired for drag / resize / group / maximize out
+of the box (the Examples-gallery apps and the quickstart do this). A `renderTile`
+callback is reached for ONLY to own the pane frame yourself, in which case the
+custom pane must re-wire the handles it wants (`article[data-leaf-id]` root +
+`onHandlePointerDown` etc.) — see the two `renderTile` recipes. Returning bare
+`tile.content` from `renderTile` (no `article[data-leaf-id]`, no handlers) is the
+footgun that silently strips drag/focus/group; the docs never model it.
+
+The tab strip's "show pane body" checkbox (`paneSwitching.showContentToggle`) is a
+dev/demo affordance, so the LIBRARY default is `false` (opt-in) — a consumer app
+renders its own pane content and never wants an end-user control that blanks it.
+Suppressed, the initial pane-content-visible flag pins ON, so panes paint content
+at rest with no wiring, and the prerendered docs body carries the content (SEO
+intact). The interactive showcase (`packages/showcase`) opts back in explicitly
+with `paneSwitching: { showContentToggle: true }`; the homepage relies on the
+default and passes no `interaction` prop. No docs example surfaces the checkbox.
 
 ## Compiled examples — the anti-rot mechanism
 
@@ -121,7 +178,15 @@ entry, documented for contributors and kept off this site.
 
 Reference-legibility demotions (moved from `.` to `./engine`): the `accentHue`
 custom-chrome helper and the two prop-less internal drag-duration reference
-constants `BASELINE_DRAG_HOP_DURATION_MS` / `INSTANT_DRAG_DURATION_MS`. Kept on
+constants `BASELINE_DRAG_HOP_DURATION_MS` / `INSTANT_DRAG_DURATION_MS`. Demoting
+`accentHue` does NOT weaken the custom-chrome story: a fully custom pane frame is
+already a first-class PUBLIC capability via the generic `renderTile` full-pane
+render prop (`TilingRenderTileProps` carries every handle + state flag) combined
+with theme tokens from `useTilingTheme()` (`resolveAccentText`, `resolveFocusFrame`,
+`resolvePaneAccentSurface`, the `paneShell` / `paneHeader` token groups). The
+"Render your own pane frame & header" recipe + its compiled example
+(`docs-examples/custom-chrome.tsx`) document exactly this — no showcase-only or
+engine-only prop is involved. Kept on
 `.`: `isCommandEnabled` (dogfood-proven in `shortcuts.tsx`) and the
 drag-animation defaults/bounds that back real `TilingRendererProps` knobs
 (`DEFAULT_DRAG_HOP_EASING`, `DEFAULT_DRAG_REFLOW_EASING`,
@@ -131,7 +196,7 @@ drag-animation defaults/bounds that back real `TilingRendererProps` knobs
 
 | Doc class | Location | On public `/docs` site? |
 |---|---|---|
-| Task-first guides (Hero, Quickstart, How-do-I, Concepts, Examples) | `apps/web/src/docs-page.tsx` | Yes |
+| Task-first guides (Overview, Quickstart, How-do-I, Concepts, Examples) + sidebar-spine nav / scroll-spy / on-this-page rail | `apps/web/src/docs-page.tsx` | Yes |
 | Compiled example modules (guide snippets + live demos) | `apps/web/src/docs-examples/*.tsx` (+ `sources.ts`) | Yes |
 | Consumer topic index (sidebar / llms.txt / JSON-LD) | `apps/web/src/docs.tsx` (`DOCS_GUIDE_TOPICS`) | Yes |
 | Generated per-symbol reference (demoted, tiered) | `apps/web/src/api-reference/generated.ts` (via `pnpm api:docs`) | Yes |

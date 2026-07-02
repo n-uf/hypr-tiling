@@ -34,7 +34,7 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   paneSwitching: {
     enable: true,
     showTabStrip: true,
-    showContentToggle: true,
+    showContentToggle: false,
     showSwitcherOverlay: true,
     tabDoubleClickMaximize: true,
     multiSelectGrouping: true,
@@ -223,7 +223,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       paneSwitching: {
         enable: false,
         showTabStrip: true,
-        showContentToggle: true,
+        showContentToggle: false,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: true,
         multiSelectGrouping: true,
@@ -234,7 +234,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       paneSwitching: {
         enable: true,
         showTabStrip: false,
-        showContentToggle: true,
+        showContentToggle: false,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: true,
         multiSelectGrouping: true,
@@ -256,8 +256,32 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       paneSwitching: {
         enable: true,
         showTabStrip: true,
-        showContentToggle: true,
+        showContentToggle: false,
         showSwitcherOverlay: false,
+        tabDoubleClickMaximize: true,
+        multiSelectGrouping: true,
+      },
+    });
+  });
+
+  it("defaults showContentToggle to FALSE (the dev-only affordance is opt-in)", (): void => {
+    // The lone opt-in default: a consumer app renders its own pane content, so
+    // the group tab strip's "show pane body" checkbox is suppressed unless asked
+    // for. Suppressed => the initial content-visible flag pins ON (panes paint
+    // content at rest with no wiring).
+    expect(resolveInteractionCapabilities(undefined).paneSwitching.showContentToggle).toBe(false);
+    expect(resolveInteractionCapabilities({}).paneSwitching.showContentToggle).toBe(false);
+  });
+
+  it("preserves an explicit showContentToggle true (a tooling surface opts back in)", (): void => {
+    // The interactive showcase re-enables the checkbox to demo content-blanking.
+    expect(resolveInteractionCapabilities({ paneSwitching: { showContentToggle: true } })).toEqual({
+      ...RESOLVED_DEFAULTS,
+      paneSwitching: {
+        enable: true,
+        showTabStrip: true,
+        showContentToggle: true,
+        showSwitcherOverlay: true,
         tabDoubleClickMaximize: true,
         multiSelectGrouping: true,
       },
@@ -277,7 +301,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       paneSwitching: {
         enable: true,
         showTabStrip: true,
-        showContentToggle: true,
+        showContentToggle: false,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: false,
         multiSelectGrouping: true,
@@ -304,7 +328,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       paneSwitching: {
         enable: true,
         showTabStrip: true,
-        showContentToggle: true,
+        showContentToggle: false,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: true,
         multiSelectGrouping: false,
