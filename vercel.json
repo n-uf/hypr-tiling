@@ -4,5 +4,22 @@
   "installCommand": "pnpm install",
   "buildCommand": "pnpm build",
   "outputDirectory": "apps/web/dist",
-  "rewrites": [{ "source": "/showcase", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/showcase", "destination": "/showcase.html" },
+    { "source": "/showcase/", "destination": "/showcase.html" }
+  ],
+  "headers": [
+    {
+      "source": "/showcase",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, follow, max-image-preview:large" }
+      ]
+    },
+    {
+      "source": "/showcase/",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, follow, max-image-preview:large" }
+      ]
+    }
+  ]
 }

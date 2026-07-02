@@ -68,11 +68,6 @@ const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://hypr-tiling.n-uf.com/showcase</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.4</priority>
-  </url>
-  <url>
     <loc>https://hypr-tiling.n-uf.com/llms.txt</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
