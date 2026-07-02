@@ -1,7 +1,7 @@
 /**
  * Public command contract (HT-API-COMMAND-KEYBOARD-SURFACE, half A).
  *
- * `TilingCommand` (in `types.ts`) is the SDK's typed dispatch-style command set
+ * `TilingCommand` (in `types.ts`) is the public API's typed dispatch-style command set
  * — the Hyprland `dispatch` analog. This module holds the PURE logic around it:
  * the command→capability gate (so a command targeting a disabled capability is a
  * safe no-op, reproducing the old `matchKeymapAction` "leave the key alone"

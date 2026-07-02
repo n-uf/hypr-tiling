@@ -1,6 +1,6 @@
 /**
  * Consumer-configurable drag easing — the pure resolution + validation half of
- * the easing SDK surface (HT-ANIM-EASING-CONFIG).
+ * the easing public-API surface (HT-ANIM-EASING-CONFIG).
  *
  * `DRAG_HOP_EASING` / `DRAG_REFLOW_EASING` used to be fixed module constants in
  * the renderer (parity-report §5 #9 / §7: the one M10 remainder short of

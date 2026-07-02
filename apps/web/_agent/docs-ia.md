@@ -7,7 +7,7 @@ lives. Structure + rationale only.
 ## Consumer vs contributor split
 
 - **Consumer** = a developer who *uses* `@n-uf/hypr-tiling` in their app.
-  Consumer docs describe **only** the public SDK surface.
+  Consumer docs describe **only** the public API surface (the `.` facade).
 - **Contributor** = a developer who works *on* the library (architecture,
   internals, maintenance).
 
@@ -27,19 +27,19 @@ Contributor material is discoverable in-repo but **off** the public site:
 Rendered by `apps/web/src/docs-page.tsx`. Reading order:
 
 ```
-SDK map            routing landing: brand-new → Fast track;
+API map            routing landing: brand-new → Fast track;
                    know-what-you-need → capability; look-up → reference
   │
 Lane A — Fast track                one copy-paste path, time-to-first-tile
   │   install → Tailwind content glob → minimal <TilingRenderer> + renderTile
   │   → "next steps" links into Lane B
   │
-Lane B — Full SDK spectrum         the consumable surface, grouped by capability
+Lane B — Full public-API spectrum  the consumer surface, grouped by capability
   ├─ Renderer & props              TilingRenderer / TilingRendererProps / renderTile / TilingTile
-  ├─ Layout tree & mutation        layout-node types + pure mutation helpers
+  ├─ Layout tree & mutation        node types + queryTilingLayout + TilingCommand/TilingCommandHandle
   ├─ Interaction capabilities      TilingInteractionCapabilities + presets + Resolved variants
   ├─ Theming                       TilingThemeProvider / TilingTheme / useTilingTheme
-  ├─ Multi-select & grouping       canGroupMultiSelection + groupLeaves (Alt/Opt+G)
+  ├─ Multi-select & grouping       isMultiSelectModifierActive + group-leaves command (Alt/Opt+G)
   ├─ Drag / FLIP & recovery        consumer-visible props/callbacks only
   └─ Devtools (opt-in / advanced)  @n-uf/hypr-tiling/devtools — kept out of Fast track
   │
@@ -56,19 +56,23 @@ structurally impossible.
 
 ## Scope boundary
 
-Consumer docs document **only the public barrel** — the ~171-item public API of
-`@n-uf/hypr-tiling` (+ `/devtools`), rendered as 178 generated reference cards.
-The boundary is enforced by **API Extractor**: `@internal`/deep-engine symbols
-(ghost-transit math, leaf geometry, drop-validity, projected-layout, low-level
-pane-switching helpers) are excluded from the public entry, and `pnpm api:check`
-fails CI if one leaks. The generated reference already excludes them; hand-written
-examples use only public API.
+Consumer docs document **only the `.` public API facade** — the hand-authored
+curated surface of `@n-uf/hypr-tiling`, rendered as 104 generated reference
+cards. The boundary is enforced by **API Extractor** (`api-extractor.index.json`,
+forgotten-export = error): engine-grade symbols (layout reducers, low-level tree
+walkers, keymap internals, ghost-transit / drop-validity / pane-switching math)
+are NOT re-exported from the facade and so never reach the `.` report or the
+generated reference. Power users reach them through the `@beta`
+`@n-uf/hypr-tiling/engine` entry, which is documented for contributors
+(`etc/hypr-tiling.engine.api.md` + `CONTRIBUTING.md`) and kept off this site.
+`pnpm api:check` fails CI if the `.` surface drifts or an unexported type leaks;
+hand-written examples use only public API (+ a labeled `./engine` pointer).
 
 ## Where each doc class lives
 
 | Doc class | Location | On public `/docs` site? |
 |---|---|---|
-| Consumer guides (SDK map, Fast track, capability groups) | `apps/web/src/docs-page.tsx` | Yes |
+| Consumer guides (API map, Fast track, capability groups) | `apps/web/src/docs-page.tsx` | Yes |
 | Consumer topic index (sidebar / llms.txt / JSON-LD) | `apps/web/src/docs.tsx` (`DOCS_GUIDE_TOPICS`) | Yes |
 | Generated per-symbol reference | `apps/web/src/api-reference/generated.ts` (via `pnpm api:docs`) | Yes |
 | `llms.txt` mirror | `apps/web/src/llms.ts` (`buildLlmsTxt`) | Yes |

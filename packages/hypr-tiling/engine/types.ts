@@ -491,8 +491,8 @@ export type TilingKeyboardAction =
 export type TilingPaneCycleDirection = "next" | "previous";
 
 /**
- * The public, typed, dispatch-style command set — the SDK's imperative entry
- * point (the Hyprland `dispatch` analog). Every internal renderer action is
+ * The public, typed, dispatch-style command set — the public API's imperative
+ * entry point (the Hyprland `dispatch` analog). Every internal renderer action is
  * enumerated here so an embedding app can invoke tiler behavior programmatically
  * (via the `TilingCommandHandle`) and so a keyboard binding can target any of
  * them (`TilingKeyBinding`).

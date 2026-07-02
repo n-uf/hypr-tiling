@@ -21,15 +21,16 @@ import {
 
 // The prerendered /docs route: a CONSUMER-facing documentation system. A
 // "consumer" is a developer who USES `@n-uf/hypr-tiling` in their app; the docs
-// describe only the public SDK surface (the curated barrel enforced by API
-// Extractor). Contributor material (architecture / internals) lives off this
-// site — see CONTRIBUTING.md and apps/web/_agent/docs-ia.md.
+// describe only the public API surface (the hand-authored `.` facade enforced by
+// API Extractor). Contributor material (architecture / internals) and the @beta
+// `/engine` escape hatch live off this site — see CONTRIBUTING.md and
+// apps/web/_agent/docs-ia.md.
 //
 // Two-lane information architecture:
-//   1. SDK map        — a short landing section that routes the reader.
+//   1. API map        — a short landing section that routes the reader.
 //   2. Lane A         — Fast track: one copy-paste path to the first tiles.
-//   3. Lane B         — Full SDK spectrum: the consumable surface grouped by
-//                       capability, each group linking into the generated
+//   3. Lane B         — Full public-API spectrum: the consumer surface grouped
+//                       by capability, each group linking into the generated
 //                       per-symbol reference, which follows last.
 //
 // Styling reuses the homepage "mosaic" vocabulary (graphite canvas, single gold
@@ -82,12 +83,20 @@ export default {
 };`;
 
 // Lane B snippets — one focused example per capability group.
-const LAYOUT_MUTATION_SNIPPET: string = `import { groupLeaves, updateSplitRatio } from "@n-uf/hypr-tiling";
+const LAYOUT_MUTATION_SNIPPET: string = `import { TilingRenderer, queryTilingLayout } from "@n-uf/hypr-tiling";
+import type { TilingCommandHandle } from "@n-uf/hypr-tiling";
+import { useRef } from "react";
 
-// Every mutation helper is pure: it returns a NEW tree, never mutates in place.
-// Apply the result into the same state you pass to TilingRenderer.layout.
-setLayout((current) => updateSplitRatio(current, "root", 0.66));
-setLayout((current) => groupLeaves(current, ["l", "r"]));`;
+// You own the tree in state and receive every UI-driven edit through
+// onLayoutChange. To edit it programmatically, take the renderer's
+// TilingCommandHandle ref and dispatch a typed TilingCommand:
+const ref = useRef<TilingCommandHandle>(null);
+ref.current?.dispatch({ kind: "set-split-ratio", splitId: "root", ratio: 0.66 });
+ref.current?.dispatch({ kind: "group-leaves", leafIds: ["l", "r"] });
+
+// Inspect the tree — leaf ids, splits, groups, tile order, directional
+// neighbors — without walking it by hand:
+const { leafIds, splits, neighborLeafId } = queryTilingLayout(layout);`;
 
 const CAPABILITIES_SNIPPET: string = `import type { TilingInteractionCapabilities } from "@n-uf/hypr-tiling";
 import { TILING_DASHBOARD_PRESET } from "@n-uf/hypr-tiling";
@@ -109,13 +118,17 @@ function Toolbar() {
   return <span>{theme.id}</span>;
 }`;
 
-const GROUPING_SNIPPET: string = `import { canGroupMultiSelection, groupLeaves } from "@n-uf/hypr-tiling";
+const GROUPING_SNIPPET: string = `import { isMultiSelectModifierActive } from "@n-uf/hypr-tiling";
+import type { TilingCommandHandle } from "@n-uf/hypr-tiling";
+
+// Multi-select + group is a built-in interaction: Alt/Opt+click to add a leaf
+// to the selection, Alt/Opt+G to fold the selection into a tabbed group. Detect
+// the platform multi-select modifier for your own affordances:
+const multiSelect = isMultiSelectModifierActive(event);
 
 // selection is a ReadonlySet<string> of leaf ids (insertion order preserved).
-if (canGroupMultiSelection(layout, selection)) {
-  const next = groupLeaves(layout, [...selection]);
-  setLayout(next);
-}`;
+// Apply the group programmatically through the renderer command handle:
+ref.current?.dispatch({ kind: "group-leaves", leafIds: [...selection] });`;
 
 const DEVTOOLS_SNIPPET: string = `// Opt-in, advanced. A renderer-only consumer never imports this subpath.
 import { TilingObservabilityPanel } from "@n-uf/hypr-tiling/devtools";`;
@@ -451,11 +464,11 @@ const API_PROSE_STYLES: string = `
 .ht-api ul, .ht-api ol { margin: 0 0 0.75rem; padding-left: 1.15rem; font-size: 13px; line-height: 1.7; color: rgb(214 211 209 / 0.9); }
 `;
 
-// SDK map (landing) — three concrete routes into the docs, kept terse.
-function SdkMap(): React.ReactElement {
+// API map (landing) — three concrete routes into the docs, kept terse.
+function ApiMap(): React.ReactElement {
   return (
-    <section className="flex flex-col gap-4 scroll-mt-24" id="sdk-map">
-      <Eyebrow>sdk map</Eyebrow>
+    <section className="flex flex-col gap-4 scroll-mt-24" id="api-map">
+      <Eyebrow>api map</Eyebrow>
       <h2 className="font-display text-[26px] font-medium leading-tight tracking-[-0.015em] text-stone-50">
         Where to start
       </h2>
@@ -485,7 +498,7 @@ function SdkMap(): React.ReactElement {
             Jump to a capability
           </span>
           <span className="text-[12px] leading-[1.6] text-stone-400">
-            The full SDK spectrum, grouped by task.
+            The full public-API spectrum, grouped by task.
           </span>
         </a>
         <a
@@ -526,15 +539,16 @@ export function DocsPage({
             </h1>
             <SectionLead>
               Everything a consumer needs to render tiling layouts with{" "}
-              hypr-tiling: a fast track to the first tiles, the full SDK surface
-              grouped by capability, and the generated per-symbol reference.
-              These docs cover only the public SDK; contributors working on the
-              library itself start from <Code>CONTRIBUTING.md</Code>. Every page
-              is prerendered to static HTML.
+              hypr-tiling: a fast track to the first tiles, the full public-API
+              surface grouped by capability, and the generated per-symbol
+              reference. These docs cover only the public API; contributors
+              working on the library itself start from{" "}
+              <Code>CONTRIBUTING.md</Code>. Every page is prerendered to static
+              HTML.
             </SectionLead>
           </div>
 
-          <SdkMap />
+          <ApiMap />
 
           <GuideSection id="fast-track" eyebrow="lane a · quickstart" title="Fast track">
             <SectionLead>
@@ -600,28 +614,40 @@ export function DocsPage({
               "TilingGroupNode",
               "TilingLayoutConfig",
               "DEFAULT_TILING_LAYOUT_CONFIG",
-              "TilingInsertionOptions",
-              "insertLeafAdjacent",
-              "moveLeafToSplitContainer",
-              "moveLeafToRoot",
-              "swapLeafTiles",
-              "updateSplitRatio",
-              "toggleSplitAxis",
-              "removeLeafTile",
-              "groupLeaves",
-              "GroupLeavesOptions",
-              "ungroupNode",
+              "queryTilingLayout",
+              "TilingLayoutQuery",
+              "TilingCommand",
+              "TilingCommandHandle",
+              "TilingCommandGates",
+              "isCommandEnabled",
             ]}
           >
             <SectionLead>
               A layout is a recursive tree you own in state: <Code>leaf</Code>{" "}
               nodes hold a tile, <Code>split</Code> nodes divide space along an
               axis by a ratio, and <Code>group</Code> nodes stack leaves behind a
-              tab strip (<Code>TilingLayoutNode</Code> is the union). The mutation
-              helpers are pure — each returns a new tree you feed back into{" "}
-              <Code>layout</Code>, so edits stay diffable and persistable.
+              tab strip (<Code>TilingLayoutNode</Code> is the union). Read it with{" "}
+              <Code>queryTilingLayout</Code>, which returns a{" "}
+              <Code>TilingLayoutQuery</Code> view (leaf ids, splits, groups, tile
+              order, and a directional-neighbor lookup) so you never walk the tree
+              by hand. Edit it two ways: declaratively, by applying the tree the
+              renderer reports through <Code>onLayoutChange</Code>; or
+              imperatively, by dispatching a typed <Code>TilingCommand</Code>{" "}
+              through the renderer&rsquo;s <Code>TilingCommandHandle</Code> ref (
+              gate a command first with <Code>isCommandEnabled</Code> +{" "}
+              <Code>TilingCommandGates</Code>). Every edit stays diffable and
+              persistable.
             </SectionLead>
             <Pre>{LAYOUT_MUTATION_SNIPPET}</Pre>
+            <SectionLead>
+              Power users driving the tree headlessly (no renderer) can reach the
+              raw pure reducers — <Code>insertLeafAdjacent</Code>,{" "}
+              <Code>groupLeaves</Code>, <Code>swapLeafTiles</Code>,{" "}
+              <Code>updateSplitRatio</Code>, and the rest — on the{" "}
+              <Code>@n-uf/hypr-tiling/engine</Code> escape hatch. That entry is{" "}
+              <Code>@beta</Code> with no stability guarantees and is kept off this
+              reference; prefer the command handle above.
+            </SectionLead>
           </CapabilitySection>
 
           <CapabilitySection
@@ -680,22 +706,26 @@ export function DocsPage({
             id="cap-grouping"
             title="Multi-select & grouping"
             symbols={[
-              "canGroupMultiSelection",
-              "groupLeaves",
-              "GroupLeavesOptions",
-              "toggleLeafMultiSelection",
-              "pruneMultiSelection",
               "isMultiSelectModifierActive",
-              "MULTI_SELECT_GROUP_MIN_MEMBERS",
+              "MultiSelectModifierState",
+              "TilingCommand",
+              "TilingCommandHandle",
             ]}
           >
             <SectionLead>
-              Fold several selected leaves into one tabbed group (the Alt/Opt+G
-              flow). Track the selection with{" "}
-              <Code>toggleLeafMultiSelection</Code>, gate the Group control with{" "}
-              <Code>canGroupMultiSelection</Code> so it is only offered when the
-              op would actually change the tree, then apply it with{" "}
-              <Code>groupLeaves</Code>.
+              Fold several selected leaves into one tabbed group. This is a
+              built-in interaction: Alt/Opt+click adds a leaf to the selection and
+              Alt/Opt+G groups it — no wiring required. For your own affordances,{" "}
+              <Code>isMultiSelectModifierActive</Code> (over a{" "}
+              <Code>MultiSelectModifierState</Code>) tells you whether the
+              platform multi-select modifier is held, and you can apply a group
+              programmatically by dispatching the <Code>group-leaves</Code>{" "}
+              <Code>TilingCommand</Code> through the renderer&rsquo;s{" "}
+              <Code>TilingCommandHandle</Code>. The lower-level selection reducers
+              (<Code>toggleLeafMultiSelection</Code>,{" "}
+              <Code>canGroupMultiSelection</Code>, <Code>pruneMultiSelection</Code>
+              ) are power-user internals on the <Code>@beta</Code>{" "}
+              <Code>@n-uf/hypr-tiling/engine</Code> escape hatch.
             </SectionLead>
             <Pre>{GROUPING_SNIPPET}</Pre>
           </CapabilitySection>

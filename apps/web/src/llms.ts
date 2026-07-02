@@ -53,7 +53,7 @@ export function buildLlmsTxt(): string {
   lines.push(`## Documentation (${DOCS_URL})`);
   lines.push("");
   lines.push(
-    "Consumer documentation, prerendered as static HTML at the /docs route. A consumer is a developer who uses @n-uf/hypr-tiling in their app; these docs cover only the public SDK surface. The information architecture has two lanes: an SDK map that routes the reader, Lane A (Fast track — the shortest copy-paste path to the first rendered tiles), and Lane B (the full SDK spectrum, grouped by capability), each capability linking into the generated per-symbol reference that follows:",
+    "Consumer documentation, prerendered as static HTML at the /docs route. A consumer is a developer who uses @n-uf/hypr-tiling in their app; these docs cover only the public API surface (the hand-authored `.` facade). The information architecture has two lanes: an API map that routes the reader, Lane A (Fast track — the shortest copy-paste path to the first rendered tiles), and Lane B (the full public-API spectrum, grouped by capability), each capability linking into the generated per-symbol reference that follows:",
   );
   lines.push("");
   for (const topic of DOCS_GUIDE_TOPICS) {

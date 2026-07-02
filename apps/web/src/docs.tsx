@@ -558,7 +558,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
 ];
 
 // Which lane a consumer-docs topic belongs to, used to group the /docs sidebar.
-// "start" = the SDK map + Lane A fast track; "spectrum" = Lane B capability
+// "start" = the API map + Lane A fast track; "spectrum" = Lane B capability
 // groups + the consumer-relevant migration pointer; "reference" = the generated
 // per-symbol API reference.
 type DocsLane = "start" | "spectrum" | "reference";
@@ -578,14 +578,15 @@ interface DocsGuideTopic {
 // source for the docs sidebar, the llms.txt guide index, the JSON-LD hasPart,
 // and the sitemap; the prose bodies themselves live in docs-page.tsx (JSX),
 // keyed by these ids. Every topic documents ONLY the public `@n-uf/hypr-tiling`
-// (+ `/devtools`) barrel — no architecture/internals. The two-lane IA is: an SDK
-// map that routes the reader, Lane A (Fast track / time-to-first-tile), then
-// Lane B (the full consumable surface grouped by capability), ending in the
-// generated reference.
+// entry (the curated public API; `/devtools` is a documented opt-in and
+// `/engine` is an off-site @beta escape hatch) — no architecture/internals. The
+// two-lane IA is: an API map that routes the reader, Lane A (Fast track /
+// time-to-first-tile), then Lane B (the full public-API surface grouped by
+// capability), ending in the generated reference.
 export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
   {
-    id: "sdk-map",
-    title: "SDK map",
+    id: "api-map",
+    title: "API map",
     lane: "start",
     summary:
       "Routes the reader: brand-new consumers take the Fast track; consumers who know what they need jump to a capability guide; symbol look-ups go straight to the generated reference.",
@@ -609,7 +610,7 @@ export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
     title: "Layout tree & mutation",
     lane: "spectrum",
     summary:
-      "The layout is a recursive tree of leaf, split, and group nodes you own in state (TilingLayoutNode / TilingLeafNode / TilingSplitNode / TilingGroupNode). Pure mutation helpers return a new tree: groupLeaves/GroupLeavesOptions, insertLeafAdjacent, moveLeafToSplitContainer, swapLeafTiles, updateSplitRatio, toggleSplitAxis, removeLeafTile, ungroupNode.",
+      "The layout is a recursive tree of leaf, split, and group nodes you own in state (TilingLayoutNode / TilingLeafNode / TilingSplitNode / TilingGroupNode). Read it with queryTilingLayout (TilingLayoutQuery: leaf ids, splits, groups, tile order, neighbor lookup). Edit it declaratively via onLayoutChange or imperatively by dispatching a typed TilingCommand through the renderer's TilingCommandHandle (gated by isCommandEnabled / TilingCommandGates). Raw pure reducers live on the @beta @n-uf/hypr-tiling/engine escape hatch.",
   },
   {
     id: "cap-interaction",
@@ -630,7 +631,7 @@ export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
     title: "Multi-select & grouping",
     lane: "spectrum",
     summary:
-      "Fold several selected leaves into one tabbed group (Alt/Opt+G). Gate the control with canGroupMultiSelection and apply the change with groupLeaves; toggleLeafMultiSelection / pruneMultiSelection manage the selection set.",
+      "Fold several selected leaves into one tabbed group. Built-in interaction: Alt/Opt+click to select, Alt/Opt+G to group. isMultiSelectModifierActive (MultiSelectModifierState) reports the platform modifier; apply a group programmatically via the group-leaves TilingCommand through the TilingCommandHandle. The lower-level selection reducers live on the @beta @n-uf/hypr-tiling/engine escape hatch.",
   },
   {
     id: "cap-drag",
