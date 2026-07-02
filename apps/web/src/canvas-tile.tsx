@@ -34,8 +34,9 @@ import {
 //   1. HEADER RAIL — a compact control-panel row. On the LEFT, a SINGLE squared
 //      control cluster of two instrument keys (fullscreen/maximize, then
 //      select-for-grouping) — squared right angles (engineering, not round
-//      macOS discs), dimmed at rest and LIT/filled with a soft hue glow when the
-//      key's state is active (maximized / selected). Their colors are
+//      macOS discs), SOLID saturated hue fills with a soft hue glow at rest and
+//      DEEPENED to a brighter, wider glow when the key's state is active
+//      (maximized / selected). Their colors are
 //      semantically mapped: emerald (go/activate) for maximize, sky (selection
 //      blue) for select-for-grouping. Then a hairline column rule and a short
 //      monospace label — the header carries NO second square block (the per-pane
@@ -162,25 +163,29 @@ const LED_KEYCAP: string =
 // so there is no second square block — the LED-color identity now lives solely
 // in the footer LED-identity dot and the footer group LEDs.
 //
-// Both keys reuse the green-glow chip treatment (the look the reference footer
-// LED reads best in): a squared chip, DIM at rest (translucent hue fill, no
-// glow), and LIT/filled with its saturated hue + a soft hue glow when the key's
-// state is ACTIVE. Colors are semantically mapped, not arbitrary: maximize is
-// EMERALD (a go/expand "activate" green that echoes the reference LED glow),
+// Both keys wear the SOLID saturated-hue chip treatment (the look the reference
+// footer LED reads best in): a squared chip filled with its FULL saturated hue
+// at all times — never a translucent/outline wash — with a soft hue glow, so it
+// reads as a lit indicator, not a hollow toggle. Rest and active stay distinct
+// by intensity, not by fill vs no-fill: at REST the chip is solid but slightly
+// CALMER (emerald/sky-400 fill, gentler glow); when the key's state is ACTIVE
+// (maximized / selected) the same chip DEEPENS to the -500 hue with a brighter,
+// wider glow. Colors are semantically mapped, not arbitrary: maximize is EMERALD
+// (a go/expand "activate" green that echoes the reference LED glow),
 // select-for-grouping is SKY (the conventional selection blue), so the two
 // controls read as purposeful rather than a random palette pair. The tiny glyph
-// is hidden at rest and reveals (white) on hover or when active, mirroring the
-// macOS "glyphs appear on hover" idiom.
+// stays hidden on the solid field at rest and reveals (white) on hover or when
+// active, mirroring the macOS "glyphs appear on hover" idiom.
 const CONTROL_SQUARE_BASE: string =
   "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[1px] border font-mono text-[8px] leading-none transition-all";
 const MAXIMIZE_LIGHT_REST: string =
-  "border-emerald-400/50 bg-emerald-400/20 text-transparent hover:bg-emerald-400/40 hover:text-white";
+  "border-emerald-500 bg-emerald-400 text-transparent shadow-[0_0_5px_0_rgba(52,211,153,0.6)] hover:bg-emerald-500 hover:text-white hover:shadow-[0_0_7px_0_rgba(52,211,153,0.85)]";
 const MAXIMIZE_LIGHT_ACTIVE: string =
-  "border-emerald-500 bg-emerald-400 text-white shadow-[0_0_6px_0_rgba(52,211,153,0.9)]";
+  "border-emerald-600 bg-emerald-500 text-white shadow-[0_0_8px_1px_rgba(52,211,153,0.95)]";
 const SELECT_LIGHT_REST: string =
-  "border-sky-400/55 bg-sky-400/20 text-transparent hover:bg-sky-400/40 hover:text-white";
+  "border-sky-500 bg-sky-400 text-transparent shadow-[0_0_5px_0_rgba(56,189,248,0.6)] hover:bg-sky-500 hover:text-white hover:shadow-[0_0_7px_0_rgba(56,189,248,0.85)]";
 const SELECT_LIGHT_ACTIVE: string =
-  "border-sky-500 bg-sky-400 text-white shadow-[0_0_6px_0_rgba(56,189,248,0.9)]";
+  "border-sky-600 bg-sky-500 text-white shadow-[0_0_8px_1px_rgba(56,189,248,0.95)]";
 
 // Body field — flat neutral panel; text tokens from the consumer theme.
 const PANEL_BODY: string = CANVAS_THEME.paneShell.bodyText;
