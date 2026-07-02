@@ -31,17 +31,18 @@ import {
 //
 // Three exact bands, each an instrument readout — not a header + body:
 //
-//   1. HEADER RAIL — a compact control-panel row. On the LEFT, a small COLORED
-//      traffic-light cluster of two squared instrument keys (fullscreen/maximize,
-//      then select-for-grouping) drawn from the Canvas LED palette (pink for
-//      maximize, amber for select) — squared right angles (engineering, not
-//      round macOS discs), dimmed at rest and LIT/filled with a hue glow when
-//      the key's state is active (maximized / selected). Then the pane's own
-//      status LED (dim slate at rest, its saturated hue LIT with a glow on
-//      focus), a hairline column rule, and a short monospace label. On the
-//      RIGHT, a tabular pane index and — only while a groupable multi-selection
-//      exists — the squared LED-keycap Group action. This is the drag surface
-//      and owns the Alt/Opt+click multi-select toggle via `TilingDragHandle`.
+//   1. HEADER RAIL — a compact control-panel row. On the LEFT, a SINGLE squared
+//      control cluster of two instrument keys (fullscreen/maximize, then
+//      select-for-grouping) — squared right angles (engineering, not round
+//      macOS discs), dimmed at rest and LIT/filled with a soft hue glow when the
+//      key's state is active (maximized / selected). Their colors are
+//      semantically mapped: emerald (go/activate) for maximize, sky (selection
+//      blue) for select-for-grouping. Then a hairline column rule and a short
+//      monospace label — the header carries NO second square block (the per-pane
+//      status LED lives in the footer, not the header). On the RIGHT, a tabular
+//      pane index and — only while a groupable multi-selection exists — the
+//      squared LED-keycap Group action. This is the drag surface and owns the
+//      Alt/Opt+click multi-select toggle via `TilingDragHandle`.
 //   2. BODY — a flat neutral panel field (no card rounding, no shadow) that
 //      renders `tile.content` through `TilingPaneBody` so the drag ghost reuses
 //      the same render path.
@@ -154,24 +155,32 @@ const HEADER_RAIL: string =
 const LED_KEYCAP: string =
   "flex h-[18px] shrink-0 items-center justify-center rounded-[1px] border border-slate-300 bg-white px-1.5 font-mono text-[9px] uppercase leading-none tracking-[0.14em] text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-800";
 
-// The two squared control keys on the header LEFT (fullscreen · select) — a
-// small COLORED traffic-light cluster (the macOS titlebar analog, but squared
-// for the engineering aesthetic, not round). Each key is a colored square drawn
-// from the Canvas LED palette — pink for fullscreen/maximize, amber for
-// select-for-grouping — dimmed (translucent fill, no glow) at REST and
-// LIT/filled with its saturated hue + a glow when the key's state is ACTIVE
-// (maximized / selected). The tiny glyph is hidden at rest and reveals (white)
-// on hover or when active, mirroring the macOS "glyphs appear on hover" idiom.
+// The two squared control keys on the header LEFT (fullscreen · select) — the
+// pane's SINGLE squared control cluster (the macOS titlebar analog, but squared
+// for the engineering aesthetic, not round). This is the header's only block of
+// squares: the standalone per-pane status LED has been dropped from the header
+// so there is no second square block — the LED-color identity now lives solely
+// in the footer LED-identity dot and the footer group LEDs.
+//
+// Both keys reuse the green-glow chip treatment (the look the reference footer
+// LED reads best in): a squared chip, DIM at rest (translucent hue fill, no
+// glow), and LIT/filled with its saturated hue + a soft hue glow when the key's
+// state is ACTIVE. Colors are semantically mapped, not arbitrary: maximize is
+// EMERALD (a go/expand "activate" green that echoes the reference LED glow),
+// select-for-grouping is SKY (the conventional selection blue), so the two
+// controls read as purposeful rather than a random palette pair. The tiny glyph
+// is hidden at rest and reveals (white) on hover or when active, mirroring the
+// macOS "glyphs appear on hover" idiom.
 const CONTROL_SQUARE_BASE: string =
   "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[1px] border font-mono text-[8px] leading-none transition-all";
 const MAXIMIZE_LIGHT_REST: string =
-  "border-pink-400/50 bg-pink-400/25 text-transparent hover:bg-pink-400/45 hover:text-white";
+  "border-emerald-400/50 bg-emerald-400/20 text-transparent hover:bg-emerald-400/40 hover:text-white";
 const MAXIMIZE_LIGHT_ACTIVE: string =
-  "border-pink-500 bg-pink-400 text-white shadow-[0_0_5px_0_rgba(244,114,182,0.85)]";
+  "border-emerald-500 bg-emerald-400 text-white shadow-[0_0_6px_0_rgba(52,211,153,0.9)]";
 const SELECT_LIGHT_REST: string =
-  "border-amber-400/55 bg-amber-400/25 text-transparent hover:bg-amber-400/45 hover:text-white";
+  "border-sky-400/55 bg-sky-400/20 text-transparent hover:bg-sky-400/40 hover:text-white";
 const SELECT_LIGHT_ACTIVE: string =
-  "border-amber-500 bg-amber-400 text-white shadow-[0_0_5px_0_rgba(251,191,36,0.85)]";
+  "border-sky-500 bg-sky-400 text-white shadow-[0_0_6px_0_rgba(56,189,248,0.9)]";
 
 // Body field — flat neutral panel; text tokens from the consumer theme.
 const PANEL_BODY: string = CANVAS_THEME.paneShell.bodyText;
@@ -294,8 +303,9 @@ export function CanvasTile(args: HomeTileProps): React.ReactElement {
             : ""
         }`}
       >
-        {/* Left: two uniform-color control keys (fullscreen · select) + a
-            hairline rule + the per-pane status LED (lit on focus) + label. */}
+        {/* Left: the SINGLE squared control cluster (fullscreen · select) + a
+            hairline rule + label. The header carries no second square block —
+            the per-pane LED-color identity lives in the footer, not here. */}
         <span className="flex min-w-0 items-center gap-2.5 justify-self-start">
           {hasControls ? (
             <span className="flex shrink-0 items-center gap-1">
@@ -340,13 +350,6 @@ export function CanvasTile(args: HomeTileProps): React.ReactElement {
           {hasControls ? (
             <span aria-hidden className="h-3 w-px shrink-0 bg-slate-200" />
           ) : null}
-          <span
-            aria-hidden
-            className={`h-2 w-2 shrink-0 rounded-[1px] transition-all ${
-              args.isFocused ? `${led.bar} ${led.litGlow}` : "bg-slate-300"
-            }`}
-          />
-          <span aria-hidden className="h-3 w-px shrink-0 bg-slate-200" />
           <span
             className={`truncate font-mono text-[10px] font-medium uppercase tracking-[0.18em] ${
               args.isFocused ? "text-slate-800" : "text-slate-400"
