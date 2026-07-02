@@ -6,7 +6,8 @@ import {
   TilingPaneBody,
   type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
-import { CANVAS_THEME, CANVAS_TICKS } from "./canvas-theme";
+import { CANVAS_THEME } from "./canvas-theme";
+import { canvasPaneMetrics, type CanvasPaneMetrics } from "./content-canvas";
 
 // The CANVAS skin's pane chrome — an ENGINEERING INSTRUMENT panel, LED-lit.
 // This supersedes the earlier standup desktop-window frame entirely (no
@@ -20,18 +21,23 @@ import { CANVAS_THEME, CANVAS_TICKS } from "./canvas-theme";
 //
 // Three exact bands, each an instrument readout — not a header + body:
 //
-//   1. HEADER RAIL — a compact control-panel row: the pane's own status LED
-//      (dim slate at rest, its saturated hue LIT with a glow on focus), a
-//      hairline column rule, a short monospace label, and on the right a
-//      tabular pane index plus squared LED-keycap controls (maximize / group)
-//      and the multi-select tick. This is the drag surface and owns the
-//      Alt/Opt+click multi-select toggle via `TilingDragHandle`.
+//   1. HEADER RAIL — a compact control-panel row. On the LEFT, two squared,
+//      UNIFORM-color instrument keys (fullscreen/maximize, then select-for-
+//      grouping) — deliberately one neutral slate for EVERY pane, not the
+//      per-pane LED hue, so the controls read as a consistent key row; then the
+//      pane's own status LED (dim slate at rest, its saturated hue LIT with a
+//      glow on focus), a hairline column rule, and a short monospace label. On
+//      the RIGHT, a tabular pane index and — only while a groupable
+//      multi-selection exists — the squared LED-keycap Group action. This is
+//      the drag surface and owns the Alt/Opt+click multi-select toggle via
+//      `TilingDragHandle`.
 //   2. BODY — a flat neutral panel field (no card rounding, no shadow) that
 //      renders `tile.content` through `TilingPaneBody` so the drag ghost reuses
 //      the same render path.
-//   3. LED STATUS FOOTER — a thin hairline readout carrying the signature
-//      multi-color LED tick row (magenta · orange · yellow · green · cyan) plus
-//      tabular index + leaf readout, like the indicator strip on an instrument.
+//   3. CONTENT-METRICS FOOTER — a thin hairline readout carrying a subtle
+//      per-pane LED identity dot plus the pane's real content metrics (char
+//      count · word count · ~read-time), derived from the shared `./docs`
+//      model via `canvasPaneMetrics`, in tabular mono figures.
 //
 // Acceptance: in greyscale with text hidden, the Canvas pane is obviously a
 // different, SHARPER, DENSER frame than the Mosaic/Editorial header-bar cards —
@@ -39,8 +45,9 @@ import { CANVAS_THEME, CANVAS_TICKS } from "./canvas-theme";
 // readout footer. In full color the bright LED row is its defining trait.
 //
 // Fully interactive — drag (header rail), resize (renderer dividers), maximize
-// (the squared LED keycap), group (LED keycap), focus (pane root lights its
-// LED), multi-select (Alt/Opt+click header rail) — built on ONLY the public
+// (the left fullscreen key), select-for-grouping (the left select key),
+// group (right LED keycap), focus (pane root lights its LED), multi-select
+// (Alt/Opt+click header rail too) — built on ONLY the public
 // `@n-uf/hypr-tiling` `.` API + the four helper primitives. Neutral interactive
 // tokens (invalid-drop ring, drag-source fade, selected badge, body text) come
 // from the consumer-authored `CANVAS_THEME`; the LED accent language is
@@ -130,9 +137,21 @@ const PANEL_SHELL: string =
 const HEADER_RAIL: string =
   "grid shrink-0 cursor-grab touch-none select-none grid-cols-[auto_1fr_auto] items-center gap-2.5 border-b border-slate-200 bg-slate-50 px-3 py-1.5 active:cursor-grabbing";
 
-// A squared LED-keycap control (maximize / group) in the instrument idiom.
+// A squared LED-keycap control (the Group action) in the instrument idiom.
 const LED_KEYCAP: string =
   "flex h-[18px] shrink-0 items-center justify-center rounded-[1px] border border-slate-300 bg-white px-1.5 font-mono text-[9px] uppercase leading-none tracking-[0.14em] text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-800";
+
+// The two squared control keys on the header LEFT (fullscreen, then select).
+// Their base color is ONE neutral slate shared by EVERY pane — deliberately not
+// the per-pane LED hue — so the control row reads as consistent instrument keys
+// across a tiled workspace. Outline at rest; filled slate when the key's state
+// is active (maximized / selected).
+const CONTROL_SQUARE: string =
+  "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[1px] border font-mono text-[10px] leading-none transition-colors";
+const CONTROL_SQUARE_REST: string =
+  "border-slate-300 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-800";
+const CONTROL_SQUARE_ACTIVE: string =
+  "border-slate-700 bg-slate-700 text-white hover:border-slate-800";
 
 // Body field — flat neutral panel; text tokens from the consumer theme.
 const PANEL_BODY: string = CANVAS_THEME.paneShell.bodyText;
@@ -156,6 +175,11 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
     ? CANVAS_THEME.paneShell.dragSourceOpacity
     : "";
   const index: string = String(args.paneOrdinal).padStart(2, "0");
+  const metrics: CanvasPaneMetrics | null = canvasPaneMetrics(args.tile.id);
+  // Whether either uniform-color control key renders (drives the divider that
+  // separates the control cluster from the per-pane LED identity).
+  const hasControls: boolean =
+    args.isMaximizeEnabled || args.isMultiSelectGroupingEnabled;
 
   return (
     <TilingPaneRoot
@@ -172,8 +196,52 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
             : ""
         }`}
       >
-        {/* Left: status LED (lit on focus) + hairline rule + monospace label. */}
+        {/* Left: two uniform-color control keys (fullscreen · select) + a
+            hairline rule + the per-pane status LED (lit on focus) + label. */}
         <span className="flex min-w-0 items-center gap-2.5 justify-self-start">
+          {hasControls ? (
+            <span className="flex shrink-0 items-center gap-1.5">
+              {args.isMaximizeEnabled ? (
+                <TilingPaneAction
+                  onClick={(): void => args.onToggleMaximize()}
+                  aria-label={args.isMaximized ? "restore pane" : "maximize pane"}
+                  aria-pressed={args.isMaximized}
+                  title={args.isMaximized ? "restore pane (Esc)" : "maximize pane"}
+                  className={`${CONTROL_SQUARE} ${
+                    args.isMaximized ? CONTROL_SQUARE_ACTIVE : CONTROL_SQUARE_REST
+                  }`}
+                >
+                  <span aria-hidden>{args.isMaximized ? "\u2013" : "\u2922"}</span>
+                </TilingPaneAction>
+              ) : null}
+              {args.isMultiSelectGroupingEnabled ? (
+                <TilingPaneAction
+                  onClick={(): void => args.onToggleMultiSelect()}
+                  aria-label={
+                    args.isMultiSelected
+                      ? `deselect pane ${args.leafId}`
+                      : `select pane ${args.leafId} for grouping`
+                  }
+                  aria-pressed={args.isMultiSelected}
+                  title={
+                    args.isMultiSelected
+                      ? "selected — click to deselect (Alt/Opt+click also toggles)"
+                      : "select for grouping"
+                  }
+                  className={`${CONTROL_SQUARE} ${
+                    args.isMultiSelected
+                      ? CONTROL_SQUARE_ACTIVE
+                      : CONTROL_SQUARE_REST
+                  }`}
+                >
+                  <span aria-hidden>{args.isMultiSelected ? "\u2713" : "\u25a1"}</span>
+                </TilingPaneAction>
+              ) : null}
+            </span>
+          ) : null}
+          {hasControls ? (
+            <span aria-hidden className="h-3 w-px shrink-0 bg-slate-200" />
+          ) : null}
           <span
             aria-hidden
             className={`h-2 w-2 shrink-0 rounded-[1px] transition-all ${
@@ -193,7 +261,9 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
         {/* Spacer column keeps the label left and the readout/controls right. */}
         <span aria-hidden />
 
-        {/* Right: tabular index + transient state + squared LED-keycap controls. */}
+        {/* Right: tabular index + transient move state + the Group action
+            (only while a groupable multi-selection exists; the LEFT select key
+            is the selection toggle that feeds it). */}
         <span className="flex shrink-0 items-center justify-end gap-2 justify-self-end">
           {args.isMoveSource ? (
             <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-slate-400">
@@ -208,15 +278,6 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
           >
             {index}
           </span>
-          {args.isMultiSelected ? (
-            <span
-              aria-label={`pane ${args.leafId} selected`}
-              title="selected (Alt/Opt+click to deselect)"
-              className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[1px] font-mono text-[9px] leading-none ${CANVAS_THEME.paneHeader.selectedBadge}`}
-            >
-              <span aria-hidden>{"\u2713"}</span>
-            </span>
-          ) : null}
           {args.isMultiSelected && args.canGroupMultiSelection ? (
             <TilingPaneAction
               onClick={(): void => args.onGroupMultiSelection(args.leafId)}
@@ -227,16 +288,6 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
               Group
             </TilingPaneAction>
           ) : null}
-          {args.isMaximizeEnabled ? (
-            <TilingPaneAction
-              onClick={(): void => args.onToggleMaximize()}
-              aria-label={args.isMaximized ? "restore pane" : "maximize pane"}
-              title={args.isMaximized ? "restore pane (Esc)" : "maximize pane"}
-              className={`${LED_KEYCAP} w-[18px] px-0 text-[11px]`}
-            >
-              <span aria-hidden>{args.isMaximized ? "\u2013" : "\u2922"}</span>
-            </TilingPaneAction>
-          ) : null}
         </span>
       </TilingDragHandle>
 
@@ -244,23 +295,55 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
         {args.tile.content}
       </TilingPaneBody>
 
-      {/* LED status footer: the signature multi-color indicator row + tabular
-          readout, like the status-light strip on an instrument. Squared,
-          hairline, decorative. */}
-      <div
-        aria-hidden
-        className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-3 py-1"
-      >
-        <span className="flex items-center gap-1.5">
-          {CANVAS_TICKS.map((tick: string): React.ReactElement => (
-            <span key={tick} className={`h-[3px] w-3.5 rounded-[1px] ${tick}`} />
-          ))}
+      {/* Content-metrics footer: a subtle per-pane LED identity dot + the pane's
+          real content metrics (chars · words · ~read-time), derived from the
+          shared docs model. Squared, hairline, tabular mono. */}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-3 py-1">
+        <span className="flex shrink-0 items-center gap-2">
+          <span
+            aria-hidden
+            className={`h-[3px] w-3.5 rounded-[1px] ${
+              args.isFocused ? led.bar : "bg-slate-300"
+            }`}
+          />
+          <span
+            aria-hidden
+            className="font-mono text-[9px] uppercase tabular-nums tracking-[0.16em] text-slate-400"
+          >
+            {index}
+          </span>
         </span>
-        <span className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.16em] text-slate-400">
-          <span className="tabular-nums">{index}</span>
-          <span aria-hidden className="h-2.5 w-px bg-slate-200" />
-          <span className="truncate">{args.leafId}</span>
-        </span>
+        {metrics != null ? (
+          <span
+            aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(
+              "en-US",
+            )} words, about ${metrics.readMinutes} minute read`}
+            className="flex min-w-0 items-center gap-2 font-mono text-[9px] uppercase tracking-[0.14em] text-slate-400"
+          >
+            <span className="shrink-0 tabular-nums">
+              <span className="text-slate-600">
+                {metrics.chars.toLocaleString("en-US")}
+              </span>{" "}
+              CH
+            </span>
+            <span aria-hidden className="h-2.5 w-px shrink-0 bg-slate-200" />
+            <span className="shrink-0 tabular-nums">
+              <span className="text-slate-600">
+                {metrics.words.toLocaleString("en-US")}
+              </span>{" "}
+              W
+            </span>
+            <span aria-hidden className="h-2.5 w-px shrink-0 bg-slate-200" />
+            <span className="shrink-0 tabular-nums text-slate-600">
+              {"~"}
+              {metrics.readMinutes} MIN
+            </span>
+          </span>
+        ) : (
+          <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-slate-300">
+            no text metrics
+          </span>
+        )}
       </div>
     </TilingPaneRoot>
   );

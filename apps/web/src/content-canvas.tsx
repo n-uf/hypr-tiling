@@ -358,3 +358,97 @@ export function CanvasPaneContent({
     CANVAS_PANE_CONTENT[paneId];
   return Body != null ? <Body /> : null;
 }
+
+// --- Per-pane content metrics ----------------------------------------------
+//
+// The Canvas footer reads real content metrics off the SAME shared `./docs`
+// model each pane renders from — never hardcoded per-pane numbers. For each
+// pane we concatenate the section's reading text (prose leads, inline-segment
+// paragraphs, and the term/detail index rows) and derive character count, word
+// count, and an estimated read time (~200 wpm). Panes without measurable text
+// (e.g. the interactive `controls` pane) return `null`, so the footer can
+// degrade gracefully.
+
+export interface CanvasPaneMetrics {
+  readonly chars: number;
+  readonly words: number;
+  readonly readMinutes: number;
+}
+
+// Words-per-minute constant for the read-time estimate.
+const CANVAS_READING_WPM: number = 200;
+
+// Flatten a paragraph's inline segments (text / code / emphasis / link label)
+// to their reading text.
+function inlineText(paragraph: DocParagraph): string {
+  return paragraph
+    .map((segment: DocInline): string => {
+      if (typeof segment === "string") {
+        return segment;
+      }
+      if ("code" in segment) {
+        return segment.code;
+      }
+      if ("em" in segment) {
+        return segment.em;
+      }
+      return segment.link;
+    })
+    .join("");
+}
+
+// Flatten a term/detail index (use cases, features, roadmap) to its text.
+function termDetailText(items: ReadonlyArray<TermDetail>): string {
+  return items
+    .map((item: TermDetail): string => `${item.term} ${item.detail}`)
+    .join(" ");
+}
+
+// The reading text each Canvas pane presents, assembled from the same shared
+// content constants the pane bodies above render — so the metrics track any
+// content edit automatically, with no per-pane numbers to maintain.
+const CANVAS_PANE_TEXT: Record<string, string> = {
+  intro: [
+    INTRO_HEADLINE_LEAD,
+    INTRO_HEADLINE_ACCENT,
+    CANONICAL_DESCRIPTION,
+    INTRO_REACH_PARAGRAPH,
+    inlineText(INTRO_DOGFOOD_PARAGRAPH),
+    inlineText(INTRO_CONTRIBUTING_PARAGRAPH),
+    `${LICENSE_NAME}${INTRO_LICENSE_TAIL}`,
+  ].join(" "),
+  usecases: [USECASES_LEAD, termDetailText(USE_CASES)].join(" "),
+  install: [
+    inlineText(INSTALL_INTRO_PARAGRAPH),
+    INSTALL_SNIPPET,
+    inlineText(INSTALL_CONTROLLED_PARAGRAPH),
+    INTEGRATION_EXAMPLE,
+  ].join(" "),
+  features: termDetailText(FEATURE_FACTS),
+  roadmap: [inlineText(ROADMAP_LEAD), termDetailText(ROADMAP_ITEMS)].join(" "),
+  model: [
+    inlineText(MODEL_BODY_PARAGRAPH),
+    MODEL_KUDOS_HEADING,
+    inlineText(MODEL_KUDOS_PARAGRAPH),
+  ].join(" "),
+  discoverability: DISCOVERABILITY_PARAGRAPHS.map(inlineText).join(" "),
+};
+
+// Content metrics for a Canvas pane, keyed by the pane id (`tile.id`). Returns
+// `null` for panes with no measurable text so the footer degrades gracefully.
+export function canvasPaneMetrics(paneId: string): CanvasPaneMetrics | null {
+  const text: string | undefined = CANVAS_PANE_TEXT[paneId];
+  if (text == null) {
+    return null;
+  }
+  const normalized: string = text.replace(/\s+/g, " ").trim();
+  if (normalized === "") {
+    return null;
+  }
+  const words: number = normalized
+    .split(" ")
+    .filter((token: string): boolean => token.length > 0).length;
+  const chars: number = normalized.length;
+  const readMinutes: number = Math.max(1, Math.round(words / CANVAS_READING_WPM));
+  return { chars, words, readMinutes };
+}
