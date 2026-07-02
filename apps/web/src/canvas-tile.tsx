@@ -7,7 +7,7 @@ import {
   type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
 import { CANVAS_THEME } from "./canvas-theme";
-import { canvasPaneMetrics, type CanvasPaneMetrics } from "./content-canvas";
+import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
 
 // The CANVAS skin's pane chrome — an ENGINEERING INSTRUMENT panel, LED-lit.
 // This supersedes the earlier standup desktop-window frame entirely (no
@@ -37,7 +37,9 @@ import { canvasPaneMetrics, type CanvasPaneMetrics } from "./content-canvas";
 //   3. CONTENT-METRICS FOOTER — a thin hairline readout carrying a subtle
 //      per-pane LED identity dot plus the pane's real content metrics (char
 //      count · word count · ~read-time), derived from the shared `./docs`
-//      model via `canvasPaneMetrics`, in tabular mono figures.
+//      model via the skin-neutral `paneContentMetrics` helper, in tabular mono
+//      figures. All three skins render this same metric payload, each in its own
+//      footer style.
 //
 // Acceptance: in greyscale with text hidden, the Canvas pane is obviously a
 // different, SHARPER, DENSER frame than the Mosaic/Editorial header-bar cards —
@@ -175,7 +177,7 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
     ? CANVAS_THEME.paneShell.dragSourceOpacity
     : "";
   const index: string = String(args.paneOrdinal).padStart(2, "0");
-  const metrics: CanvasPaneMetrics | null = canvasPaneMetrics(args.tile.id);
+  const metrics: PaneContentMetrics | null = paneContentMetrics(args.tile.id);
   // Whether either uniform-color control key renders (drives the divider that
   // separates the control cluster from the per-pane LED identity).
   const hasControls: boolean =

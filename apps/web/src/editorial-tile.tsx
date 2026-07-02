@@ -6,6 +6,7 @@ import {
   TilingPaneBody,
   type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
+import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
 
 // The EDITORIAL skin's pane chrome — the "paper & ink" counterpart to the
 // Mosaic `DocTile`. It is a deliberate departure in EVERY chrome axis, not a
@@ -68,6 +69,7 @@ export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
       : "border-[#e2dac6]";
   const sourceFade: string = args.isDragSource ? "opacity-60" : "";
   const folio: string = String(args.paneOrdinal).padStart(2, "0");
+  const metrics: PaneContentMetrics | null = paneContentMetrics(args.tile.id);
 
   return (
     <TilingPaneRoot
@@ -141,6 +143,54 @@ export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
       >
         {args.tile.content}
       </TilingPaneBody>
+      {/* Content-metrics footer: the pane's real content metrics (chars · words
+          · ~read-time) from the shared docs model, set in the Editorial paper
+          mono-smallcaps vocabulary with printed middot separators. Panes with no
+          measurable text degrade to a quiet colophon label. */}
+      <div className="flex shrink-0 items-baseline justify-between gap-3 border-t border-[#ece4d2] px-4 py-1.5">
+        <span
+          aria-hidden
+          className="shrink-0 font-mono text-[10px] tabular-nums tracking-[0.14em] text-[#b0a487]"
+        >
+          {"\u2116 "}
+          {folio}
+        </span>
+        {metrics != null ? (
+          <span
+            aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(
+              "en-US",
+            )} words, about ${metrics.readMinutes} minute read`}
+            className="flex min-w-0 items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#8c8069]"
+          >
+            <span className="shrink-0 tabular-nums">
+              <span className="text-[#4b4335]">
+                {metrics.chars.toLocaleString("en-US")}
+              </span>{" "}
+              ch
+            </span>
+            <span aria-hidden className="text-[#c9bd9f]">
+              ·
+            </span>
+            <span className="shrink-0 tabular-nums">
+              <span className="text-[#4b4335]">
+                {metrics.words.toLocaleString("en-US")}
+              </span>{" "}
+              w
+            </span>
+            <span aria-hidden className="text-[#c9bd9f]">
+              ·
+            </span>
+            <span className="shrink-0 tabular-nums text-[#4b4335]">
+              {"~"}
+              {metrics.readMinutes} min read
+            </span>
+          </span>
+        ) : (
+          <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-[#b0a487]">
+            no text metrics
+          </span>
+        )}
+      </div>
     </TilingPaneRoot>
   );
 }

@@ -18,7 +18,7 @@ import { EditorialPaneContent } from "./content-editorial";
 import { CanvasTile } from "./canvas-tile";
 import { CanvasPaneContent } from "./content-canvas";
 import { CANVAS_TICKS } from "./canvas-theme";
-import { ShortcutsPane } from "./shortcuts";
+import { HomeShortcuts } from "./shortcuts";
 
 // The homepage is a live hypr-tiling layout that can present in three SKINS — a
 // "skin" being a whole bundled look (theme + pane chrome + content presentation),
@@ -53,9 +53,10 @@ const LAYOUT_CONFIG: TilingLayoutConfig = {
 // master/stack idea. A wide "master" hero column on the left carries the
 // positioning copy over the use-cases pane (what it is, then what it's for); the
 // right region is a two-column stack — features over the model/kudos note and
-// the roadmap pane, and the install/integration column over a bottom row that
-// pairs the SEO note with the live controls. A leaf id mirrors its tile id (one
-// tile per pane).
+// the roadmap pane, and the install/integration column over the SEO note. Seven
+// panes total; the keyboard-shortcut affordances live in the page-level bottom
+// bar rather than a dedicated pane. A leaf id mirrors its tile id (one tile per
+// pane).
 const INITIAL_LAYOUT: TilingLayoutNode = {
   kind: "split",
   id: "root",
@@ -93,19 +94,12 @@ const INITIAL_LAYOUT: TilingLayoutNode = {
       kind: "split",
       id: "far",
       axis: "vertical",
-      ratio: 0.58,
+      ratio: 0.55,
       first: { kind: "leaf", id: "install", tileId: "install" },
       second: {
-        kind: "split",
-        id: "far-bottom",
-        axis: "horizontal",
-        ratio: 0.52,
-        first: {
-          kind: "leaf",
-          id: "discoverability",
-          tileId: "discoverability",
-        },
-        second: { kind: "leaf", id: "controls", tileId: "controls" },
+        kind: "leaf",
+        id: "discoverability",
+        tileId: "discoverability",
       },
     },
   },
@@ -388,23 +382,101 @@ function HomeTopBar({
   );
 }
 
-// The Canvas skin's bottom status bar — the "document desk" chrome from the
-// reference workspace: a clean strip carrying a live pane count + the focused
-// pane, the signature multi-color tick row as the center accent mark, and a
-// quiet keycap hint. Live, read from the public layout query; Canvas-only, so
-// the other two skins keep their exact designs and the Mosaic prerender is
-// untouched.
-function CanvasStatusBar({
+// Per-skin chrome for the page-level bottom bar. The bar is present in ALL three
+// skins now: it carries a live pane count + focused-pane readout, HOSTS the
+// keyboard-shortcut chips (relocated out of the old standalone controls pane),
+// and keeps the "double-click tab to maximize" hint — each styled in its skin's
+// vocabulary (Mosaic dark ink, Editorial paper, Canvas squared LED-engineering).
+interface SkinBottomBarTokens {
+  readonly bar: string;
+  readonly countStrong: string;
+  readonly countLabel: string;
+  readonly dot: string;
+  readonly focusStrong: string;
+  readonly hintKbd: string;
+  readonly hintText: string;
+}
+
+const SKIN_BOTTOM_BAR: Record<HomeSkin, SkinBottomBarTokens> = {
+  mosaic: {
+    bar: "flex shrink-0 items-center gap-3 rounded-lg border border-white/[0.07] bg-[#121316]/90 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-stone-500 shadow-[0_14px_36px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur",
+    countStrong: "text-stone-200",
+    countLabel: "text-stone-500",
+    dot: "text-stone-700",
+    focusStrong: "text-stone-200",
+    hintKbd:
+      "rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-[9px] leading-none text-stone-400",
+    hintText: "text-stone-500",
+  },
+  editorial: {
+    bar: "flex shrink-0 items-center gap-3 rounded-[4px] border border-[#e2dac6] bg-[#fbf9f2] px-3.5 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[#8c8069] shadow-[0_1px_0_rgba(36,31,23,0.03),0_10px_28px_-24px_rgba(36,31,23,0.4)]",
+    countStrong: "text-[#241f17]",
+    countLabel: "text-[#a89c83]",
+    dot: "text-[#c9bd9f]",
+    focusStrong: "text-[#241f17]",
+    hintKbd:
+      "rounded-[2px] border border-[#ddd4bf] bg-[#efe8d6] px-1.5 py-0.5 text-[9px] leading-none text-[#6b6250]",
+    hintText: "text-[#a89c83]",
+  },
+  canvas: {
+    bar: "flex shrink-0 items-center gap-3 rounded-lg border border-slate-200 bg-white/90 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur",
+    countStrong: "text-slate-700",
+    countLabel: "text-slate-400",
+    dot: "text-slate-300",
+    focusStrong: "text-slate-700",
+    hintKbd:
+      "rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] leading-none text-slate-500",
+    hintText: "text-slate-400",
+  },
+};
+
+// The skin's accent mark at the far left of the bottom bar: Canvas keeps its
+// signature multi-color LED tick row, Mosaic a single amber tick, Editorial a
+// quiet ink hairline (paper carries no color).
+function BottomBarAccent({ skin }: { skin: HomeSkin }): React.ReactElement {
+  if (skin === "canvas") {
+    return (
+      <span aria-hidden className="flex shrink-0 items-center gap-1.5">
+        {CANVAS_TICKS.map((tick: string): React.ReactElement => (
+          <span key={tick} className={`h-[3px] w-4 rounded-full ${tick}`} />
+        ))}
+      </span>
+    );
+  }
+  if (skin === "mosaic") {
+    return (
+      <span
+        aria-hidden
+        className="h-[3px] w-5 shrink-0 rounded-full bg-amber-300/70"
+      />
+    );
+  }
+  return <span aria-hidden className="h-px w-5 shrink-0 bg-[#c9bd9f]" />;
+}
+
+// The page-level bottom bar, present in every skin. Left: a skin accent + a live
+// pane count and focused-pane readout (read from the public layout query).
+// Center: the keyboard-shortcut strip (`HomeShortcuts`), horizontally scrollable
+// so a dense set of actionable commands never crowds the readouts. Right: the
+// "double-click tab to maximize" hint.
+function HomeBottomBar({
+  skin,
+  commandHandleRef,
+  interaction,
   layout,
   focusedLeafId,
   maximizedLeafId,
   tilesById,
 }: {
+  skin: HomeSkin;
+  commandHandleRef: React.RefObject<TilingCommandHandle | null>;
+  interaction: TilingInteractionCapabilities;
   layout: TilingLayoutNode;
   focusedLeafId: string | null;
   maximizedLeafId: string | null;
   tilesById: ReadonlyMap<string, TilingTile>;
 }): React.ReactElement {
+  const tokens: SkinBottomBarTokens = SKIN_BOTTOM_BAR[skin];
   const query: TilingLayoutQuery = queryTilingLayout(layout);
   const focusedIndex: number =
     focusedLeafId == null ? -1 : query.leafIds.indexOf(focusedLeafId);
@@ -414,28 +486,32 @@ function CanvasStatusBar({
     focusedTileId != null ? (tilesById.get(focusedTileId)?.title ?? "—") : "—";
 
   return (
-    <div className="flex shrink-0 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white/90 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur">
-      <span className="flex min-w-0 items-center gap-2">
-        <span className="text-slate-700">{query.leafIds.length}</span>
-        <span className="text-slate-400">panes</span>
-        <span aria-hidden className="text-slate-300">
-          ·
-        </span>
-        <span className="truncate">
-          {maximizedLeafId != null ? "max · " : "focus · "}
-          <span className="text-slate-700">{focusedTitle}</span>
+    <div className={tokens.bar}>
+      <span className="flex shrink-0 items-center gap-2.5">
+        <BottomBarAccent skin={skin} />
+        <span className="flex items-center gap-2">
+          <span className={tokens.countStrong}>{query.leafIds.length}</span>
+          <span className={tokens.countLabel}>panes</span>
+          <span aria-hidden className={tokens.dot}>
+            ·
+          </span>
+          <span className="truncate">
+            {maximizedLeafId != null ? "max · " : "focus · "}
+            <span className={tokens.focusStrong}>{focusedTitle}</span>
+          </span>
         </span>
       </span>
-      <span aria-hidden className="flex items-center gap-1.5">
-        {CANVAS_TICKS.map((tick: string): React.ReactElement => (
-          <span key={tick} className={`h-[3px] w-5 rounded-full ${tick}`} />
-        ))}
-      </span>
-      <span className="hidden shrink-0 items-center gap-2 sm:flex">
-        <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] leading-none text-slate-500">
-          dbl-click tab
-        </span>
-        <span className="text-slate-400">to maximize</span>
+      <HomeShortcuts
+        commandHandleRef={commandHandleRef}
+        layout={layout}
+        focusedLeafId={focusedLeafId}
+        maximizedLeafId={maximizedLeafId}
+        interaction={interaction}
+        skin={skin}
+      />
+      <span className="ml-auto hidden shrink-0 items-center gap-2 sm:flex">
+        <span className={tokens.hintKbd}>dbl-click tab</span>
+        <span className={tokens.hintText}>to maximize</span>
       </span>
     </div>
   );
@@ -491,28 +567,12 @@ export function HomePage({
     },
   );
 
-  const allTiles: ReadonlyArray<TilingTile> = [
-    ...tiles,
-    {
-      id: "controls",
-      title: "live controls",
-      accent: "amber",
-      content: (
-        <ShortcutsPane
-          commandHandleRef={commandHandleRef}
-          layout={layout}
-          focusedLeafId={focusedLeafId}
-          maximizedLeafId={maximizedLeafId}
-          skin={skin}
-        />
-      ),
-    },
-  ];
-
   const tilesById: ReadonlyMap<string, TilingTile> = React.useMemo(
     (): ReadonlyMap<string, TilingTile> =>
-      new Map(allTiles.map((tile: TilingTile): [string, TilingTile] => [tile.id, tile])),
-    [allTiles],
+      new Map(
+        tiles.map((tile: TilingTile): [string, TilingTile] => [tile.id, tile]),
+      ),
+    [tiles],
   );
 
   // Interaction: the homepage keeps the library's own top tab strip OFF (the top
@@ -561,7 +621,7 @@ export function HomePage({
         <TilingRenderer
           ref={commandHandleRef}
           layout={layout}
-          tiles={allTiles}
+          tiles={tiles}
           config={LAYOUT_CONFIG}
           interaction={interaction}
           onLayoutChange={setLayout}
@@ -581,14 +641,15 @@ export function HomePage({
           }
         />
       </div>
-      {skin === "canvas" ? (
-        <CanvasStatusBar
-          layout={layout}
-          focusedLeafId={focusedLeafId}
-          maximizedLeafId={maximizedLeafId}
-          tilesById={tilesById}
-        />
-      ) : null}
+      <HomeBottomBar
+        skin={skin}
+        commandHandleRef={commandHandleRef}
+        interaction={interaction}
+        layout={layout}
+        focusedLeafId={focusedLeafId}
+        maximizedLeafId={maximizedLeafId}
+        tilesById={tilesById}
+      />
     </main>
   );
 }

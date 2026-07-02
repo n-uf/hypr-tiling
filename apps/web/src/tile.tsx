@@ -3,6 +3,7 @@ import {
   isMultiSelectModifierActive,
   type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
+import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
 
 // Custom pane renderer for the homepage ("mosaic" identity) — a worked example
 // of a fully custom pane frame + header (see the /docs "custom look-and-feel"
@@ -52,6 +53,7 @@ export function DocTile(args: TilingRenderTileProps): React.ReactElement {
       : "border-white/[0.07]";
   const sourceFade: string = args.isDragSource ? "opacity-60" : "";
   const ordinal: string = String(args.paneOrdinal).padStart(2, "0");
+  const metrics: PaneContentMetrics | null = paneContentMetrics(args.tile.id);
 
   return (
     <article
@@ -160,6 +162,50 @@ export function DocTile(args: TilingRenderTileProps): React.ReactElement {
       </header>
       <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
         {args.paneBodyRenderMode === "render-content" ? args.tile.content : null}
+      </div>
+      {/* Content-metrics footer: the pane's real content metrics (chars · words
+          · ~read-time) from the shared docs model, in the Mosaic dark-ink mono
+          vocabulary. Panes with no measurable text degrade to a quiet label. */}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-white/[0.06] bg-white/[0.012] px-3.5 py-1.5">
+        <span
+          aria-hidden
+          className={`shrink-0 font-mono text-[9px] tabular-nums tracking-[0.16em] ${
+            args.isFocused ? "text-amber-300/70" : "text-stone-600"
+          }`}
+        >
+          {ordinal}
+        </span>
+        {metrics != null ? (
+          <span
+            aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(
+              "en-US",
+            )} words, about ${metrics.readMinutes} minute read`}
+            className="flex min-w-0 items-center gap-2 font-mono text-[9px] uppercase tracking-[0.14em] text-stone-500"
+          >
+            <span className="shrink-0 tabular-nums">
+              <span className="text-stone-300">
+                {metrics.chars.toLocaleString("en-US")}
+              </span>{" "}
+              ch
+            </span>
+            <span aria-hidden className="h-2.5 w-px shrink-0 bg-white/10" />
+            <span className="shrink-0 tabular-nums">
+              <span className="text-stone-300">
+                {metrics.words.toLocaleString("en-US")}
+              </span>{" "}
+              w
+            </span>
+            <span aria-hidden className="h-2.5 w-px shrink-0 bg-white/10" />
+            <span className="shrink-0 tabular-nums text-stone-300">
+              {"~"}
+              {metrics.readMinutes} min
+            </span>
+          </span>
+        ) : (
+          <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-stone-600">
+            no text metrics
+          </span>
+        )}
       </div>
     </article>
   );

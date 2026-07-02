@@ -327,7 +327,7 @@ export const INTRO_REACH_PARAGRAPH: string =
 export const INTRO_DOGFOOD_PARAGRAPH: DocParagraph = [
   "This page ",
   { em: "is" },
-  " a hypr-tiling layout. Every section is a real pane: focus it, drag its header, resize the dividers, maximize it — or drive it from the live controls pane.",
+  " a hypr-tiling layout. Every section is a real pane: focus it, drag its header, resize the dividers, maximize it — or run a live tiling command from the shortcut bar below.",
 ];
 export const CONTRIBUTING_EYEBROW: string = "contributing";
 export const INTRO_CONTRIBUTING_PARAGRAPH: DocParagraph = [

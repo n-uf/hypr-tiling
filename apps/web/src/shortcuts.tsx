@@ -19,14 +19,14 @@ import {
   type TilingInteractionCapabilities,
 } from "@n-uf/hypr-tiling";
 
-// Clickable, context-dependent keyboard-shortcut affordances for the homepage.
-// Each entry dispatches a REAL tiling command through the renderer's command
-// handle (the same router the keyboard layer uses), and shows its key combo.
-// "Context-dependent" mirrors the renderer's own per-pane shortcut-chip logic
-// (buildPaneShortcutChips): an entry is surfaced only when its command is both
-// capability-enabled (isCommandEnabled) AND actionable given the live
-// layout/focus state (a neighbor exists, a group is focused, etc.). Dogfoods the
-// command API directly on the docs homepage.
+// Clickable, context-dependent keyboard-shortcut affordances for the homepage,
+// hosted in the page-level bottom bar (`HomeShortcuts`). Each entry dispatches a
+// REAL tiling command through the renderer's command handle (the same router the
+// keyboard layer uses), and shows its key combo. "Context-dependent" mirrors the
+// renderer's own per-pane shortcut-chip logic (buildPaneShortcutChips): an entry
+// is surfaced only when its command is both capability-enabled (isCommandEnabled)
+// AND actionable given the live layout/focus state (a neighbor exists, a group is
+// focused, etc.). Dogfoods the command API directly on the docs homepage.
 
 interface ShortcutEntry {
   readonly id: string;
@@ -368,98 +368,79 @@ function buildSections(args: {
   );
 }
 
-// Which homepage skin the controls pane presents in. Kept generic (a small
+// Which homepage skin the shortcut strip presents in. Kept generic (a small
 // token lookup) so the interactive command affordances re-skin in lockstep with
 // the rest of the page — dark/amber for Mosaic, ink on paper for Editorial, and
 // grey keycap chips for Canvas.
-type ControlsSkin = "mosaic" | "editorial" | "canvas";
+type ShortcutSkin = "mosaic" | "editorial" | "canvas";
 
-interface ControlsSkinTokens {
-  readonly lead: string;
+// Compact chip tokens for the page-level bottom bar. The shortcut affordances
+// now live in the bottom bar (not a standalone pane), so these are sized for a
+// dense single-row strip: small section labels, tight keycap chips, per-skin
+// color language matching the rest of the chrome.
+interface ShortcutBarTokens {
   readonly sectionLabel: string;
   readonly button: string;
   readonly buttonLabel: string;
   readonly kbd: string;
+  readonly divider: string;
 }
 
-const CONTROLS_SKIN: Record<ControlsSkin, ControlsSkinTokens> = {
+const SHORTCUT_BAR_SKIN: Record<ShortcutSkin, ShortcutBarTokens> = {
   mosaic: {
-    lead: "max-w-[62ch] text-[12px] leading-[1.6] text-stone-400",
-    sectionLabel: "font-mono text-[10px] uppercase tracking-[0.22em] text-stone-500",
+    sectionLabel:
+      "shrink-0 font-mono text-[9px] uppercase tracking-[0.22em] text-stone-600",
     button:
-      "group flex items-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.02] px-2.5 py-1.5 text-left transition-[transform,border-color,background-color] duration-150 hover:-translate-y-px hover:border-amber-300/40 hover:bg-amber-300/[0.06] active:translate-y-0",
-    buttonLabel: "text-[12px] text-stone-200 group-hover:text-stone-50",
-    kbd: "rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] leading-none text-stone-400 group-hover:border-amber-300/40 group-hover:text-amber-100",
+      "group flex shrink-0 items-center gap-1.5 rounded border border-white/[0.08] bg-white/[0.02] px-1.5 py-1 transition-[transform,border-color,background-color] duration-150 hover:-translate-y-px hover:border-amber-300/40 hover:bg-amber-300/[0.06] active:translate-y-0",
+    buttonLabel:
+      "whitespace-nowrap text-[11px] text-stone-300 group-hover:text-stone-50",
+    kbd: "shrink-0 rounded border border-white/[0.08] bg-white/[0.03] px-1 py-0.5 font-mono text-[9px] leading-none text-stone-400 group-hover:border-amber-300/40 group-hover:text-amber-100",
+    divider: "h-3.5 w-px shrink-0 bg-white/10",
   },
   editorial: {
-    lead: "max-w-[64ch] text-[13px] leading-[1.75] text-[#5c5342]",
-    sectionLabel: "font-mono text-[10px] uppercase tracking-[0.24em] text-[#a89c83]",
+    sectionLabel:
+      "shrink-0 font-mono text-[9px] uppercase tracking-[0.24em] text-[#a89c83]",
     button:
-      "group flex items-center gap-2 rounded-[3px] border border-[#ddd3bd] bg-transparent px-2.5 py-1.5 text-left transition-[transform,border-color,background-color] duration-150 hover:-translate-y-px hover:border-[#241f17]/50 hover:bg-[#241f17]/[0.04] active:translate-y-0",
-    buttonLabel: "text-[13px] text-[#3a3327] group-hover:text-[#241f17]",
-    kbd: "rounded-[2px] border border-[#ddd4bf] bg-[#efe8d6] px-1.5 py-0.5 font-mono text-[10px] leading-none text-[#6b6250] group-hover:border-[#241f17]/40 group-hover:text-[#241f17]",
+      "group flex shrink-0 items-center gap-1.5 rounded-[3px] border border-[#ddd3bd] bg-transparent px-1.5 py-1 transition-[transform,border-color,background-color] duration-150 hover:-translate-y-px hover:border-[#241f17]/50 hover:bg-[#241f17]/[0.04] active:translate-y-0",
+    buttonLabel:
+      "whitespace-nowrap text-[11px] text-[#3a3327] group-hover:text-[#241f17]",
+    kbd: "shrink-0 rounded-[2px] border border-[#ddd4bf] bg-[#efe8d6] px-1 py-0.5 font-mono text-[9px] leading-none text-[#6b6250] group-hover:border-[#241f17]/40 group-hover:text-[#241f17]",
+    divider: "h-3.5 w-px shrink-0 bg-[#d7ccb2]",
   },
   canvas: {
-    lead: "max-w-[64ch] text-[13px] leading-[1.7] text-slate-500",
-    sectionLabel: "font-mono text-[10px] uppercase tracking-[0.24em] text-slate-400",
+    sectionLabel:
+      "shrink-0 font-mono text-[9px] uppercase tracking-[0.24em] text-slate-400",
     button:
-      "group flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-left shadow-[0_1px_0_rgba(15,23,42,0.03)] transition-[transform,border-color,background-color] duration-150 hover:-translate-y-px hover:border-slate-300 hover:bg-slate-50 active:translate-y-0",
-    buttonLabel: "text-[13px] text-slate-700 group-hover:text-slate-900",
-    kbd: "rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] leading-none text-slate-500 shadow-[0_1px_0_rgba(15,23,42,0.04)] group-hover:border-slate-300 group-hover:text-slate-700",
+      "group flex shrink-0 items-center gap-1.5 rounded border border-slate-200 bg-white px-1.5 py-1 shadow-[0_1px_0_rgba(15,23,42,0.03)] transition-[transform,border-color,background-color] duration-150 hover:-translate-y-px hover:border-slate-300 hover:bg-slate-50 active:translate-y-0",
+    buttonLabel:
+      "whitespace-nowrap text-[11px] text-slate-700 group-hover:text-slate-900",
+    kbd: "shrink-0 rounded border border-slate-200 bg-slate-50 px-1 py-0.5 font-mono text-[9px] leading-none text-slate-500 shadow-[0_1px_0_rgba(15,23,42,0.04)] group-hover:border-slate-300 group-hover:text-slate-700",
+    divider: "h-3.5 w-px shrink-0 bg-slate-200",
   },
 };
 
-function ControlsHeading({ skin }: { skin: ControlsSkin }): React.ReactElement {
-  if (skin === "editorial") {
-    return (
-      <div className="flex flex-col gap-2.5">
-        <h2 className="font-display text-[26px] font-normal leading-[1.08] tracking-[-0.01em] text-[#241f17]">
-          Live controls
-        </h2>
-        <span aria-hidden className="h-px w-full bg-[#ddd3bd]" />
-      </div>
-    );
-  }
-  if (skin === "canvas") {
-    return (
-      <div className="flex flex-col gap-3">
-        <span aria-hidden className="h-[3px] w-6 rounded-full bg-cyan-400" />
-        <h2 className="text-[22px] font-semibold leading-[1.15] tracking-[-0.01em] text-slate-900">
-          Live controls
-        </h2>
-        <span aria-hidden className="h-px w-full bg-slate-100" />
-      </div>
-    );
-  }
-  return (
-    <div className="flex items-center gap-2.5">
-      <span
-        aria-hidden
-        className="h-3.5 w-[2px] shrink-0 rounded-full bg-amber-300/70"
-      />
-      <h2 className="font-display text-[20px] font-medium leading-tight tracking-[-0.01em] text-stone-50">
-        Live controls
-      </h2>
-    </div>
-  );
-}
-
-export function ShortcutsPane({
+// The keyboard-shortcut strip hosted in the page-level bottom bar. It dogfoods
+// the same context-dependent command affordances the old standalone controls
+// pane carried — only shortcuts that are actionable right now are shown, each
+// dispatching a REAL typed tiling command — but laid out as a dense, horizontally
+// scrollable single row of keycap chips grouped by section. Returns `null` when
+// nothing is actionable so the bottom bar lays out cleanly without an empty gap.
+export function HomeShortcuts({
   commandHandleRef,
   layout,
   focusedLeafId,
   maximizedLeafId,
   interaction,
-  skin = "mosaic",
+  skin,
 }: {
   commandHandleRef: React.RefObject<TilingCommandHandle | null>;
   layout: TilingLayoutNode;
   focusedLeafId: string | null;
   maximizedLeafId: string | null;
   interaction?: TilingInteractionCapabilities;
-  skin?: ControlsSkin;
-}): React.ReactElement {
-  const tokens: ControlsSkinTokens = CONTROLS_SKIN[skin];
+  skin: ShortcutSkin;
+}): React.ReactElement | null {
+  const tokens: ShortcutBarTokens = SHORTCUT_BAR_SKIN[skin];
   const capabilities: ResolvedTilingInteractionCapabilities = React.useMemo(
     (): ResolvedTilingInteractionCapabilities =>
       resolveInteractionCapabilities(interaction),
@@ -488,41 +469,40 @@ export function ShortcutsPane({
     (section: ShortcutSection): boolean => section.entries.length > 0,
   );
 
+  if (visibleSections.length === 0) {
+    return null;
+  }
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <ControlsHeading skin={skin} />
-        <p className={tokens.lead}>
-          Click a control to run the real tiling command on the focused pane —
-          the same typed command API the keyboard layer drives. Only controls
-          that are actionable right now are shown.
-        </p>
-      </div>
-      <div className="flex flex-col gap-3">
-        {visibleSections.map(
-          (section: ShortcutSection): React.ReactElement => (
-            <div key={section.id} className="flex flex-col gap-1.5">
-              <span className={tokens.sectionLabel}>{section.heading}</span>
-              <div className="flex flex-wrap gap-1.5">
-                {section.entries.map(
-                  (entry: ShortcutEntry): React.ReactElement => (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      title={`${entry.label} (${entry.combo})`}
-                      onClick={(): void => dispatch(entry.command)}
-                      className={tokens.button}
-                    >
-                      <span className={tokens.buttonLabel}>{entry.label}</span>
-                      <kbd className={tokens.kbd}>{entry.combo}</kbd>
-                    </button>
-                  ),
-                )}
-              </div>
-            </div>
-          ),
-        )}
-      </div>
+    <div
+      role="group"
+      aria-label="keyboard shortcuts"
+      className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      {visibleSections.map(
+        (section: ShortcutSection, sectionIndex: number): React.ReactElement => (
+          <React.Fragment key={section.id}>
+            {sectionIndex > 0 ? (
+              <span aria-hidden className={tokens.divider} />
+            ) : null}
+            <span className={tokens.sectionLabel}>{section.heading}</span>
+            {section.entries.map(
+              (entry: ShortcutEntry): React.ReactElement => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  title={`${entry.label} (${entry.combo})`}
+                  onClick={(): void => dispatch(entry.command)}
+                  className={tokens.button}
+                >
+                  <span className={tokens.buttonLabel}>{entry.label}</span>
+                  <kbd className={tokens.kbd}>{entry.combo}</kbd>
+                </button>
+              ),
+            )}
+          </React.Fragment>
+        ),
+      )}
     </div>
   );
 }
