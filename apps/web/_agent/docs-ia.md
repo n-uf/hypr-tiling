@@ -133,15 +133,28 @@ intact). The interactive showcase (`packages/showcase`) opts back in explicitly
 with `paneSwitching: { showContentToggle: true }`; the homepage relies on the
 default and passes no `interaction` prop. No docs example surfaces the checkbox.
 
-The homepage carries a live **"panes" segmented switch** (`page.tsx`,
-`PaneChromeSwitch`, bottom-right) that flips its `renderTile` between the default
-dark `DocTile` chrome (`Mosaic`) and a light, minimalist custom pane (`Minimal`,
-`apps/web/src/minimal-tile.tsx`). The minimalist variant is built with ONLY the
-public `.` API and the helper primitives, and stays fully interactive (drag /
-resize / maximize / group / focus) — the honest, on-the-real-site dogfood that the
-cleaned consumer contract is genuinely easy. It defaults to `Mosaic`, so the
-prerendered HTML (and thus SEO/LLM content) is unchanged; the switch is a
-hydration enhancement.
+The homepage carries a live **"SKIN" segmented switch** hosted in the top chrome
+bar (`page.tsx`, `HomeTopBar`, right-aligned) that flips a whole bundled look —
+theme + pane chrome + content presentation — across THREE skins:
+
+- **Mosaic** — the default dark technical-atlas: graphite canvas, amber accent,
+  `DocTile` chrome (`apps/web/src/tile.tsx`), dense uppercase-mono content
+  (`apps/web/src/docs.tsx`).
+- **Editorial** — light paper & ink: warm-paper canvas, serif headlines,
+  `EditorialTile` folio chrome (`apps/web/src/editorial-tile.tsx`), a numbered
+  reading index (`apps/web/src/content-editorial.tsx`).
+- **Canvas** — greyish workspace: soft grey desk, hairline white cards, quiet
+  neutral type, keycap chips + colored accent ticks (`CanvasTile` chrome
+  `apps/web/src/canvas-tile.tsx`, content `apps/web/src/content-canvas.tsx`,
+  theme `apps/web/src/canvas-theme.tsx`, plus a Canvas-only bottom status bar).
+
+Every skin drives the SAME renderer, layout tree, and shared content model
+(`docs.tsx` `DocInline`/`DocParagraph`), and is built with ONLY the public `.`
+API + the four helper primitives, staying fully interactive (drag / resize /
+maximize / group / focus / multi-select). The library's own tab strip is kept
+OFF (`paneSwitching.showTabStrip: false`); the top bar rebuilds the pane tabs on
+the public query + command API. It defaults to `Mosaic`, so the prerendered HTML
+(and thus SEO/LLM content) is unchanged; the switch is a client-side toggle.
 
 ## Compiled examples — the anti-rot mechanism
 

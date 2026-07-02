@@ -302,7 +302,130 @@ export function Pre({ children }: { children: string }): React.ReactElement {
   );
 }
 
-const INTEGRATION_EXAMPLE: string = `import {
+// --- Shared inline-rich content model (skin-agnostic) ---------------------
+//
+// Both pane presentations — Mosaic (dark technical atlas) and Minimal (light
+// editorial) — render from THIS single source. The words live here exactly
+// once; only the typography and layout differ per skin, so switching skins is a
+// change of PRESENTATION, never a fork of the content. A paragraph is a small
+// sequence of inline segments (plain text, inline code, emphasis, or a link) so
+// each skin can decorate `code` / `em` / `link` in its own vocabulary while the
+// prose stays identical.
+export type DocInline =
+  | string
+  | { readonly code: string }
+  | { readonly em: string }
+  | { readonly link: string; readonly href: string };
+
+export type DocParagraph = ReadonlyArray<DocInline>;
+
+// Intro pane.
+export const INTRO_HEADLINE_LEAD: string = "Rearrange the interface,";
+export const INTRO_HEADLINE_ACCENT: string = "at runtime.";
+export const INTRO_REACH_PARAGRAPH: string =
+  "Reach for it where users live inside dense, multi-panel screens — IDE-like tools, trading and operator consoles, analytics dashboards — and your app keeps strict, controlled ownership of the layout state.";
+export const INTRO_DOGFOOD_PARAGRAPH: DocParagraph = [
+  "This page ",
+  { em: "is" },
+  " a hypr-tiling layout. Every section is a real pane: focus it, drag its header, resize the dividers, maximize it — or drive it from the live controls pane.",
+];
+export const CONTRIBUTING_EYEBROW: string = "contributing";
+export const INTRO_CONTRIBUTING_PARAGRAPH: DocParagraph = [
+  "hypr-tiling is built in the open and welcomes collaboration — framework adapters, rendering backends, bug reports, and ideas from the roadmap. To get involved, reach out at ",
+  { link: "metelin@gmail.com", href: "mailto:metelin@gmail.com" },
+  ".",
+];
+export const INTRO_LICENSE_TAIL: string =
+  " · source-available · free commercial use · no competing use";
+
+// Use-cases pane lead (the list itself is `USE_CASES`).
+export const USECASES_LEAD: string =
+  "Reach for hypr-tiling where users live across multiple panels and rearrange them as the work demands.";
+
+// Install pane prose (snippets are `INSTALL_SNIPPET` / `INTEGRATION_EXAMPLE`).
+export const INSTALL_INTRO_PARAGRAPH: DocParagraph = [
+  "Add the scoped package and its React peers. The library targets ",
+  { code: "react" },
+  " and ",
+  { code: "react-dom" },
+  " version 19.",
+];
+export const INSTALL_CONTROLLED_PARAGRAPH: DocParagraph = [
+  "The renderer is a controlled component: you own the layout tree in state and apply every change it reports through ",
+  { code: "onLayoutChange" },
+  ".",
+];
+
+// Roadmap pane lead (the list itself is `ROADMAP_ITEMS`).
+export const ROADMAP_LEAD: DocParagraph = [
+  "Where hypr-tiling is headed. These are ",
+  { em: "planned" },
+  " directions, not shipped features today — the library currently renders to the DOM and ships a React adapter only. The items below describe where the project is going.",
+];
+
+// Model & kudos pane.
+export const MODEL_BODY_PARAGRAPH: DocParagraph = [
+  "A layout is a plain, serialisable tree: ",
+  { code: "leaf" },
+  " nodes hold a tile, ",
+  { code: "split" },
+  " nodes divide space along an axis by a ratio, and ",
+  { code: "group" },
+  " nodes stack leaves behind tabs. You hold the tree in state; the renderer projects it to pixels, runs the interaction, and reports every edit back — nothing is hidden inside the component. It is yours to persist, diff, and restore.",
+];
+export const MODEL_KUDOS_HEADING: string = "Kudos to Hyprland";
+export const MODEL_KUDOS_PARAGRAPH: DocParagraph = [
+  "The interaction model is inspired by ",
+  { link: "Hyprland", href: "https://hypr.land" },
+  ", the dynamic-tiling Wayland compositor, and its tiling-first philosophy: detach-and-drop movement, master/stack layouts, and keyboard-driven focus. Kudos to its maintainers and contributors for advancing modern tiling workflow design.",
+];
+
+// SEO + LLM pane.
+export const DISCOVERABILITY_PARAGRAPHS: ReadonlyArray<DocParagraph> = [
+  [
+    "Tiling does not have to cost discoverability. Every pane body is real semantic markup — headings, paragraphs, lists, code — emitted into the document, never painted onto a canvas or hidden behind a transform. All panes render at once, so unfocused sections stay in the DOM.",
+  ],
+  [
+    "Because the content lives in the DOM, it prerenders. This homepage ships its full text in the initial static HTML, with the interactive tiling layered on as progressive enhancement — so crawlers and LLM assistants that fetch and cite docs read the real content without running JavaScript. A ",
+    { code: "/llms.txt" },
+    " mirror is served for the same reason.",
+  ],
+];
+
+// Mosaic inline renderer: maps the shared segment model to the Mosaic
+// vocabulary (gold inline code, gold links, neutral emphasis).
+export function MosaicInline({
+  paragraph,
+}: {
+  paragraph: DocParagraph;
+}): React.ReactElement {
+  return (
+    <>
+      {paragraph.map((segment: DocInline, index: number): React.ReactNode => {
+        if (typeof segment === "string") {
+          return <React.Fragment key={index}>{segment}</React.Fragment>;
+        }
+        if ("code" in segment) {
+          return <Code key={index}>{segment.code}</Code>;
+        }
+        if ("em" in segment) {
+          return (
+            <em key={index} className="not-italic text-stone-200">
+              {segment.em}
+            </em>
+          );
+        }
+        return (
+          <Link key={index} href={segment.href}>
+            {segment.link}
+          </Link>
+        );
+      })}
+    </>
+  );
+}
+
+export const INTEGRATION_EXAMPLE: string = `import {
   TilingRenderer,
   DEFAULT_TILING_LAYOUT_CONFIG,
   type TilingLayoutNode,
@@ -345,34 +468,26 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
         <div className="flex flex-col gap-3">
           <Eyebrow>dynamic tiling · for react</Eyebrow>
           <h1 className="font-display text-[clamp(2rem,3.4vw,2.9rem)] font-medium leading-[1.02] tracking-[-0.015em] text-stone-50">
-            Rearrange the interface,{" "}
-            <em className="font-display italic text-amber-200/90">at runtime.</em>
+            {INTRO_HEADLINE_LEAD}{" "}
+            <em className="font-display italic text-amber-200/90">
+              {INTRO_HEADLINE_ACCENT}
+            </em>
           </h1>
         </div>
         <SectionLead>{CANONICAL_DESCRIPTION}</SectionLead>
-        <SectionLead>
-          Reach for it where users live inside dense, multi-panel screens —
-          IDE-like tools, trading and operator consoles, analytics dashboards —
-          and your app keeps strict, controlled ownership of the layout state.
-        </SectionLead>
+        <SectionLead>{INTRO_REACH_PARAGRAPH}</SectionLead>
         <p className="max-w-[62ch] border-l-2 border-amber-300/30 pl-3 text-[12px] leading-[1.6] text-stone-400">
-          This page <em className="not-italic text-stone-200">is</em> a
-          hypr-tiling layout. Every section is a real pane: focus it, drag its
-          header, resize the dividers, maximize it — or drive it from the live
-          controls pane.
+          <MosaicInline paragraph={INTRO_DOGFOOD_PARAGRAPH} />
         </p>
         <div className="mt-auto flex flex-col gap-1.5 border-t border-white/[0.08] pt-3">
-          <Eyebrow>contributing</Eyebrow>
+          <Eyebrow>{CONTRIBUTING_EYEBROW}</Eyebrow>
           <p className="max-w-[62ch] text-[12px] leading-[1.6] text-stone-400">
-            hypr-tiling is built in the open and welcomes collaboration —
-            framework adapters, rendering backends, bug reports, and ideas from
-            the roadmap. To get involved, reach out at{" "}
-            <Link href="mailto:metelin@gmail.com">metelin@gmail.com</Link>.
+            <MosaicInline paragraph={INTRO_CONTRIBUTING_PARAGRAPH} />
           </p>
         </div>
         <footer className="border-t border-white/[0.08] pt-3 text-[11px] leading-[1.5] text-stone-500">
-          <Link href={LICENSE_URL}>{LICENSE_NAME}</Link> · source-available ·
-          free commercial use · no competing use
+          <Link href={LICENSE_URL}>{LICENSE_NAME}</Link>
+          {INTRO_LICENSE_TAIL}
         </footer>
       </div>
     ),
@@ -386,10 +501,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     content: (
       <div className="flex flex-col gap-4">
         <SectionHeading>Use cases</SectionHeading>
-        <SectionLead>
-          Reach for hypr-tiling where users live across multiple panels and
-          rearrange them as the work demands.
-        </SectionLead>
+        <SectionLead>{USECASES_LEAD}</SectionLead>
         <ul className="flex flex-col divide-y divide-white/[0.05]">
           {USE_CASES.map(
             (useCase: UseCase): React.ReactElement => (
@@ -420,14 +532,11 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
       <div className="flex flex-col gap-4">
         <SectionHeading>Install &amp; integrate</SectionHeading>
         <SectionLead>
-          Add the scoped package and its React peers. The library targets{" "}
-          <Code>react</Code> and <Code>react-dom</Code> version 19.
+          <MosaicInline paragraph={INSTALL_INTRO_PARAGRAPH} />
         </SectionLead>
         <Pre>{INSTALL_SNIPPET}</Pre>
         <SectionLead>
-          The renderer is a controlled component: you own the layout tree in
-          state and apply every change it reports through{" "}
-          <Code>onLayoutChange</Code>.
+          <MosaicInline paragraph={INSTALL_CONTROLLED_PARAGRAPH} />
         </SectionLead>
         <Pre>{INTEGRATION_EXAMPLE}</Pre>
       </div>
@@ -472,11 +581,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
       <div className="flex flex-col gap-4">
         <SectionHeading>Roadmap</SectionHeading>
         <SectionLead>
-          Where hypr-tiling is headed. These are{" "}
-          <em className="not-italic text-stone-200">planned</em> directions, not
-          shipped features today — the library currently renders to the DOM and
-          ships a React adapter only. The items below describe where the project
-          is going.
+          <MosaicInline paragraph={ROADMAP_LEAD} />
         </SectionLead>
         <ul className="flex flex-col divide-y divide-white/[0.05]">
           {ROADMAP_ITEMS.map(
@@ -508,23 +613,13 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
       <div className="flex flex-col gap-4">
         <SectionHeading>The model</SectionHeading>
         <SectionLead>
-          A layout is a plain, serialisable tree: <Code>leaf</Code> nodes hold a
-          tile, <Code>split</Code> nodes divide space along an axis by a ratio,
-          and <Code>group</Code> nodes stack leaves behind tabs. You hold the
-          tree in state; the renderer projects it to pixels, runs the
-          interaction, and reports every edit back — nothing is hidden inside the
-          component. It is yours to persist, diff, and restore.
+          <MosaicInline paragraph={MODEL_BODY_PARAGRAPH} />
         </SectionLead>
         <h3 className="font-display text-[15px] font-medium text-stone-100">
-          Kudos to Hyprland
+          {MODEL_KUDOS_HEADING}
         </h3>
         <SectionLead>
-          The interaction model is inspired by{" "}
-          <Link href="https://hypr.land">Hyprland</Link>, the dynamic-tiling
-          Wayland compositor, and its tiling-first philosophy: detach-and-drop
-          movement, master/stack layouts, and keyboard-driven focus. Kudos to
-          its maintainers and contributors for advancing modern tiling workflow
-          design.
+          <MosaicInline paragraph={MODEL_KUDOS_PARAGRAPH} />
         </SectionLead>
       </div>
     ),
@@ -538,20 +633,13 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     content: (
       <div className="flex flex-col gap-4">
         <SectionHeading>SEO &amp; LLM friendly</SectionHeading>
-        <SectionLead>
-          Tiling does not have to cost discoverability. Every pane body is real
-          semantic markup — headings, paragraphs, lists, code — emitted into the
-          document, never painted onto a canvas or hidden behind a transform.
-          All panes render at once, so unfocused sections stay in the DOM.
-        </SectionLead>
-        <SectionLead>
-          Because the content lives in the DOM, it prerenders. This homepage
-          ships its full text in the initial static HTML, with the interactive
-          tiling layered on as progressive enhancement — so crawlers and LLM
-          assistants that fetch and cite docs read the real content without
-          running JavaScript. A <Code>/llms.txt</Code> mirror is served for the
-          same reason.
-        </SectionLead>
+        {DISCOVERABILITY_PARAGRAPHS.map(
+          (paragraph: DocParagraph, index: number): React.ReactElement => (
+            <SectionLead key={index}>
+              <MosaicInline paragraph={paragraph} />
+            </SectionLead>
+          ),
+        )}
       </div>
     ),
   },
