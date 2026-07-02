@@ -135,18 +135,31 @@ default and passes no `interaction` prop. No docs example surfaces the checkbox.
 
 The homepage carries a live **"SKIN" segmented switch** hosted in the top chrome
 bar (`page.tsx`, `HomeTopBar`, right-aligned) that flips a whole bundled look —
-theme + pane chrome + content presentation — across THREE skins:
+theme + pane chrome + content presentation — across THREE skins. The three pane
+chromes are deliberately DIVERGENT SILHOUETTES, not one recolored frame: header
+placement, frame silhouette, control language, and header↔body relationship all
+differ, so rendered in greyscale with text hidden the three are still three
+distinct layouts (the standing acceptance test):
 
-- **Mosaic** — the default dark technical-atlas: graphite canvas, amber accent,
-  `DocTile` chrome (`apps/web/src/tile.tsx`), dense uppercase-mono content
-  (`apps/web/src/docs.tsx`).
-- **Editorial** — light paper & ink: warm-paper canvas, serif headlines,
-  `EditorialTile` folio chrome (`apps/web/src/editorial-tile.tsx`), a numbered
+- **Mosaic** — the default dark technical-atlas: graphite canvas, amber accent.
+  Pane chrome (`apps/web/src/tile.tsx`) is a technical HUD — a SHARP rectangle
+  drawn by four L-shaped CORNER BRACKETS, NO header bar (the label is a floating
+  top-left BRACKET TAG that is the drag surface), controls as bare MONOSPACE
+  INSTRUMENT TICKS floated top-right, and a chromeless full-bleed body. Dense
+  uppercase-mono content (`apps/web/src/docs.tsx`).
+- **Editorial** — light paper & ink: warm-paper canvas, serif headlines. Pane
+  chrome (`apps/web/src/editorial-tile.tsx`) is a CHROMELESS printed folio — a
+  borderless FLOATING sheet, NO header bar (the title is a rotated LEFT-MARGIN
+  running head separated by a hairline rule; the margin rail is the drag
+  surface), actions as HOVER-REVEALED TEXT LINKS; a flex-ROW layout. A numbered
   reading index (`apps/web/src/content-editorial.tsx`).
-- **Canvas** — greyish workspace: soft grey desk, hairline white cards, quiet
-  neutral type, keycap chips + colored accent ticks (`CanvasTile` chrome
-  `apps/web/src/canvas-tile.tsx`, content `apps/web/src/content-canvas.tsx`,
-  theme `apps/web/src/canvas-theme.tsx`, plus a Canvas-only bottom status bar).
+- **Canvas** — greyish workspace: soft grey desk. Pane chrome
+  (`apps/web/src/canvas-tile.tsx`) is a macOS-style APP WINDOW — a heavily
+  ROUNDED window with a soft drop-shadow, a full-width TITLE BAR (macOS
+  TRAFFIC-LIGHT DOTS left, the green dot the live maximize control; centered
+  title; group chip right) AND a bottom STATUS STRIP, a hard-bordered windowed
+  title/content/status stack. Content `apps/web/src/content-canvas.tsx`, theme
+  `apps/web/src/canvas-theme.tsx`, plus a page-level Canvas-only bottom status bar.
 
 Every skin drives the SAME renderer, layout tree, and shared content model
 (`docs.tsx` `DocInline`/`DocParagraph`), and is built with ONLY the public `.`
