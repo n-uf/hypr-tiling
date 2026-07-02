@@ -5,18 +5,18 @@ import { describe, expect, it } from "@jest/globals";
 import {
   type DragMachineState,
   type DragResolvedTarget,
-} from "../core/drag-machine";
-import type { DragInputDriverSlotCommitment } from "../core/input-driver";
-import type { ElementRef } from "../core/element-ref";
-import type { SchedulerPort } from "../core/scheduler-port";
-import type { MeasurementPort } from "../core/measurement-port";
-import type { PointerCapturePort } from "../core/pointer-capture-port";
-import type { StyleApplierPort } from "../core/style-applier-port";
+} from "../engine/drag-machine";
+import type { DragInputDriverSlotCommitment } from "../engine/input-driver";
+import type { ElementRef } from "../engine/element-ref";
+import type { SchedulerPort } from "../engine/scheduler-port";
+import type { MeasurementPort } from "../engine/measurement-port";
+import type { PointerCapturePort } from "../engine/pointer-capture-port";
+import type { StyleApplierPort } from "../engine/style-applier-port";
 import {
   type TilingController,
   type TilingControllerHost,
   createTilingController,
-} from "../core/controller";
+} from "../engine/controller";
 import { createWindowSchedulerPort } from "../react/window-scheduler-port";
 import { createDomPointerCapturePort } from "../react/dom-pointer-capture-port";
 import { createDomStyleApplierPort } from "../react/dom-style-applier-port";
@@ -24,12 +24,12 @@ import { createDomMeasurementPort } from "../react/dom-measurement-port";
 import type {
   TilingDropAction,
   TilingLeafDropZone,
-} from "../core/types";
+} from "../engine/types";
 
 // IMPORT-GRAPH GATE (Stage 8 — vanilla-core proof): this file imports ONLY
-// `core/` modules + the `react/`-located DOM host adapters. Critically, NONE of
+// `engine/` modules + the `react/`-located DOM host adapters. Critically, NONE of
 // those adapters import the `react` runtime — after the `RefObject → ElementRef`
-// decoupling they depend only on `core/element-ref` — so there is NO `react` /
+// decoupling they depend only on `engine/element-ref` — so there is NO `react` /
 // `react-dom` anywhere in this module's transitive import graph. The four host
 // ports are constructed against PLAIN DOM (jsdom) elements via bare
 // `{ current: element }` holders (not `useRef`), and a full pickup → seat →

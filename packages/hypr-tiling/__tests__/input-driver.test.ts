@@ -9,18 +9,18 @@ import {
   type DragSlotCommitmentMode,
   dragMachineReducer,
   shouldSuppressCompetingCancel,
-} from "../core/drag-machine";
+} from "../engine/drag-machine";
 import {
   type DragInputDriver,
   type DragInputDriverHost,
   type DragInputDriverSlotCommitment,
   createDragInputDriver,
-} from "../core/input-driver";
+} from "../engine/input-driver";
 import type {
   TilingDropAction,
   TilingLeafDropZone,
   TilingPaneFootprint,
-} from "../core/types";
+} from "../engine/types";
 
 const ANCHOR: TilingPaneFootprint = { left: 100, top: 100, width: 200, height: 150 };
 

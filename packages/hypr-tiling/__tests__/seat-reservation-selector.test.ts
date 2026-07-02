@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import { dragSourceReservationSelector } from "../core/drag-presentation";
+import { dragSourceReservationSelector } from "../engine/drag-presentation";
 
 /**
  * Regression guard for the `cc23956` seat-measurement selector bug.

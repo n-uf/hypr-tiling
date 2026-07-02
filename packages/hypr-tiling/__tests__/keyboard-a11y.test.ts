@@ -1,8 +1,8 @@
 import { describe, expect, it } from "@jest/globals";
-import { clampByMinSize } from "../core/pane-sizing";
-import { directionToPlacement } from "../core/pane-switching";
-import { findLeafByDirection, insertLeafAdjacent, readLeafNodeIds, updateSplitRatio } from "../core/state";
-import type { TilingFocusDirection, TilingLayoutNode, TilingLeafNode, TilingSplitNode } from "../core/types";
+import { clampByMinSize } from "../engine/pane-sizing";
+import { directionToPlacement } from "../engine/pane-switching";
+import { findLeafByDirection, insertLeafAdjacent, readLeafNodeIds, updateSplitRatio } from "../engine/state";
+import type { TilingFocusDirection, TilingLayoutNode, TilingLeafNode, TilingSplitNode } from "../engine/types";
 
 /**
  * These cover the PURE interaction models the renderer wires for keyboard

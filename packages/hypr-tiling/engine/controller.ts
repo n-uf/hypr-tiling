@@ -40,7 +40,7 @@ function resolveSliceUpdate<T>(
  * slot-commitment policy). Mirrors {@link DragInputDriverHost} minus the
  * FSM-state accessors (`getState`/`dispatch`), which the controller owns and
  * wires internally. The renderer supplies a DOM-backed host; a headless adapter
- * supplies a scripted stub — neither is touched by `core/`.
+ * supplies a scripted stub — neither is touched by `engine/`.
  */
 export interface TilingControllerHost {
   resolveTarget(
@@ -96,7 +96,7 @@ export interface TilingControllerState {
 /**
  * The framework-free interaction controller. Owns the drag FSM store (the
  * `dragMachineReducer` behind a subscribe/getState store) and the seat/latch
- * input driver (`core/input-driver.ts`), exposing them through a
+ * input driver (`engine/input-driver.ts`), exposing them through a
  * host-agnostic surface:
  *
  *   - `getState` / `subscribe` — the `useSyncExternalStore` contract; the host

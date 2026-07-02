@@ -1,9 +1,9 @@
-import type { ElementRef } from "../core/element-ref";
+import type { ElementRef } from "../engine/element-ref";
 import {
   type CancelableHandle,
   type TransitionEndSource,
   stripTransientDragStyles,
-} from "../core/drag-recovery";
+} from "../engine/drag-recovery";
 import type {
   FlipDipHandle,
   FlipDipOptions,
@@ -11,8 +11,8 @@ import type {
   StyleApplierPort,
   StyleLeafHandle,
   StyleTransformSpec,
-} from "../core/style-applier-port";
-import type { SurvivorRect } from "../core/survivor-reflow";
+} from "../engine/style-applier-port";
+import type { SurvivorRect } from "../engine/survivor-reflow";
 
 /**
  * React-internal {@link StyleLeafHandle} carrying the resolved live element, so

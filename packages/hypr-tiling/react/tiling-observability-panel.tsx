@@ -13,14 +13,14 @@ import {
   GHOST_PICKUP_SCALE_MIN_PERCENT,
   SWAP_BOUNCE_MAX_PERCENT,
   SWAP_BOUNCE_MIN_PERCENT,
-} from "../core/ghost-transit";
-import { DEFAULT_DRAG_HOP_EASING } from "../core/drag-easing";
+} from "../engine/ghost-transit";
+import { DEFAULT_DRAG_HOP_EASING } from "../engine/drag-easing";
 import {
   insertLeafAdjacent,
   moveLeafToRoot,
   moveLeafToSplitContainer,
   toggleSplitAxis,
-} from "../core/state";
+} from "../engine/state";
 import type {
   TilingDropAction,
   TilingDropIntentDebugState,
@@ -39,7 +39,7 @@ import type {
   TilingDragMode,
   TilingResizeCapability,
   TilingSlotCommitmentMode,
-} from "../core/types";
+} from "../engine/types";
 
 /**
  * ANIMATION control-group defaults — the single source of truth shared by the

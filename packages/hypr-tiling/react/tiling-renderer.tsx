@@ -18,14 +18,14 @@ import {
   keyboardActionToCommand,
   tabDoubleClickMaximizeCommand,
   type TilingCommandGates,
-} from "../core/commands";
+} from "../engine/commands";
 import {
   clampCursorPointToViewport,
   resolveDragCursorPresentation,
   type DragCursorPoint,
   type DragCursorPresentation,
-} from "../core/drag-cursor";
-import { DEFAULT_DRAG_HOP_EASING, resolveDragEasing } from "../core/drag-easing";
+} from "../engine/drag-cursor";
+import { DEFAULT_DRAG_HOP_EASING, resolveDragEasing } from "../engine/drag-easing";
 import {
   activeDragSourceLeafId,
   activeResolvedTarget,
@@ -41,29 +41,29 @@ import {
   type DragMachineState,
   type DragPointerType,
   type FrameCoalescer,
-} from "../core/drag-machine";
+} from "../engine/drag-machine";
 import {
   type DragInputDriver,
   shouldArmIdleWatchdog,
-} from "../core/input-driver";
+} from "../engine/input-driver";
 import {
   type TilingController,
   type TilingControllerHost,
   type TilingControllerState,
   createTilingController,
-} from "../core/controller";
+} from "../engine/controller";
 import {
   isDragPresentationActive,
   resolveDragPresentation,
   resolveInitialPaneContentVisible,
   resolvePaneBodyRenderMode,
-} from "../core/drag-presentation";
+} from "../engine/drag-presentation";
 import type {
   TilingDropIntentHitZoneDiagnostics,
   TilingDropIntentState as TilingDropState,
   TilingEdgeZone,
   TilingZoneGeometryConfig,
-} from "../core/drop-intent-resolver";
+} from "../engine/drop-intent-resolver";
 import {
   TILING_DROP_INTENT_CONFIG,
   buildGroupTabStripMergeIntent,
@@ -73,17 +73,17 @@ import {
   resolveDropIntentHitZoneDiagnostics,
   resolveGroupTabStripHit,
   toPaneLocalPoint,
-} from "../core/drop-intent-resolver";
+} from "../engine/drop-intent-resolver";
 import {
   collectStaticGatedLeafIds,
   evaluateZoneCandidate,
-} from "../core/drop-validity";
+} from "../engine/drop-validity";
 import {
   pruneFocusHistory,
   pushFocusHistory,
   resolveFocusCurrentOrLast,
   type FocusHistory,
-} from "../core/focus-history";
+} from "../engine/focus-history";
 import {
   DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT,
   buildBounceEasingCss,
@@ -98,32 +98,32 @@ import {
   type GhostMorphTransform,
   type GhostPoint,
   type GhostRect,
-} from "../core/ghost-transit";
+} from "../engine/ghost-transit";
 import {
   createDragWatchdog,
   scheduleFrameOrTimeout,
   stripTransientDragStyles,
   type DragWatchdog,
   type RacedFrameHandle,
-} from "../core/drag-recovery";
-import type { SchedulerPort } from "../core/scheduler-port";
+} from "../engine/drag-recovery";
+import type { SchedulerPort } from "../engine/scheduler-port";
 import { createWindowSchedulerPort } from "./window-scheduler-port";
-import type { MeasurementPort } from "../core/measurement-port";
+import type { MeasurementPort } from "../engine/measurement-port";
 import { createDomMeasurementPort } from "./dom-measurement-port";
-import type { PointerCapturePort } from "../core/pointer-capture-port";
+import type { PointerCapturePort } from "../engine/pointer-capture-port";
 import { createDomPointerCapturePort } from "./dom-pointer-capture-port";
-import type { StyleApplierPort } from "../core/style-applier-port";
+import type { StyleApplierPort } from "../engine/style-applier-port";
 import { createDomStyleApplierPort } from "./dom-style-applier-port";
 import {
   buildCoherentDipKeyframes,
   createSurvivorFlipScheduler,
   type SurvivorFlipScheduler,
-} from "../core/flip-scheduler";
+} from "../engine/flip-scheduler";
 import {
   isResizeAxisEnabled,
   resolveInteractionCapabilities,
-} from "../core/interaction-capabilities";
-import { matchKeyBinding } from "../core/keybindings";
+} from "../engine/interaction-capabilities";
+import { matchKeyBinding } from "../engine/keybindings";
 import {
   collectLeafFootprints,
   collectMasterSlots,
@@ -131,7 +131,7 @@ import {
   resolveMasterParams,
   resolveMasterStackFootprints,
   slotRepresentativeLeafId,
-} from "../core/leaf-geometry";
+} from "../engine/leaf-geometry";
 import {
   clampByMinSize,
   isStaticAlongSplitAxis,
@@ -142,7 +142,7 @@ import {
   resolveSizingMode,
   titleBarSizingModeId,
   type SplitChildMainSizing,
-} from "../core/pane-sizing";
+} from "../engine/pane-sizing";
 import {
   advancePaneSwitcher,
   chordRequiresModifier,
@@ -155,16 +155,16 @@ import {
   resolveCycledPaneId,
   resolveJumpedPaneId,
   resolveMaximizeToggle,
-} from "../core/pane-switching";
+} from "../engine/pane-switching";
 import type {
   TilingProjectedLandingOverlay,
   TilingProjectedLandingSubject,
-} from "../core/projected-layout";
+} from "../engine/projected-layout";
 import {
   resolveProjectedDropLayout,
   resolveProjectedLandingOverlays,
-} from "../core/projected-layout";
-import type { TilingGrowConstraints } from "../core/state";
+} from "../engine/projected-layout";
+import type { TilingGrowConstraints } from "../engine/state";
 import {
   addLeafToGroup,
   adjustSplitMasterCount,
@@ -194,7 +194,7 @@ import {
   toggleSplitAxis,
   ungroupNode,
   updateSplitRatio,
-} from "../core/state";
+} from "../engine/state";
 import {
   canGroupMultiSelection,
   isMultiSelectModifierActive,
@@ -202,11 +202,11 @@ import {
   resolveMultiSelectGroupCommand,
   resolveMultiSelectGroupHost,
   toggleLeafMultiSelection,
-} from "../core/multi-selection";
+} from "../engine/multi-selection";
 import {
   shouldSnapSurvivorReflowOnSettleCommit,
   type SurvivorRect,
-} from "../core/survivor-reflow";
+} from "../engine/survivor-reflow";
 import type {
   TilingDragCancelVisualState,
   TilingDragPaneSnapshot,
@@ -246,7 +246,7 @@ import type {
   TilingPaneSizing,
   TilingPaneSwitcherState,
   TilingTitleBarSizingMode,
-} from "../core/types";
+} from "../engine/types";
 
 function resolveDragPointerType(pointerType: string): DragPointerType {
   if (pointerType === "touch") {
@@ -916,7 +916,7 @@ export {
   resolveDragPresentation,
   resolveInitialPaneContentVisible,
   resolvePaneBodyRenderMode,
-} from "../core/drag-presentation";
+} from "../engine/drag-presentation";
 
 type TilingSplitDividerRenderMode =
   | "render-divider-absent"
@@ -3831,7 +3831,7 @@ export const TilingRenderer = React.forwardRef<
   // `dragHoverLeafId` / `dragVisualState` useStates + `didDropSucceedRef` /
   // `stableDropStateRef`). Every terminal pointer event routes
   // `dragging → settling → idle`, so a teardown edge can never be missed.
-  // The framework-free interaction controller (`core/controller.ts`) owns the
+  // The framework-free interaction controller (`engine/controller.ts`) owns the
   // drag FSM store + the seat/latch input driver. The renderer CONSUMES it: the
   // FSM is read via `useSyncExternalStore`, DOM events are forwarded into
   // `controller.input.*` / `controller.dispatch`. The controller is created
@@ -3896,7 +3896,7 @@ export const TilingRenderer = React.forwardRef<
   // The seat/latch cluster (seat anchor, the single authoritative committable
   // seat, the decaying last-committable-seat fallback, and the synchronously
   // latched release commit) is OWNED by the framework-free drag input driver
-  // (`core/input-driver.ts`), created below once `resolvePointerTarget` exists.
+  // (`engine/input-driver.ts`), created below once `resolvePointerTarget` exists.
   // The renderer reads `inputDriver.committableSeat` / `.releaseCommitLatched`
   // for competing-cancel suppression and calls `inputDriver.reset()` at settle.
   // The live M3 idle-watchdog handle, mirrored into a ref so `handlePointerMove`
@@ -6133,7 +6133,7 @@ export const TilingRenderer = React.forwardRef<
     // threshold, resolve the drop target, apply the slot-commitment re-aim
     // damper, mirror the committable seat + decaying fallback) and the release
     // latch are owned by the framework-free `inputDriver`
-    // (`core/input-driver.ts`). The RELEASE path runs `processPointerSample`
+    // (`engine/input-driver.ts`). The RELEASE path runs `processPointerSample`
     // SYNCHRONOUSLY from the raw `pointerup` coords (`isReleaseSample`) — a fast
     // flick releases in the same task as its `pointermove`s, before the rAF
     // coalescer flushes, so without a synchronous release-time resolve the FSM

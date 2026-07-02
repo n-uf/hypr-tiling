@@ -4,7 +4,7 @@ import type { SurvivorRect } from "./survivor-reflow";
 /**
  * `StyleApplierPort` — the WRITE half of the DOM seam (the read-only counterpart
  * is `MeasurementPort`). It is the capability the survivor-FLIP scheduler
- * (`core/flip-scheduler.ts`) needs to MEASURE + MUTATE the survivor
+ * (`engine/flip-scheduler.ts`) needs to MEASURE + MUTATE the survivor
  * `[data-leaf-id]` elements without itself touching the DOM, so the FLIP arming
  * decisions (M1 play-race, M2 transition-settle, M2b transform-settle guard, the
  * settle-strip) are framework-free and unit-testable with stub handles.

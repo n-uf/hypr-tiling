@@ -1,30 +1,30 @@
 import { describe, expect, it } from "@jest/globals";
-import type { DragResolvedTarget } from "../core/drag-machine";
+import type { DragResolvedTarget } from "../engine/drag-machine";
 import {
   type TilingController,
   type TilingControllerHost,
   type TilingControllerState,
   createTilingController,
-} from "../core/controller";
-import type { DragInputDriverSlotCommitment } from "../core/input-driver";
+} from "../engine/controller";
+import type { DragInputDriverSlotCommitment } from "../engine/input-driver";
 import {
   EMPTY_FOCUS_HISTORY,
   type FocusHistory,
   pruneFocusHistory,
   pushFocusHistory,
   resolveFocusCurrentOrLast,
-} from "../core/focus-history";
+} from "../engine/focus-history";
 import {
   advancePaneSwitcher,
   commitPaneSwitcher,
   openPaneSwitcher,
   resolveMaximizeToggle,
-} from "../core/pane-switching";
+} from "../engine/pane-switching";
 import {
   canGroupMultiSelection,
   pruneMultiSelection,
   toggleLeafMultiSelection,
-} from "../core/multi-selection";
+} from "../engine/multi-selection";
 import type {
   ResolvedTilingKeyChordModifiers,
   TilingLayoutNode,
@@ -32,17 +32,17 @@ import type {
   TilingMoveModeState,
   TilingPaneSwitcherState,
   TilingSplitNode,
-} from "../core/types";
+} from "../engine/types";
 
 // IMPORT-GRAPH GATE (mirrors controller-headless.test.ts): this file imports
-// ONLY `core/` modules. There is NO `react` / `react-dom` and NO DOM
+// ONLY `engine/` modules. There is NO `react` / `react-dom` and NO DOM
 // (`document` / `window`) in its transitive import graph — the Stage-7
 // state-collapse folded the renderer's focus / maximize / switcher / move-mode /
 // multi-select `useState`/`useRef` slices into `createTilingController`, and
 // these characterization tests exercise those slices against the framework-free
-// store exactly as the renderer's callbacks do (via the SAME pure `core/`
+// store exactly as the renderer's callbacks do (via the SAME pure `engine/`
 // helpers), with no React render harness. If a future edit pulls a React/DOM
-// dependency into `core/controller.ts`, this module fails to load under the
+// dependency into `engine/controller.ts`, this module fails to load under the
 // headless (node) path and the gate trips.
 
 const HOLD_ALT: ResolvedTilingKeyChordModifiers = {

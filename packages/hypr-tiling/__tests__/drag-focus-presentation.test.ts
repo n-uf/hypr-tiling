@@ -8,7 +8,7 @@ import {
   buildDragPaneSnapshot,
   renderDragPaneShell,
 } from "../react/tiling-renderer";
-import { resolveDragCommitFocusLeafId } from "../core/drag-machine";
+import { resolveDragCommitFocusLeafId } from "../engine/drag-machine";
 import {
   TILING_THEME_REGISTRY,
   accentHue,
@@ -16,8 +16,8 @@ import {
   type PaneDropAffordanceFlags,
   type TilingTheme,
 } from "../react/theme";
-import type { TilingDropIntentState } from "../core/drop-intent-resolver";
-import type { TilingDragPaneSnapshot, TilingTile } from "../core/types";
+import type { TilingDropIntentState } from "../engine/drop-intent-resolver";
+import type { TilingDragPaneSnapshot, TilingTile } from "../engine/types";
 
 /**
  * Drag-visuals contract after the focus-follows-dragged-pane change:

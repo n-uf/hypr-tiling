@@ -12,16 +12,16 @@ import {
   resolvePaneZoneGeometry,
   snapToDevicePixel,
   toPaneLocalPoint,
-} from "../core/drop-intent-resolver";
-import type { TilingPanePoint } from "../core/drop-intent-resolver";
+} from "../engine/drop-intent-resolver";
+import type { TilingPanePoint } from "../engine/drop-intent-resolver";
 import type {
   TilingPaneSize,
   TilingZoneGeometryConfig,
-} from "../core/drop-intent-resolver";
+} from "../engine/drop-intent-resolver";
 import type {
   TilingLeafDropZone,
   TilingSplitAxis,
-} from "../core/types";
+} from "../engine/types";
 
 const EMPTY_AXIS_PATH: ReadonlyArray<TilingSplitAxis> = [];
 const SQUARE_PANE: TilingPaneSize = { width: 200, height: 200 };

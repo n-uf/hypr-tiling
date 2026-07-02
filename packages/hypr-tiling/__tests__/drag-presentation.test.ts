@@ -6,8 +6,8 @@ import {
   resolvePaneBodyRenderMode,
   type DragPresentationInput,
   type DragPresentationMode,
-} from "../core/drag-presentation";
-import type { TilingPaneBodyRenderMode } from "../core/types";
+} from "../engine/drag-presentation";
+import type { TilingPaneBodyRenderMode } from "../engine/types";
 
 /**
  * Build a fully-typed presentation input with inert defaults; tests override

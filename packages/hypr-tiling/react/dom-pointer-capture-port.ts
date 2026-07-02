@@ -1,5 +1,5 @@
-import type { ElementRef } from "../core/element-ref";
-import type { PointerCapturePort } from "../core/pointer-capture-port";
+import type { ElementRef } from "../engine/element-ref";
+import type { PointerCapturePort } from "../engine/pointer-capture-port";
 
 /**
  * Default DOM-backed {@link PointerCapturePort} host adapter, bound to the

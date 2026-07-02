@@ -37,15 +37,15 @@ export {
   type TilingDropIntentBaseConfig,
   type TilingDropIntentState,
   type TilingEdgeZone,
-} from "./core/drop-intent-resolver";
-export type { DragResolvedTarget } from "./core/drag-machine";
+} from "./engine/drop-intent-resolver";
+export type { DragResolvedTarget } from "./engine/drag-machine";
 export {
   commandRequiredCapability,
   isCommandEnabled,
   keyboardActionToCommand,
   type TilingCommandGates,
-} from "./core/commands";
-export { defaultKeyBindings, matchKeyBinding } from "./core/keybindings";
+} from "./engine/commands";
+export { defaultKeyBindings, matchKeyBinding } from "./engine/keybindings";
 export {
   MULTI_SELECT_GROUP_MIN_MEMBERS,
   canGroupMultiSelection,
@@ -55,7 +55,7 @@ export {
   resolveMultiSelectGroupHost,
   toggleLeafMultiSelection,
   type MultiSelectModifierState,
-} from "./core/multi-selection";
+} from "./engine/multi-selection";
 export {
   EMPTY_FOCUS_HISTORY,
   FOCUS_HISTORY_DEFAULT_LIMIT,
@@ -63,13 +63,13 @@ export {
   pushFocusHistory,
   resolveFocusCurrentOrLast,
   type FocusHistory,
-} from "./core/focus-history";
+} from "./engine/focus-history";
 export {
   DEFAULT_DRAG_HOP_EASING,
   DEFAULT_DRAG_REFLOW_EASING,
   isCssEasing,
   resolveDragEasing,
-} from "./core/drag-easing";
+} from "./engine/drag-easing";
 export {
   clampCursorPointToViewport,
   resolveDragCursorPresentation,
@@ -78,13 +78,13 @@ export {
   type DragCursorPresentation,
   type DragCursorTone,
   type DragCursorViewportBounds,
-} from "./core/drag-cursor";
+} from "./engine/drag-cursor";
 export {
   TILING_DASHBOARD_PRESET,
   TILING_INTERACTION_CAPABILITY_DEFAULTS,
   isResizeAxisEnabled,
   resolveInteractionCapabilities,
-} from "./core/interaction-capabilities";
+} from "./engine/interaction-capabilities";
 export {
   isStaticAlongSplitAxis,
   isStaticInDimension,
@@ -95,7 +95,7 @@ export {
   shouldRenderSplitDivider,
   type FlexibleRatioChild,
   type SplitBoundaryStaticFlags,
-} from "./core/pane-sizing";
+} from "./engine/pane-sizing";
 export {
   TILING_KEYMAP_DEFAULTS,
   chordRequiresModifier,
@@ -107,7 +107,7 @@ export {
   resolveMaximizeToggle,
   type TilingKeymapActionGuards,
   type TilingPaneCycleDirection,
-} from "./core/pane-switching";
+} from "./engine/pane-switching";
 export {
   collectGroups,
   collectSplitNodes,
@@ -127,7 +127,7 @@ export {
   ungroupNode,
   updateSplitRatio,
   type GroupLeavesOptions,
-} from "./core/state";
+} from "./engine/state";
 export type {
   TilingDropAction,
   TilingDropIntentDebugState,
@@ -200,4 +200,4 @@ export type {
   ResolvedTilingPaneTitleBarControlsCapability,
   TilingTouchDragCapability,
   ResolvedTilingTouchDragCapability,
-} from "./core/types";
+} from "./engine/types";

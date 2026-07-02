@@ -4,15 +4,15 @@ import {
   resolvePointerTargetFromMeasurement,
   resolveSeatFootprint,
 } from "../react/tiling-renderer";
-import { resolveInteractionCapabilities } from "../core/interaction-capabilities";
-import type { MeasurementPort } from "../core/measurement-port";
+import { resolveInteractionCapabilities } from "../engine/interaction-capabilities";
+import type { MeasurementPort } from "../engine/measurement-port";
 import type {
   ResolvedTilingInteractionCapabilities,
   TilingLayoutConfig,
   TilingLeafNode,
   TilingPaneFootprint,
   TilingSplitNode,
-} from "../core/types";
+} from "../engine/types";
 
 /**
  * Stage-3 measurement-port characterization tests. These pin the observable

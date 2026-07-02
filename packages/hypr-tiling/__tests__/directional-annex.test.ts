@@ -1,11 +1,11 @@
 import { describe, expect, it } from "@jest/globals";
-import { annexDirection, reseedEvicted, selectEvictionSet } from "../core/state";
-import type { TilingGrowConstraints } from "../core/state";
+import { annexDirection, reseedEvicted, selectEvictionSet } from "../engine/state";
+import type { TilingGrowConstraints } from "../engine/state";
 import type {
   TilingLayoutNode,
   TilingLeafNode,
   TilingSplitNode,
-} from "../core/types";
+} from "../engine/types";
 
 function leaf(id: string): TilingLeafNode {
   return { kind: "leaf", id, tileId: `tile-${id}` };

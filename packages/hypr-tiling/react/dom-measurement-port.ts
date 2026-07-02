@@ -1,6 +1,6 @@
-import type { ElementRef } from "../core/element-ref";
-import type { MeasurementPort } from "../core/measurement-port";
-import { dragSourceReservationSelector } from "../core/drag-presentation";
+import type { ElementRef } from "../engine/element-ref";
+import type { MeasurementPort } from "../engine/measurement-port";
+import { dragSourceReservationSelector } from "../engine/drag-presentation";
 
 /**
  * Refs the {@link createDomMeasurementPort} adapter reads through — the same

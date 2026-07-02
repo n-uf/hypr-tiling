@@ -1,11 +1,11 @@
 import { describe, expect, it, jest } from "@jest/globals";
-import type { CancelableHandle, TransitionEndSource } from "../core/drag-recovery";
+import type { CancelableHandle, TransitionEndSource } from "../engine/drag-recovery";
 import {
   createSurvivorFlipScheduler,
   type SurvivorFlipScheduler,
   type SurvivorReflowInput,
-} from "../core/flip-scheduler";
-import type { SchedulerPort } from "../core/scheduler-port";
+} from "../engine/flip-scheduler";
+import type { SchedulerPort } from "../engine/scheduler-port";
 import type {
   FlipDipHandle,
   FlipDipOptions,
@@ -13,8 +13,8 @@ import type {
   StyleApplierPort,
   StyleLeafHandle,
   StyleTransformSpec,
-} from "../core/style-applier-port";
-import type { SurvivorRect } from "../core/survivor-reflow";
+} from "../engine/style-applier-port";
+import type { SurvivorRect } from "../engine/survivor-reflow";
 
 /**
  * Stage-6 characterization: the survivor-FLIP scheduler's ARMING POLICY —

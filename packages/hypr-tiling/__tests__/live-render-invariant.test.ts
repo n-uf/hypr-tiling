@@ -1,14 +1,14 @@
 import { describe, expect, it } from "@jest/globals";
-import { insertLeafAdjacent, readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../core/state";
+import { insertLeafAdjacent, readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../engine/state";
 import {
   resolveLeafDropPreview,
   resolveLeafDropPreviewForMode,
   resolveStableDragHitFootprints,
 } from "../react/tiling-renderer";
-import { deriveCandidateTree } from "../core/drag-machine";
-import { PLACEMENT_BY_DROP_ZONE } from "../core/projected-layout";
-import { collectLeafFootprints, footprintsByLeafId } from "../core/leaf-geometry";
-import type { TilingDropIntentState } from "../core/drop-intent-resolver";
+import { deriveCandidateTree } from "../engine/drag-machine";
+import { PLACEMENT_BY_DROP_ZONE } from "../engine/projected-layout";
+import { collectLeafFootprints, footprintsByLeafId } from "../engine/leaf-geometry";
+import type { TilingDropIntentState } from "../engine/drop-intent-resolver";
 import type {
   TilingLayoutConfig,
   TilingLeafDropPreview,
@@ -16,7 +16,7 @@ import type {
   TilingLeafNode,
   TilingPaneFootprint,
   TilingSplitNode,
-} from "../core/types";
+} from "../engine/types";
 
 function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };

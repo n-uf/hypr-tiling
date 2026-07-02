@@ -2,25 +2,25 @@ import { describe, expect, it } from "@jest/globals";
 import {
   type DragMachineState,
   type DragResolvedTarget,
-} from "../core/drag-machine";
-import type { DragInputDriverSlotCommitment } from "../core/input-driver";
+} from "../engine/drag-machine";
+import type { DragInputDriverSlotCommitment } from "../engine/input-driver";
 import {
   type TilingController,
   type TilingControllerHost,
   createTilingController,
-} from "../core/controller";
+} from "../engine/controller";
 import type {
   TilingDropAction,
   TilingLeafDropZone,
   TilingPaneFootprint,
-} from "../core/types";
+} from "../engine/types";
 
-// IMPORT-GRAPH GATE: this file imports ONLY `core/` modules (controller,
+// IMPORT-GRAPH GATE: this file imports ONLY `engine/` modules (controller,
 // drag-machine, input-driver, types). There is NO `react` / `react-dom` and NO
 // DOM (`document` / `window`) in its transitive import graph — the test runs
 // the full pickup → seat → commit interaction against a scripted stub host,
 // proving `createTilingController` is genuinely framework-free. If a future edit
-// pulls a React/DOM dependency into `core/controller.ts`, this module will fail
+// pulls a React/DOM dependency into `engine/controller.ts`, this module will fail
 // to load under the headless (node) path and the gate trips.
 
 const ANCHOR: TilingPaneFootprint = {

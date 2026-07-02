@@ -2,11 +2,11 @@ import { describe, expect, it } from "@jest/globals";
 import {
   resolveProjectedDropLayout,
   resolveProjectedLandingOverlays,
-} from "../core/projected-layout";
-import { collectLeafFootprints, footprintsByLeafId } from "../core/leaf-geometry";
-import type { TilingProjectedLandingOverlay } from "../core/projected-layout";
-import { insertLeafAdjacent, swapLeafTiles } from "../core/state";
-import type { TilingDropIntentState, TilingEdgeZone } from "../core/drop-intent-resolver";
+} from "../engine/projected-layout";
+import { collectLeafFootprints, footprintsByLeafId } from "../engine/leaf-geometry";
+import type { TilingProjectedLandingOverlay } from "../engine/projected-layout";
+import { insertLeafAdjacent, swapLeafTiles } from "../engine/state";
+import type { TilingDropIntentState, TilingEdgeZone } from "../engine/drop-intent-resolver";
 import type {
   TilingDropAction,
   TilingLayoutConfig,
@@ -14,7 +14,7 @@ import type {
   TilingLeafNode,
   TilingPaneFootprint,
   TilingSplitNode,
-} from "../core/types";
+} from "../engine/types";
 
 function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };

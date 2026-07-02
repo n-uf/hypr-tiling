@@ -2,7 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 import { createElement } from "react";
 import type { ReactElement } from "react";
 import { buildDragPaneSnapshot } from "../react/tiling-renderer";
-import type { TilingDragPaneSnapshot, TilingTile } from "../core/types";
+import type { TilingDragPaneSnapshot, TilingTile } from "../engine/types";
 
 /**
  * Ghost-content sourcing invariant: the drag-pane snapshot captured on pickup

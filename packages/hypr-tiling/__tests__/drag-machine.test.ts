@@ -33,9 +33,9 @@ import {
   shouldSuppressCompetingCancel,
   EMPTY_COMMITTABLE_SEAT_FALLBACK,
   type CommittableSeatFallback,
-} from "../core/drag-machine";
-import { createDragWatchdog } from "../core/drag-recovery";
-import { collectGroups, findGroupContainingLeaf, findLeafById, groupLeaves, insertLeafAdjacent, readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../core/state";
+} from "../engine/drag-machine";
+import { createDragWatchdog } from "../engine/drag-recovery";
+import { collectGroups, findGroupContainingLeaf, findLeafById, groupLeaves, insertLeafAdjacent, readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../engine/state";
 import type {
   TilingDropAction,
   TilingLayoutNode,
@@ -44,7 +44,7 @@ import type {
   TilingLeafNode,
   TilingPaneFootprint,
   TilingSplitNode,
-} from "../core/types";
+} from "../engine/types";
 
 function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };

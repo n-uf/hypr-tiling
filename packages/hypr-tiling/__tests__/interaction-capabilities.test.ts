@@ -4,13 +4,13 @@ import {
   TILING_INTERACTION_CAPABILITY_DEFAULTS,
   isResizeAxisEnabled,
   resolveInteractionCapabilities,
-} from "../core/interaction-capabilities";
-import { TILING_KEYMAP_DEFAULTS } from "../core/pane-switching";
+} from "../engine/interaction-capabilities";
+import { TILING_KEYMAP_DEFAULTS } from "../engine/pane-switching";
 import type {
   TilingSplitAxis,
   ResolvedTilingInteractionCapabilities,
   TilingResizeCapability,
-} from "../core/types";
+} from "../engine/types";
 
 const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   resize: "both",

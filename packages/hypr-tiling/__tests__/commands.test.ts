@@ -4,10 +4,10 @@ import {
   isCommandEnabled,
   keyboardActionToCommand,
   tabDoubleClickMaximizeCommand,
-} from "../core/commands";
-import type { TilingCommandGates } from "../core/commands";
-import { resolveMaximizeToggle } from "../core/pane-switching";
-import type { TilingCommand, TilingKeyboardAction } from "../core/types";
+} from "../engine/commands";
+import type { TilingCommandGates } from "../engine/commands";
+import { resolveMaximizeToggle } from "../engine/pane-switching";
+import type { TilingCommand, TilingKeyboardAction } from "../engine/types";
 
 /**
  * Pure unit coverage for the command contract (HT-API-COMMAND-KEYBOARD-SURFACE

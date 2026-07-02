@@ -7,7 +7,7 @@ import type {
   TilingTileAccent,
   TilingTileAccentSwatch,
   TilingThemeId,
-} from "../core/types";
+} from "../engine/types";
 
 /**
  * hypr-tiling theme engine.

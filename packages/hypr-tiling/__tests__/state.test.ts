@@ -13,20 +13,20 @@ import {
   swapLeafTiles,
   toggleSplitAxis,
   updateSplitRatio,
-} from "../core/state";
-import type { TilingGrowConstraints } from "../core/state";
+} from "../engine/state";
+import type { TilingGrowConstraints } from "../engine/state";
 import {
   isStaticAlongSplitAxis,
   resolveBinarySplitDistribution,
-} from "../core/pane-sizing";
-import type { BinarySplitDistribution, SplitChildMainSizing } from "../core/pane-sizing";
+} from "../engine/pane-sizing";
+import type { BinarySplitDistribution, SplitChildMainSizing } from "../engine/pane-sizing";
 import type {
   TilingLayoutNode,
   TilingLeafNode,
   TilingMovePlacement,
   TilingSplitNode,
   TilingPaneSizing,
-} from "../core/types";
+} from "../engine/types";
 
 function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };

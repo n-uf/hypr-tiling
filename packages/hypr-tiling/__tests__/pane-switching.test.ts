@@ -19,14 +19,14 @@ import {
   resolveJumpedPaneId,
   resolveKeymap,
   resolveMaximizeToggle,
-} from "../core/pane-switching";
+} from "../engine/pane-switching";
 import type {
   ResolvedTilingKeyChordModifiers,
   ResolvedTilingKeymap,
   TilingKeyboardAction,
   TilingKeyboardEventLike,
   TilingPaneSwitcherState,
-} from "../core/types";
+} from "../engine/types";
 
 /**
  * Build a keyboard-event-like for matching. `code` is the PHYSICAL key the

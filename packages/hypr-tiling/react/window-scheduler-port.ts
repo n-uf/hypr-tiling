@@ -1,4 +1,4 @@
-import type { SchedulerPort } from "../core/scheduler-port";
+import type { SchedulerPort } from "../engine/scheduler-port";
 
 /**
  * Default `window`-backed {@link SchedulerPort} host adapter. Repackages — without

@@ -4,7 +4,7 @@
  * `releasePointerCapture` / `hasPointerCapture` glue the renderer used to inline
  * against its drag-root element (`rootRef`).
  *
- * The drag FSM input driver (`core/input-driver.ts`) and the renderer's
+ * The drag FSM input driver (`engine/input-driver.ts`) and the renderer's
  * long-press promotion + settle teardown route every capture/release through
  * this port instead of touching the DOM directly, so the capture lifecycle is
  * host-agnostic (a vanilla adapter can implement it over a plain element).

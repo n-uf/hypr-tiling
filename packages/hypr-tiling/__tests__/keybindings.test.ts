@@ -1,14 +1,14 @@
 import { describe, expect, it } from "@jest/globals";
-import { defaultKeyBindings, matchKeyBinding } from "../core/keybindings";
-import { cycleSplitMasterOrientation } from "../core/state";
-import { resolveKeymap } from "../core/pane-switching";
+import { defaultKeyBindings, matchKeyBinding } from "../engine/keybindings";
+import { cycleSplitMasterOrientation } from "../engine/state";
+import { resolveKeymap } from "../engine/pane-switching";
 import type {
   TilingLayoutNode,
   TilingSplitNode,
   ResolvedTilingKeymap,
   TilingKeyBinding,
   TilingKeyboardEventLike,
-} from "../core/types";
+} from "../engine/types";
 
 /**
  * Pure unit coverage for the public keyboard-binding registry
