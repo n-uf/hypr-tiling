@@ -1,11 +1,12 @@
 import { describe, expect, it } from "@jest/globals";
-import { createElement } from "react";
+import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   TILING_OBSERVABILITY_COLOR_DEFAULTS,
   TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
   DragSourceSlotReservation,
   buildDragPaneSnapshot,
+  buildGhostTileArgs,
   renderDragPaneShell,
 } from "../react/tiling-renderer";
 import { resolveDragCommitFocusLeafId } from "../engine/drag-machine";
@@ -17,7 +18,11 @@ import {
   type TilingTheme,
 } from "../react/theme";
 import type { TilingDropIntentState } from "../engine/drop-intent-resolver";
-import type { TilingDragPaneSnapshot, TilingTile } from "../engine/types";
+import type {
+  TilingDragPaneSnapshot,
+  TilingRenderTileProps,
+  TilingTile,
+} from "../engine/types";
 
 /**
  * Drag-visuals contract after the focus-follows-dragged-pane change:
@@ -173,6 +178,134 @@ describe("dragged ghost wears the focus frame (focus follows the dragged pane)",
     );
     expect(markup).toContain(accentHue("violet").focusBorder);
     expect(markup).toContain(accentHue("violet").focusRing);
+  });
+});
+
+/**
+ * The floating ghost routes through the consumer `renderTile` when one is
+ * provided (so a custom skin's pane chrome travels with the drag), and falls
+ * back to `renderDragPaneShell` (the built-in default surface) only when
+ * `renderTile == null`. `buildGhostTileArgs` is the ghost's `TilingRenderTileProps`
+ * builder; `DragPaneOverlay` renders `renderTile(buildGhostTileArgs(...))` inside
+ * the transform wrapper, or `renderDragPaneShell(...)` when there is no renderer.
+ * This exercises the pure builder + a mirror of the component's one-line routing,
+ * which is the part that does NOT require a simulated DOM pointer drag.
+ */
+describe("floating drag ghost routes through consumer renderTile (custom skin travels with the drag)", (): void => {
+  const GHOST_TILE: TilingTile = {
+    id: "tile-src",
+    title: "Source Pane",
+    description: "carried body",
+    accent: "violet",
+    rows: ["ghost row one"],
+    content: createElement("div", { "data-custom-body": "1" }, "custom body"),
+  };
+  const SOURCE_LEAF = "leaf-src";
+
+  it("buildGhostTileArgs sets the traveling-pane flags a consumer expects", (): void => {
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
+    const args: TilingRenderTileProps = buildGhostTileArgs(
+      snapshot,
+      SOURCE_LEAF,
+      3,
+      420,
+      true,
+    );
+    expect(args.leafId).toBe(SOURCE_LEAF);
+    expect(args.tile.id).toBe("tile-src");
+    expect(args.tile.title).toBe("Source Pane");
+    expect(args.tile.content).toBe(GHOST_TILE.content);
+    expect(args.paneOrdinal).toBe(3);
+    expect(args.paneWidthPx).toBe(420);
+    // The traveling pane: it is the drag source, wears the focus frame, paints
+    // content per the uniform CONTENT rule.
+    expect(args.isDragSource).toBe(true);
+    expect(args.isFocused).toBe(true);
+    expect(args.paneBodyRenderMode).toBe("render-content");
+    // Every other role flag is in its resting/false state.
+    expect(args.isDropTarget).toBe(false);
+    expect(args.isDropEligible).toBe(false);
+    expect(args.isHoveringDropCandidate).toBe(false);
+    expect(args.isInvalidDrop).toBe(false);
+    expect(args.isMaximized).toBe(false);
+    expect(args.isMoveSource).toBe(false);
+    expect(args.isMultiSelected).toBe(false);
+    expect(args.dropZone).toBeNull();
+    expect(args.preview).toBeNull();
+  });
+
+  it("respects the content toggle: hidden content → render-empty body mode", (): void => {
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
+    const hidden: TilingRenderTileProps = buildGhostTileArgs(
+      snapshot,
+      SOURCE_LEAF,
+      1,
+      300,
+      false,
+    );
+    expect(hidden.isPaneContentVisible).toBe(false);
+    expect(hidden.paneBodyRenderMode).toBe("render-empty");
+  });
+
+  it("ghost interaction handlers are safe no-ops (ghost is aria-hidden / non-interactive)", (): void => {
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
+    const args: TilingRenderTileProps = buildGhostTileArgs(
+      snapshot,
+      SOURCE_LEAF,
+      1,
+      300,
+      true,
+    );
+    // Invoking every wired callback must not throw and must return nothing.
+    expect(args.onToggleMaximize()).toBeUndefined();
+    expect(args.onSetSizingMode("static-width")).toBeUndefined();
+    expect(args.onAcquireSpace("right")).toBeUndefined();
+    expect(args.onFocus()).toBeUndefined();
+    expect(args.onToggleMultiSelect()).toBeUndefined();
+    expect(args.onGroupMultiSelection(SOURCE_LEAF)).toBeUndefined();
+    expect(args.onHandlePointerDown({} as never)).toBeUndefined();
+    expect(args.onPointerMove({} as never)).toBeUndefined();
+    expect(args.onPointerLeave({} as never)).toBeUndefined();
+  });
+
+  it("with a custom renderTile the ghost paints the custom skin (its data-leaf-id + body travel)", (): void => {
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
+    const args: TilingRenderTileProps = buildGhostTileArgs(
+      snapshot,
+      SOURCE_LEAF,
+      1,
+      300,
+      true,
+    );
+    // A custom skin: a root carrying data-leaf-id + a distinctive marker + a body
+    // gated on paneBodyRenderMode (the documented custom-pane contract).
+    const renderTile = (a: TilingRenderTileProps): ReactElement =>
+      createElement(
+        "section",
+        { "data-leaf-id": a.leafId, "data-custom-skin": "yes" },
+        a.tile.title,
+        a.paneBodyRenderMode === "render-content" ? a.tile.content : null,
+      );
+    // DragPaneOverlay routing (renderTile != null → renderTile(ghostArgs)).
+    const markup: string = renderToStaticMarkup(renderTile(args));
+    expect(markup).toContain("data-custom-skin");
+    expect(markup).toContain(`data-leaf-id="${SOURCE_LEAF}"`);
+    expect(markup).toContain("Source Pane");
+    expect(markup).toContain("data-custom-body");
+    // The custom skin does NOT carry the library's built-in ghost surface chrome.
+    expect(markup).not.toContain("drag header to swap");
+  });
+
+  it("with no renderTile the ghost falls back to the built-in default surface exactly", (): void => {
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
+    // DragPaneOverlay routing (renderTile == null → renderDragPaneShell(...)).
+    const markup: string = renderToStaticMarkup(
+      renderDragPaneShell(snapshot, NEON, true),
+    );
+    // Built-in ghost surface chrome present; no custom-skin markers.
+    expect(markup).toContain("Source Pane");
+    expect(markup).not.toContain("data-custom-skin");
+    expect(markup).toContain(accentHue("violet").focusBorder);
   });
 });
 

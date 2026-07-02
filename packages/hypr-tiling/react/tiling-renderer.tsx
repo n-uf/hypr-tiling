@@ -1228,6 +1228,96 @@ function OverlayPortal({
 }
 
 /**
+ * Safe no-op for the ghost's interaction handlers. The floating ghost is
+ * `aria-hidden` + `pointer-events-none` (never itself interactive — the live
+ * drag gesture is owned by the captured window listener, and drag mechanics
+ * source off the in-tree reservation slot), so every callback a consumer
+ * `renderTile` wires (focus, maximize, sizing, multi-select, the drag-handle
+ * pointer-down, hover telemetry) is inert on the ghost. Module-level so the ghost
+ * tileArgs keep a stable identity across frames. Typed to the parameterless
+ * shape and assignable to every `TilingRenderTileProps` handler slot (a
+ * zero-arg `() => void` satisfies each `(arg) => void` callback contract).
+ */
+const GHOST_TILE_NOOP = (): void => {};
+
+/**
+ * Builds the `TilingRenderTileProps` the floating ghost passes to a consumer
+ * `renderTile` so a custom skin's pane chrome TRAVELS with the drag. It is a
+ * faithful representation of the dragged SOURCE leaf's resting/focused pane,
+ * mirroring the in-tree `tileArgs` construction in `renderBranch`:
+ *
+ * - identity + payload come from the pickup `snapshot` (the SAME captured
+ *   content `renderDragPaneShell` paints — never a live re-read; the ghost is
+ *   the single pickup-time instance), reconstructed into a `TilingTile`;
+ * - `isDragSource: true` + `isFocused: true` — the ghost wears the focus frame
+ *   at rest (see `renderDragPaneShell`), and focus travels with the dragged pane;
+ * - `paneBodyRenderMode` from the SAME uniform CONTENT rule the shell uses
+ *   (`resolvePaneBodyRenderMode(false, isPaneContentVisible)` — the ghost is the
+ *   single painted instance, never a seat reservation, so `false`);
+ * - every drop / maximize / multi-select / move flag in its resting-false state,
+ *   and every interaction handler a safe no-op (`GHOST_TILE_NOOP`): the floating
+ *   ghost is `aria-hidden` + `pointer-events-none`, so a consumer pane's wired
+ *   callbacks are inert on it (the live drag gesture is owned by the captured
+ *   window listener + the in-tree reservation slot, not the ghost).
+ *
+ * Pure + DOM-free so the ghost-routing contract (custom skin travels; flags;
+ * no-op handlers) is unit-testable without simulating a pointer drag.
+ */
+export function buildGhostTileArgs(
+  snapshot: TilingDragPaneSnapshot,
+  sourceLeafId: string,
+  paneOrdinal: number,
+  paneWidthPx: number,
+  isPaneContentVisible: boolean,
+): TilingRenderTileProps {
+  const ghostTile: TilingTile = {
+    id: snapshot.tileId,
+    title: snapshot.title,
+    description: snapshot.description ?? undefined,
+    accent: snapshot.accent,
+    rows: snapshot.rows,
+    content: snapshot.content,
+  };
+  return {
+    leafId: sourceLeafId,
+    tile: ghostTile,
+    paneOrdinal,
+    paneWidthPx,
+    isPaneContentVisible,
+    paneBodyRenderMode: resolvePaneBodyRenderMode(false, isPaneContentVisible),
+    isDragSource: true,
+    isDropTarget: false,
+    isDropEligible: false,
+    isHoveringDropCandidate: false,
+    isInvalidDrop: false,
+    isFocused: true,
+    isRearrangeEnabled: true,
+    isMoveSource: false,
+    moveTargetPlacement: null,
+    isMaximized: false,
+    isMaximizeEnabled: false,
+    onToggleMaximize: GHOST_TILE_NOOP,
+    isTitleBarSizingEnabled: false,
+    isTitleBarAcquireSpaceEnabled: false,
+    widthSizingMode: "flexible",
+    heightSizingMode: "flexible",
+    onSetSizingMode: GHOST_TILE_NOOP,
+    onAcquireSpace: GHOST_TILE_NOOP,
+    dropZone: null,
+    preview: null,
+    isMultiSelectGroupingEnabled: false,
+    isMultiSelected: false,
+    canGroupMultiSelection: false,
+    onToggleMultiSelect: GHOST_TILE_NOOP,
+    onGroupMultiSelection: GHOST_TILE_NOOP,
+    onFocus: GHOST_TILE_NOOP,
+    onHandlePointerDown: GHOST_TILE_NOOP,
+    onPointerMove: GHOST_TILE_NOOP,
+    onPointerLeave: GHOST_TILE_NOOP,
+  };
+}
+
+/**
  * The SINGLE painted instance of the dragged pane. It free-follows the cursor
  * (instant, no lag) when no slot is resolved, and HOPS INTO and FILLS the
  * resolved slot when `seatFootprint` is set: the same node's base rect becomes
@@ -1248,6 +1338,8 @@ function DragPaneOverlay({
   prefersReducedMotion,
   isPaneContentVisible,
   frameDeadlineMs,
+  renderTile,
+  ghostPaneOrdinal,
 }: {
   dragVisualState: TilingDragVisualState | null;
   dragHopDurationMs: number;
@@ -1264,6 +1356,19 @@ function DragPaneOverlay({
    * inverted `First`. From `interaction.dragRecovery.frameDeadlineMs`.
    */
   frameDeadlineMs: number;
+  /**
+   * The consumer's custom pane renderer (the SAME one the in-tree panes use), or
+   * `undefined` for the built-in default pane. When provided, the floating ghost
+   * paints the dragged pane through `renderTile` so a custom skin's pane chrome
+   * TRAVELS with the drag; when `undefined`, the ghost falls back to the
+   * library's built-in `renderDragPaneShell` (default-chrome behavior preserved
+   * exactly).
+   */
+  renderTile:
+    | ((args: TilingRenderTileProps) => React.ReactNode)
+    | undefined;
+  /** 1-based pane ordinal of the dragged source leaf (for the ghost tileArgs). */
+  ghostPaneOrdinal: number;
 }): React.ReactElement | null {
   const theme: TilingTheme = useTilingTheme();
   const nodeRef = React.useRef<HTMLDivElement | null>(null);
@@ -1494,6 +1599,34 @@ function DragPaneOverlay({
   // drop-shadow + slightly lower opacity than the seated/at-rest look. Dropped
   // under reduced motion (no transition, settled look).
   const lifted: boolean = !seated && !prefersReducedMotion;
+
+  // Consumer-first ghost body: when a custom `renderTile` is supplied, the
+  // floating ghost paints the dragged pane THROUGH it (`buildGhostTileArgs`) so a
+  // custom skin's pane chrome travels with the drag (the bug this fixes); with no
+  // `renderTile` the ghost keeps the built-in `renderDragPaneShell` default
+  // surface exactly.
+  //
+  // `data-leaf-id` / measurement invariant: a consumer `renderTile` root carries
+  // `data-leaf-id={leafId}`, and here that id is the dragged SOURCE leaf id — the
+  // same id the in-tree reservation slot emits. But the ghost renders through the
+  // `document.body` `OverlayPortal` (`position: fixed`), OUTSIDE both `rootRef`
+  // (which scopes `measureReservationRect` via `dragSourceReservationSelector`
+  // and `measureLeafRect`) and `viewportRef` (which scopes the survivor-reflow
+  // `querySelectorAll('[data-leaf-id]')`). Every measurement selector is
+  // root/viewport-scoped, so the body-portal ghost's `data-leaf-id` is never
+  // collected — no duplicate-id collision, no `cc23956`-class seat-measurement
+  // regression. Theme context: this component calls `useTilingTheme()` and is
+  // rendered from within the renderer's `TilingThemeProvider` subtree; React
+  // context propagates through `createPortal`, so the consumer `renderTile`'s own
+  // `useTilingTheme()` resolves the active theme inside the body portal too.
+  const snapshot: TilingDragPaneSnapshot = dragVisualState.snapshot;
+  const ghostTileArgs: TilingRenderTileProps = buildGhostTileArgs(
+    snapshot,
+    dragVisualState.sourceLeafId,
+    ghostPaneOrdinal,
+    baseRect.width,
+    isPaneContentVisible,
+  );
   return (
     <OverlayPortal>
       <div
@@ -1520,11 +1653,9 @@ function DragPaneOverlay({
               : "transition-[opacity,box-shadow] duration-150",
           )}
         >
-          {renderDragPaneShell(
-            dragVisualState.snapshot,
-            theme,
-            isPaneContentVisible,
-          )}
+          {renderTile == null
+            ? renderDragPaneShell(snapshot, theme, isPaneContentVisible)
+            : renderTile(ghostTileArgs)}
         </div>
       </div>
     </OverlayPortal>
@@ -7621,6 +7752,15 @@ const TilingRendererComponent = React.forwardRef<
           prefersReducedMotion={prefersReducedMotion}
           isPaneContentVisible={isPaneContentVisible}
           frameDeadlineMs={dragRecoveryFrameDeadlineMs}
+          renderTile={renderTile}
+          ghostPaneOrdinal={
+            dragVisualState != null
+              ? Math.max(
+                  1,
+                  leafIds.indexOf(dragVisualState.sourceLeafId) + 1,
+                )
+              : 1
+          }
         />
         {dragCursorEnabled ? (
           <DragCursorOverlay
