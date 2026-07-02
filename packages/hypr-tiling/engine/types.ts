@@ -1201,10 +1201,27 @@ export interface TilingLayoutConfig {
 }
 
 /**
- * The argument object passed to a custom `renderTile`. Carries the tile
- * payload, this pane's derived state (focus / drag / drop / sizing), the
- * observability flags, and the imperative callbacks a custom pane surface wires
- * to its header, drag handle, and controls.
+ * The argument object passed to a custom `renderTile`. This is the clean,
+ * consumer-facing pane contract: the tile payload, this pane's derived state
+ * (focus / drag / drop / sizing), and the imperative callbacks a custom pane
+ * surface wires to its header, drag handle, and controls. Every field is
+ * something a custom pane legitimately reads to style itself or wires to drive
+ * an interaction — nothing here is a debug, observability, or showcase concern
+ * (those live on the internal render path and the `/devtools` surface).
+ *
+ * @remarks
+ * A minimal custom pane needs only three wiring rules, each of which the
+ * optional public helper primitives ({@link TilingPaneRoot},
+ * {@link TilingDragHandle}, {@link TilingPaneAction}, {@link TilingPaneBody})
+ * encode so they cannot be gotten wrong:
+ * - the pane root must carry `data-leaf-id={leafId}` (the renderer resolves the
+ *   drag source through the `[data-leaf-id]` attribute) and wire `onFocus`,
+ *   `onPointerMove`, `onPointerLeave`;
+ * - the drag handle wires `onHandlePointerDown` with `touch-action: none`;
+ * - header action buttons must `stopPropagation` on pointer-down + click so a
+ *   click does not start a drag or steal focus;
+ * - the body renders only when `paneBodyRenderMode === "render-content"` (the
+ *   drag ghost reuses the same render path).
  */
 export interface TilingRenderTileProps {
   /** The leaf node id this render targets. */
@@ -1279,43 +1296,8 @@ export interface TilingRenderTileProps {
   onAcquireSpace: (direction: TilingFocusDirection) => void;
   /** The resolved drop zone under the cursor for this pane, or `null`. */
   dropZone: TilingLeafDropZone | null;
-  /** Human-readable drop-intent resolution path (debug overlay), or `null`. */
-  dropIntentDebugPath: string | null;
-  /** The resolved drop action for the debug overlay, or `null`. */
-  dropIntentDebugAction: TilingDropAction | null;
   /** The projected landing/result preview for this pane, or `null`. */
   preview: TilingLeafDropPreview | null;
-  /** Whether translucent projected landing overlays are shown. */
-  showDropPreviewOverlays: boolean;
-  /** Whether drop border hints are painted on candidate panes. */
-  showDropBorderHints: boolean;
-  /** Whether the translucent drop-intent background tint is shown. */
-  showDropIntentTranslucentBg: boolean;
-  /** Whether the drop-intent debug overlay is shown. */
-  showDropIntentDebug: boolean;
-  /**
-   * Center swap-zone fraction of the adjustable drop hit-zone geometry. Drives
-   * the per-pane drop-intent hint overlay's clip-paths so the drawn hint tracks
-   * the operator-tuned `centerRatio` (keeping it consistent with the resolver
-   * and the `PaneHitZoneOverlay`). Default `0.34`.
-   */
-  dropHitZoneCenterRatio: number;
-  /**
-   * Per-axis HORIZONTAL swap-zone fraction for the per-pane drop-intent hint
-   * overlay clip-paths (the X boundaries). Equals `dropHitZoneCenterRatio` when
-   * no per-axis override diverges them. Default `0.34`.
-   */
-  dropHitZoneCenterRatioX: number;
-  /** Per-axis VERTICAL swap-zone fraction for the per-pane drop hint overlay (the Y boundaries). Default `0.34`. */
-  dropHitZoneCenterRatioY: number;
-  /** Opacity `[0, 1]` for the pane hit-zone debug overlay. */
-  paneHitZonesAlpha: number;
-  /** Per-pane hit-zone overlay debug state, or `null` when not shown. */
-  paneHitZoneDebug: TilingPaneHitZoneOverlayDebugState | null;
-  /** Resolved observability overlay colors (hex) for this pane's overlays. */
-  observabilityColors: TilingObservabilityColorConfig;
-  /** Per-subject observability overlay visibility toggles. */
-  observabilityColorEnables: TilingObservabilityColorEnableConfig;
   /**
    * Establish single focus on this pane (and clear any in-progress
    * multi-selection). Wire to the pane root's `onFocus`. The renderer reads the
@@ -1366,6 +1348,55 @@ export interface TilingRenderTileProps {
   onPointerMove: (event: React.PointerEvent<HTMLElement>) => void;
   /** Clears this pane's hover telemetry when the pointer leaves it. */
   onPointerLeave: (event: React.PointerEvent<HTMLElement>) => void;
+}
+
+/**
+ * The INTERNAL superset of {@link TilingRenderTileProps} the renderer builds for
+ * its own default pane (`DefaultTilingTile`). It carries the consumer contract
+ * PLUS the debug / observability fields (drop-intent debug labels, hit-zone
+ * geometry, observability overlay colors) that the built-in pane and the
+ * `/devtools` observability panel consume to paint their overlays. These fields
+ * are deliberately OFF the consumer {@link TilingRenderTileProps} contract: a
+ * custom `renderTile` never receives them, keeping the public pane args clean.
+ *
+ * @internal
+ */
+export interface TilingDefaultTileProps extends TilingRenderTileProps {
+  /** Human-readable drop-intent resolution path (debug overlay), or `null`. */
+  dropIntentDebugPath: string | null;
+  /** The resolved drop action for the debug overlay, or `null`. */
+  dropIntentDebugAction: TilingDropAction | null;
+  /** Whether translucent projected landing overlays are shown. */
+  showDropPreviewOverlays: boolean;
+  /** Whether drop border hints are painted on candidate panes. */
+  showDropBorderHints: boolean;
+  /** Whether the translucent drop-intent background tint is shown. */
+  showDropIntentTranslucentBg: boolean;
+  /** Whether the drop-intent debug overlay is shown. */
+  showDropIntentDebug: boolean;
+  /**
+   * Center swap-zone fraction of the adjustable drop hit-zone geometry. Drives
+   * the per-pane drop-intent hint overlay's clip-paths so the drawn hint tracks
+   * the operator-tuned `centerRatio` (keeping it consistent with the resolver
+   * and the `PaneHitZoneOverlay`). Default `0.34`.
+   */
+  dropHitZoneCenterRatio: number;
+  /**
+   * Per-axis HORIZONTAL swap-zone fraction for the per-pane drop-intent hint
+   * overlay clip-paths (the X boundaries). Equals `dropHitZoneCenterRatio` when
+   * no per-axis override diverges them. Default `0.34`.
+   */
+  dropHitZoneCenterRatioX: number;
+  /** Per-axis VERTICAL swap-zone fraction for the per-pane drop hint overlay (the Y boundaries). Default `0.34`. */
+  dropHitZoneCenterRatioY: number;
+  /** Opacity `[0, 1]` for the pane hit-zone debug overlay. */
+  paneHitZonesAlpha: number;
+  /** Per-pane hit-zone overlay debug state, or `null` when not shown. */
+  paneHitZoneDebug: TilingPaneHitZoneOverlayDebugState | null;
+  /** Resolved observability overlay colors (hex) for this pane's overlays. */
+  observabilityColors: TilingObservabilityColorConfig;
+  /** Per-subject observability overlay visibility toggles. */
+  observabilityColorEnables: TilingObservabilityColorEnableConfig;
 }
 
 /** The five drop regions of a pane: a central swap zone plus four insert edges. */
@@ -1716,9 +1747,10 @@ export interface TilingObservabilityColorEnableConfig {
  * and accent can each be left uncontrolled (renderer-managed) or lifted into
  * your state via the matching `on*Change` callback. Interaction behavior is
  * tuned entirely through the single `interaction` prop
- * ({@link TilingInteractionCapabilities}); the many `show*` / `observability*`
- * props drive the optional drag/drop observability overlays and are inert unless
- * a drag is in flight.
+ * ({@link TilingInteractionCapabilities}). This surface is debug-free: the
+ * drag/drop observability overlays, hit-zone visualizations, and telemetry
+ * feeds are a devtools concern, exposed through `TilingRendererObservabilityProps`
+ * on the `@n-uf/hypr-tiling/devtools` entry rather than here.
  *
  * @example
  * ```tsx
@@ -1796,14 +1828,8 @@ export interface TilingRendererProps {
   maximizedLeafId?: string | null;
   /** Notified whenever the maximized pane changes (`null` on restore). */
   onMaximizedLeafChange?: (leafId: string | null) => void;
-  /** Observability hook: notified with the current projected-overlay count. */
-  onProjectedOverlayCountChange?: (count: number) => void;
   /** Whether translucent projected landing overlays are shown during a drag. */
   showDropPreviewOverlays?: boolean;
-  /** Override colors (hex) for the drag/drop observability overlays. */
-  observabilityColors?: TilingObservabilityColorConfig;
-  /** Per-subject visibility toggles for the observability overlays. */
-  observabilityColorEnables?: TilingObservabilityColorEnableConfig;
   /** Background opacity `[0, 1]` for the projected landing overlays. */
   projectedOverlayBackgroundAlpha?: number;
   /**
@@ -1854,6 +1880,26 @@ export interface TilingRendererProps {
   swapBounceMagnitudePercent?: number;
   /** Whether drop border hints are painted on candidate panes during a drag. */
   showDropBorderHints?: boolean;
+}
+
+/**
+ * The debug / observability inputs to {@link TilingRenderer}. Deliberately OFF
+ * the consumer {@link TilingRendererProps} contract — they drive the drag/drop
+ * observability overlays, hit-zone visualizations, and telemetry feeds that the
+ * `/devtools` observability panel consumes, not any consumer-facing behavior.
+ * Reach for them through the `@n-uf/hypr-tiling/devtools` entry (which exports
+ * the renderer typed to also accept these); the curated `.` renderer surface
+ * stays free of debug cruft.
+ *
+ * @public
+ */
+export interface TilingRendererObservabilityProps {
+  /** Observability hook: notified with the current projected-overlay count. */
+  onProjectedOverlayCountChange?: (count: number) => void;
+  /** Override colors (hex) for the drag/drop observability overlays. */
+  observabilityColors?: TilingObservabilityColorConfig;
+  /** Per-subject visibility toggles for the observability overlays. */
+  observabilityColorEnables?: TilingObservabilityColorEnableConfig;
   /** Whether the translucent drop-intent background tint is shown during a drag. */
   showDropIntentTranslucentBg?: boolean;
   /** Whether the drop-intent debug overlay is shown. */

@@ -613,7 +613,7 @@ export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
     title: "Render your own pane frame & header",
     section: "howto",
     summary:
-      "renderTile is a FULL-PANE render prop, not a content slot — it returns the whole pane (frame + header + body) and receives every handle and state flag, so you can own the ENTIRE pane look-and-feel. Root on article[data-leaf-id]; wire onHandlePointerDown on your header (drag), onToggleMaximize, onFocus, and onToggleMultiSelect + onGroupMultiSelection (Alt/Opt+click grouping); style from isFocused / isMaximized / isDragSource and compose with theme tokens from useTilingTheme (resolveAccentText, resolveFocusFrame). Render the body only when paneBodyRenderMode is render-content so the drag ghost stays in sync.",
+      "renderTile is a FULL-PANE render prop, not a content slot — it returns the whole pane (frame + header + body) and receives every handle and state flag, so you can own the ENTIRE pane look-and-feel. Take the easy path with the optional helper primitives (TilingPaneRoot, TilingDragHandle, TilingPaneAction, TilingPaneBody), which encode the wiring rules so they can't be gotten wrong, or wire the raw DOM by hand: root on article[data-leaf-id]; wire onHandlePointerDown on your header (drag), onToggleMaximize, onFocus, and onToggleMultiSelect + onGroupMultiSelection (Alt/Opt+click grouping); style from isFocused / isMaximized / isDragSource and compose with theme tokens from useTilingTheme (resolveAccentText, resolveFocusFrame). Render the body only when paneBodyRenderMode is render-content so the drag ghost stays in sync.",
   },
   {
     id: "howto-theming",

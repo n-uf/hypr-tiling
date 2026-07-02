@@ -32,7 +32,18 @@ The package exposes three import paths through `package.json#exports`
 
 - **`TilingRenderer`** — the layout renderer: controlled layout tree, focus and
   maximize, drag-and-drop with FLIP animation and self-healing recovery,
-  multi-select grouping (Alt/Opt+G), pane switching, and per-tile accents.
+  multi-select grouping (Alt/Opt+G), pane switching, and per-tile accents. A
+  custom `renderTile` receives the clean, debug-free `TilingRenderTileProps`
+  contract (tile payload + pane state flags + interaction handlers) — the
+  drag/drop observability + debug fields are OFF this surface (they route through
+  the internal default pane and `/devtools`).
+- **Custom-pane helper primitives** — optional, unstyled conveniences layered
+  over `renderTile` that encode the pane wiring rules so a custom pane can't get
+  them wrong: `TilingPaneRoot` (`data-leaf-id` root + focus/hover handlers),
+  `TilingDragHandle` (drag pickup + `touch-action: none` + Alt/Opt group toggle),
+  `TilingPaneAction` (action button that stops propagation), and `TilingPaneBody`
+  (renders children only in `render-content` mode). The raw `renderTile` args
+  stay the full escape hatch.
 - **Theming** — `TilingThemeProvider` / `TilingTheme` for token-driven styling.
 - **Layout inspection & mutation** — the layout is a recursive tree of
   `TilingLayoutNode` (`TilingLeafNode` / `TilingSplitNode` / `TilingGroupNode`).
@@ -50,7 +61,7 @@ The package exposes three import paths through `package.json#exports`
   (`paneSwitching.showContentToggle`, default `false`), so a consumer that
   renders its own pane content never surfaces an end-user control that blanks it
   and panes paint content at rest with no wiring.
-- **Hand-authored facade** — 104 public API items. Engine-grade internals are
+- **Hand-authored facade** — 99 public API items. Engine-grade internals are
   physically layered under `engine/` and reached only through the `.` facade (via
   `react/`) or the explicit `./engine` entry. An
   [API Extractor](https://api-extractor.com/) report per entry is checked in
@@ -61,16 +72,28 @@ The package exposes three import paths through `package.json#exports`
 
 ### Developer / observability tooling — `@n-uf/hypr-tiling/devtools`
 
-The observability panel and its seed defaults live on a separate `/devtools`
-subpath, so a renderer-only consumer never pulls the panel into its bundle:
+The observability panel, its seed defaults, and the whole debug/observability
+input surface live on a separate `/devtools` subpath, so a renderer-only consumer
+never pulls them into its bundle:
 
 ```ts
-import { TilingObservabilityPanel, ANIMATION_CONTROL_DEFAULTS } from "@n-uf/hypr-tiling/devtools";
+import {
+  TilingObservabilityPanel,
+  ANIMATION_CONTROL_DEFAULTS,
+  TilingRenderer, // the observability-instrumented view of the same renderer
+} from "@n-uf/hypr-tiling/devtools";
 ```
 
-The observability/debug **types** referenced by public renderer props
-(`onDropIntentChange`, `onLiveHitLogChange`, and `renderTile`'s `paneHitZoneDebug`
-/ `observabilityColors`) remain on the main `.` entry.
+The renderer's observability inputs — overlay colors
+(`observabilityColors` / `observabilityColorEnables`), the hit-zone / drop-intent
+debug flags, and the `onDropIntentChange` / `onLiveHitLogChange` /
+`onProjectedOverlayCountChange` telemetry hooks — are collected into
+`TilingRendererObservabilityProps` and kept OFF the consumer `TilingRendererProps`
+contract. `/devtools` exports both those props and the observability-typed view of
+the SAME `TilingRenderer` component that accepts them, plus the debug/observability
+snapshot **types** they reference (`TilingDropIntentDebugState`,
+`TilingLiveHitLogState`, `TilingObservabilityColorConfig`, `TilingPaneHitZone*`,
+…). The consumer `.` surface carries none of them.
 
 ### Documentation
 

@@ -228,6 +228,7 @@ import type {
   TilingPaneHitZoneCandidateDebugState,
   TilingPaneHitZoneOverlayDebugState,
   TilingRenderTileProps,
+  TilingDefaultTileProps,
   TilingSplitAxis,
   TilingSplitNode,
   TilingSplitResizeState,
@@ -235,6 +236,7 @@ import type {
   TilingTileAccent,
   TilingTileAccentSwatch,
   TilingRendererProps,
+  TilingRendererObservabilityProps,
   ResolvedTilingDropHitZoneGeometryCapability,
   ResolvedTilingInteractionCapabilities,
   ResolvedTilingKeymap,
@@ -2192,7 +2194,7 @@ function DefaultTilingTile({
   onHandlePointerDown,
   onPointerMove,
   onPointerLeave,
-}: TilingRenderTileProps): React.ReactElement {
+}: TilingDefaultTileProps): React.ReactElement {
   const theme: TilingTheme = useTilingTheme();
   const isNarrowHeader: boolean = paneWidthPx < 430;
   // A selected pane offers the Group control once the selection is groupable
@@ -3601,9 +3603,9 @@ function MovePaneAffordance({
  * @see {@link TilingInteractionCapabilities}
  * @see {@link TilingCommandHandle}
  */
-export const TilingRenderer = React.forwardRef<
+const TilingRendererComponent = React.forwardRef<
   TilingCommandHandle,
-  TilingRendererProps
+  TilingRendererProps & TilingRendererObservabilityProps
 >(function TilingRenderer(
   {
     layout,
@@ -3639,7 +3641,7 @@ export const TilingRenderer = React.forwardRef<
     paneHitZoneSourceLeafId = null,
     onDropIntentChange,
     onLiveHitLogChange,
-  }: TilingRendererProps,
+  }: TilingRendererProps & TilingRendererObservabilityProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
 ): React.ReactElement {
   // Active theme resolved from the prop (or the library default). The registry
@@ -6732,34 +6734,12 @@ export const TilingRenderer = React.forwardRef<
             acquireLeafSpace(node.id, direction);
           },
           dropZone: effectiveDropZone,
-          dropIntentDebugPath:
-            dropState?.leafId === node.id
-              ? dropIntentAxisPathLabel(dropState.axisPath)
-              : null,
-          dropIntentDebugAction:
-            dropState?.leafId === node.id ? dropState.action : null,
           preview: resolveLeafDropPreviewForMode(
             liveDragModeEnabled,
             node.id,
             dragSourceLeafId,
             dropState,
           ),
-          showDropPreviewOverlays,
-          showDropBorderHints,
-          showDropIntentTranslucentBg,
-          showDropIntentDebug,
-          dropHitZoneCenterRatio:
-            interactionCapabilities.dropHitZoneGeometry.centerRatio,
-          dropHitZoneCenterRatioX:
-            interactionCapabilities.dropHitZoneGeometry.centerRatioX,
-          dropHitZoneCenterRatioY:
-            interactionCapabilities.dropHitZoneGeometry.centerRatioY,
-          paneHitZonesAlpha: paneHitZonesAlphaSafe,
-          paneHitZoneDebug: showPaneHitZones
-            ? (paneHitZoneDebugByLeafId.get(node.id) ?? null)
-            : null,
-          observabilityColors,
-          observabilityColorEnables,
           isMultiSelectGroupingEnabled,
           isMultiSelected: multiSelectedLeafIds.has(node.id),
           canGroupMultiSelection: canGroupMultiSelectionNow,
@@ -6918,6 +6898,36 @@ export const TilingRenderer = React.forwardRef<
           },
         };
 
+        // The INTERNAL superset the built-in default pane consumes: the clean
+        // consumer args PLUS the debug/observability fields (drop-intent debug
+        // labels, hit-zone geometry, observability overlay colors). A custom
+        // `renderTile` receives only `tileArgs` — these never leak to it.
+        const defaultTileArgs: TilingDefaultTileProps = {
+          ...tileArgs,
+          dropIntentDebugPath:
+            dropState?.leafId === node.id
+              ? dropIntentAxisPathLabel(dropState.axisPath)
+              : null,
+          dropIntentDebugAction:
+            dropState?.leafId === node.id ? dropState.action : null,
+          showDropPreviewOverlays,
+          showDropBorderHints,
+          showDropIntentTranslucentBg,
+          showDropIntentDebug,
+          dropHitZoneCenterRatio:
+            interactionCapabilities.dropHitZoneGeometry.centerRatio,
+          dropHitZoneCenterRatioX:
+            interactionCapabilities.dropHitZoneGeometry.centerRatioX,
+          dropHitZoneCenterRatioY:
+            interactionCapabilities.dropHitZoneGeometry.centerRatioY,
+          paneHitZonesAlpha: paneHitZonesAlphaSafe,
+          paneHitZoneDebug: showPaneHitZones
+            ? (paneHitZoneDebugByLeafId.get(node.id) ?? null)
+            : null,
+          observabilityColors,
+          observabilityColorEnables,
+        };
+
         // A leaf static in a dimension is content-sized in that dimension —
         // UNLESS the title-bar STATIC action pinned a measured bbox px on that
         // dimension (PART 2 freeze). When pinned, the wrapper takes the exact
@@ -6993,7 +7003,7 @@ export const TilingRenderer = React.forwardRef<
                 observabilityColorEnables={observabilityColorEnables}
               />
             ) : renderTile == null ? (
-              <DefaultTilingTile {...tileArgs} />
+              <DefaultTilingTile {...defaultTileArgs} />
             ) : (
               renderTile(tileArgs)
             )}
@@ -7638,6 +7648,32 @@ export const TilingRenderer = React.forwardRef<
     </TilingThemeProvider>
   );
 });
+
+/**
+ * The controlled tiling renderer — the single component a consumer mounts. Its
+ * public prop surface ({@link TilingRendererProps}) is the curated, debug-free
+ * contract. The underlying component also accepts the devtools-tier
+ * `TilingRendererObservabilityProps`; that widened view is exported as
+ * `TilingRenderer` from `@n-uf/hypr-tiling/devtools` for the observability panel.
+ */
+export const TilingRenderer =
+  TilingRendererComponent as React.ForwardRefExoticComponent<
+    TilingRendererProps & React.RefAttributes<TilingCommandHandle>
+  >;
+
+/**
+ * The observability-instrumented view of {@link TilingRenderer}: the SAME
+ * component, typed to also accept {@link TilingRendererObservabilityProps} (the
+ * drag/drop observability overlays, hit-zone visualizations, and telemetry
+ * feeds). Exported through `@n-uf/hypr-tiling/devtools` for the observability
+ * panel; consumers use the clean `.` renderer instead.
+ */
+export const TilingRendererWithObservability =
+  TilingRendererComponent as React.ForwardRefExoticComponent<
+    TilingRendererProps &
+      TilingRendererObservabilityProps &
+      React.RefAttributes<TilingCommandHandle>
+  >;
 
 export function isLeafNode(node: TilingLayoutNode): node is TilingLeafNode {
   return node.kind === "leaf";

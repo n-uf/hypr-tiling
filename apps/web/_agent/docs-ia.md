@@ -133,6 +133,16 @@ intact). The interactive showcase (`packages/showcase`) opts back in explicitly
 with `paneSwitching: { showContentToggle: true }`; the homepage relies on the
 default and passes no `interaction` prop. No docs example surfaces the checkbox.
 
+The homepage carries a live **"panes" segmented switch** (`page.tsx`,
+`PaneChromeSwitch`, bottom-right) that flips its `renderTile` between the default
+dark `DocTile` chrome (`Mosaic`) and a light, minimalist custom pane (`Minimal`,
+`apps/web/src/minimal-tile.tsx`). The minimalist variant is built with ONLY the
+public `.` API and the helper primitives, and stays fully interactive (drag /
+resize / maximize / group / focus) — the honest, on-the-real-site dogfood that the
+cleaned consumer contract is genuinely easy. It defaults to `Mosaic`, so the
+prerendered HTML (and thus SEO/LLM content) is unchanged; the switch is a
+hydration enhancement.
+
 ## Compiled examples — the anti-rot mechanism
 
 Guide/quickstart snippets are NOT prose strings that can silently rot. They are
@@ -169,12 +179,47 @@ TSDoc.
 ## Scope boundary + surface demotions
 
 Consumer docs document **only the `.` public API facade** — the hand-authored
-curated surface, rendered as generated reference cards (101 after the demotions
-below). The boundary is enforced by **API Extractor**
-(`api-extractor.index.json`, forgotten-export = error): engine-grade symbols are
-NOT re-exported from the facade and never reach the `.` report or the generated
-reference. Power users reach them through the `@beta` `@n-uf/hypr-tiling/engine`
-entry, documented for contributors and kept off this site.
+curated surface, rendered as generated reference cards (99 after the demotions
+and the debug/observability split below). The boundary is enforced by **API
+Extractor** (`api-extractor.index.json`, forgotten-export = error): engine-grade
+symbols are NOT re-exported from the facade and never reach the `.` report or the
+generated reference. Power users reach them through the `@beta`
+`@n-uf/hypr-tiling/engine` entry, documented for contributors and kept off this
+site.
+
+### Consumer-first surface hardening (debug/observability off `.`)
+
+The `.` render contract is kept free of internal/debug/observability/showcase
+cruft. Two ground-up splits enforce this generically at the source:
+
+- **`renderTile` args** — `TilingRenderTileProps` is the clean consumer subset
+  (tile payload + pane state flags + interaction handlers). The debug /
+  observability fields (`dropIntentDebug*`, `showDropIntent*`,
+  `dropHitZoneCenterRatio*`, `paneHitZone*`, `observabilityColors` /
+  `observabilityColorEnables`) moved to an INTERNAL superset
+  (`TilingDefaultTileProps`) that only the built-in `DefaultTilingTile` consumes.
+  A custom `renderTile` never receives them.
+- **Renderer props** — `TilingRendererProps` is the clean consumer surface. The
+  observability inputs (overlay colors, hit-zone / drop-intent debug flags, and
+  the `onDropIntentChange` / `onLiveHitLogChange` / `onProjectedOverlayCountChange`
+  telemetry hooks) moved to `TilingRendererObservabilityProps` on
+  `@n-uf/hypr-tiling/devtools`, which also exports the observability-typed view of
+  the SAME `TilingRenderer` (used by the showcase panel) and the debug/observability
+  snapshot types (`TilingDropIntentDebugState`, `TilingLiveHitLogState`,
+  `TilingObservabilityColorConfig`, `TilingPaneHitZone*`, …). The `.` report shrank
+  accordingly; the `/devtools` report gained them.
+
+### Optional helper primitives (the easy custom-pane path)
+
+`TilingPaneRoot`, `TilingDragHandle`, `TilingPaneAction`, and `TilingPaneBody`
+are unstyled public primitives on `.` that encode the four otherwise prose-only
+pane wiring rules so a custom `renderTile` cannot get them wrong (data-leaf-id
+root + focus/hover handlers; drag handle + `touch-action: none` + Alt/Opt group
+toggle; action buttons that stop propagation; body render-mode gate). They are a
+convenience layered over the render-prop; the raw `renderTile` args stay the full
+escape hatch. The "Render your own pane frame & header" recipe + its compiled
+example (`docs-examples/custom-chrome.tsx`) show BOTH the primitives path and the
+raw path side by side.
 
 Reference-legibility demotions (moved from `.` to `./engine`): the `accentHue`
 custom-chrome helper and the two prop-less internal drag-duration reference

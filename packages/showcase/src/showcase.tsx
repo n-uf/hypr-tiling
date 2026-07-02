@@ -3,17 +3,11 @@
 import {
   DEFAULT_DRAG_HOP_EASING,
   DEFAULT_TILING_LAYOUT_CONFIG,
-  TilingRenderer,
   queryTilingLayout,
   resolveInteractionCapabilities,
-  type TilingDropIntentDebugState,
   type TilingFocusDirection,
   type TilingLayoutConfig,
   type TilingLayoutNode,
-  type TilingLiveHitLogState,
-  type TilingObservabilityColorConfig,
-  type TilingObservabilityColorEnableConfig,
-  type TilingPaneFootprint,
   type TilingSplitNode,
   type TilingTile,
   type TilingTileAccent,
@@ -30,7 +24,16 @@ import {
   TILING_OBSERVABILITY_COLOR_DEFAULTS,
   TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
   TilingObservabilityPanel,
+  // The observability-instrumented renderer: the same `TilingRenderer`
+  // component, typed to also accept the drag/drop observability props the
+  // showcase drives (colors, hit-zone/debug flags, telemetry hooks).
+  TilingRenderer,
   type TilingObservabilityLedgerEntry,
+  type TilingDropIntentDebugState,
+  type TilingLiveHitLogState,
+  type TilingObservabilityColorConfig,
+  type TilingObservabilityColorEnableConfig,
+  type TilingPaneFootprint,
 } from "@n-uf/hypr-tiling/devtools";
 import * as React from "react";
 import {

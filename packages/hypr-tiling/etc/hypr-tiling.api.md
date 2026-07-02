@@ -342,6 +342,14 @@ export interface TilingCommandHandle {
 }
 
 // @public
+export function TilingDragHandle(input: TilingDragHandleProps): React_2.ReactElement;
+
+// @public
+export interface TilingDragHandleProps extends Omit<React_2.HTMLAttributes<HTMLElement>, "onPointerDown" | "onClick"> {
+    pane: Pick<TilingRenderTileProps, "onHandlePointerDown" | "isMultiSelectGroupingEnabled" | "onToggleMultiSelect">;
+}
+
+// @public
 export type TilingDragMode = "preview" | "live";
 
 // @public
@@ -362,39 +370,6 @@ export interface TilingDropHitZoneGeometryCapability {
     centerRatioX?: number;
     centerRatioY?: number;
     hysteresisPx?: number;
-}
-
-// @public
-export interface TilingDropIntentDebugState {
-    action: TilingDropAction;
-    axisPath: ReadonlyArray<TilingSplitAxis>;
-    blockedReason: string | null;
-    centerDistancePx: number | null;
-    centerRectHeightPx: number | null;
-    centerRectWidthPx: number | null;
-    dominantEdge: Exclude<TilingLeafDropZone, "center">;
-    edgeThresholdRatio: number;
-    fallbackReason: string | null;
-    finalEdge: Exclude<TilingLeafDropZone, "center"> | null;
-    leafId: string;
-    nearestEdgeDistancePx: number | null;
-    paneLocalX: number | null;
-    paneLocalY: number | null;
-    rejectedSplitReasons: ReadonlyArray<string>;
-    selectedSplitDistancePx: number | null;
-    selectedSplitZone: Exclude<TilingLeafDropZone, "center"> | null;
-    targetSplitId: string | null;
-    targetSplitPlacement: "first" | "second" | null;
-    tuning: TilingDropIntentTuningState;
-    zone: TilingLeafDropZone;
-}
-
-// @public
-export interface TilingDropIntentTuningState {
-    centerRatio: number;
-    devicePixelRatio: number;
-    edgeThresholdRatio: number;
-    hysteresisPx: number;
 }
 
 // @public
@@ -535,35 +510,6 @@ export type TilingLeafPreviewMode = "swap" | "edge-insert";
 export type TilingLeafPreviewRole = "drag-source-landing-shadow" | "drop-target-result-shadow";
 
 // @public
-export interface TilingLiveHitEdgeDebugState {
-    isValid: boolean;
-    rejectionReason: string | null;
-    zone: Exclude<TilingLeafDropZone, "center">;
-}
-
-// @public
-export interface TilingLiveHitLogState {
-    centerBlockedReason: string | null;
-    centerIsValid: boolean;
-    centerRatio: number;
-    centerRectHeightPx: number;
-    centerRectWidthPx: number;
-    cursorViewport: TilingViewportCursorState;
-    dragSourceLeafId: string | null;
-    dragSourcePaneFootprint: TilingPaneFootprint | null;
-    edgeDiagnostics: ReadonlyArray<TilingLiveHitEdgeDebugState>;
-    edgeThresholdRatio: number;
-    ghostSeatLeafId?: string | null;
-    hoveredLeafId: string;
-    intent: TilingDropIntentDebugState | null;
-    isDragging: boolean;
-    presentationDropAction?: TilingDropAction | null;
-    resolverZone: TilingLeafDropZone | "none";
-    sourceLeafId: string | null;
-    sourcePaneFootprint: TilingPaneFootprint | null;
-}
-
-// @public
 export type TilingMasterOrientation = "left" | "right" | "top" | "bottom";
 
 // @public
@@ -576,33 +522,17 @@ export interface TilingMaximizeCapability {
 export type TilingMovePlacement = "left" | "right" | "top" | "bottom";
 
 // @public
-export interface TilingObservabilityColorConfig {
-    dragSourceBorderColorHex: string;
-    dragTargetBorderColorHex: string;
-    hitZoneBlockedColorHex: string;
-    hitZoneBottomColorHex: string;
-    hitZoneCenterColorHex: string;
-    hitZoneLeftColorHex: string;
-    hitZoneRightColorHex: string;
-    hitZoneTopColorHex: string;
-    projectedSourceBorderColorHex: string;
-    projectedSourceFillColorHex: string;
-    projectedSuccessorBorderColorHex: string;
-    projectedSuccessorFillColorHex: string;
-    projectedTargetBorderColorHex: string;
-    projectedTargetFillColorHex: string;
-}
+export function TilingPaneAction(input: TilingPaneActionProps): React_2.ReactElement;
 
 // @public
-export interface TilingObservabilityColorEnableConfig {
-    dragSourceBorderEnabled: boolean;
-    dragTargetBorderEnabled: boolean;
-    projectedSourceBorderEnabled: boolean;
-    projectedSourceFillEnabled: boolean;
-    projectedSuccessorBorderEnabled: boolean;
-    projectedSuccessorFillEnabled: boolean;
-    projectedTargetBorderEnabled: boolean;
-    projectedTargetFillEnabled: boolean;
+export type TilingPaneActionProps = React_2.ButtonHTMLAttributes<HTMLButtonElement>;
+
+// @public
+export function TilingPaneBody(input: TilingPaneBodyProps): React_2.ReactElement;
+
+// @public
+export interface TilingPaneBodyProps extends React_2.HTMLAttributes<HTMLDivElement> {
+    pane: Pick<TilingRenderTileProps, "paneBodyRenderMode">;
 }
 
 // @public
@@ -612,32 +542,11 @@ export type TilingPaneBodyRenderMode = "render-content" | "render-empty" | "rend
 export type TilingPaneCycleDirection = "next" | "previous";
 
 // @public
-export interface TilingPaneFootprint {
-    height: number;
-    left: number;
-    top: number;
-    width: number;
-}
+export function TilingPaneRoot(input: TilingPaneRootProps): React_2.ReactElement;
 
 // @public
-export interface TilingPaneHitZoneCandidateDebugState {
-    isValid: boolean;
-    rejectionReason: string | null;
-    zone: Exclude<TilingLeafDropZone, "center">;
-}
-
-// @public
-export interface TilingPaneHitZoneOverlayDebugState {
-    centerBlockedReason: string | null;
-    centerIsValid: boolean;
-    centerRatio: number;
-    centerRatioX: number;
-    centerRatioY: number;
-    centerRectHeightPx: number;
-    centerRectWidthPx: number;
-    dragSourceLeafId: string | null;
-    edgeCandidates: ReadonlyArray<TilingPaneHitZoneCandidateDebugState>;
-    leafId: string;
+export interface TilingPaneRootProps extends Omit<React_2.HTMLAttributes<HTMLElement>, "onFocus" | "onClick" | "onPointerMove" | "onPointerLeave"> {
+    pane: Pick<TilingRenderTileProps, "leafId" | "onFocus" | "onPointerMove" | "onPointerLeave">;
 }
 
 // @public
@@ -683,25 +592,15 @@ export interface TilingRendererProps {
     interaction?: TilingInteractionCapabilities;
     layout: TilingLayoutNode;
     maximizedLeafId?: string | null;
-    observabilityColorEnables?: TilingObservabilityColorEnableConfig;
-    observabilityColors?: TilingObservabilityColorConfig;
-    onDropIntentChange?: (intent: TilingDropIntentDebugState | null) => void;
     onFocusedLeafChange?: (leafId: string) => void;
     onLayoutChange: (layout: TilingLayoutNode) => void;
-    onLiveHitLogChange?: (state: TilingLiveHitLogState | null) => void;
     onMaximizedLeafChange?: (leafId: string | null) => void;
-    onProjectedOverlayCountChange?: (count: number) => void;
     onThemeChange?: (themeId: TilingThemeId) => void;
     onTileAccentChange?: (tileId: string, accent: TilingTileAccent) => void;
-    paneHitZonesAlpha?: number;
-    paneHitZoneSourceLeafId?: string | null;
     projectedOverlayBackgroundAlpha?: number;
     renderTile?: (args: TilingRenderTileProps) => React_2.ReactNode;
     showDropBorderHints?: boolean;
-    showDropIntentDebug?: boolean;
-    showDropIntentTranslucentBg?: boolean;
     showDropPreviewOverlays?: boolean;
-    showPaneHitZones?: boolean;
     survivorReflowSpeedPercent?: number;
     swapBounceMagnitudePercent?: number;
     themeId?: TilingThemeId;
@@ -711,11 +610,6 @@ export interface TilingRendererProps {
 // @public
 export interface TilingRenderTileProps {
     canGroupMultiSelection: boolean;
-    dropHitZoneCenterRatio: number;
-    dropHitZoneCenterRatioX: number;
-    dropHitZoneCenterRatioY: number;
-    dropIntentDebugAction: TilingDropAction | null;
-    dropIntentDebugPath: string | null;
     dropZone: TilingLeafDropZone | null;
     heightSizingMode: TilingPaneSizingMode;
     isDragSource: boolean;
@@ -735,8 +629,6 @@ export interface TilingRenderTileProps {
     isTitleBarSizingEnabled: boolean;
     leafId: string;
     moveTargetPlacement: TilingMovePlacement | null;
-    observabilityColorEnables: TilingObservabilityColorEnableConfig;
-    observabilityColors: TilingObservabilityColorConfig;
     onAcquireSpace: (direction: TilingFocusDirection) => void;
     onFocus: (event?: React_2.SyntheticEvent<HTMLElement>) => void;
     onGroupMultiSelection: (clickedLeafId: string) => void;
@@ -747,15 +639,9 @@ export interface TilingRenderTileProps {
     onToggleMaximize: () => void;
     onToggleMultiSelect: () => void;
     paneBodyRenderMode: TilingPaneBodyRenderMode;
-    paneHitZoneDebug: TilingPaneHitZoneOverlayDebugState | null;
-    paneHitZonesAlpha: number;
     paneOrdinal: number;
     paneWidthPx: number;
     preview: TilingLeafDropPreview | null;
-    showDropBorderHints: boolean;
-    showDropIntentDebug: boolean;
-    showDropIntentTranslucentBg: boolean;
-    showDropPreviewOverlays: boolean;
     tile: TilingTile;
     widthSizingMode: TilingPaneSizingMode;
 }
@@ -897,12 +783,6 @@ export type TilingTitleBarSizingMode = "flexible" | "static-height" | "static-wi
 export interface TilingTouchDragCapability {
     enable?: boolean;
     longPressMs?: number;
-}
-
-// @public
-export interface TilingViewportCursorState {
-    x: number;
-    y: number;
 }
 
 // @public

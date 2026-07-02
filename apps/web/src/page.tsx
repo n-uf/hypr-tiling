@@ -9,6 +9,7 @@ import {
 } from "@n-uf/hypr-tiling";
 import { DOC_PANES, REPO_URL } from "./docs";
 import { DocTile } from "./tile";
+import { MinimalTile } from "./minimal-tile";
 import { ShortcutsPane } from "./shortcuts";
 
 // The homepage keeps every interaction at its library default and passes no
@@ -157,6 +158,59 @@ function RepoLink(): React.ReactElement {
   );
 }
 
+// Which pane chrome the homepage paints. `mosaic` is the default dark
+// documentation chrome (`DocTile`); `minimal` flips every pane to the light,
+// minimalist custom chrome (`MinimalTile`) — a live proof that a wholly
+// different pane look is a plain `renderTile` swap over the same renderer.
+type PaneChrome = "mosaic" | "minimal";
+
+const PANE_CHROME_OPTIONS: ReadonlyArray<{ id: PaneChrome; label: string }> = [
+  { id: "mosaic", label: "Mosaic" },
+  { id: "minimal", label: "Minimal" },
+];
+
+// A compact floating segmented control that flips the homepage `renderTile`
+// between the two pane chromes live — the real-site demonstration of the
+// custom-pane capability. Fixed to the bottom-right so it never reshapes the
+// tiling area; the panes stay fully interactive underneath.
+function PaneChromeSwitch({
+  value,
+  onChange,
+}: {
+  value: PaneChrome;
+  onChange: (next: PaneChrome) => void;
+}): React.ReactElement {
+  return (
+    <div
+      role="group"
+      aria-label="Pane chrome"
+      className="pointer-events-auto fixed bottom-4 right-4 z-50 flex items-center gap-1 rounded-full border border-white/[0.12] bg-[#141518]/90 p-1 font-mono text-[10px] uppercase tracking-[0.14em] shadow-[0_12px_34px_-14px_rgba(0,0,0,0.85)] backdrop-blur-md"
+    >
+      <span aria-hidden className="px-2 text-stone-500">
+        panes
+      </span>
+      {PANE_CHROME_OPTIONS.map((option): React.ReactElement => {
+        const active: boolean = option.id === value;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={active}
+            onClick={(): void => onChange(option.id)}
+            className={`rounded-full px-3 py-1 transition-colors ${
+              active
+                ? "bg-amber-300/15 text-amber-100"
+                : "text-stone-400 hover:text-stone-200"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function HomePage({
   navigate,
 }: {
@@ -169,6 +223,7 @@ export function HomePage({
   const [maximizedLeafId, setMaximizedLeafId] = React.useState<string | null>(
     null,
   );
+  const [paneChrome, setPaneChrome] = React.useState<PaneChrome>("mosaic");
   const commandHandleRef = React.useRef<TilingCommandHandle | null>(null);
 
   const tiles: ReadonlyArray<TilingTile> = DOC_PANES.map(
@@ -224,10 +279,15 @@ export function HomePage({
         onFocusedLeafChange={setFocusedLeafId}
         maximizedLeafId={maximizedLeafId}
         onMaximizedLeafChange={setMaximizedLeafId}
-        renderTile={(args: TilingRenderTileProps): React.ReactNode => (
-          <DocTile {...args} />
-        )}
+        renderTile={(args: TilingRenderTileProps): React.ReactNode =>
+          paneChrome === "minimal" ? (
+            <MinimalTile {...args} />
+          ) : (
+            <DocTile {...args} />
+          )
+        }
       />
+      <PaneChromeSwitch value={paneChrome} onChange={setPaneChrome} />
     </main>
   );
 }

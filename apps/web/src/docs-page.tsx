@@ -1190,24 +1190,42 @@ export function DocsPage({
               demo={<CustomChromeExample />}
               knobs={
                 <>
-                  Root on <Code>article[data-leaf-id]</Code> (the renderer resolves
-                  the drag source from it) and forward <Code>onFocus</Code>,{" "}
-                  <Code>onPointerMove</Code>, <Code>onPointerLeave</Code>. Put{" "}
-                  <Code>onHandlePointerDown</Code> on your header, expose{" "}
-                  <Code>onToggleMaximize</Code>, and add Alt/Opt+click grouping via{" "}
-                  <Code>onToggleMultiSelect</Code> + <Code>onGroupMultiSelection</Code>{" "}
-                  (gate with <Code>isMultiSelectModifierActive</Code>). Style from{" "}
-                  the state flags (<Code>isFocused</Code>, <Code>isMaximized</Code>,{" "}
+                  Easiest path: the optional helper primitives.{" "}
+                  <Code>TilingPaneRoot</Code> spreads{" "}
+                  <Code>data-leaf-id</Code> + the focus/hover handlers,{" "}
+                  <Code>TilingDragHandle</Code> wires the drag pickup with{" "}
+                  <Code>touch-action: none</Code> and the Alt/Opt+click group
+                  toggle, <Code>TilingPaneAction</Code> is a header button that
+                  stops propagation so it never starts a drag or steals focus, and{" "}
+                  <Code>TilingPaneBody</Code> renders its children only in{" "}
+                  <Code>"render-content"</Code> mode. They encode the wiring rules
+                  so a custom pane can&rsquo;t get them wrong; the raw{" "}
+                  <Code>renderTile</Code> args remain the full escape hatch. By
+                  hand: root on <Code>article[data-leaf-id]</Code> (the renderer
+                  resolves the drag source from it) and forward{" "}
+                  <Code>onFocus</Code>, <Code>onPointerMove</Code>,{" "}
+                  <Code>onPointerLeave</Code>. Put <Code>onHandlePointerDown</Code>{" "}
+                  on your header, expose <Code>onToggleMaximize</Code>, and add
+                  Alt/Opt+click grouping via <Code>onToggleMultiSelect</Code> +{" "}
+                  <Code>onGroupMultiSelection</Code> (gate with{" "}
+                  <Code>isMultiSelectModifierActive</Code>). Style from the state
+                  flags (<Code>isFocused</Code>, <Code>isMaximized</Code>,{" "}
                   <Code>isDragSource</Code>) and compose with theme tokens from{" "}
                   <Code>useTilingTheme()</Code> (<Code>resolveAccentText</Code>,{" "}
                   <Code>resolveFocusFrame</Code>). Render the body only when{" "}
                   <Code>paneBodyRenderMode</Code> is <Code>"render-content"</Code> so
                   the drag ghost mirrors your pane. The homepage&rsquo;s own tiles
-                  are built exactly this way.
+                  are built exactly this way — and the &ldquo;panes&rdquo; switch on
+                  the homepage flips them to a light minimalist variant built with
+                  these primitives.
                 </>
               }
               symbols={[
                 "TilingRenderTileProps",
+                "TilingPaneRoot",
+                "TilingDragHandle",
+                "TilingPaneAction",
+                "TilingPaneBody",
                 "useTilingTheme",
                 "TilingTheme",
                 "isMultiSelectModifierActive",

@@ -18,6 +18,22 @@
 // ── Renderer ────────────────────────────────────────────────────────────────
 export { TilingRenderer } from "./react/tiling-renderer";
 
+// ── Custom-pane helper primitives (optional; layered over `renderTile`) ───────
+// Unstyled conveniences that encode the pane wiring rules a custom `renderTile`
+// can otherwise get wrong (data-leaf-id root, drag handle + touch-action, action
+// buttons that stop propagation, body render-mode gate). Use them for the easy
+// path; the raw `renderTile` args stay the full escape hatch.
+export {
+  TilingPaneRoot,
+  TilingDragHandle,
+  TilingPaneAction,
+  TilingPaneBody,
+  type TilingPaneRootProps,
+  type TilingDragHandleProps,
+  type TilingPaneActionProps,
+  type TilingPaneBodyProps,
+} from "./react/tiling-pane-primitives";
+
 // ── Configuration & drag-animation tuning defaults ───────────────────────────
 // Reference values for the corresponding `TilingRendererProps` knobs
 // (`dragAnimationEnabled`, `ghostTransitSpeedPercent`, `survivorReflowSpeedPercent`).
@@ -140,15 +156,4 @@ export type {
   TilingLeafPreviewMode,
   TilingLeafPreviewRole,
   TilingDropAction,
-  // Debug / observability types referenced by public renderer props
-  TilingDropIntentDebugState,
-  TilingDropIntentTuningState,
-  TilingLiveHitLogState,
-  TilingLiveHitEdgeDebugState,
-  TilingViewportCursorState,
-  TilingPaneFootprint,
-  TilingPaneHitZoneOverlayDebugState,
-  TilingPaneHitZoneCandidateDebugState,
-  TilingObservabilityColorConfig,
-  TilingObservabilityColorEnableConfig,
 } from "./engine/types";
