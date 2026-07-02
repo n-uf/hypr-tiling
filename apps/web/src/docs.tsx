@@ -557,109 +557,119 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
   },
 ];
 
-// Which lane a consumer-docs topic belongs to, used to group the /docs sidebar.
-// "start" = the API map + Lane A fast track; "spectrum" = Lane B capability
-// groups + the consumer-relevant migration pointer; "reference" = the generated
-// per-symbol API reference.
-type DocsLane = "start" | "spectrum" | "reference";
+// Which section of the task-first /docs IA a topic belongs to, used to group the
+// sidebar and the llms.txt index. The reading order leads with the graceful path
+// (Quickstart → "How do I…" recipes → minimal Concepts → runnable Examples) and
+// DEMOTES the generated per-symbol reference to last — a fallback for when you
+// already know the symbol name, never the front door.
+type DocsSection = "quickstart" | "howto" | "concepts" | "examples" | "reference";
 
 interface DocsGuideTopic {
-  // Stable anchor id on the /docs route (e.g. `fast-track`).
+  // Stable anchor id on the /docs route (e.g. `quickstart`).
   readonly id: string;
   // Sidebar / heading label.
   readonly title: string;
-  // Which lane the topic belongs to (drives the sidebar grouping).
-  readonly lane: DocsLane;
+  // Which IA section the topic belongs to (drives the sidebar grouping).
+  readonly section: DocsSection;
   // Plain-text summary mirrored into llms.txt for LLM discoverability.
   readonly summary: string;
 }
 
 // Consumer-facing guide topics rendered on the /docs route. This is the single
-// source for the docs sidebar, the llms.txt guide index, the JSON-LD hasPart,
-// and the sitemap; the prose bodies themselves live in docs-page.tsx (JSX),
+// source for the docs sidebar, the llms.txt guide index, and the JSON-LD
+// hasPart; the prose bodies + compiled snippets live in docs-page.tsx (JSX),
 // keyed by these ids. Every topic documents ONLY the public `@n-uf/hypr-tiling`
 // entry (the curated public API; `/devtools` is a documented opt-in and
-// `/engine` is an off-site @beta escape hatch) — no architecture/internals. The
-// two-lane IA is: an API map that routes the reader, Lane A (Fast track /
-// time-to-first-tile), then Lane B (the full public-API surface grouped by
-// capability), ending in the generated reference.
+// `/engine` is an off-site @beta escape hatch) — no architecture/internals.
+//
+// TASK-FIRST IA: consumer docs lead with the graceful path and frame every guide
+// as an OUTCOME the reader wants, never as API enumeration. Order: Quickstart
+// (golden path) → "How do I…" recipes (the heart) → minimal Concepts → runnable
+// Examples → the DEMOTED generated reference last.
 export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
   {
-    id: "api-map",
-    title: "API map",
-    lane: "start",
+    id: "quickstart",
+    title: "Quickstart",
+    section: "quickstart",
     summary:
-      "Routes the reader: brand-new consumers take the Fast track; consumers who know what they need jump to a capability guide; symbol look-ups go straight to the generated reference.",
+      "The golden path in numbered, runnable steps: pnpm add @n-uf/hypr-tiling react react-dom, add the package dist to your Tailwind content glob, then render a minimal controlled TilingRenderer with a layout config and a renderTile callback — a working, resizable tiling layout in about 30 seconds.",
   },
   {
-    id: "fast-track",
-    title: "Fast track",
-    lane: "start",
+    id: "howto-initial-layout",
+    title: "Define the initial layout",
+    section: "howto",
     summary:
-      "One copy-paste-runnable path to the first rendered tiles: pnpm add @n-uf/hypr-tiling react react-dom, add the package dist to your Tailwind content glob, then render a minimal controlled TilingRenderer with a layout config, a tile registry, and a renderTile callback.",
+      "Build the starting layout as a plain, serialisable tree of leaf, split, and group nodes (TilingLayoutNode) that you own in state: a leaf holds one tile, a split divides space along an axis by a ratio, a group stacks leaves behind a tab strip.",
   },
   {
-    id: "cap-renderer",
-    title: "Renderer & props",
-    lane: "spectrum",
+    id: "howto-render-tile",
+    title: "Render your own content in a pane",
+    section: "howto",
     summary:
-      "TilingRenderer is the single controlled entry component (layout + tiles + config + onLayoutChange are the four required props). TilingRendererProps is the full prop surface; renderTile (TilingRenderTileProps) customizes pane bodies; TilingTile is the tile payload.",
+      "Pass a renderTile callback (TilingRenderTileProps) to paint each pane's body and chrome. Root the pane on article[data-leaf-id] and forward onFocus / onHandlePointerDown / onPointerMove so drag, focus, and resize keep working while you own the visuals.",
   },
   {
-    id: "cap-layout",
-    title: "Layout tree & mutation",
-    lane: "spectrum",
+    id: "howto-theming",
+    title: "Theme & color panes",
+    section: "howto",
     summary:
-      "The layout is a recursive tree of leaf, split, and group nodes you own in state (TilingLayoutNode / TilingLeafNode / TilingSplitNode / TilingGroupNode). Read it with queryTilingLayout (TilingLayoutQuery: leaf ids, splits, groups, tile order, neighbor lookup). Edit it declaratively via onLayoutChange or imperatively by dispatching a typed TilingCommand through the renderer's TilingCommandHandle (gated by isCommandEnabled / TilingCommandGates). Raw pure reducers live on the @beta @n-uf/hypr-tiling/engine escape hatch.",
+      "Pick a built-in theme with the themeId prop (live switching, no remount), give a pane its own accent via tile.accent, or wrap a subtree in TilingThemeProvider and read the active TilingTheme with useTilingTheme. resolveTilingTheme maps an id to its token object.",
   },
   {
-    id: "cap-interaction",
-    title: "Interaction capabilities & presets",
-    lane: "spectrum",
+    id: "howto-capabilities",
+    title: "Choose which interactions are allowed",
+    section: "howto",
     summary:
-      "Drag, resize, keyboard, grouping, and maximize are all enabled by default and narrowed through the single interaction prop (TilingInteractionCapabilities). Presets like TILING_DASHBOARD_PRESET and TILING_INTERACTION_CAPABILITY_DEFAULTS seed common shapes; resolveInteractionCapabilities produces the Resolved variant.",
+      "Every interaction (drag, resize, keyboard, grouping, maximize) is on by default. Narrow behavior through the single interaction prop (TilingInteractionCapabilities): pass a partial, or start from a preset like TILING_DASHBOARD_PRESET and override. resolveInteractionCapabilities gives you the fully-resolved shape.",
   },
   {
-    id: "cap-theming",
-    title: "Theming",
-    lane: "spectrum",
+    id: "howto-save-restore",
+    title: "Save & restore a layout",
+    section: "howto",
     summary:
-      "Choose a built-in theme via the themeId prop, or wrap a subtree in TilingThemeProvider and read the active TilingTheme with useTilingTheme. Live theme switching, no remount. TILING_THEMES / DEFAULT_TILING_THEME_ID / resolveTilingTheme back the registry.",
+      "The layout is plain JSON you own, so persistence is just save/load: write it to storage in onLayoutChange, read it back on mount with a default fallback. No library-specific serializer.",
   },
   {
-    id: "cap-grouping",
-    title: "Multi-select & grouping",
-    lane: "spectrum",
+    id: "howto-commands",
+    title: "Trigger actions from your own buttons",
+    section: "howto",
     summary:
-      "Fold several selected leaves into one tabbed group. Built-in interaction: Alt/Opt+click to select, Alt/Opt+G to group. isMultiSelectModifierActive (MultiSelectModifierState) reports the platform modifier; apply a group programmatically via the group-leaves TilingCommand through the TilingCommandHandle. The lower-level selection reducers live on the @beta @n-uf/hypr-tiling/engine escape hatch.",
+      "Take the renderer's imperative TilingCommandHandle with a ref and dispatch typed TilingCommands (set-split-ratio, group-leaves, toggle-maximize, …) from your own toolbar or menu — the same command set the keyboard and drag layers use. A command on a disabled capability is a safe no-op.",
   },
   {
-    id: "cap-drag",
-    title: "Drag / FLIP & recovery",
-    lane: "spectrum",
+    id: "howto-command-bar",
+    title: "Build a command bar / keyboard shortcuts",
+    section: "howto",
     summary:
-      "Consumer-visible drag choreography: dragAnimationEnabled, dragHopEasing, dragReflowEasing, and ghostTransitSpeedPercent on TilingRendererProps tune the Hyprland-style ghost hop and FLIP survivor reflow. Touch-drag and self-healing recovery are capability-configured; the deep-engine drag math stays internal.",
+      "ADVANCED. Build your own command bar or key bindings: derive TilingCommandGates from resolveInteractionCapabilities, then use isCommandEnabled to hide dead controls and keep keyboard bindings browser-graceful (only preventDefault when the command would actually run).",
   },
   {
-    id: "cap-devtools",
-    title: "Devtools (opt-in)",
-    lane: "spectrum",
+    id: "howto-group-split-maximize",
+    title: "Group, split & maximize panes",
+    section: "howto",
     summary:
-      "The @n-uf/hypr-tiling/devtools subpath exposes opt-in observability overlays (TilingObservabilityPanel and its seed defaults) for drop-intent and pane hit-zone debugging. Advanced/optional — kept out of the fast track; a renderer-only consumer never pulls the panel into its bundle.",
+      "Grouping (Alt/Opt+G), splitting (drag a header), and maximizing (Alt+Enter) are built-in, and you can also drive them from code: dispatch group-leaves to fold leaves into a tabbed group, insert-adjacent to split, and toggle-maximize to maximize/restore a leaf. isMultiSelectModifierActive detects the platform multi-select modifier for your own affordances.",
   },
   {
-    id: "migration",
-    title: "Migration & changelog",
-    lane: "spectrum",
+    id: "concepts",
+    title: "Concepts",
+    section: "concepts",
     summary:
-      "hypr-tiling follows calendar versioning; breaking changes and release notes are tracked in the package CHANGELOG.md. The curated public API surface is enforced by API Extractor and mirrored in the API reference below.",
+      "The minimum that unblocks the recipes: the layout tree (leaf / split / group nodes you own in state), who owns interactions (the renderer runs them; your app owns and persists the tree via onLayoutChange), and the capabilities model (everything on by default, narrowed through one interaction prop).",
   },
   {
-    id: "api-reference",
+    id: "examples",
+    title: "Examples gallery",
+    section: "examples",
+    summary:
+      "Whole runnable apps to copy wholesale: a metrics dashboard (master-stack of accented metric panes) and a terminal grid (monospace shell / logs / htop panes) — each a complete, controlled TilingRenderer.",
+  },
+  {
+    id: "reference",
     title: "API reference",
-    lane: "reference",
+    section: "reference",
     summary:
-      "Generated per-symbol reference for the curated public API surface, produced from source TSDoc via API Extractor + API Documenter. Internal and devtools-only-implementation symbols are excluded.",
+      "DEMOTED to last — a fallback for when you already know the symbol name, not the front door. The generated per-symbol reference for the curated public API (from source TSDoc via API Extractor + API Documenter), tiered Core (TilingRenderer, layout + queryTilingLayout, theming, commands) vs Advanced helpers (isCommandEnabled, capability/query utilities). Internal and devtools-only symbols are excluded.",
   },
 ];
 

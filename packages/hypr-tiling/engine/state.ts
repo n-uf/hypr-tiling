@@ -377,6 +377,21 @@ export interface TilingLayoutQuery {
  * leaf/tile/group/split views and directional-neighbor lookup an app needs to
  * render layout-aware controls.
  *
+ * @example
+ * Inspect the tree you own in state — count panes, list groups, or find a
+ * directional neighbor — without walking it by hand:
+ *
+ * ```ts
+ * import { queryTilingLayout, type TilingLayoutNode } from "@n-uf/hypr-tiling";
+ *
+ * function paneCount(layout: TilingLayoutNode): number {
+ *   return queryTilingLayout(layout).leafIds.length;
+ * }
+ *
+ * const query = queryTilingLayout(layout);
+ * const rightOfFocus = query.neighborLeafId(focusedLeafId, "right");
+ * ```
+ *
  * @public
  */
 export function queryTilingLayout(layout: TilingLayoutNode): TilingLayoutQuery {

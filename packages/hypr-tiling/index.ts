@@ -19,14 +19,13 @@
 export { TilingRenderer } from "./react/tiling-renderer";
 
 // ── Configuration & drag-animation tuning defaults ───────────────────────────
-// Reference values for the corresponding `TilingRendererProps` knobs.
+// Reference values for the corresponding `TilingRendererProps` knobs
+// (`dragAnimationEnabled`, `ghostTransitSpeedPercent`, `survivorReflowSpeedPercent`).
 export {
-  BASELINE_DRAG_HOP_DURATION_MS,
   DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
   DRAG_ANIMATION_SPEED_MAX_PERCENT,
   DRAG_ANIMATION_SPEED_MIN_PERCENT,
   DEFAULT_TILING_LAYOUT_CONFIG,
-  INSTANT_DRAG_DURATION_MS,
 } from "./react/tiling-renderer";
 export {
   DEFAULT_DRAG_HOP_EASING,
@@ -43,7 +42,6 @@ export {
   TILING_THEMES,
   TILING_THEME_REGISTRY,
   TilingThemeProvider,
-  accentHue,
   resolveTilingTheme,
   useTilingTheme,
   type TilingAccentHue,

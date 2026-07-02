@@ -18,60 +18,50 @@ import {
   API_REFERENCE_SECTIONS,
   type ApiReferenceSection,
 } from "./api-reference/generated";
+import { EXAMPLE_SOURCES, type ExampleId } from "./docs-examples/sources";
+import { Quickstart } from "./docs-examples/quickstart";
+import { RenderTileExample } from "./docs-examples/render-tile";
+import { ThemingExample } from "./docs-examples/theming";
+import { CapabilitiesExample } from "./docs-examples/capabilities";
+import { CommandsExample } from "./docs-examples/commands";
+import { CommandBarExample } from "./docs-examples/command-bar";
+import { GroupSplitMaximizeExample } from "./docs-examples/group-split-maximize";
+import { DashboardApp } from "./docs-examples/dashboard-app";
+import { TerminalGridApp } from "./docs-examples/terminal-grid";
 
-// The prerendered /docs route: a CONSUMER-facing documentation system. A
-// "consumer" is a developer who USES `@n-uf/hypr-tiling` in their app; the docs
+// The prerendered /docs route: a TASK-FIRST consumer documentation experience.
+// A "consumer" is a developer who USES `@n-uf/hypr-tiling` in their app; the docs
 // describe only the public API surface (the hand-authored `.` facade enforced by
 // API Extractor). Contributor material (architecture / internals) and the @beta
 // `/engine` escape hatch live off this site — see CONTRIBUTING.md and
 // apps/web/_agent/docs-ia.md.
 //
-// Two-lane information architecture:
-//   1. API map        — a short landing section that routes the reader.
-//   2. Lane A         — Fast track: one copy-paste path to the first tiles.
-//   3. Lane B         — Full public-API spectrum: the consumer surface grouped
-//                       by capability, each group linking into the generated
-//                       per-symbol reference, which follows last.
+// Governing principle: consumer docs are TASK-FIRST, not symbol-first. A reader
+// must grasp-and-run immediately, never reverse-engineer intent from a bare
+// signature. Code is the primary medium; prose frames it. Reading order leads
+// with the graceful path and DEMOTES the generated reference to last:
+//
+//   1. Hero        — one value sentence + a live layout + its copy-paste source.
+//   2. Quickstart  — the golden path, numbered + runnable, to a working layout.
+//   3. How do I…    — outcome-framed recipes (the heart): each a goal sentence, a
+//                    complete compiled snippet, the knobs, and related links.
+//   4. Concepts    — only what unblocks the recipes (tree / ownership / caps).
+//   5. Examples    — whole runnable apps to copy wholesale.
+//   6. Reference   — the generated per-symbol reference, DEMOTED and tiered Core
+//                    vs Advanced: "for when you already know the name."
+//
+// The guide snippets are the RAW SOURCE of real, type-checked modules under
+// `docs-examples/` (embedded via Vite `?raw`, inlined at build for the SSR
+// prerender), so what renders IS the compiled file — a snippet cannot silently
+// rot against the current public API without breaking `pnpm typecheck` / CI.
 //
 // Styling reuses the homepage "mosaic" vocabulary (graphite canvas, single gold
 // accent, Fraunces headings, Inter body, JetBrains Mono code). The injected API
-// HTML is styled through the scoped `.ht-api` rules below since the Tailwind CDN
-// build carries no typography plugin. The reference bundle stays code-split.
+// HTML is styled through the scoped `.ht-api` rules below. The reference bundle
+// stays code-split.
 
-// Lane A — Fast track. One copy-paste-runnable path optimized for
-// time-to-first-tile: a minimal controlled TilingRenderer with a layout config,
-// a tile registry, and a renderTile callback that paints each tile. No concept
-// deep-dives; those live in Lane B.
-const FAST_TRACK_SNIPPET: string = `import { TilingRenderer, DEFAULT_TILING_LAYOUT_CONFIG } from "@n-uf/hypr-tiling";
-import type { TilingLayoutNode, TilingTile, TilingRenderTileProps } from "@n-uf/hypr-tiling";
-import { useState } from "react";
-
-const tiles: TilingTile[] = [
-  { id: "a", title: "editor" },
-  { id: "b", title: "preview" },
-];
-
-const initial: TilingLayoutNode = {
-  kind: "split", id: "root", axis: "horizontal", ratio: 0.5,
-  first: { kind: "leaf", id: "l", tileId: "a" },
-  second: { kind: "leaf", id: "r", tileId: "b" },
-};
-
-export function Workspace() {
-  const [layout, setLayout] = useState<TilingLayoutNode>(initial);
-  return (
-    <TilingRenderer
-      layout={layout}
-      tiles={tiles}
-      config={DEFAULT_TILING_LAYOUT_CONFIG}
-      onLayoutChange={setLayout}
-      renderTile={({ tile }: TilingRenderTileProps) => (
-        <div style={{ padding: 12 }}>{tile.title}</div>
-      )}
-    />
-  );
-}`;
-
+// Authored config snippet (a Tailwind config, not a runnable module — kept as an
+// authored string). The runnable TS/TSX snippets are all compiled examples.
 const TAILWIND_CONTENT_SNIPPET: string = `// tailwind.config.{js,ts}
 export default {
   content: [
@@ -82,103 +72,7 @@ export default {
   ],
 };`;
 
-// Lane B snippets — one focused example per capability group.
-const LAYOUT_MUTATION_SNIPPET: string = `import { TilingRenderer, queryTilingLayout } from "@n-uf/hypr-tiling";
-import type { TilingCommandHandle } from "@n-uf/hypr-tiling";
-import { useRef } from "react";
-
-// You own the tree in state and receive every UI-driven edit through
-// onLayoutChange. To edit it programmatically, take the renderer's
-// TilingCommandHandle ref and dispatch a typed TilingCommand:
-const ref = useRef<TilingCommandHandle>(null);
-ref.current?.dispatch({ kind: "set-split-ratio", splitId: "root", ratio: 0.66 });
-ref.current?.dispatch({ kind: "group-leaves", leafIds: ["l", "r"] });
-
-// Inspect the tree — leaf ids, splits, groups, tile order, directional
-// neighbors — without walking it by hand:
-const { leafIds, splits, neighborLeafId } = queryTilingLayout(layout);`;
-
-const CAPABILITIES_SNIPPET: string = `import type { TilingInteractionCapabilities } from "@n-uf/hypr-tiling";
-import { TILING_DASHBOARD_PRESET } from "@n-uf/hypr-tiling";
-
-// Every capability is on by default; pass a partial to narrow behavior,
-// or start from a preset and override.
-const interaction: TilingInteractionCapabilities = {
-  ...TILING_DASHBOARD_PRESET,
-  resize: { enabled: true },
-  grouping: { enabled: true },
-};`;
-
-const THEMING_SNIPPET: string = `import { TilingThemeProvider, useTilingTheme } from "@n-uf/hypr-tiling";
-
-// Wrap a subtree and read the active theme with the hook. Switching themeId
-// is live — no remount.
-function Toolbar() {
-  const theme = useTilingTheme();
-  return <span>{theme.id}</span>;
-}`;
-
-const GROUPING_SNIPPET: string = `import { isMultiSelectModifierActive } from "@n-uf/hypr-tiling";
-import type { TilingCommandHandle } from "@n-uf/hypr-tiling";
-
-// Multi-select + group is a built-in interaction: Alt/Opt+click to add a leaf
-// to the selection, Alt/Opt+G to fold the selection into a tabbed group. Detect
-// the platform multi-select modifier for your own affordances:
-const multiSelect = isMultiSelectModifierActive(event);
-
-// selection is a ReadonlySet<string> of leaf ids (insertion order preserved).
-// Apply the group programmatically through the renderer command handle:
-ref.current?.dispatch({ kind: "group-leaves", leafIds: [...selection] });`;
-
-const DEVTOOLS_SNIPPET: string = `// Opt-in, advanced. A renderer-only consumer never imports this subpath.
-import { TilingObservabilityPanel } from "@n-uf/hypr-tiling/devtools";`;
-
-// --- Capability groups (Lane B) -------------------------------------------
-// Each group is task-oriented and links into the generated per-symbol reference
-// cards. Symbol names are resolved against API_REFERENCE_SECTIONS so a link is
-// only emitted when the symbol is actually on the public barrel — broken
-// anchors and accidental references to `@internal` symbols are impossible.
-
-function ReferenceLinks({
-  symbols,
-}: {
-  symbols: ReadonlyArray<string>;
-}): React.ReactElement | null {
-  const resolved: ReadonlyArray<ApiReferenceSection> = symbols
-    .map(
-      (name): ApiReferenceSection | undefined =>
-        API_REFERENCE_SECTIONS.find(
-          (section): boolean =>
-            section.name === name || section.name === `${name}()`,
-        ),
-    )
-    .filter(
-      (section): section is ApiReferenceSection => section != null,
-    );
-  if (resolved.length === 0) {
-    return null;
-  }
-  return (
-    <div className="flex flex-col gap-1.5 pt-1">
-      <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-stone-500">
-        In the reference
-      </span>
-      <div className="flex flex-wrap gap-1.5">
-        {resolved.map(
-          (section): React.ReactElement => (
-            <a
-              key={section.id}
-              href={`#${section.id}`}
-              className="rounded-md border border-white/[0.08] bg-white/[0.02] px-2.5 py-1 font-mono text-[11px] text-amber-200/85 transition-colors hover:border-amber-300/40 hover:text-amber-100"
-            >
-              {section.name}
-            </a>
-          ),
-        )}
-      </div>
-    </div>
-  );
-}
+// --- Primitives -----------------------------------------------------------
 
 function GuideHeading({
   id,
@@ -220,46 +114,116 @@ function GuideSection({
   );
 }
 
-// A Lane B capability section: task-oriented prose, an optional focused
-// example, and the reference-card links for the symbols the capability exposes.
-function CapabilitySection({
-  id,
-  title,
-  symbols,
+// A sized, bordered frame that hosts a LIVE demo. The demo is a real, controlled
+// TilingRenderer app from `docs-examples/`; the same file's source is shown next
+// to it. TilingRenderer renders its pre-measurement tree during SSR (no effects),
+// so the frame prerenders cleanly and hydrates.
+function DemoFrame({
+  height = 300,
   children,
 }: {
-  id: string;
-  title: string;
-  symbols: ReadonlyArray<string>;
+  height?: number;
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <GuideSection id={id} eyebrow="capability" title={title}>
-      {children}
+    <div className="flex flex-col gap-1.5">
+      <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber-300/70">
+        live result
+      </span>
+      <div
+        className="overflow-hidden rounded-lg border border-white/[0.08] bg-[#0a0b0d] p-2"
+        style={{ height }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Embed the compiled source of a `docs-examples/` module. The text IS the file.
+function ExampleSource({ id }: { id: ExampleId }): React.ReactElement {
+  return <Pre>{EXAMPLE_SOURCES[id]}</Pre>;
+}
+
+// Related-links row for a guide: resolves each symbol name against
+// API_REFERENCE_SECTIONS and emits a deep link only when the symbol is actually
+// on the public barrel — broken anchors and accidental `@internal` references
+// are structurally impossible.
+function ReferenceLinks({
+  symbols,
+}: {
+  symbols: ReadonlyArray<string>;
+}): React.ReactElement | null {
+  const resolved: ReadonlyArray<ApiReferenceSection> = symbols
+    .map(
+      (name): ApiReferenceSection | undefined =>
+        API_REFERENCE_SECTIONS.find(
+          (section): boolean =>
+            section.name === name || section.name === `${name}()`,
+        ),
+    )
+    .filter((section): section is ApiReferenceSection => section != null);
+  if (resolved.length === 0) {
+    return null;
+  }
+  return (
+    <div className="flex flex-col gap-1.5 pt-1">
+      <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-stone-500">
+        Related in the reference
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {resolved.map(
+          (section): React.ReactElement => (
+            <a
+              key={section.id}
+              href={`#${section.id}`}
+              className="rounded-md border border-white/[0.08] bg-white/[0.02] px-2.5 py-1 font-mono text-[11px] text-amber-200/85 transition-colors hover:border-amber-300/40 hover:text-amber-100"
+            >
+              {section.name}
+            </a>
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
+// A "How do I…" recipe: goal sentence → compiled snippet (+ optional live demo)
+// → the knobs → related reference links. Outcome-framed, never API enumeration.
+function HowTo({
+  id,
+  title,
+  goal,
+  exampleId,
+  demo,
+  knobs,
+  symbols,
+}: {
+  id: string;
+  title: string;
+  goal: React.ReactNode;
+  exampleId: ExampleId;
+  demo?: React.ReactNode;
+  knobs: React.ReactNode;
+  symbols: ReadonlyArray<string>;
+}): React.ReactElement {
+  return (
+    <div className="flex flex-col gap-4 scroll-mt-24" id={id}>
+      <h3 className="font-display text-[19px] font-medium leading-snug tracking-[-0.01em] text-stone-100">
+        {title}
+      </h3>
+      <SectionLead>{goal}</SectionLead>
+      <ExampleSource id={exampleId} />
+      {demo != null ? <DemoFrame>{demo}</DemoFrame> : null}
+      <p className="max-w-[62ch] text-[12px] leading-[1.7] text-stone-400">
+        {knobs}
+      </p>
       <ReferenceLinks symbols={symbols} />
-    </GuideSection>
+    </div>
   );
 }
 
-const API_KIND_ORDER: ReadonlyArray<string> = [
-  "variable",
-  "function",
-  "interface",
-  "type",
-];
-
-const API_KIND_LABEL: Record<string, string> = {
-  variable: "Variables & constants",
-  function: "Functions",
-  interface: "Interfaces",
-  type: "Type aliases",
-};
-
-function sectionsByKind(kind: string): ReadonlyArray<ApiReferenceSection> {
-  return API_REFERENCE_SECTIONS.filter(
-    (section): boolean => section.kind === kind,
-  );
-}
+// --- Navigation -----------------------------------------------------------
 
 function DocsNav({
   navigate,
@@ -327,24 +291,39 @@ function DocsNav({
   );
 }
 
-const LANE_LABEL: Record<string, string> = {
-  start: "Start here",
-  spectrum: "Full public-API spectrum",
+const SECTION_LABEL: Record<string, string> = {
+  quickstart: "Start here",
+  howto: "How do I…",
+  concepts: "Concepts",
+  examples: "Examples",
+  reference: "Reference",
 };
 
-function SidebarLane({
-  lane,
+const SECTION_ORDER: ReadonlyArray<string> = [
+  "quickstart",
+  "howto",
+  "concepts",
+  "examples",
+  "reference",
+];
+
+function SidebarGroup({
+  section,
 }: {
-  lane: "start" | "spectrum";
-}): React.ReactElement {
+  section: string;
+}): React.ReactElement | null {
+  const topics = DOCS_GUIDE_TOPICS.filter(
+    (topic): boolean => topic.section === section,
+  );
+  if (topics.length === 0) {
+    return null;
+  }
   return (
     <div className="flex flex-col gap-1.5">
       <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-amber-300/70">
-        {LANE_LABEL[lane]}
+        {SECTION_LABEL[section] ?? section}
       </span>
-      {DOCS_GUIDE_TOPICS.filter(
-        (topic): boolean => topic.lane === lane,
-      ).map((topic) => (
+      {topics.map((topic) => (
         <a
           key={topic.id}
           href={`#${topic.id}`}
@@ -361,89 +340,163 @@ function DocsSidebar(): React.ReactElement {
   return (
     <aside className="hidden lg:block">
       <nav className="sticky top-[68px] flex max-h-[calc(100vh-84px)] flex-col gap-5 overflow-y-auto pr-2 pb-10 text-[13px]">
-        <SidebarLane lane="start" />
-        <SidebarLane lane="spectrum" />
-        <div className="flex flex-col gap-1.5">
-          <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-amber-300/70">
-            Reference
-          </span>
-          <a
-            href="#api-reference"
-            className="text-stone-400 transition-colors hover:text-amber-100"
-          >
-            API reference
-          </a>
-        </div>
-        {API_KIND_ORDER.map((kind) => {
-          const items = sectionsByKind(kind);
-          if (items.length === 0) {
-            return null;
-          }
-          return (
-            <div key={kind} className="flex flex-col gap-1.5">
-              <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-amber-300/70">
-                {API_KIND_LABEL[kind] ?? kind}
-              </span>
-              {items.map((section) => (
-                <a
-                  key={section.id}
-                  href={`#${section.id}`}
-                  className="truncate font-mono text-[12px] text-stone-400 transition-colors hover:text-amber-100"
-                >
-                  {section.name}
-                </a>
-              ))}
-            </div>
-          );
-        })}
+        {SECTION_ORDER.map(
+          (section): React.ReactElement | null => (
+            <SidebarGroup key={section} section={section} />
+          ),
+        )}
       </nav>
     </aside>
   );
 }
 
-function ApiReference(): React.ReactElement {
+// --- API reference (DEMOTED, last) ----------------------------------------
+// The generated per-symbol reference, tiered Core vs Advanced. Core = the
+// front-line consumer surface (the renderer, the layout tree + queryTilingLayout,
+// theming, commands/dispatch). Advanced = the power-user helpers and the resolved
+// / debug / keymap type surface (isCommandEnabled, capability + query utilities).
+
+const CORE_REFERENCE_NAMES: ReadonlySet<string> = new Set<string>([
+  // Renderer & tiles
+  "TilingRenderer",
+  "TilingRendererProps",
+  "TilingRenderTileProps",
+  "TilingTile",
+  "TilingTileAccent",
+  // Layout tree + read
+  "TilingLayoutNode",
+  "TilingLeafNode",
+  "TilingSplitNode",
+  "TilingGroupNode",
+  "TilingLayoutConfig",
+  "DEFAULT_TILING_LAYOUT_CONFIG",
+  "queryTilingLayout()",
+  "TilingLayoutQuery",
+  // Commands / dispatch
+  "TilingCommand",
+  "TilingCommandHandle",
+  // Theming
+  "TilingThemeProvider()",
+  "TilingTheme",
+  "useTilingTheme()",
+  "TilingThemeId",
+  "TILING_THEMES",
+  "DEFAULT_TILING_THEME_ID",
+  "resolveTilingTheme()",
+  // Interaction (front-line)
+  "TilingInteractionCapabilities",
+  "TILING_DASHBOARD_PRESET",
+  "resolveInteractionCapabilities()",
+]);
+
+function isCoreSection(section: ApiReferenceSection): boolean {
+  return CORE_REFERENCE_NAMES.has(section.name);
+}
+
+function ReferenceCard({
+  section,
+}: {
+  section: ApiReferenceSection;
+}): React.ReactElement {
   return (
-    <section className="flex flex-col gap-6 border-t border-white/[0.08] pt-10">
-      <GuideHeading id="api-reference" eyebrow="generated from source tsdoc">
+    <article
+      id={section.id}
+      className="ht-api scroll-mt-24 rounded-lg border border-white/[0.07] bg-white/[0.015] p-5"
+    >
+      <div className="mb-3 flex items-baseline gap-2.5">
+        <h4 className="font-mono text-[15px] font-medium text-stone-50">
+          {section.name}
+        </h4>
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-500">
+          {section.kind}
+        </span>
+      </div>
+      <div dangerouslySetInnerHTML={{ __html: section.html }} />
+    </article>
+  );
+}
+
+function ReferenceTier({
+  id,
+  eyebrow,
+  title,
+  lead,
+  sections,
+}: {
+  id: string;
+  eyebrow: string;
+  title: string;
+  lead: React.ReactNode;
+  sections: ReadonlyArray<ApiReferenceSection>;
+}): React.ReactElement {
+  return (
+    <div className="flex flex-col gap-5 scroll-mt-24" id={id}>
+      <div className="flex flex-col gap-2">
+        <Eyebrow>{eyebrow}</Eyebrow>
+        <h3 className="font-display text-[20px] font-medium leading-tight tracking-[-0.01em] text-stone-100">
+          {title}
+        </h3>
+        <SectionLead>{lead}</SectionLead>
+      </div>
+      {sections.map(
+        (section): React.ReactElement => (
+          <ReferenceCard key={section.id} section={section} />
+        ),
+      )}
+    </div>
+  );
+}
+
+function ApiReference(): React.ReactElement {
+  const core: ReadonlyArray<ApiReferenceSection> =
+    API_REFERENCE_SECTIONS.filter(isCoreSection);
+  const advanced: ReadonlyArray<ApiReferenceSection> =
+    API_REFERENCE_SECTIONS.filter(
+      (section): boolean => !isCoreSection(section),
+    );
+  return (
+    <section className="flex flex-col gap-8 border-t border-white/[0.08] pt-10">
+      <GuideHeading id="reference" eyebrow="reference · for when you already know the name">
         API reference
       </GuideHeading>
       <SectionLead>
-        The curated public API surface, generated from the library&rsquo;s TSDoc
-        via API Extractor and API Documenter. Internal and devtools-only symbols
-        are excluded, so every symbol below is part of the supported consumer
-        contract. The full machine-readable report is published in the{" "}
+        The generated per-symbol reference for the curated public API surface,
+        produced from the library&rsquo;s source TSDoc via API Extractor and API
+        Documenter. This is a <em className="not-italic text-stone-200">fallback</em>{" "}
+        — reach for it once you already know a symbol name; the guides above are
+        the way in. Internal and devtools-only symbols are excluded, so every
+        entry is part of the supported consumer contract. The full
+        machine-readable report lives in the{" "}
         <Link href={API_REFERENCE_URL}>API report</Link>.
       </SectionLead>
-      {API_KIND_ORDER.map((kind) => {
-        const items = sectionsByKind(kind);
-        if (items.length === 0) {
-          return null;
+      <ReferenceTier
+        id="reference-core"
+        eyebrow="reference · core"
+        title="Core"
+        lead={
+          <>
+            The symbols you reach for first: the{" "}
+            <Code>TilingRenderer</Code>, the layout tree and{" "}
+            <Code>queryTilingLayout</Code>, theming, and commands / dispatch.
+          </>
         }
-        return (
-          <div key={kind} className="flex flex-col gap-5">
-            <h3 className="font-mono text-[11px] uppercase tracking-[0.24em] text-amber-300/70">
-              {API_KIND_LABEL[kind] ?? kind}
-            </h3>
-            {items.map((section) => (
-              <article
-                key={section.id}
-                id={section.id}
-                className="ht-api scroll-mt-24 rounded-lg border border-white/[0.07] bg-white/[0.015] p-5"
-              >
-                <div className="mb-3 flex items-baseline gap-2.5">
-                  <h4 className="font-mono text-[15px] font-medium text-stone-50">
-                    {section.name}
-                  </h4>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-500">
-                    {section.kind}
-                  </span>
-                </div>
-                <div dangerouslySetInnerHTML={{ __html: section.html }} />
-              </article>
-            ))}
-          </div>
-        );
-      })}
+        sections={core}
+      />
+      <ReferenceTier
+        id="reference-advanced"
+        eyebrow="reference · advanced helpers"
+        title="Advanced helpers"
+        lead={
+          <>
+            Power-user helpers and the resolved / capability / debug type surface
+            — <Code>isCommandEnabled</Code> and the capability + query utilities
+            you only need for custom command bars, keyboard layers, and
+            observability. Each carries a consumer-usage <Code>@example</Code> in
+            its hover-docs.
+          </>
+        }
+        sections={advanced}
+      />
     </section>
   );
 }
@@ -464,59 +517,50 @@ const API_PROSE_STYLES: string = `
 .ht-api ul, .ht-api ol { margin: 0 0 0.75rem; padding-left: 1.15rem; font-size: 13px; line-height: 1.7; color: rgb(214 211 209 / 0.9); }
 `;
 
-// API map (landing) — three concrete routes into the docs, kept terse.
-function ApiMap(): React.ReactElement {
+// --- Numbered quickstart step ---------------------------------------------
+
+function Step({
+  n,
+  title,
+  children,
+}: {
+  n: number;
+  title: string;
+  children: React.ReactNode;
+}): React.ReactElement {
   return (
-    <section className="flex flex-col gap-4 scroll-mt-24" id="api-map">
-      <Eyebrow>api map</Eyebrow>
-      <h2 className="font-display text-[26px] font-medium leading-tight tracking-[-0.015em] text-stone-50">
-        Where to start
-      </h2>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <a
-          href="#fast-track"
-          className="group flex flex-col gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.015] p-4 transition-colors hover:border-amber-300/40"
-        >
-          <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber-300/70">
-            Brand-new
-          </span>
-          <span className="text-[14px] font-medium text-stone-100 group-hover:text-amber-100">
-            Take the Fast track
-          </span>
-          <span className="text-[12px] leading-[1.6] text-stone-400">
-            One copy-paste path to your first rendered tiles.
-          </span>
-        </a>
-        <a
-          href="#cap-renderer"
-          className="group flex flex-col gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.015] p-4 transition-colors hover:border-amber-300/40"
-        >
-          <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber-300/70">
-            Know what you need
-          </span>
-          <span className="text-[14px] font-medium text-stone-100 group-hover:text-amber-100">
-            Jump to a capability
-          </span>
-          <span className="text-[12px] leading-[1.6] text-stone-400">
-            The full public-API spectrum, grouped by task.
-          </span>
-        </a>
-        <a
-          href="#api-reference"
-          className="group flex flex-col gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.015] p-4 transition-colors hover:border-amber-300/40"
-        >
-          <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber-300/70">
-            Look up a symbol
-          </span>
-          <span className="text-[14px] font-medium text-stone-100 group-hover:text-amber-100">
-            Go to the reference
-          </span>
-          <span className="text-[12px] leading-[1.6] text-stone-400">
-            Generated per-symbol cards for the public barrel.
-          </span>
-        </a>
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-amber-300/40 bg-amber-300/[0.08] font-mono text-[11px] text-amber-100">
+          {n}
+        </span>
+        <h3 className="font-display text-[17px] font-medium text-stone-100">
+          {title}
+        </h3>
       </div>
-    </section>
+      <div className="flex flex-col gap-2.5 border-l border-white/[0.08] pl-[1.85rem]">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// --- Concepts card --------------------------------------------------------
+
+function ConceptCard({
+  term,
+  children,
+}: {
+  term: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.015] p-4">
+      <span className="text-[13px] font-medium text-stone-100">{term}</span>
+      <span className="max-w-[62ch] text-[12px] leading-[1.7] text-stone-400">
+        {children}
+      </span>
+    </div>
   );
 }
 
@@ -532,278 +576,374 @@ export function DocsPage({
       <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-5 py-10 lg:grid-cols-[220px_minmax(0,1fr)]">
         <DocsSidebar />
         <main className="flex min-w-0 flex-col gap-10">
-          <div className="flex flex-col gap-4">
-            <Eyebrow>consumer documentation</Eyebrow>
-            <h1 className="font-display text-[clamp(2rem,3vw,2.6rem)] font-medium leading-[1.05] tracking-[-0.015em] text-stone-50">
-              {PACKAGE_NAME} documentation
-            </h1>
-            <SectionLead>
-              Everything a consumer needs to render tiling layouts with{" "}
-              hypr-tiling: a fast track to the first tiles, the full public-API
-              surface grouped by capability, and the generated per-symbol
-              reference. These docs cover only the public API; contributors
-              working on the library itself start from{" "}
-              <Code>CONTRIBUTING.md</Code>. Every page is prerendered to static
-              HTML.
-            </SectionLead>
+          {/* 1. HERO — one value sentence + a live layout + its copy-paste source. */}
+          <div className="flex flex-col gap-5" id="hero">
+            <div className="flex flex-col gap-4">
+              <Eyebrow>consumer documentation</Eyebrow>
+              <h1 className="font-display text-[clamp(2rem,3vw,2.6rem)] font-medium leading-[1.05] tracking-[-0.015em] text-stone-50">
+                Render a tiling layout in React — in one paste.
+              </h1>
+              <SectionLead>
+                {PACKAGE_NAME} is a controlled tiling renderer: you own a layout
+                tree in state, and the component drags, drops, resizes, groups,
+                and keyboard-controls its panes at runtime. Paste the block below
+                and you have a working, resizable layout — the guides take it from
+                there. These docs cover only the public API; contributors working
+                on the library start from <Code>CONTRIBUTING.md</Code>.
+              </SectionLead>
+            </div>
+            <ExampleSource id="quickstart" />
+            <DemoFrame height={260}>
+              <Quickstart />
+            </DemoFrame>
           </div>
 
-          <ApiMap />
-
-          <GuideSection id="fast-track" eyebrow="lane a · quickstart" title="Fast track">
+          {/* 2. QUICKSTART — the golden path, numbered + runnable. */}
+          <GuideSection id="quickstart" eyebrow="golden path" title="Quickstart">
             <SectionLead>
-              The shortest path to a working layout. Install the package with its
-              React 19 peers, register its <Code>dist</Code> in your Tailwind{" "}
-              <Code>content</Code> glob (the library ships utility classes, not
-              CSS), then render a controlled <Code>TilingRenderer</Code>: you own
-              the layout tree in state and apply every edit it reports through{" "}
-              <Code>onLayoutChange</Code>.
+              Three steps to the layout above. Every step is runnable; there are
+              no concept detours here — those come after, only as needed.
             </SectionLead>
-            <Pre>{INSTALL_SNIPPET}</Pre>
+            <Step n={1} title="Install">
+              <SectionLead>
+                Add the package and its React 19 peers.
+              </SectionLead>
+              <Pre>{INSTALL_SNIPPET}</Pre>
+            </Step>
+            <Step n={2} title="Add the Tailwind content glob">
+              <SectionLead>
+                The library ships utility classes in its <Code>dist</Code>, not
+                CSS. Add that directory to your Tailwind <Code>content</Code> globs
+                or the pane, divider, and drag-ghost classes get purged.
+              </SectionLead>
+              <Pre>{TAILWIND_CONTENT_SNIPPET}</Pre>
+            </Step>
+            <Step n={3} title="Render a controlled TilingRenderer">
+              <SectionLead>
+                Own the layout tree in state, pass a <Code>config</Code> and a{" "}
+                <Code>renderTile</Code> callback, and apply every edit the renderer
+                reports through <Code>onLayoutChange</Code>. This is the exact
+                source behind the live panes above — resize them by dragging the
+                divider.
+              </SectionLead>
+              <ExampleSource id="quickstart" />
+            </Step>
             <SectionLead>
-              Add the package&rsquo;s dist directory to your Tailwind{" "}
-              <Code>content</Code> globs so the pane, divider, and drag-ghost
-              classes are not purged from your build:
-            </SectionLead>
-            <Pre>{TAILWIND_CONTENT_SNIPPET}</Pre>
-            <SectionLead>
-              A minimal renderer: a layout config, a two-tile registry, and a{" "}
-              <Code>renderTile</Code> callback that paints each tile. This
-              renders two draggable, resizable panes.
-            </SectionLead>
-            <Pre>{FAST_TRACK_SNIPPET}</Pre>
-            <SectionLead>
-              Next steps: narrow behavior in{" "}
-              <Link href="#cap-interaction">Interaction capabilities</Link>,
-              mutate the tree in{" "}
-              <Link href="#cap-layout">Layout tree &amp; mutation</Link>, restyle
-              in <Link href="#cap-theming">Theming</Link>, or look up any symbol
-              in the <Link href="#api-reference">reference</Link>.
+              Next: paint your own pane content in{" "}
+              <Link href="#howto-render-tile">Render your own content</Link>, then
+              skim <Link href="#concepts">Concepts</Link> when you want the mental
+              model.
             </SectionLead>
           </GuideSection>
 
-          <CapabilitySection
-            id="cap-renderer"
-            title="Renderer & props"
-            symbols={[
-              "TilingRenderer",
-              "TilingRendererProps",
-              "TilingRenderTileProps",
-              "TilingTile",
-            ]}
-          >
+          {/* 3. HOW DO I… — the heart: outcome-framed recipes. */}
+          <GuideSection id="howto" eyebrow="recipes" title="How do I…">
             <SectionLead>
-              <Code>TilingRenderer</Code> is the single entry component and a
-              controlled component: <Code>layout</Code>, <Code>tiles</Code>,{" "}
-              <Code>config</Code>, and <Code>onLayoutChange</Code> are the four
-              required props; everything else is optional and resolves to a
-              documented default. Supply a <Code>renderTile</Code> callback (
-              <Code>TilingRenderTileProps</Code>) to render custom pane bodies,
-              or omit it for the default tile surface. A <Code>TilingTile</Code>{" "}
-              only requires <Code>id</Code> and <Code>title</Code>.
+              Each recipe is an outcome you want, a complete snippet that compiles
+              against the current public API, the two or three knobs that matter,
+              and where to look next.
             </SectionLead>
-          </CapabilitySection>
 
-          <CapabilitySection
-            id="cap-layout"
-            title="Layout tree & mutation"
-            symbols={[
-              "TilingLayoutNode",
-              "TilingLeafNode",
-              "TilingSplitNode",
-              "TilingGroupNode",
-              "TilingLayoutConfig",
-              "DEFAULT_TILING_LAYOUT_CONFIG",
-              "queryTilingLayout",
-              "TilingLayoutQuery",
-              "TilingCommand",
-              "TilingCommandHandle",
-              "TilingCommandGates",
-              "isCommandEnabled",
-            ]}
-          >
-            <SectionLead>
-              A layout is a recursive tree you own in state: <Code>leaf</Code>{" "}
-              nodes hold a tile, <Code>split</Code> nodes divide space along an
-              axis by a ratio, and <Code>group</Code> nodes stack leaves behind a
-              tab strip (<Code>TilingLayoutNode</Code> is the union). Read it with{" "}
-              <Code>queryTilingLayout</Code>, which returns a{" "}
-              <Code>TilingLayoutQuery</Code> view (leaf ids, splits, groups, tile
-              order, and a directional-neighbor lookup) so you never walk the tree
-              by hand. Edit it two ways: declaratively, by applying the tree the
-              renderer reports through <Code>onLayoutChange</Code>; or
-              imperatively, by dispatching a typed <Code>TilingCommand</Code>{" "}
-              through the renderer&rsquo;s <Code>TilingCommandHandle</Code> ref (
-              gate a command first with <Code>isCommandEnabled</Code> +{" "}
-              <Code>TilingCommandGates</Code>). Every edit stays diffable and
-              persistable.
-            </SectionLead>
-            <Pre>{LAYOUT_MUTATION_SNIPPET}</Pre>
-            <SectionLead>
-              Power users driving the tree headlessly (no renderer) can reach the
-              raw pure reducers — <Code>insertLeafAdjacent</Code>,{" "}
-              <Code>groupLeaves</Code>, <Code>swapLeafTiles</Code>,{" "}
-              <Code>updateSplitRatio</Code>, and the rest — on the{" "}
-              <Code>@n-uf/hypr-tiling/engine</Code> escape hatch. That entry is{" "}
-              <Code>@beta</Code> with no stability guarantees and is kept off this
-              reference; prefer the command handle above.
-            </SectionLead>
-          </CapabilitySection>
+            <HowTo
+              id="howto-initial-layout"
+              title="Define the initial layout"
+              goal={
+                <>
+                  Describe the starting arrangement as a plain, serialisable tree
+                  you own in state — a leaf holds one tile, a split divides space
+                  by a ratio, a group stacks leaves behind a tab strip.
+                </>
+              }
+              exampleId="initial-layout"
+              knobs={
+                <>
+                  Every node needs a stable <Code>id</Code>; a leaf&rsquo;s{" "}
+                  <Code>tileId</Code> points into your <Code>tiles</Code>. Splits
+                  carry an <Code>axis</Code> (<Code>"horizontal"</Code> /{" "}
+                  <Code>"vertical"</Code>) and a <Code>ratio</Code> in{" "}
+                  <Code>[0,1]</Code>; groups carry an <Code>activeMemberId</Code>.
+                  The whole object is JSON — persist and restore it verbatim.
+                </>
+              }
+              symbols={[
+                "TilingLayoutNode",
+                "TilingLeafNode",
+                "TilingSplitNode",
+                "TilingGroupNode",
+                "TilingTile",
+              ]}
+            />
 
-          <CapabilitySection
-            id="cap-interaction"
-            title="Interaction capabilities & presets"
-            symbols={[
-              "TilingInteractionCapabilities",
-              "ResolvedTilingInteractionCapabilities",
-              "resolveInteractionCapabilities",
-              "TILING_INTERACTION_CAPABILITY_DEFAULTS",
-              "TILING_DASHBOARD_PRESET",
-              "TilingResizeCapability",
-              "TilingMaximizeCapability",
-              "TilingPaneSwitchingCapability",
-              "TilingPaneTitleBarControlsCapability",
-              "TilingSlotCommitmentCapability",
-            ]}
-          >
-            <SectionLead>
-              Drag-and-drop, resize, keyboard control, grouping, and maximize are
-              all enabled by default and configured through the single{" "}
-              <Code>interaction</Code> prop (
-              <Code>TilingInteractionCapabilities</Code>). Pass a partial to
-              narrow behavior, or start from a preset like{" "}
-              <Code>TILING_DASHBOARD_PRESET</Code>.{" "}
-              <Code>resolveInteractionCapabilities</Code> materializes the fully
-              resolved shape.
-            </SectionLead>
-            <Pre>{CAPABILITIES_SNIPPET}</Pre>
-          </CapabilitySection>
+            <HowTo
+              id="howto-render-tile"
+              title="Render your own content in a pane"
+              goal={
+                <>
+                  Take over what each pane draws with a <Code>renderTile</Code>{" "}
+                  callback while the renderer keeps owning layout, resize, and drag.
+                </>
+              }
+              exampleId="render-tile"
+              demo={<RenderTileExample />}
+              knobs={
+                <>
+                  Root the pane on <Code>article[data-leaf-id]</Code> and forward{" "}
+                  <Code>onFocus</Code>, <Code>onPointerMove</Code>, and{" "}
+                  <Code>onPointerLeave</Code>; put <Code>onHandlePointerDown</Code>{" "}
+                  on your drag handle (the header). Everything else on{" "}
+                  <Code>TilingRenderTileProps</Code> (<Code>isFocused</Code>,{" "}
+                  <Code>isMaximized</Code>, the <Code>tile</Code> payload) is
+                  presentation state you style from.
+                </>
+              }
+              symbols={["TilingRenderTileProps", "TilingRendererProps", "TilingTile"]}
+            />
 
-          <CapabilitySection
-            id="cap-theming"
-            title="Theming"
-            symbols={[
-              "TilingThemeProvider",
-              "TilingTheme",
-              "useTilingTheme",
-              "TilingThemeId",
-              "TILING_THEMES",
-              "DEFAULT_TILING_THEME_ID",
-              "resolveTilingTheme",
-            ]}
-          >
-            <SectionLead>
-              Choose a built-in theme with the <Code>themeId</Code> prop, or wrap
-              a subtree in <Code>TilingThemeProvider</Code> and read the active{" "}
-              <Code>TilingTheme</Code> with <Code>useTilingTheme</Code>. Theme
-              switching is live — no remount. <Code>TILING_THEMES</Code> and{" "}
-              <Code>resolveTilingTheme</Code> back the registry.
-            </SectionLead>
-            <Pre>{THEMING_SNIPPET}</Pre>
-          </CapabilitySection>
+            <HowTo
+              id="howto-theming"
+              title="Theme & color panes"
+              goal={
+                <>
+                  Restyle the whole surface with a built-in theme, or give an
+                  individual pane its own accent — switching is live, with no
+                  remount.
+                </>
+              }
+              exampleId="theming"
+              demo={<ThemingExample />}
+              knobs={
+                <>
+                  Set <Code>themeId</Code> (<Code>"neon-terminal"</Code> /{" "}
+                  <Code>"clean-flat"</Code> / <Code>"mosaic"</Code>) for the whole
+                  renderer; set <Code>tile.accent</Code> for one pane.{" "}
+                  <Code>useTilingTheme()</Code> reads the active theme inside a
+                  pane; <Code>resolveTilingTheme</Code> maps an id to its token
+                  object for <Code>TilingThemeProvider</Code>.
+                </>
+              }
+              symbols={[
+                "TilingThemeProvider",
+                "useTilingTheme",
+                "resolveTilingTheme",
+                "TilingThemeId",
+                "TilingTheme",
+              ]}
+            />
 
-          <CapabilitySection
-            id="cap-grouping"
-            title="Multi-select & grouping"
-            symbols={[
-              "isMultiSelectModifierActive",
-              "MultiSelectModifierState",
-              "TilingCommand",
-              "TilingCommandHandle",
-            ]}
-          >
-            <SectionLead>
-              Fold several selected leaves into one tabbed group. This is a
-              built-in interaction: Alt/Opt+click adds a leaf to the selection and
-              Alt/Opt+G groups it — no wiring required. For your own affordances,{" "}
-              <Code>isMultiSelectModifierActive</Code> (over a{" "}
-              <Code>MultiSelectModifierState</Code>) tells you whether the
-              platform multi-select modifier is held, and you can apply a group
-              programmatically by dispatching the <Code>group-leaves</Code>{" "}
-              <Code>TilingCommand</Code> through the renderer&rsquo;s{" "}
-              <Code>TilingCommandHandle</Code>. The lower-level selection reducers
-              (<Code>toggleLeafMultiSelection</Code>,{" "}
-              <Code>canGroupMultiSelection</Code>, <Code>pruneMultiSelection</Code>
-              ) are power-user internals on the <Code>@beta</Code>{" "}
-              <Code>@n-uf/hypr-tiling/engine</Code> escape hatch.
-            </SectionLead>
-            <Pre>{GROUPING_SNIPPET}</Pre>
-          </CapabilitySection>
+            <HowTo
+              id="howto-capabilities"
+              title="Choose which interactions are allowed"
+              goal={
+                <>
+                  Turn interactions on or off — everything is enabled by default,
+                  so you subtract what you don&rsquo;t want through one prop.
+                </>
+              }
+              exampleId="capabilities"
+              demo={<CapabilitiesExample />}
+              knobs={
+                <>
+                  Pass a partial <Code>TilingInteractionCapabilities</Code> to the{" "}
+                  <Code>interaction</Code> prop, or spread a preset like{" "}
+                  <Code>TILING_DASHBOARD_PRESET</Code> and override.{" "}
+                  <Code>resolveInteractionCapabilities</Code> returns the
+                  fully-defaulted shape when you need to read effective values.
+                </>
+              }
+              symbols={[
+                "TilingInteractionCapabilities",
+                "TILING_DASHBOARD_PRESET",
+                "resolveInteractionCapabilities",
+                "TilingResizeCapability",
+              ]}
+            />
 
-          <CapabilitySection
-            id="cap-drag"
-            title="Drag / FLIP & recovery"
-            symbols={[
-              "TilingDragRecoveryCapability",
-              "ResolvedTilingDragRecoveryCapability",
-              "TilingTouchDragCapability",
-              "ResolvedTilingTouchDragCapability",
-              "DEFAULT_DRAG_ANIMATION_SPEED_PERCENT",
-              "DEFAULT_DRAG_HOP_EASING",
-              "DEFAULT_DRAG_REFLOW_EASING",
-              "BASELINE_DRAG_HOP_DURATION_MS",
-            ]}
-          >
-            <SectionLead>
-              Dragging a pane header detaches the source, freezes the tree, and
-              floats a cursor-following ghost that hops between seats; the move
-              commits on release. FLIP-animated survivor reflow and a
-              self-healing recovery backstop guarantee the tree never strands
-              mid-transition. As a consumer you tune the motion through props on{" "}
-              <Code>TilingRendererProps</Code> — <Code>dragAnimationEnabled</Code>
-              , <Code>dragHopEasing</Code>, <Code>dragReflowEasing</Code>,{" "}
-              <Code>ghostTransitSpeedPercent</Code> — and configure touch-drag and
-              recovery through the capabilities below. The deep-engine drag math
-              is <Code>@internal</Code> and excluded from the surface.
-            </SectionLead>
-          </CapabilitySection>
+            <HowTo
+              id="howto-save-restore"
+              title="Save & restore a layout"
+              goal={
+                <>
+                  Persist the arrangement across reloads. Because the tree is plain
+                  JSON you own, this is just save on change and load on mount.
+                </>
+              }
+              exampleId="save-restore"
+              knobs={
+                <>
+                  Write the layout to storage inside <Code>onLayoutChange</Code>{" "}
+                  and read it back in your <Code>useState</Code> initializer with a
+                  default fallback. Validate the parsed shape before trusting it in
+                  production. No library-specific serializer is involved.
+                </>
+              }
+              symbols={["TilingLayoutNode", "TilingRendererProps"]}
+            />
 
-          <CapabilitySection
-            id="cap-devtools"
-            title="Devtools (opt-in)"
-            symbols={[
-              "TilingObservabilityColorConfig",
-              "TilingObservabilityColorEnableConfig",
-              "TilingDropIntentDebugState",
-              "TilingLiveHitLogState",
-              "TilingPaneHitZoneOverlayDebugState",
-            ]}
-          >
-            <SectionLead>
-              Advanced and opt-in. The{" "}
-              <Code>@n-uf/hypr-tiling/devtools</Code> subpath exposes
-              observability overlays (the <Code>TilingObservabilityPanel</Code>{" "}
-              and its seed defaults) for drop-intent resolution and pane hit-zone
-              debugging — useful when tuning custom interaction behavior. It lives
-              on its own entry point so a renderer-only consumer never pulls the
-              panel into its bundle, and it is intentionally kept out of the fast
-              track. The observability <em>types</em> referenced by public
-              renderer props remain on the main entry and appear in the reference
-              below; the panel implementation does not.
-            </SectionLead>
-            <Pre>{DEVTOOLS_SNIPPET}</Pre>
-          </CapabilitySection>
+            <HowTo
+              id="howto-commands"
+              title="Trigger actions from your own buttons"
+              goal={
+                <>
+                  Drive the layout from a toolbar, menu, or any control you build —
+                  split, group, resize, maximize — without touching the tree by
+                  hand.
+                </>
+              }
+              exampleId="commands"
+              demo={<CommandsExample />}
+              knobs={
+                <>
+                  Take the renderer&rsquo;s <Code>TilingCommandHandle</Code> with a
+                  ref and call <Code>dispatch</Code> with a typed{" "}
+                  <Code>TilingCommand</Code> (<Code>set-split-ratio</Code>,{" "}
+                  <Code>toggle-split-axis</Code>, <Code>group-leaves</Code>, …). A
+                  command targeting a disabled capability is a safe no-op, so you
+                  never have to guard the happy path.
+                </>
+              }
+              symbols={["TilingCommandHandle", "TilingCommand"]}
+            />
 
-          <GuideSection
-            id="migration"
-            eyebrow="release"
-            title="Migration & changelog"
-          >
-            <SectionLead>
-              hypr-tiling follows calendar versioning. Breaking changes and
-              release notes are tracked in the package{" "}
-              <Link href={CHANGELOG_URL}>CHANGELOG.md</Link>. The curated public
-              API surface is enforced by API Extractor, so any addition or
-              removal is visible in the <Link href={API_REFERENCE_URL}>API report</Link>{" "}
-              and mirrored in the reference below.
-            </SectionLead>
-            <p className="text-[12px] leading-[1.6] text-stone-500">
-              <Link href={LICENSE_URL}>{LICENSE_NAME}</Link> · source-available ·
-              free commercial use · no competing use
-            </p>
+            <HowTo
+              id="howto-command-bar"
+              title="Build a command bar / keyboard shortcuts"
+              goal={
+                <>
+                  <span className="mr-2 rounded border border-amber-300/40 bg-amber-300/10 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-amber-200">
+                    advanced
+                  </span>
+                  Wire your own command bar or key bindings that only surface — and
+                  only fire — when the target command would actually do something.
+                </>
+              }
+              exampleId="command-bar"
+              demo={<CommandBarExample />}
+              knobs={
+                <>
+                  Derive <Code>TilingCommandGates</Code> from{" "}
+                  <Code>resolveInteractionCapabilities</Code>, then call{" "}
+                  <Code>isCommandEnabled(command, gates)</Code> to hide dead
+                  controls and keep a keyboard binding browser-graceful (only{" "}
+                  <Code>preventDefault</Code> when the command runs). This is the
+                  same gate the renderer uses for its built-in shortcut chips.
+                </>
+              }
+              symbols={[
+                "isCommandEnabled",
+                "TilingCommandGates",
+                "resolveInteractionCapabilities",
+                "resolveJumpedPaneId",
+              ]}
+            />
+
+            <HowTo
+              id="howto-group-split-maximize"
+              title="Group, split & maximize panes"
+              goal={
+                <>
+                  Fold panes into a tabbed group, split space, or maximize a pane —
+                  as built-in gestures and from your own code.
+                </>
+              }
+              exampleId="group-split-maximize"
+              demo={<GroupSplitMaximizeExample />}
+              knobs={
+                <>
+                  Users can Alt/Opt+G to group, drag a header to split, and
+                  Alt+Enter to maximize out of the box. From code, dispatch{" "}
+                  <Code>group-leaves</Code>, <Code>insert-adjacent</Code>, and{" "}
+                  <Code>toggle-maximize</Code>. For custom multi-select affordances,{" "}
+                  <Code>isMultiSelectModifierActive</Code> reports whether the
+                  platform modifier is held.
+                </>
+              }
+              symbols={[
+                "TilingCommand",
+                "TilingCommandHandle",
+                "isMultiSelectModifierActive",
+                "MultiSelectModifierState",
+              ]}
+            />
           </GuideSection>
 
+          {/* 4. CONCEPTS — only what unblocks the recipes. */}
+          <GuideSection id="concepts" eyebrow="mental model" title="Concepts">
+            <SectionLead>
+              Three ideas unblock everything above. That is deliberately all —
+              there is no architecture here.
+            </SectionLead>
+            <div className="flex flex-col gap-3">
+              <ConceptCard term="The layout is a tree you own">
+                A layout is a recursive tree of three node kinds:{" "}
+                <Code>leaf</Code> (one tile), <Code>split</Code> (two children
+                divided by a ratio along an axis), and <Code>group</Code> (leaves
+                stacked behind a tab strip). It is plain, serialisable data held in{" "}
+                <em className="not-italic text-stone-200">your</em> state.
+              </ConceptCard>
+              <ConceptCard term="The renderer runs interactions; you own the tree">
+                <Code>TilingRenderer</Code> is controlled. It performs drag, resize,
+                grouping, focus, and keyboard control, then reports the resulting
+                tree through <Code>onLayoutChange</Code> — it never mutates state
+                behind your back. You apply the edit (or persist / diff / veto it).
+              </ConceptCard>
+              <ConceptCard term="Interactions are capabilities, on by default">
+                Every interaction is enabled unless you narrow it. The single{" "}
+                <Code>interaction</Code> prop (
+                <Code>TilingInteractionCapabilities</Code>) subtracts or reshapes
+                behavior; presets are just pre-filled partials. You configure by
+                turning things off, not wiring things on.
+              </ConceptCard>
+            </div>
+          </GuideSection>
+
+          {/* 5. EXAMPLES — whole runnable apps to copy wholesale. */}
+          <GuideSection id="examples" eyebrow="copy wholesale" title="Examples gallery">
+            <SectionLead>
+              Complete, controlled <Code>TilingRenderer</Code> apps. Each file is
+              runnable as-is and type-checked against the public API — copy one and
+              start editing.
+            </SectionLead>
+
+            <div className="flex flex-col gap-4 scroll-mt-24" id="examples-dashboard">
+              <h3 className="font-display text-[19px] font-medium text-stone-100">
+                Metrics dashboard
+              </h3>
+              <SectionLead>
+                A master-stack of accented metric panes on the{" "}
+                <Code>clean-flat</Code> theme.
+              </SectionLead>
+              <DemoFrame height={340}>
+                <DashboardApp />
+              </DemoFrame>
+              <ExampleSource id="dashboard-app" />
+            </div>
+
+            <div className="flex flex-col gap-4 scroll-mt-24" id="examples-terminal">
+              <h3 className="font-display text-[19px] font-medium text-stone-100">
+                Terminal grid
+              </h3>
+              <SectionLead>
+                Monospace shell / logs / htop panes on the{" "}
+                <Code>neon-terminal</Code> theme — the Hyprland homage, in the
+                terminal.
+              </SectionLead>
+              <DemoFrame height={340}>
+                <TerminalGridApp />
+              </DemoFrame>
+              <ExampleSource id="terminal-grid" />
+            </div>
+          </GuideSection>
+
+          {/* 6. REFERENCE — DEMOTED, last, tiered Core vs Advanced. */}
           <ApiReference />
+
+          <footer className="border-t border-white/[0.08] pt-6 text-[12px] leading-[1.7] text-stone-500">
+            hypr-tiling follows calendar versioning; breaking changes and release
+            notes live in the{" "}
+            <Link href={CHANGELOG_URL}>CHANGELOG.md</Link>. Source-available under{" "}
+            <Link href={LICENSE_URL}>{LICENSE_NAME}</Link> · free commercial use ·
+            no competing use.
+          </footer>
         </main>
       </div>
     </div>

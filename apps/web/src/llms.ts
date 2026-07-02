@@ -53,17 +53,17 @@ export function buildLlmsTxt(): string {
   lines.push(`## Documentation (${DOCS_URL})`);
   lines.push("");
   lines.push(
-    "Consumer documentation, prerendered as static HTML at the /docs route. A consumer is a developer who uses @n-uf/hypr-tiling in their app; these docs cover only the public API surface (the hand-authored `.` facade). The information architecture has two lanes: an API map that routes the reader, Lane A (Fast track — the shortest copy-paste path to the first rendered tiles), and Lane B (the full public-API spectrum, grouped by capability), each capability linking into the generated per-symbol reference that follows:",
+    "Consumer documentation, prerendered as static HTML at the /docs route. A consumer is a developer who uses @n-uf/hypr-tiling in their app; these docs cover only the public API surface (the hand-authored `.` facade). The information architecture is TASK-FIRST: it leads with the graceful path and frames every guide as an outcome, not an API list. Reading order — Quickstart (the golden copy-paste path to a working layout), then the \"How do I…\" recipes (the heart: define the initial layout, render your own pane content, theme panes, choose which interactions are allowed, save & restore, trigger actions from your own buttons, build a command bar / keyboard shortcuts, group / split / maximize), then a minimal Concepts section, then a gallery of whole runnable apps. The generated per-symbol reference is DEMOTED to last — a fallback for when you already know a symbol name, not the way in. Every guide snippet is the raw source of a real, type-checked example module, so it always compiles against the current public API. Start with these topics:",
   );
   lines.push("");
   for (const topic of DOCS_GUIDE_TOPICS) {
     lines.push(`- [${topic.title}](${DOCS_URL}#${topic.id}): ${topic.summary}`);
   }
   lines.push("");
-  lines.push("## API reference");
+  lines.push("## API reference (fallback — for when you already know the name)");
   lines.push("");
   lines.push(
-    `The curated public API surface (generated from source TSDoc). Full report: ${API_REFERENCE_URL}`,
+    `The curated public API surface, generated from source TSDoc. It is DEMOTED below the guides above and tiered Core (TilingRenderer, the layout tree + queryTilingLayout, theming, commands / dispatch) vs Advanced helpers (isCommandEnabled and the capability / query utilities). Prefer the task-first guides; reach here to look up a symbol you already know. Full machine-readable report: ${API_REFERENCE_URL}`,
   );
   lines.push("");
   const apiKinds: ReadonlyArray<string> = [

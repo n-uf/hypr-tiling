@@ -7,12 +7,6 @@
 import * as React_2 from 'react';
 
 // @public
-export function accentHue(accent: TilingTileAccent | undefined): TilingAccentHue;
-
-// @public
-export const BASELINE_DRAG_HOP_DURATION_MS: number;
-
-// @public
 export const DEFAULT_DRAG_ANIMATION_SPEED_PERCENT: number;
 
 // @public
@@ -35,9 +29,6 @@ export const DRAG_ANIMATION_SPEED_MAX_PERCENT: number;
 
 // @public
 export const DRAG_ANIMATION_SPEED_MIN_PERCENT: number;
-
-// @public
-export const INSTANT_DRAG_DURATION_MS: number;
 
 // @public
 export function isCommandEnabled(command: TilingCommand, gates: TilingCommandGates): boolean;

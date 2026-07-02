@@ -383,7 +383,24 @@ export function resolveCycledPaneId(
   return leafIds[nextIndex];
 }
 
-/** Resolve the jump-to-N leaf id (1-based), or `null` when out of range (no-op). */
+/**
+ * Resolve the jump-to-N leaf id (1-based), or `null` when out of range (no-op).
+ *
+ * @example
+ * Wire your own "jump to pane N" buttons against the leaf order from
+ * {@link queryTilingLayout}, dispatching the built-in `focus-jump` command:
+ *
+ * ```tsx
+ * import { queryTilingLayout, resolveJumpedPaneId } from "@n-uf/hypr-tiling";
+ *
+ * const { leafIds } = queryTilingLayout(layout);
+ * leafIds.forEach((_, i) => {
+ *   const paneNumber = i + 1;
+ *   const targetLeafId = resolveJumpedPaneId(leafIds, paneNumber); // null → out of range
+ *   // render a button that dispatches { kind: "focus-jump", paneNumber } when targetLeafId != null
+ * });
+ * ```
+ */
 export function resolveJumpedPaneId(
   leafIds: ReadonlyArray<string>,
   paneNumber: number,

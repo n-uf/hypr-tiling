@@ -101,6 +101,48 @@ export function commandRequiredCapability(command: TilingCommand): keyof TilingC
  * when the command's required capability is enabled (or it requires none). A
  * keyboard binding to a disabled-capability command stays browser-graceful (the
  * caller does not `preventDefault`); an imperative `dispatch` of one is a no-op.
+ *
+ * @example
+ * Build your own command bar / keyboard shortcut that only fires (and only
+ * renders its button) when the target command is actually enabled — the gate the
+ * renderer itself uses for its shortcut chips:
+ *
+ * ```tsx
+ * import {
+ *   resolveInteractionCapabilities,
+ *   isCommandEnabled,
+ *   type TilingCommand,
+ *   type TilingCommandGates,
+ *   type TilingCommandHandle,
+ *   type TilingInteractionCapabilities,
+ * } from "@n-uf/hypr-tiling";
+ *
+ * function gatesFor(interaction?: TilingInteractionCapabilities): TilingCommandGates {
+ *   const caps = resolveInteractionCapabilities(interaction);
+ *   return {
+ *     maximizeEnabled: caps.maximize.enable,
+ *     paneSwitchingEnabled: caps.paneSwitching.enable,
+ *     focusEnabled: caps.focus,
+ *     rearrangeEnabled: caps.rearrange,
+ *     sizingEnabled: caps.paneTitleBarControls.sizing,
+ *     acquireSpaceEnabled: caps.paneTitleBarControls.acquireSpace,
+ *     resizeEnabled: caps.resize !== "none",
+ *     layoutEnabled: caps.masterLayout,
+ *     groupingEnabled: caps.grouping,
+ *   };
+ * }
+ *
+ * function MaximizeButton(props: {
+ *   handle: React.RefObject<TilingCommandHandle | null>;
+ *   interaction?: TilingInteractionCapabilities;
+ * }) {
+ *   const command: TilingCommand = { kind: "toggle-maximize" };
+ *   if (!isCommandEnabled(command, gatesFor(props.interaction))) {
+ *     return null; // maximize is disabled — don't render a dead control
+ *   }
+ *   return <button onClick={() => props.handle.current?.dispatch(command)}>Maximize</button>;
+ * }
+ * ```
  */
 export function isCommandEnabled(command: TilingCommand, gates: TilingCommandGates): boolean {
   const required: keyof TilingCommandGates | null = commandRequiredCapability(command);

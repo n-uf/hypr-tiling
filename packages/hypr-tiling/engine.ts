@@ -10,7 +10,15 @@
  * (`@n-uf/hypr-tiling`) — reach for `./engine` only when the curated surface
  * genuinely cannot express what you need.
  *
- * The entry is framework-free (no React, no DOM): the renderer lives on `.`.
+ * The engine core is framework-free (no React, no DOM): the renderer lives on
+ * `.`. The single exception is the small "demoted from `.`" group at the bottom
+ * of this file — `accentHue` and the two drag-duration reference constants
+ * (`BASELINE_DRAG_HOP_DURATION_MS`, `INSTANT_DRAG_DURATION_MS`). They were pulled
+ * off the consumer `.` surface (custom-chrome / prop-less internal tuning, not
+ * dogfooded by any renderer prop a consumer sets) and re-exported here for power
+ * users who still want them. They live in the `react/` layer, so importing one
+ * pulls React into your bundle; leave them unimported and tree-shaking drops the
+ * edge, keeping the rest of `./engine` framework-free.
  *
  * @packageDocumentation
  */
@@ -121,3 +129,17 @@ export type {
   TilingMoveModeState,
   TilingPaneSwitcherState,
 } from "./engine/types";
+
+// ── Demoted from the `.` consumer surface (react/-backed; see @packageDocumentation) ─
+// Reachable here for power users, but off the curated consumer API and its docs.
+// `accentHue` resolves an accent to its Tailwind hue atoms (custom-chrome helper,
+// not dogfooded by any renderer prop). The two duration constants are the
+// prop-less internal reference values behind the drag-animation timing — the
+// consumer-facing knobs (`dragAnimationEnabled`, `ghostTransitSpeedPercent`,
+// `survivorReflowSpeedPercent`, and the `DRAG_ANIMATION_SPEED_*` percents) stay
+// on `.`.
+export { accentHue, type TilingAccentHue } from "./react/theme";
+export {
+  BASELINE_DRAG_HOP_DURATION_MS,
+  INSTANT_DRAG_DURATION_MS,
+} from "./react/tiling-renderer";

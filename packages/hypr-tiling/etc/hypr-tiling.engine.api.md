@@ -5,6 +5,12 @@
 ```ts
 
 // @public
+export function accentHue(accent: TilingTileAccent | undefined): TilingAccentHue;
+
+// @public
+export const BASELINE_DRAG_HOP_DURATION_MS: number;
+
+// @public
 export function canGroupMultiSelection(layout: TilingLayoutNode, selection: ReadonlySet<string>): boolean;
 
 // @public
@@ -91,6 +97,9 @@ export function hasAnyModifier(modifiers: ResolvedTilingKeyChordModifiers): bool
 
 // @public
 export function insertLeafAdjacent(layout: TilingLayoutNode, sourceLeafId: string, targetLeafId: string, placement: TilingMovePlacement, options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
+
+// @public
+export const INSTANT_DRAG_DURATION_MS: number;
 
 // @public
 export function isCssEasing(value: string): boolean;
@@ -203,6 +212,23 @@ export const TILING_DROP_INTENT_CONFIG: TilingDropIntentBaseConfig;
 
 // @public
 export const TILING_KEYMAP_DEFAULTS: ResolvedTilingKeymap;
+
+// @public
+export interface TilingAccentHue {
+    readonly focusBorder: string;
+    readonly focusGlow: string;
+    readonly focusGlowSoft: string;
+    readonly focusRing: string;
+    readonly label: string;
+    readonly surfaceBorder: string;
+    readonly surfaceShadow: string;
+    readonly swatch: string;
+    readonly tabBg: string;
+    readonly tabBgSoft: string;
+    readonly tabBorder: string;
+    readonly text: string;
+    readonly textStrong: string;
+}
 
 // @public
 export type TilingDimension = "width" | "height";

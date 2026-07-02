@@ -44,6 +44,24 @@ export interface MultiSelectModifierState {
 /**
  * `true` when the event carries the multi-select modifier — Alt/Opt (`altKey`),
  * the single chord both the header toggle and the Alt+G group key key off.
+ *
+ * @example
+ * In a custom `renderTile`, add the clicked pane to the multi-selection only when
+ * the platform multi-select modifier is held (a plain click falls through to
+ * focus):
+ *
+ * ```tsx
+ * import { isMultiSelectModifierActive } from "@n-uf/hypr-tiling";
+ *
+ * <header
+ *   onClick={(event) => {
+ *     if (args.isMultiSelectGroupingEnabled && isMultiSelectModifierActive(event)) {
+ *       event.preventDefault();
+ *       args.onToggleMultiSelect();
+ *     }
+ *   }}
+ * />
+ * ```
  */
 export function isMultiSelectModifierActive(event: MultiSelectModifierState): boolean {
   return event.altKey;
