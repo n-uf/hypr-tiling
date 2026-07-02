@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import {
   isCommandEnabled,
   queryTilingLayout,
@@ -377,10 +378,13 @@ type ShortcutSkin = "mosaic" | "editorial" | "canvas";
 // Compact chip tokens for the page-level bottom bar. The shortcut affordances
 // live in the bottom bar (not a standalone pane), so these are sized for a
 // dense single-row strip: small section labels, tight keycap chips, per-skin
-// color language matching the rest of the chrome. Each chip now shows ONLY its
-// key-binding keycap; the descriptive label moves into a lightweight custom
-// hover `tooltip` (fast, ~60ms — NOT the slow native `title` attribute), styled
-// in the same per-skin vibe as the bar.
+// color language matching the rest of the chrome. Each chip is a SINGLE clean
+// keycap button — one border, one background, one radius — that is itself
+// clickable (no border-inside-a-border); the `kbd` token is purely typographic
+// keycap text carried inside that one frame. The descriptive label lives in a
+// lightweight custom hover `tooltip` (fast, ~60ms — NOT the slow native `title`
+// attribute), rendered through a portal so no `overflow` ancestor can clip it;
+// its tokens carry ONLY per-skin visual styling (position is applied inline).
 interface ShortcutBarTokens {
   readonly sectionLabel: string;
   readonly button: string;
@@ -394,41 +398,69 @@ const SHORTCUT_BAR_SKIN: Record<ShortcutSkin, ShortcutBarTokens> = {
     sectionLabel:
       "shrink-0 font-mono text-[9px] uppercase tracking-[0.22em] text-stone-600",
     button:
-      "group relative flex shrink-0 items-center rounded border border-white/[0.08] bg-white/[0.02] px-1 py-0.5 transition-[transform,border-color,background-color] duration-150 hover:-translate-y-px hover:border-amber-300/40 hover:bg-amber-300/[0.06] active:translate-y-0",
-    kbd: "shrink-0 rounded border border-white/[0.08] bg-white/[0.03] px-1 py-0.5 font-mono text-[9px] leading-none text-stone-300 group-hover:border-amber-300/40 group-hover:text-amber-100",
+      "relative inline-flex shrink-0 items-center rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-1 font-mono text-[9px] leading-none text-stone-300 transition-[transform,border-color,background-color,color] duration-150 hover:-translate-y-px hover:border-amber-300/45 hover:bg-amber-300/[0.08] hover:text-amber-100 active:translate-y-0",
+    kbd: "font-mono leading-none",
     tooltip:
-      "pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded border border-amber-300/25 bg-[#1c1e22] px-2 py-1 font-mono text-[10px] normal-case tracking-[0.02em] text-stone-100 shadow-[0_10px_28px_-18px_rgba(0,0,0,0.9)]",
+      "pointer-events-none whitespace-nowrap rounded border border-amber-300/25 bg-[#1c1e22] px-2 py-1 font-mono text-[10px] normal-case tracking-[0.02em] text-stone-100 shadow-[0_10px_28px_-18px_rgba(0,0,0,0.9)]",
     divider: "h-3.5 w-px shrink-0 bg-white/10",
   },
   editorial: {
     sectionLabel:
       "shrink-0 font-mono text-[9px] uppercase tracking-[0.24em] text-[#a89c83]",
     button:
-      "group relative flex shrink-0 items-center rounded-[3px] border border-[#ddd3bd] bg-transparent px-1 py-0.5 transition-[transform,border-color,background-color] duration-150 hover:-translate-y-px hover:border-[#241f17]/50 hover:bg-[#241f17]/[0.04] active:translate-y-0",
-    kbd: "shrink-0 rounded-[2px] border border-[#ddd4bf] bg-[#efe8d6] px-1 py-0.5 font-mono text-[9px] leading-none text-[#6b6250] group-hover:border-[#241f17]/40 group-hover:text-[#241f17]",
+      "relative inline-flex shrink-0 items-center rounded-[3px] border border-[#ddd4bf] bg-[#efe8d6] px-1.5 py-1 font-mono text-[9px] leading-none text-[#6b6250] transition-[transform,border-color,background-color,color] duration-150 hover:-translate-y-px hover:border-[#241f17]/45 hover:bg-[#f4eedb] hover:text-[#241f17] active:translate-y-0",
+    kbd: "font-mono leading-none",
     tooltip:
-      "pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-[2px] border border-[#d7ccb2] bg-[#fbf9f2] px-2 py-1 font-mono text-[10px] normal-case tracking-[0.02em] text-[#241f17] shadow-[0_10px_28px_-20px_rgba(36,31,23,0.6)]",
+      "pointer-events-none whitespace-nowrap rounded-[2px] border border-[#d7ccb2] bg-[#fbf9f2] px-2 py-1 font-mono text-[10px] normal-case tracking-[0.02em] text-[#241f17] shadow-[0_10px_28px_-20px_rgba(36,31,23,0.6)]",
     divider: "h-3.5 w-px shrink-0 bg-[#d7ccb2]",
   },
   canvas: {
     sectionLabel:
       "shrink-0 font-mono text-[9px] uppercase tracking-[0.24em] text-slate-400",
     button:
-      "group relative flex shrink-0 items-center rounded border border-slate-200 bg-white px-1 py-0.5 shadow-[0_1px_0_rgba(15,23,42,0.03)] transition-[transform,border-color,background-color] duration-150 hover:-translate-y-px hover:border-slate-300 hover:bg-slate-50 active:translate-y-0",
-    kbd: "shrink-0 rounded border border-slate-200 bg-slate-50 px-1 py-0.5 font-mono text-[9px] leading-none text-slate-500 shadow-[0_1px_0_rgba(15,23,42,0.04)] group-hover:border-slate-300 group-hover:text-slate-700",
+      "relative inline-flex shrink-0 items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-1 font-mono text-[9px] leading-none text-slate-500 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition-[transform,border-color,background-color,color] duration-150 hover:-translate-y-px hover:border-slate-300 hover:bg-white hover:text-slate-700 active:translate-y-0",
+    kbd: "font-mono leading-none",
     tooltip:
-      "pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded border border-slate-200 bg-white px-2 py-1 font-mono text-[10px] normal-case tracking-[0.02em] text-slate-700 shadow-[0_10px_28px_-20px_rgba(15,23,42,0.4)]",
+      "pointer-events-none whitespace-nowrap rounded border border-slate-200 bg-white px-2 py-1 font-mono text-[10px] normal-case tracking-[0.02em] text-slate-700 shadow-[0_10px_28px_-20px_rgba(15,23,42,0.4)]",
     divider: "h-3.5 w-px shrink-0 bg-slate-200",
   },
 };
 
-// A single shortcut chip: shows ONLY its key-binding keycap and reveals the
-// descriptive label in a FAST custom hover tooltip (~60ms) — deliberately not
-// the native `title` attribute, whose show-delay is browser-fixed and slow.
-// Hover AND keyboard-focus both reveal the tooltip (a11y), and the label stays
-// on the button's `aria-label` so the chip is never label-less to a screenreader.
-// The tooltip only exercises post-hydration (hover/focus state), so it carries
-// no prerendered markup.
+// The hovered chip's anchor rect, captured at reveal time. The tooltip is
+// positioned against these viewport coordinates (`position: fixed`), so it is
+// laid out relative to the viewport — never relative to the scrollable shortcut
+// row — which is the whole point of the portal (see below).
+interface TooltipAnchor {
+  readonly centerX: number;
+  readonly top: number;
+}
+
+const TOOLTIP_EDGE_MARGIN: number = 8;
+const TOOLTIP_GAP_PX: number = 6;
+
+// The reveal delay. Kept fast (~60ms, well inside the ~0–75ms target) so the
+// tooltip feels near-instant — deliberately NOT the native `title` attribute,
+// whose show-delay is browser-fixed and slow.
+const TOOLTIP_REVEAL_MS: number = 60;
+
+// A single shortcut chip: a SINGLE clean keycap button (one border/background/
+// radius) whose only content is its key-binding keycap. Its descriptive label
+// is revealed in a FAST custom hover tooltip.
+//
+// Why the tooltip is portaled: the shortcut row is a horizontally-scrollable
+// container (`overflow-x-auto`), and `overflow-x-auto` establishes an
+// overflow-clip context on BOTH axes — so an absolutely-positioned descendant
+// tooltip drawn above the chip (`bottom-full`) was clipped by that scroll
+// container (and by the bottom bar's own bounds) and never became visible. The
+// fix renders the tooltip through `createPortal` to `document.body`, positioned
+// with `position: fixed` against the hovered chip's `getBoundingClientRect()`
+// and a high z-index, so structurally NO `overflow` ancestor can clip it. It is
+// horizontally clamped to the viewport so it is never cut off at an edge.
+//
+// Hover AND keyboard-focus both reveal it (a11y); the label also stays on the
+// button's `aria-label` so the chip is never label-less to a screenreader. The
+// tooltip only exists post-hydration (hover/focus state starts null), so it
+// carries no prerendered markup.
 function ShortcutChip({
   entry,
   tokens,
@@ -438,7 +470,9 @@ function ShortcutChip({
   tokens: ShortcutBarTokens;
   onActivate: (command: TilingCommand) => void;
 }): React.ReactElement {
-  const [isHinted, setIsHinted] = React.useState<boolean>(false);
+  const [anchor, setAnchor] = React.useState<TooltipAnchor | null>(null);
+  const buttonRef = React.useRef<HTMLButtonElement | null>(null);
+  const tooltipRef = React.useRef<HTMLSpanElement | null>(null);
   const timerRef = React.useRef<number | null>(null);
 
   const clearTimer = React.useCallback((): void => {
@@ -451,19 +485,41 @@ function ShortcutChip({
   const reveal = React.useCallback((): void => {
     clearTimer();
     timerRef.current = window.setTimeout((): void => {
-      setIsHinted(true);
-    }, 60);
+      const element: HTMLButtonElement | null = buttonRef.current;
+      if (element == null) {
+        return;
+      }
+      const rect: DOMRect = element.getBoundingClientRect();
+      setAnchor({ centerX: rect.left + rect.width / 2, top: rect.top });
+    }, TOOLTIP_REVEAL_MS);
   }, [clearTimer]);
 
   const hide = React.useCallback((): void => {
     clearTimer();
-    setIsHinted(false);
+    setAnchor(null);
   }, [clearTimer]);
 
   React.useEffect((): (() => void) => clearTimer, [clearTimer]);
 
+  // After the tooltip mounts, clamp it horizontally so it never runs off a
+  // viewport edge: measure its rendered width and pull its center back inside
+  // `[margin + halfWidth, viewportWidth - margin - halfWidth]`. Done in a layout
+  // effect (pre-paint) so there is no visible jump.
+  React.useLayoutEffect((): void => {
+    const tooltip: HTMLSpanElement | null = tooltipRef.current;
+    if (tooltip == null || anchor == null) {
+      return;
+    }
+    const half: number = tooltip.getBoundingClientRect().width / 2;
+    const min: number = TOOLTIP_EDGE_MARGIN + half;
+    const max: number = window.innerWidth - TOOLTIP_EDGE_MARGIN - half;
+    const clampedX: number = Math.min(Math.max(anchor.centerX, min), max);
+    tooltip.style.left = `${clampedX}px`;
+  }, [anchor]);
+
   return (
     <button
+      ref={buttonRef}
       type="button"
       aria-label={`${entry.label} (${entry.combo})`}
       onClick={(): void => onActivate(entry.command)}
@@ -474,11 +530,25 @@ function ShortcutChip({
       className={tokens.button}
     >
       <kbd className={tokens.kbd}>{entry.combo}</kbd>
-      {isHinted ? (
-        <span role="tooltip" className={tokens.tooltip}>
-          {entry.label}
-        </span>
-      ) : null}
+      {anchor != null
+        ? createPortal(
+            <span
+              ref={tooltipRef}
+              role="tooltip"
+              className={tokens.tooltip}
+              style={{
+                position: "fixed",
+                left: anchor.centerX,
+                top: anchor.top - TOOLTIP_GAP_PX,
+                transform: "translate(-50%, -100%)",
+                zIndex: 60,
+              }}
+            >
+              {entry.label}
+            </span>,
+            document.body,
+          )
+        : null}
     </button>
   );
 }
