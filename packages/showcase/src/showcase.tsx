@@ -4,10 +4,7 @@ import {
   DEFAULT_DRAG_HOP_EASING,
   DEFAULT_TILING_LAYOUT_CONFIG,
   TilingRenderer,
-  collectSplitNodes,
-  findLeafByDirection,
-  readLeafNodeIds,
-  tileOrderByLeafId,
+  queryTilingLayout,
   resolveInteractionCapabilities,
   type TilingDropIntentDebugState,
   type TilingFocusDirection,
@@ -609,20 +606,17 @@ export function TilingShowcase(): React.ReactElement {
     [],
   );
 
-  const splitCount: number = React.useMemo(
-    (): number => collectSplitNodes(layout).length,
+  const splitNodes: ReadonlyArray<TilingSplitNode> = React.useMemo(
+    (): ReadonlyArray<TilingSplitNode> => queryTilingLayout(layout).splits,
     [layout],
   );
+  const splitCount: number = splitNodes.length;
   const leafIds: ReadonlyArray<string> = React.useMemo(
-    (): ReadonlyArray<string> => readLeafNodeIds(layout),
+    (): ReadonlyArray<string> => queryTilingLayout(layout).leafIds,
     [layout],
   );
   const tileOrder: ReadonlyArray<string> = React.useMemo(
-    (): ReadonlyArray<string> => tileOrderByLeafId(layout),
-    [layout],
-  );
-  const splitNodes: ReadonlyArray<TilingSplitNode> = React.useMemo(
-    (): ReadonlyArray<TilingSplitNode> => collectSplitNodes(layout),
+    (): ReadonlyArray<string> => queryTilingLayout(layout).tileOrder,
     [layout],
   );
   const controlPaneShortcuts: ReadonlyArray<ShowcaseControlShortcut> =
@@ -763,8 +757,7 @@ export function TilingShowcase(): React.ReactElement {
       if (fromLeafId == null) {
         return;
       }
-      const nextLeafId: string | null = findLeafByDirection(
-        layout,
+      const nextLeafId: string | null = queryTilingLayout(layout).neighborLeafId(
         fromLeafId,
         direction,
       );

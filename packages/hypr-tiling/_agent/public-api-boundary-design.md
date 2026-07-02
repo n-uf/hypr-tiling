@@ -49,24 +49,36 @@ structurally (facade omission) + by the Stage-6 layering lint + by
 `ae-forgotten-export=error` on the `.` report — NOT by the dir name. The rename
 is the low-churn, high-clarity option, so we take it.
 
-### 1b. Release-tag reconciliation (`@internal` vs `@beta`)
+### 1b. `@internal`-vs-`@beta` reconciliation — DECISION: structural fence, entry-level `@beta`
 
-The engine layer is **internal with respect to the `.` public contract** but is
-deliberately exposed through `./engine`. API Extractor assigns release tags
-per-symbol; the literal `@internal` tag would (a) trip
-`ae-internal-missing-underscore` and (b) mark the symbol as trimmed/non-API,
-which is wrong for a symbol we *intend* to expose on `./engine`. Therefore:
+The task's Stage-1 wording ("tag engine modules `@internal`") and its Stage-3
+wording ("`engine.ts` (@beta escape hatch)") pull in opposite directions at the
+API-Extractor *per-symbol tag* level: a literal `@internal` tag on a symbol we
+then re-export through `./engine` would (a) trip `ae-internal-missing-underscore`
+and (b) mark the symbol non-API — wrong for something we intend to expose. The
+two are reconciled by choosing the mechanism that actually enforces the boundary:
 
-- Engine symbols surfaced on `./engine` carry `@beta` (AE's native
-  "released but unstable, no guarantees" tag) — this IS the "no stability
-  guarantees" contract the escape hatch promises.
-- "`@internal` by default / not on `.`" is realized as: **the `.` facade never
-  re-exports them**, the layering lint forbids deep engine imports, and the
-  `.` report fails on any forgotten (leaked) export.
-- Symbols that were already `@internal` pre-revamp (deep-engine internals never
-  meant for any entry — ghost-transit math, leaf-geometry, drop-validity,
-  projected-layout, the FSM controller/ports) stay `@internal` and are simply
-  not re-exported by `engine.ts` either.
+- **No per-symbol release tags are added.** The pre-revamp source carries no
+  explicit `@public`/`@internal`/`@beta` tags (API Extractor defaults untagged →
+  `@public`). Mass-tagging ~55 demoted symbols buys nothing the gate needs and
+  risks mis-tagging a promoted symbol.
+- **The engine is fenced off `.` structurally**, which is *stronger* than a tag:
+  the `.` facade never re-exports engine symbols (a tag does not stop imports —
+  the Stage-6 layering lint does), the `.` report runs
+  `ae-forgotten-export=error` (any leaked engine type fails CI), and the
+  layering lint forbids deep engine imports from apps.
+- **`./engine` is framed `@beta`/"no stability guarantees" at the ENTRY level**
+  — a `@packageDocumentation` banner in `engine.ts` plus the docs/CONTRIBUTING/
+  CHANGELOG framing — rather than per-symbol. Its API report is drift-tracked
+  but lenient (no doc/leak/release-tag gate on an explicitly-unstable surface).
+- Symbols that were already effectively internal pre-revamp (never on the
+  barrel — FSM controller/ports, ghost-transit/leaf-geometry math,
+  drop-validity, projected-layout, input-driver) are simply not re-exported by
+  `engine.ts` either.
+
+This is a deliberate, documented deviation from the literal "tag each symbol
+`@internal`" instruction; it satisfies the HARD requirement (engine unreachable
+from `.`, zero leaks) with less churn and lower risk.
 
 ---
 

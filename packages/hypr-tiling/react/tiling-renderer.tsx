@@ -7639,30 +7639,6 @@ export const TilingRenderer = React.forwardRef<
   );
 });
 
-/**
- * Flatten a layout tree to the tile ids it renders, in reading order (group
- * members reported in tab order). Handy for driving tile-order-dependent UI
- * (e.g. a tab strip or an external index).
- */
-export function tileOrderByLeafId(
-  node: TilingLayoutNode,
-): ReadonlyArray<string> {
-  if (node.kind === "leaf") {
-    return [node.tileId];
-  }
-
-  if (node.kind === "group") {
-    // Every grouped tile still exists in the layout (the group only changes how
-    // they share a slot), so all member tiles are reported in tab order.
-    return node.members.map((member: TilingLeafNode): string => member.tileId);
-  }
-
-  return [
-    ...tileOrderByLeafId(node.first),
-    ...tileOrderByLeafId(node.second),
-  ];
-}
-
 export function isLeafNode(node: TilingLayoutNode): node is TilingLeafNode {
   return node.kind === "leaf";
 }

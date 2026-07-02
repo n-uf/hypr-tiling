@@ -315,6 +315,87 @@ export function readGroupMemberIds(node: TilingLayoutNode): ReadonlyArray<string
   );
 }
 
+/**
+ * Flatten a layout tree to the tile ids it renders, in reading order (group
+ * members reported in tab order). Handy for driving tile-order-dependent UI
+ * (e.g. a tab strip or an external index).
+ */
+export function tileOrderByLeafId(node: TilingLayoutNode): ReadonlyArray<string> {
+  if (node.kind === "leaf") {
+    return [node.tileId];
+  }
+
+  if (node.kind === "group") {
+    // Every grouped tile still exists in the layout (the group only changes how
+    // they share a slot), so all member tiles are reported in tab order.
+    return node.members.map((member: TilingLeafNode): string => member.tileId);
+  }
+
+  return [...tileOrderByLeafId(node.first), ...tileOrderByLeafId(node.second)];
+}
+
+/**
+ * A read-only structural view of a {@link TilingLayoutNode} tree, aggregating
+ * the queries an app typically needs to drive layout-aware UI (shortcut chips,
+ * pane counters, directional focus) without walking the tree by hand or
+ * reaching for the low-level `./engine` walkers.
+ *
+ * @public
+ */
+export interface TilingLayoutQuery {
+  /**
+   * The leaf ids the OUTER layout sees, in reading order — a leaf contributes
+   * its id; a group contributes ONLY its active member id (the group presents
+   * as one pane to the outer layout).
+   */
+  readonly leafIds: ReadonlyArray<string>;
+  /**
+   * The tile ids the tree renders, in reading order (group members reported in
+   * tab order). Drives tile-order-dependent UI such as a tab strip.
+   */
+  readonly tileOrder: ReadonlyArray<string>;
+  /** Every group in the tree (depth-first, reading order) — the tab-strip source. */
+  readonly groups: ReadonlyArray<TilingGroupNode>;
+  /** Every split node in the tree (depth-first, reading order). */
+  readonly splits: ReadonlyArray<TilingSplitNode>;
+  /** Whether any split node is in `"master"` layout mode. */
+  readonly hasMasterSplit: boolean;
+  /**
+   * The leaf id reached from `fromLeafId` in the given `direction` (spatial
+   * neighbor by pane geometry), or `null` when there is no pane that way.
+   */
+  readonly neighborLeafId: (
+    fromLeafId: string,
+    direction: TilingFocusDirection,
+  ) => string | null;
+}
+
+/**
+ * Build a read-only {@link TilingLayoutQuery} over `layout`. The single
+ * higher-level layout-inspection helper on the public API: it composes the
+ * low-level tree walkers (which stay on the `./engine` escape hatch) into the
+ * leaf/tile/group/split views and directional-neighbor lookup an app needs to
+ * render layout-aware controls.
+ *
+ * @public
+ */
+export function queryTilingLayout(layout: TilingLayoutNode): TilingLayoutQuery {
+  const splits: ReadonlyArray<TilingSplitNode> = collectSplitNodes(layout);
+  return {
+    leafIds: readLeafNodeIds(layout),
+    tileOrder: tileOrderByLeafId(layout),
+    groups: collectGroups(layout),
+    splits,
+    hasMasterSplit: splits.some(
+      (split: TilingSplitNode): boolean => split.layoutMode === "master",
+    ),
+    neighborLeafId: (
+      fromLeafId: string,
+      direction: TilingFocusDirection,
+    ): string | null => findLeafByDirection(layout, fromLeafId, direction),
+  };
+}
+
 /** The group that contains `leafId` as a member, or `null`. */
 export function findGroupContainingLeaf(
   node: TilingLayoutNode,

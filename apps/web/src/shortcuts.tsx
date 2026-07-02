@@ -1,15 +1,13 @@
 import * as React from "react";
 import {
-  collectGroups,
-  collectSplitNodes,
-  findLeafByDirection,
   isCommandEnabled,
-  readLeafNodeIds,
+  queryTilingLayout,
   resolveInteractionCapabilities,
   resolveJumpedPaneId,
   type TilingFocusDirection,
   type TilingGroupNode,
   type TilingLayoutNode,
+  type TilingLayoutQuery,
   type TilingSplitNode,
   type ResolvedTilingInteractionCapabilities,
   type ResolvedTilingKeyChord,
@@ -119,9 +117,10 @@ function buildSections(args: {
   gates: TilingCommandGates;
 }): ReadonlyArray<ShortcutSection> {
   const { layout, focusedLeafId, maximizedLeafId, keymap, gates } = args;
-  const leafIds: ReadonlyArray<string> = readLeafNodeIds(layout);
+  const query: TilingLayoutQuery = queryTilingLayout(layout);
+  const leafIds: ReadonlyArray<string> = query.leafIds;
   const hasMultiplePanes: boolean = leafIds.length > 1;
-  const groups: ReadonlyArray<TilingGroupNode> = collectGroups(layout);
+  const groups: ReadonlyArray<TilingGroupNode> = query.groups;
   const focusedGroup: TilingGroupNode | undefined =
     focusedLeafId == null
       ? undefined
@@ -130,14 +129,12 @@ function buildSections(args: {
         );
   const isFocusedGrouped: boolean =
     focusedGroup != null && focusedGroup.members.length > 1;
-  const splits: ReadonlyArray<TilingSplitNode> = collectSplitNodes(layout);
-  const isMasterActive: boolean = splits.some(
-    (split: TilingSplitNode): boolean => split.layoutMode === "master",
-  );
+  const splits: ReadonlyArray<TilingSplitNode> = query.splits;
+  const isMasterActive: boolean = query.hasMasterSplit;
 
   const directionExists = (direction: TilingFocusDirection): boolean =>
     focusedLeafId != null &&
-    findLeafByDirection(layout, focusedLeafId, direction) != null;
+    query.neighborLeafId(focusedLeafId, direction) != null;
 
   const directionEntry = (
     direction: TilingFocusDirection,

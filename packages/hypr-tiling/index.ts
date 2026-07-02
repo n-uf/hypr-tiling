@@ -1,4 +1,25 @@
+"use client";
+
+/**
+ * `@n-uf/hypr-tiling` — the public API for the dynamic tiling renderer.
+ *
+ * This is the ONE entry point a consumer imports. It is a small, hand-authored
+ * facade: an explicit, curated keep-list of the renderer, its theming API, the
+ * configuration/interaction presets, a handful of consumer-grade helpers, and
+ * the type surface reachable through their signatures. Everything below the
+ * renderer — the layout reducers, the drag/FLIP state machine, geometry math,
+ * keymap resolution — is engine-grade and lives behind the separate
+ * `@n-uf/hypr-tiling/engine` escape hatch (`@beta`, no stability guarantees).
+ * The developer/observability panel lives behind `@n-uf/hypr-tiling/devtools`.
+ *
+ * @packageDocumentation
+ */
+
+// ── Renderer ────────────────────────────────────────────────────────────────
 export { TilingRenderer } from "./react/tiling-renderer";
+
+// ── Configuration & drag-animation tuning defaults ───────────────────────────
+// Reference values for the corresponding `TilingRendererProps` knobs.
 export {
   BASELINE_DRAG_HOP_DURATION_MS,
   DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
@@ -6,10 +27,13 @@ export {
   DRAG_ANIMATION_SPEED_MIN_PERCENT,
   DEFAULT_TILING_LAYOUT_CONFIG,
   INSTANT_DRAG_DURATION_MS,
-  dragSpeedsAtParity,
-  tileOrderByLeafId,
-  resolveDragAnimationDurationMs,
 } from "./react/tiling-renderer";
+export {
+  DEFAULT_DRAG_HOP_EASING,
+  DEFAULT_DRAG_REFLOW_EASING,
+} from "./engine/drag-easing";
+
+// ── Theming ──────────────────────────────────────────────────────────────────
 export {
   DEFAULT_TILE_ACCENT,
   DEFAULT_TILING_THEME_ID,
@@ -32,172 +56,101 @@ export {
   type TilingThemeRootTokens,
   type TilingThemeTopBarTokens,
 } from "./react/theme";
-export {
-  TILING_DROP_INTENT_CONFIG,
-  type TilingDropIntentBaseConfig,
-  type TilingDropIntentState,
-  type TilingEdgeZone,
-} from "./engine/drop-intent-resolver";
-export type { DragResolvedTarget } from "./engine/drag-machine";
-export {
-  commandRequiredCapability,
-  isCommandEnabled,
-  keyboardActionToCommand,
-  type TilingCommandGates,
-} from "./engine/commands";
-export { defaultKeyBindings, matchKeyBinding } from "./engine/keybindings";
-export {
-  MULTI_SELECT_GROUP_MIN_MEMBERS,
-  canGroupMultiSelection,
-  isMultiSelectModifierActive,
-  pruneMultiSelection,
-  resolveMultiSelectGroupCommand,
-  resolveMultiSelectGroupHost,
-  toggleLeafMultiSelection,
-  type MultiSelectModifierState,
-} from "./engine/multi-selection";
-export {
-  EMPTY_FOCUS_HISTORY,
-  FOCUS_HISTORY_DEFAULT_LIMIT,
-  pruneFocusHistory,
-  pushFocusHistory,
-  resolveFocusCurrentOrLast,
-  type FocusHistory,
-} from "./engine/focus-history";
-export {
-  DEFAULT_DRAG_HOP_EASING,
-  DEFAULT_DRAG_REFLOW_EASING,
-  isCssEasing,
-  resolveDragEasing,
-} from "./engine/drag-easing";
-export {
-  clampCursorPointToViewport,
-  resolveDragCursorPresentation,
-  type DragCursorKind,
-  type DragCursorPoint,
-  type DragCursorPresentation,
-  type DragCursorTone,
-  type DragCursorViewportBounds,
-} from "./engine/drag-cursor";
+
+// ── Interaction capabilities ─────────────────────────────────────────────────
 export {
   TILING_DASHBOARD_PRESET,
   TILING_INTERACTION_CAPABILITY_DEFAULTS,
-  isResizeAxisEnabled,
   resolveInteractionCapabilities,
 } from "./engine/interaction-capabilities";
+
+// ── Consumer-grade helpers ───────────────────────────────────────────────────
+// Small pure helpers an app needs to drive layout-aware UI on top of the
+// renderer (shortcut chips, pane counters, directional focus, multi-select).
+export { isCommandEnabled, type TilingCommandGates } from "./engine/commands";
+export { resolveJumpedPaneId } from "./engine/pane-switching";
 export {
-  isStaticAlongSplitAxis,
-  isStaticInDimension,
-  isStaticOnCrossAxis,
-  layoutContainsStaticPane,
-  renormalizeFlexibleRatios,
-  resolveSizingMode,
-  shouldRenderSplitDivider,
-  type FlexibleRatioChild,
-  type SplitBoundaryStaticFlags,
-} from "./engine/pane-sizing";
-export {
-  TILING_KEYMAP_DEFAULTS,
-  chordRequiresModifier,
-  matchKeyChord,
-  matchKeymapAction,
-  hasAnyModifier,
-  resolveJumpedPaneId,
-  resolveKeymap,
-  resolveMaximizeToggle,
-  type TilingKeymapActionGuards,
-  type TilingPaneCycleDirection,
-} from "./engine/pane-switching";
-export {
-  collectGroups,
-  collectSplitNodes,
-  findLeafByDirection,
-  findLeafById,
-  groupLeaves,
-  insertLeafAdjacent,
-  isStructurallyValidLayout,
-  moveLeafToRoot,
-  moveLeafToSplitContainer,
-  readLeafNodeIds,
-  removeLeafTile,
-  setLeafSizing,
-  siblingSubtreeForLeaf,
-  swapLeafTiles,
-  toggleSplitAxis,
-  ungroupNode,
-  updateSplitRatio,
-  type GroupLeavesOptions,
-} from "./engine/state";
+  isMultiSelectModifierActive,
+  type MultiSelectModifierState,
+} from "./engine/multi-selection";
+export { queryTilingLayout, type TilingLayoutQuery } from "./engine/state";
+
+// ── Public type surface ──────────────────────────────────────────────────────
+// The transitive type closure of the runtime symbols above (renderer props/ref,
+// theming, capabilities, layout query, command/modifier helpers). API Extractor
+// enforces completeness: `ae-forgotten-export=error` fails the build if any type
+// reachable through a public signature is missing here.
 export type {
-  TilingDropAction,
-  TilingDropIntentDebugState,
-  TilingDropIntentTuningState,
-  TilingFocusDirection,
-  TilingGroupNode,
-  TilingInsertionOptions,
+  // Layout tree
   TilingLayoutConfig,
   TilingLayoutNode,
-  TilingLeafDropZone,
   TilingLeafNode,
-  TilingMovePlacement,
-  TilingObservabilityColorConfig,
-  TilingObservabilityColorEnableConfig,
-  TilingPaneFootprint,
-  TilingPaneBodyRenderMode,
-  TilingRenderTileProps,
-  TilingSplitAxis,
   TilingSplitNode,
+  TilingGroupNode,
+  TilingPaneSizing,
+  TilingPaneSizingMode,
+  TilingSplitAxis,
+  TilingLayoutMode,
+  TilingMasterOrientation,
+  TilingTitleBarSizingMode,
+  TilingMovePlacement,
+  TilingFocusDirection,
+  TilingPaneCycleDirection,
+  // Tiles & accents
   TilingTile,
   TilingTileAccent,
   TilingTileAccentSwatch,
-  TilingRendererProps,
-  TilingLiveHitLogState,
-  TilingLiveHitEdgeDebugState,
-  TilingViewportCursorState,
-  TilingPaneHitZoneOverlayDebugState,
-  TilingPaneHitZoneCandidateDebugState,
-  ResolvedTilingInteractionCapabilities,
-  ResolvedTilingKeyChord,
-  ResolvedTilingKeyChordModifiers,
-  ResolvedTilingKeymap,
-  ResolvedTilingMaximizeCapability,
-  ResolvedTilingPaneSwitchingCapability,
-  ResolvedTilingSlotCommitmentCapability,
-  ResolvedTilingDragRecoveryCapability,
-  ResolvedTilingKeyBindings,
-  TilingCommand,
-  TilingCommandHandle,
+  // Interaction capabilities (input + resolved)
   TilingInteractionCapabilities,
-  TilingKeyBinding,
+  TilingDragMode,
+  TilingDragRecoveryCapability,
+  TilingDropHitZoneGeometryCapability,
   TilingKeyBindings,
-  TilingKeyboardAction,
-  TilingKeyboardEventLike,
-  TilingKeyboardModifierState,
+  TilingKeyBinding,
   TilingKeyChord,
   TilingKeyChordModifiers,
   TilingKeymap,
   TilingMaximizeCapability,
-  TilingMoveModeState,
-  TilingPaneSizing,
-  TilingPaneSizingMode,
-  TilingPaneSwitcherState,
-  TilingDimension,
-  TilingDragMode,
-  TilingDragRecoveryCapability,
   TilingPaneSwitchingCapability,
+  TilingPaneTitleBarControlsCapability,
   TilingResizeCapability,
   TilingSlotCommitmentCapability,
   TilingSlotCommitmentMode,
-  TilingLayoutMode,
-  TilingMasterOrientation,
-  TilingTitleBarSizingMode,
+  TilingTouchDragCapability,
+  ResolvedTilingInteractionCapabilities,
+  ResolvedTilingDragRecoveryCapability,
+  ResolvedTilingDropHitZoneGeometryCapability,
+  ResolvedTilingKeyBindings,
+  ResolvedTilingKeymap,
+  ResolvedTilingKeyChord,
+  ResolvedTilingKeyChordModifiers,
+  ResolvedTilingMaximizeCapability,
+  ResolvedTilingPaneSwitchingCapability,
+  ResolvedTilingPaneTitleBarControlsCapability,
+  ResolvedTilingSlotCommitmentCapability,
+  ResolvedTilingTouchDragCapability,
+  // Commands
+  TilingCommand,
+  TilingCommandHandle,
+  // Renderer props / render-tile contract
+  TilingRendererProps,
+  TilingRenderTileProps,
+  TilingPaneBodyRenderMode,
+  // Drop zones / previews
+  TilingLeafDropZone,
   TilingLeafDropPreview,
   TilingLeafPreviewMode,
   TilingLeafPreviewRole,
-  TilingDropHitZoneGeometryCapability,
-  ResolvedTilingDropHitZoneGeometryCapability,
-  TilingPaneTitleBarControlsCapability,
-  ResolvedTilingPaneTitleBarControlsCapability,
-  TilingTouchDragCapability,
-  ResolvedTilingTouchDragCapability,
+  TilingDropAction,
+  // Debug / observability types referenced by public renderer props
+  TilingDropIntentDebugState,
+  TilingDropIntentTuningState,
+  TilingLiveHitLogState,
+  TilingLiveHitEdgeDebugState,
+  TilingViewportCursorState,
+  TilingPaneFootprint,
+  TilingPaneHitZoneOverlayDebugState,
+  TilingPaneHitZoneCandidateDebugState,
+  TilingObservabilityColorConfig,
+  TilingObservabilityColorEnableConfig,
 } from "./engine/types";

@@ -13,24 +13,6 @@ export function accentHue(accent: TilingTileAccent | undefined): TilingAccentHue
 export const BASELINE_DRAG_HOP_DURATION_MS: number;
 
 // @public
-export function canGroupMultiSelection(layout: TilingLayoutNode, selection: ReadonlySet<string>): boolean;
-
-// @public
-export function chordRequiresModifier(chord: ResolvedTilingKeyChord): boolean;
-
-// @public
-export function clampCursorPointToViewport(point: DragCursorPoint, bounds: DragCursorViewportBounds, marginPx: number): DragCursorPoint;
-
-// @public
-export function collectGroups(node: TilingLayoutNode): ReadonlyArray<TilingGroupNode>;
-
-// @public
-export function collectSplitNodes(node: TilingLayoutNode): ReadonlyArray<TilingSplitNode>;
-
-// @public
-export function commandRequiredCapability(command: TilingCommand): keyof TilingCommandGates | null;
-
-// @public
 export const DEFAULT_DRAG_ANIMATION_SPEED_PERCENT: number;
 
 // @public
@@ -49,83 +31,10 @@ export const DEFAULT_TILING_LAYOUT_CONFIG: TilingLayoutConfig;
 export const DEFAULT_TILING_THEME_ID: TilingThemeId;
 
 // @public
-export function defaultKeyBindings(keymap: ResolvedTilingKeymap): ReadonlyArray<TilingKeyBinding>;
-
-// @public
 export const DRAG_ANIMATION_SPEED_MAX_PERCENT: number;
 
 // @public
 export const DRAG_ANIMATION_SPEED_MIN_PERCENT: number;
-
-// @public
-export type DragCursorKind = "grab" | "insert" | "swap" | "invalid";
-
-// @public
-export interface DragCursorPoint {
-    x: number;
-    y: number;
-}
-
-// @public
-export interface DragCursorPresentation {
-    kind: DragCursorKind;
-    tone: DragCursorTone;
-}
-
-// @public
-export type DragCursorTone = "neutral" | "valid" | "invalid";
-
-// @public
-export interface DragCursorViewportBounds {
-    bottom: number;
-    left: number;
-    right: number;
-    top: number;
-}
-
-// @public
-export type DragResolvedTarget = TilingDropIntentState;
-
-// @public
-export function dragSpeedsAtParity(ghostTransitSpeedPercent: number, survivorReflowSpeedPercent: number): boolean;
-
-// @public
-export const EMPTY_FOCUS_HISTORY: FocusHistory;
-
-// @public
-export function findLeafByDirection(layout: TilingLayoutNode, fromLeafId: string, direction: TilingFocusDirection): string | null;
-
-// @public
-export function findLeafById(node: TilingLayoutNode, leafId: string): TilingLeafNode | null;
-
-// @public
-export interface FlexibleRatioChild {
-    ratio: number;
-    staticAlongAxis: boolean;
-}
-
-// @public
-export const FOCUS_HISTORY_DEFAULT_LIMIT: number;
-
-// @public
-export interface FocusHistory {
-    readonly entries: ReadonlyArray<string>;
-}
-
-// @public
-export function groupLeaves(layout: TilingLayoutNode, leafIds: ReadonlyArray<string>, options?: GroupLeavesOptions): TilingLayoutNode;
-
-// @public
-export interface GroupLeavesOptions {
-    groupId?: string;
-    hostLeafId?: string;
-}
-
-// @public
-export function hasAnyModifier(modifiers: ResolvedTilingKeyChordModifiers): boolean;
-
-// @public
-export function insertLeafAdjacent(layout: TilingLayoutNode, sourceLeafId: string, targetLeafId: string, placement: TilingMovePlacement, options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
 
 // @public
 export const INSTANT_DRAG_DURATION_MS: number;
@@ -134,49 +43,7 @@ export const INSTANT_DRAG_DURATION_MS: number;
 export function isCommandEnabled(command: TilingCommand, gates: TilingCommandGates): boolean;
 
 // @public
-export function isCssEasing(value: string): boolean;
-
-// @public
 export function isMultiSelectModifierActive(event: MultiSelectModifierState): boolean;
-
-// @public
-export function isResizeAxisEnabled(capability: TilingResizeCapability, splitAxis: TilingSplitAxis): boolean;
-
-// @public
-export function isStaticAlongSplitAxis(node: TilingLayoutNode, axis: TilingSplitAxis): boolean;
-
-// @public
-export function isStaticInDimension(node: TilingLayoutNode, dimension: TilingDimension): boolean;
-
-// @public
-export function isStaticOnCrossAxis(node: TilingLayoutNode, axis: TilingSplitAxis): boolean;
-
-// @public
-export function isStructurallyValidLayout(node: TilingLayoutNode): boolean;
-
-// @public
-export function keyboardActionToCommand(action: TilingKeyboardAction): TilingCommand;
-
-// @public
-export function layoutContainsStaticPane(node: TilingLayoutNode): boolean;
-
-// @public
-export function matchKeyBinding(event: TilingKeyboardEventLike, bindings: ReadonlyArray<TilingKeyBinding>): TilingCommand | null;
-
-// @public
-export function matchKeyChord(event: TilingKeyboardEventLike, chord: ResolvedTilingKeyChord): boolean;
-
-// @public
-export function matchKeymapAction(event: TilingKeyboardEventLike, keymap: ResolvedTilingKeymap, guards: TilingKeymapActionGuards): TilingKeyboardAction | null;
-
-// @public
-export function moveLeafToRoot(layout: TilingLayoutNode, sourceLeafId: string, placement: "first" | "second", options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
-
-// @public
-export function moveLeafToSplitContainer(layout: TilingLayoutNode, sourceLeafId: string, targetSplitId: string, placement: "first" | "second", options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
-
-// @public
-export const MULTI_SELECT_GROUP_MIN_MEMBERS: number;
 
 // @public
 export interface MultiSelectModifierState {
@@ -184,31 +51,7 @@ export interface MultiSelectModifierState {
 }
 
 // @public
-export function pruneFocusHistory(history: FocusHistory, validLeafIds: ReadonlyArray<string>): FocusHistory;
-
-// @public
-export function pruneMultiSelection(selection: ReadonlySet<string>, presentLeafIds: ReadonlyArray<string>): Set<string>;
-
-// @public
-export function pushFocusHistory(history: FocusHistory, leafId: string, limit?: number): FocusHistory;
-
-// @public
-export function readLeafNodeIds(node: TilingLayoutNode): ReadonlyArray<string>;
-
-// @public
-export function removeLeafTile(layout: TilingLayoutNode, leafId: string): TilingLayoutNode;
-
-// @public
-export function renormalizeFlexibleRatios(children: ReadonlyArray<FlexibleRatioChild>): number[];
-
-// @public
-export function resolveDragAnimationDurationMs(speedPercent: number): number;
-
-// @public
-export function resolveDragCursorPresentation(resolvedTarget: DragResolvedTarget | null, sourceLeafId: string): DragCursorPresentation;
-
-// @public
-export function resolveDragEasing(value: string | undefined | null, fallback: string): string;
+export function queryTilingLayout(layout: TilingLayoutNode): TilingLayoutQuery;
 
 // @public
 export interface ResolvedTilingDragRecoveryCapability {
@@ -332,53 +175,13 @@ export interface ResolvedTilingTouchDragCapability {
 }
 
 // @public
-export function resolveFocusCurrentOrLast(history: FocusHistory, currentLeafId: string | null): string | null;
-
-// @public
 export function resolveInteractionCapabilities(capabilities?: TilingInteractionCapabilities | null): ResolvedTilingInteractionCapabilities;
 
 // @public
 export function resolveJumpedPaneId(leafIds: ReadonlyArray<string>, paneNumber: number): string | null;
 
 // @public
-export function resolveKeymap(keymap?: TilingKeymap | null): ResolvedTilingKeymap;
-
-// @public
-export function resolveMaximizeToggle(currentMaximizedLeafId: string | null, focusedLeafId: string | null): string | null;
-
-// @public
-export function resolveMultiSelectGroupCommand(selection: ReadonlySet<string>, hostLeafId?: string | null): TilingCommand | null;
-
-// @public
-export function resolveMultiSelectGroupHost(selection: ReadonlySet<string>, clickedLeafId: string | null, focusedLeafId: string | null): string | null;
-
-// @public
-export function resolveSizingMode(sizing: TilingPaneSizing | undefined, dimension: TilingDimension): TilingPaneSizingMode;
-
-// @public
 export function resolveTilingTheme(themeId: TilingThemeId | undefined): TilingTheme;
-
-// @public
-export function setLeafSizing(node: TilingLayoutNode, leafId: string, sizing: TilingPaneSizing | undefined): TilingLayoutNode;
-
-// @public
-export function shouldRenderSplitDivider(input: SplitBoundaryStaticFlags): boolean;
-
-// @public
-export function siblingSubtreeForLeaf(node: TilingLayoutNode, leafId: string): TilingLayoutNode | null;
-
-// @public
-export interface SplitBoundaryStaticFlags {
-    firstStaticAlongAxis: boolean;
-    resizeEnabled: boolean;
-    secondStaticAlongAxis: boolean;
-}
-
-// @public
-export function swapLeafTiles(node: TilingLayoutNode, firstLeafId: string, secondLeafId: string): TilingLayoutNode;
-
-// @public
-export function tileOrderByLeafId(node: TilingLayoutNode): ReadonlyArray<string>;
 
 // @public
 export const TILING_ACCENT_HUES: Record<TilingTileAccent, TilingAccentHue>;
@@ -387,13 +190,7 @@ export const TILING_ACCENT_HUES: Record<TilingTileAccent, TilingAccentHue>;
 export const TILING_DASHBOARD_PRESET: TilingInteractionCapabilities;
 
 // @public
-export const TILING_DROP_INTENT_CONFIG: TilingDropIntentBaseConfig;
-
-// @public
 export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCapabilities;
-
-// @public
-export const TILING_KEYMAP_DEFAULTS: ResolvedTilingKeymap;
 
 // @public
 export const TILING_THEME_REGISTRY: Record<TilingThemeId, TilingTheme>;
@@ -554,9 +351,6 @@ export interface TilingCommandHandle {
 }
 
 // @public
-export type TilingDimension = "width" | "height";
-
-// @public
 export type TilingDragMode = "preview" | "live";
 
 // @public
@@ -577,15 +371,6 @@ export interface TilingDropHitZoneGeometryCapability {
     centerRatioX?: number;
     centerRatioY?: number;
     hysteresisPx?: number;
-}
-
-// @public
-export interface TilingDropIntentBaseConfig {
-    centerMinPx: number;
-    centerRatio: number;
-    centerRatioX?: number;
-    centerRatioY?: number;
-    hysteresisPx: number;
 }
 
 // @public
@@ -614,40 +399,12 @@ export interface TilingDropIntentDebugState {
 }
 
 // @public
-export interface TilingDropIntentState {
-    action: TilingDropAction;
-    axisPath: ReadonlyArray<TilingSplitAxis>;
-    blockedReason: string | null;
-    centerDistancePx: number;
-    centerRectHeightPx: number;
-    centerRectWidthPx: number;
-    dominantEdge: TilingEdgeZone;
-    edgeThresholdRatio: number;
-    fallbackReason: string | null;
-    finalEdge: TilingEdgeZone | null;
-    leafId: string;
-    nearestEdgeDistancePx: number;
-    paneLocalX: number;
-    paneLocalY: number;
-    rejectedSplitReasons: ReadonlyArray<string>;
-    selectedSplitDistancePx: number | null;
-    selectedSplitZone: TilingEdgeZone | null;
-    targetSplitId: string | null;
-    targetSplitPlacement: "first" | "second" | null;
-    tuning: TilingDropIntentTuningState;
-    zone: TilingLeafDropZone;
-}
-
-// @public
 export interface TilingDropIntentTuningState {
     centerRatio: number;
     devicePixelRatio: number;
     edgeThresholdRatio: number;
     hysteresisPx: number;
 }
-
-// @public
-export type TilingEdgeZone = Exclude<TilingLeafDropZone, "center">;
 
 // @public
 export type TilingFocusDirection = "left" | "right" | "up" | "down";
@@ -659,12 +416,6 @@ export interface TilingGroupNode {
     kind: "group";
     members: ReadonlyArray<TilingLeafNode>;
     sizing?: TilingPaneSizing;
-}
-
-// @public
-export interface TilingInsertionOptions {
-    preserveParentSplitAxis: boolean;
-    splitRatio: number;
 }
 
 // @public
@@ -701,60 +452,6 @@ export interface TilingKeyBinding {
 export interface TilingKeyBindings {
     bindings?: ReadonlyArray<TilingKeyBinding>;
     replaceDefaults?: boolean;
-}
-
-// @public
-export type TilingKeyboardAction = {
-    kind: "toggle-maximize";
-} | {
-    kind: "restore";
-} | {
-    kind: "previous-pane";
-} | {
-    kind: "next-pane";
-} | {
-    kind: "jump-to-pane";
-    paneNumber: number;
-} | {
-    kind: "focus-direction";
-    direction: TilingFocusDirection;
-} | {
-    kind: "focus-current-or-last";
-} | {
-    kind: "enter-move-mode";
-} | {
-    kind: "cycle-layout-mode";
-} | {
-    kind: "cycle-master-orientation";
-} | {
-    kind: "adjust-master-count";
-    delta: number;
-} | {
-    kind: "adjust-master-ratio";
-    delta: number;
-} | {
-    kind: "toggle-group";
-} | {
-    kind: "group-tab-cycle";
-    direction: TilingPaneCycleDirection;
-};
-
-// @public
-export interface TilingKeyboardEventLike {
-    altKey: boolean;
-    code: string;
-    ctrlKey: boolean;
-    key: string;
-    metaKey: boolean;
-    shiftKey: boolean;
-}
-
-// @public
-export interface TilingKeyboardModifierState {
-    altKey: boolean;
-    ctrlKey: boolean;
-    metaKey: boolean;
-    shiftKey: boolean;
 }
 
 // @public
@@ -799,14 +496,6 @@ export interface TilingKeymap {
 }
 
 // @public
-export interface TilingKeymapActionGuards {
-    focusEnabled: boolean;
-    maximizeEnabled: boolean;
-    paneSwitchingEnabled: boolean;
-    rearrangeEnabled: boolean;
-}
-
-// @public
 export interface TilingLayoutConfig {
     gapPx: number;
     handleSizePx: number;
@@ -818,6 +507,16 @@ export type TilingLayoutMode = "dwindle" | "master";
 
 // @public
 export type TilingLayoutNode = TilingLeafNode | TilingSplitNode | TilingGroupNode;
+
+// @public
+export interface TilingLayoutQuery {
+    readonly groups: ReadonlyArray<TilingGroupNode>;
+    readonly hasMasterSplit: boolean;
+    readonly leafIds: ReadonlyArray<string>;
+    readonly neighborLeafId: (fromLeafId: string, direction: TilingFocusDirection) => string | null;
+    readonly splits: ReadonlyArray<TilingSplitNode>;
+    readonly tileOrder: ReadonlyArray<string>;
+}
 
 // @public
 export interface TilingLeafDropPreview {
@@ -880,13 +579,6 @@ export type TilingMasterOrientation = "left" | "right" | "top" | "bottom";
 export interface TilingMaximizeCapability {
     enable?: boolean;
     keymap?: Pick<TilingKeymap, "toggleMaximize" | "restore">;
-}
-
-// @public
-export interface TilingMoveModeState {
-    placement: TilingMovePlacement | null;
-    sourceLeafId: string;
-    targetLeafId: string | null;
 }
 
 // @public
@@ -967,12 +659,6 @@ export interface TilingPaneSizing {
 
 // @public
 export type TilingPaneSizingMode = "static" | "flexible";
-
-// @public
-export interface TilingPaneSwitcherState {
-    holdModifiers: ResolvedTilingKeyChordModifiers;
-    selectedLeafId: string;
-}
 
 // @public
 export interface TilingPaneSwitchingCapability {
@@ -1227,18 +913,6 @@ export interface TilingViewportCursorState {
     x: number;
     y: number;
 }
-
-// @public
-export function toggleLeafMultiSelection(selection: ReadonlySet<string>, leafId: string): Set<string>;
-
-// @public
-export function toggleSplitAxis(node: TilingLayoutNode, splitId: string): TilingLayoutNode;
-
-// @public
-export function ungroupNode(layout: TilingLayoutNode, groupId: string): TilingLayoutNode;
-
-// @public
-export function updateSplitRatio(node: TilingLayoutNode, splitId: string, ratio: number): TilingLayoutNode;
 
 // @public
 export function useTilingTheme(): TilingTheme;
