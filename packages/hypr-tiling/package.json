@@ -42,6 +42,11 @@
       "types": "./dist/devtools.d.ts",
       "import": "./dist/devtools.mjs",
       "require": "./dist/devtools.cjs"
+    },
+    "./engine": {
+      "types": "./dist/engine.d.ts",
+      "import": "./dist/engine.mjs",
+      "require": "./dist/engine.cjs"
     }
   },
   "files": [
@@ -52,8 +57,8 @@
   "scripts": {
     "build": "tsup",
     "check": "pnpm typecheck && pnpm test",
-    "api:check": "api-extractor run --verbose",
-    "api:update": "api-extractor run --local --verbose",
+    "api:check": "api-extractor run --verbose -c api-extractor.index.json && api-extractor run --verbose -c api-extractor.devtools.json && api-extractor run --verbose -c api-extractor.engine.json",
+    "api:update": "api-extractor run --local --verbose -c api-extractor.index.json && api-extractor run --local --verbose -c api-extractor.devtools.json && api-extractor run --local --verbose -c api-extractor.engine.json",
     "api:docs": "node ./scripts/generate-api-docs.mjs",
     "prepublishOnly": "pnpm build",
     "release": "if [ \"$npm_config_nobump\" = \"true\" ]; then npm publish --access public; else node ./scripts/calendar-version-bump.mjs --apply && npm publish --access public; fi",

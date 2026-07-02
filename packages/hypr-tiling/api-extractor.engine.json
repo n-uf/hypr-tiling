@@ -1,7 +1,7 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/api-extractor/v7/api-extractor.schema.json",
 
-  "mainEntryPointFilePath": "<projectFolder>/dist/index.d.ts",
+  "mainEntryPointFilePath": "<projectFolder>/dist/engine.d.ts",
 
   "bundledPackages": [],
 
@@ -12,12 +12,12 @@
   "apiReport": {
     "enabled": true,
     "reportFolder": "<projectFolder>/etc/",
-    "reportFileName": "hypr-tiling.api.md"
+    "reportFileName": "hypr-tiling.engine.api.md"
   },
 
   "docModel": {
     "enabled": true,
-    "apiJsonFilePath": "<projectFolder>/temp/<unscopedPackageName>.api.json"
+    "apiJsonFilePath": "<projectFolder>/temp/engine/<unscopedPackageName>.api.json"
   },
 
   "dtsRollup": {
@@ -40,19 +40,17 @@
         "logLevel": "warning"
       },
       "ae-internal-missing-underscore": {
-        "logLevel": "error",
-        "addToApiReportFile": false
+        "logLevel": "none"
       },
       "ae-missing-release-tag": {
         "logLevel": "none"
       },
       "ae-undocumented": {
-        "logLevel": "error",
-        "addToApiReportFile": false
+        "logLevel": "none"
       },
       "ae-forgotten-export": {
-        "logLevel": "error",
-        "addToApiReportFile": true
+        "logLevel": "warning",
+        "addToApiReportFile": false
       }
     },
 

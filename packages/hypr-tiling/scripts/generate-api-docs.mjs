@@ -32,6 +32,11 @@ const packageDir = resolve(here, "..");
 const binDir = resolve(packageDir, "node_modules", ".bin");
 const repoRoot = resolve(packageDir, "..", "..");
 const tempDir = resolve(packageDir, "temp");
+// The consumer `/docs` reference is built from the `.` entry ONLY. The
+// `./devtools` and `./engine` entries write their doc models into sibling
+// `temp/<entry>/` dirs (see api-extractor.{devtools,engine}.json); pointing
+// api-documenter at `temp/index/` keeps them off the consumer site.
+const docModelDir = resolve(tempDir, "index");
 const markdownDir = resolve(tempDir, "api-markdown");
 const outputFile = resolve(
   repoRoot,
@@ -50,14 +55,15 @@ function runBin(bin, args) {
   execFileSync(binPath, args, { cwd: packageDir, stdio: "inherit" });
 }
 
-// 1. Refresh the doc model. `run` (verify mode) still emits the docModel JSON;
-//    it only compares the committed report, which api:check keeps current.
-runBin("api-extractor", ["run", "--verbose"]);
+// 1. Refresh the `.` doc model. `run` (verify mode) still emits the docModel
+//    JSON; it only compares the committed report, which api:check keeps current.
+runBin("api-extractor", ["run", "--verbose", "-c", "api-extractor.index.json"]);
 
-// 2. Emit per-item Markdown into a clean intermediate dir.
+// 2. Emit per-item Markdown into a clean intermediate dir. Input is the `.`
+//    doc-model dir only — devtools/engine never reach the consumer reference.
 rmSync(markdownDir, { recursive: true, force: true });
 mkdirSync(markdownDir, { recursive: true });
-runBin("api-documenter", ["markdown", "-i", tempDir, "-o", markdownDir]);
+runBin("api-documenter", ["markdown", "-i", docModelDir, "-o", markdownDir]);
 
 // 3. Fold the top-level symbol pages into a render bundle.
 /**
