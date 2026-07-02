@@ -329,7 +329,7 @@ function DocsNav({
 
 const LANE_LABEL: Record<string, string> = {
   start: "Start here",
-  spectrum: "Full SDK spectrum",
+  spectrum: "Full public-API spectrum",
 };
 
 function SidebarLane({

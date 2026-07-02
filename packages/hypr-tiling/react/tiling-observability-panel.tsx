@@ -45,7 +45,7 @@ import type {
  * ANIMATION control-group defaults — the single source of truth shared by the
  * showcase initial state and the group's "reset to defaults" affordance. Speeds
  * start linked at parity (100 % = the 170ms baseline for both parties), the swap
- * bounce starts at a visible demo magnitude (the SDK prop default is 0), pickup
+ * bounce starts at a visible demo magnitude (the public-API prop default is 0), pickup
  * scale + coherent transit keep their library defaults.
  */
 export interface AnimationControlDefaults {
@@ -67,7 +67,7 @@ export const ANIMATION_CONTROL_DEFAULTS: AnimationControlDefaults = {
 };
 
 /**
- * Demo preset set for the consumer-configurable drag-hop easing SDK param
+ * Demo preset set for the consumer-configurable drag-hop easing public-API param
  * (HT-ANIM-EASING-CONFIG). Each is a valid CSS `<easing-function>` string fed to
  * the renderer's `dragHopEasing` prop; "snappy" equals the library default.
  */

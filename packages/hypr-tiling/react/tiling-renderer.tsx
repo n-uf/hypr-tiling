@@ -4329,7 +4329,7 @@ export const TilingRenderer = React.forwardRef<
       };
     }, [dragState, seatFootprint]);
   // Custom drag cursor (tier "c"): a transform-pinned element that REPLACES the
-  // OS cursor during a live drag. Gated on the SDK capability flag + live mode;
+  // OS cursor during a live drag. Gated on the public-API capability flag + live mode;
   // the presentation is derived from the SAME FSM-resolved target the ghost /
   // candidate tree read (no second resolution path), so the cursor's
   // arrow/validity always agrees with the drop the release would commit.
