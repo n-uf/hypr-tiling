@@ -28,21 +28,23 @@ import {
 } from "./docs";
 import { CANVAS_TICKS } from "./canvas-theme";
 
-// The CANVAS skin's content presentation — the light "document desk" counterpart
-// to the Mosaic (`docs.tsx`) and Editorial (`content-editorial.tsx`) pane content.
-// It reads the SAME shared content model and renders it in a wholly different
-// system, so a section in Canvas looks unlike the same section in either other
-// skin — never a second copy of the words.
+// The CANVAS skin's content presentation — the ENGINEERING-INSTRUMENT readout
+// counterpart to the Mosaic (`docs.tsx`) and Editorial (`content-editorial.tsx`)
+// pane content. It reads the SAME shared content model and renders it in a
+// wholly different system, so a section in Canvas looks unlike the same section
+// in either other skin — never a second copy of the words.
 //
-// Design system — "greyish workspace":
-//   • white pane cards on a soft grey desk (set by the page + `canvas-tile`)
-//   • quiet NEUTRAL type: a sans reading column at a roomy measure, mono only for
-//     small-caps eyebrows and code — no serif, no uppercase-mono density
-//   • generous whitespace and hairline slate rules instead of heavy dividers
-//   • the ONLY saturated color is the accent-tick language: term/detail lists
-//     become file-row-like entries each led by a small colored tick that cycles
-//     the signature pink · orange · yellow · green · cyan row; the intro carries
-//     the full tick row as its accent mark
+// Design system — "engineering instrument, LED-lit":
+//   • flat neutral panel field (white on the light-grey desk set by the page +
+//     `canvas-tile`), no card rounding — squared corners at a 1px hairline
+//     radius throughout (code, callouts, panels)
+//   • technical type: monospace uppercase for section labels / eyebrows /
+//     indices, a quiet neutral sans reading column for prose; tabular figures
+//   • hairline slate rules instead of heavy dividers; tight, measured spacing
+//   • the ONLY saturated color is the LED language: every term/detail list is a
+//     tabular instrument index — a monospace ordinal + a squared status LED that
+//     cycles the signature row (magenta · orange · yellow · green · cyan) + the
+//     term + its detail; the intro carries the full LED row as its status mark
 //   • links are a single calm cyan; emphasis is a neutral slate-900 weight bump.
 
 // --- Canvas primitives -----------------------------------------------------
@@ -59,29 +61,37 @@ function CanvasKicker({
   );
 }
 
-// The signature multi-color tick row — the Canvas accent mark, used sparingly.
-function CanvasTickRow(): React.ReactElement {
+// The signature multi-color LED row — the Canvas status mark, squared ticks.
+function CanvasLedRow(): React.ReactElement {
   return (
     <span aria-hidden className="flex items-center gap-1.5">
       {CANVAS_TICKS.map((tick: string): React.ReactElement => (
-        <span key={tick} className={`h-[3px] w-5 rounded-full ${tick}`} />
+        <span key={tick} className={`h-[3px] w-5 rounded-[1px] ${tick}`} />
       ))}
     </span>
   );
 }
 
+// A concise instrument section label — a lit LED, a monospace uppercase title,
+// and a hairline rule. Reads like a control-panel section header, not a display
+// headline (that departs from the Mosaic eyebrow + the Editorial serif).
 function CanvasHeading({
   children,
 }: {
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <div className="flex flex-col gap-3">
-      <span aria-hidden className="h-[3px] w-6 rounded-full bg-cyan-400" />
-      <h2 className="text-[22px] font-semibold leading-[1.15] tracking-[-0.01em] text-slate-900">
-        {children}
-      </h2>
-      <span aria-hidden className="h-px w-full bg-slate-100" />
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-2.5">
+        <span
+          aria-hidden
+          className="h-2 w-2 shrink-0 rounded-[1px] bg-cyan-400 shadow-[0_0_5px_0_rgba(34,211,238,0.85)]"
+        />
+        <h2 className="font-mono text-[13px] font-semibold uppercase leading-none tracking-[0.16em] text-slate-800">
+          {children}
+        </h2>
+      </div>
+      <span aria-hidden className="h-px w-full bg-slate-200" />
     </div>
   );
 }
@@ -123,7 +133,7 @@ function CanvasCode({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <code className="rounded-[4px] border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[12px] text-slate-700">
+    <code className="rounded-[1px] border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[12px] text-slate-700">
       {children}
     </code>
   );
@@ -131,13 +141,13 @@ function CanvasCode({
 
 function CanvasPre({ children }: { children: string }): React.ReactElement {
   return (
-    <pre className="overflow-x-auto rounded-md border border-slate-200 bg-slate-50 p-4 font-mono text-[12px] leading-relaxed text-slate-700">
+    <pre className="overflow-x-auto rounded-[1px] border border-slate-200 bg-slate-50 p-4 font-mono text-[12px] leading-relaxed text-slate-700">
       <code>{children}</code>
     </pre>
   );
 }
 
-// Canvas inline renderer: the same segment model, workspace decorations.
+// Canvas inline renderer: the same segment model, instrument decorations.
 function CanvasInline({
   paragraph,
 }: {
@@ -169,10 +179,11 @@ function CanvasInline({
   );
 }
 
-// A workspace index — the Canvas treatment for every term/detail list (use
-// cases, features, roadmap). Each row reads like a document-desk file entry: a
-// small colored tick (cycling the signature accent row), the term, then its
-// detail. Generic over the shared `{ term, detail }` shape.
+// An instrument index — the Canvas treatment for every term/detail list (use
+// cases, features, roadmap). Each row is a readout line: a monospace tabular
+// ordinal, a squared status LED cycling the signature row, then the term and
+// its detail, separated by hairline rules. Generic over the shared
+// `{ term, detail }` shape.
 interface TermDetail {
   readonly term: string;
   readonly detail: string;
@@ -188,18 +199,21 @@ function CanvasIndex({
       {items.map((item: TermDetail, index: number): React.ReactElement => (
         <li
           key={item.term}
-          className="grid grid-cols-[0.75rem_1fr] items-baseline gap-x-3 gap-y-1 border-t border-slate-100 py-3 first:border-t-0 first:pt-0"
+          className="grid grid-cols-[1.75rem_0.65rem_1fr] items-baseline gap-x-2.5 gap-y-1 border-t border-slate-200 py-2.5 first:border-t-0 first:pt-0"
         >
+          <span className="font-mono text-[10px] tabular-nums leading-snug text-slate-400">
+            {String(index + 1).padStart(2, "0")}
+          </span>
           <span
             aria-hidden
-            className={`mt-1.5 h-[3px] w-3 rounded-full ${
+            className={`mt-[7px] h-[3px] w-2.5 rounded-[1px] ${
               CANVAS_TICKS[index % CANVAS_TICKS.length]
             }`}
           />
           <span className="text-[14px] font-medium leading-snug text-slate-800">
             {item.term}
           </span>
-          <span className="col-start-2 max-w-[60ch] text-[12.5px] leading-[1.7] text-slate-500">
+          <span className="col-start-3 max-w-[60ch] text-[12.5px] leading-[1.7] text-slate-500">
             {item.detail}
           </span>
         </li>
@@ -208,7 +222,7 @@ function CanvasIndex({
   );
 }
 
-// --- Per-pane workspace content --------------------------------------------
+// --- Per-pane instrument content -------------------------------------------
 
 function IntroContent(): React.ReactElement {
   return (
@@ -216,26 +230,26 @@ function IntroContent(): React.ReactElement {
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-4">
           <CanvasKicker>dynamic tiling · for react</CanvasKicker>
-          <CanvasTickRow />
+          <CanvasLedRow />
         </div>
         <h1 className="text-[clamp(1.9rem,3.2vw,2.6rem)] font-semibold leading-[1.06] tracking-[-0.02em] text-slate-900">
           {INTRO_HEADLINE_LEAD}{" "}
           <span className="text-cyan-600">{INTRO_HEADLINE_ACCENT}</span>
         </h1>
-        <span aria-hidden className="h-px w-full bg-slate-100" />
+        <span aria-hidden className="h-px w-full bg-slate-200" />
       </div>
       <CanvasLead>{CANONICAL_DESCRIPTION}</CanvasLead>
       <CanvasLead>{INTRO_REACH_PARAGRAPH}</CanvasLead>
-      <p className="max-w-[64ch] rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] leading-[1.7] text-slate-600">
+      <p className="max-w-[64ch] rounded-[1px] border-l-2 border-cyan-400 bg-slate-50 px-4 py-3 text-[13px] leading-[1.7] text-slate-600">
         <CanvasInline paragraph={INTRO_DOGFOOD_PARAGRAPH} />
       </p>
-      <div className="mt-auto flex flex-col gap-2 border-t border-slate-100 pt-4">
+      <div className="mt-auto flex flex-col gap-2 border-t border-slate-200 pt-4">
         <CanvasKicker>{CONTRIBUTING_EYEBROW}</CanvasKicker>
         <p className="max-w-[64ch] text-[12.5px] leading-[1.7] text-slate-500">
           <CanvasInline paragraph={INTRO_CONTRIBUTING_PARAGRAPH} />
         </p>
       </div>
-      <footer className="border-t border-slate-100 pt-4 text-[11px] leading-[1.6] text-slate-400">
+      <footer className="border-t border-slate-200 pt-4 text-[11px] leading-[1.6] text-slate-400">
         <CanvasLink href={LICENSE_URL}>{LICENSE_NAME}</CanvasLink>
         {INTRO_LICENSE_TAIL}
       </footer>
@@ -297,7 +311,7 @@ function ModelContent(): React.ReactElement {
       <CanvasLead>
         <CanvasInline paragraph={MODEL_BODY_PARAGRAPH} />
       </CanvasLead>
-      <h3 className="text-[15px] font-semibold text-slate-900">
+      <h3 className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-700">
         {MODEL_KUDOS_HEADING}
       </h3>
       <CanvasLead>
@@ -332,7 +346,7 @@ const CANVAS_PANE_CONTENT: Record<string, () => React.ReactElement> = {
   discoverability: DiscoverabilityContent,
 };
 
-// Workspace content for a documentation pane, keyed by the same pane id the
+// Instrument content for a documentation pane, keyed by the same pane id the
 // Mosaic `DOC_PANES` uses. Returns `null` for ids without a mapping (e.g. the
 // interactive `controls` pane, which owns its own skin-aware markup).
 export function CanvasPaneContent({

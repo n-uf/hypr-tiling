@@ -6,42 +6,101 @@ import {
   TilingPaneBody,
   type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
-import { CANVAS_THEME, CANVAS_TICKS, canvasAccentTick } from "./canvas-theme";
+import { CANVAS_THEME, CANVAS_TICKS } from "./canvas-theme";
 
-// The CANVAS skin's pane chrome — a self-standing DESKTOP WINDOW. Where the
-// Mosaic (`tile.tsx`) and Editorial (`editorial-tile.tsx`) skins share one
-// header-bar skeleton (a single top bar recolored per skin, then a body), the
-// Canvas pane is a radically distinct silhouette: a heavily rounded window that
-// visibly STANDS UP on the desk. It is a three-part stack, not a header+body:
+// The CANVAS skin's pane chrome — an ENGINEERING INSTRUMENT panel, LED-lit.
+// This supersedes the earlier standup desktop-window frame entirely (no
+// traffic-light cluster, no floating rounded body, no window-foot base). Where
+// the Mosaic (`tile.tsx`) and Editorial (`editorial-tile.tsx`) skins are
+// recolored header-bar CARDS — one soft-cornered top bar over a body — the
+// Canvas pane is a machined PANEL: squared right angles, hairline exact rules,
+// no soft elevation, monospace/technical type, tabular indices, and a row of
+// bright saturated status LEDs as its ONLY color. It reads like a control-panel
+// row on a piece of lab hardware, not a window on a desk.
 //
-//   1. TITLE BAR — a real standing window title bar carrying macOS-style
-//      traffic-light dots on the left (red · amber · green), the green dot being
-//      the LIVE maximize control, and a CENTER-ALIGNED window title. This is the
-//      drag surface (drag the window by its title bar) and also owns the
+// Three exact bands, each an instrument readout — not a header + body:
+//
+//   1. HEADER RAIL — a compact control-panel row: the pane's own status LED
+//      (dim slate at rest, its saturated hue LIT with a glow on focus), a
+//      hairline column rule, a short monospace label, and on the right a
+//      tabular pane index plus squared LED-keycap controls (maximize / group)
+//      and the multi-select tick. This is the drag surface and owns the
 //      Alt/Opt+click multi-select toggle via `TilingDragHandle`.
-//   2. WINDOW BODY — a heavily rounded (`rounded-2xl`) white body lifted off the
-//      desk by a soft desktop drop-shadow, so the window reads as floating.
-//   3. BASE STRIP — a bottom status/base strip (folio index + the signature
-//      Canvas accent-tick row + a window "foot" grip) that grounds the window so
-//      it reads as standing on a surface.
+//   2. BODY — a flat neutral panel field (no card rounding, no shadow) that
+//      renders `tile.content` through `TilingPaneBody` so the drag ghost reuses
+//      the same render path.
+//   3. LED STATUS FOOTER — a thin hairline readout carrying the signature
+//      multi-color LED tick row (magenta · orange · yellow · green · cyan) plus
+//      tabular index + leaf readout, like the indicator strip on an instrument.
 //
 // Acceptance: in greyscale with text hidden, the Canvas pane is obviously a
-// different frame from the restored Mosaic/Editorial header-bar skeleton — a
-// three-dot control cluster, a centered title, a floating rounded window, and a
-// grounding base strip that neither other skin has.
+// different, SHARPER, DENSER frame than the Mosaic/Editorial header-bar cards —
+// squared corners, hairline rules, a status-LED header dot, and a tabular LED
+// readout footer. In full color the bright LED row is its defining trait.
 //
-// Fully interactive — drag (title bar), resize (renderer dividers), maximize
-// (the live green window dot), group (title-bar chip), focus (pane root),
-// multi-select (Alt/Opt+click title bar) — and built on ONLY the public
-// `@n-uf/hypr-tiling` `.` API + the four helper primitives. Interactive states
-// (focus frame, drop rings, drag-source fade) are resolved from the
-// consumer-authored `CANVAS_THEME`. The body renders `tile.content` through
-// `TilingPaneBody`, so the drag ghost reuses the same render path and the Canvas
-// content still tracks the window frame.
+// Fully interactive — drag (header rail), resize (renderer dividers), maximize
+// (the squared LED keycap), group (LED keycap), focus (pane root lights its
+// LED), multi-select (Alt/Opt+click header rail) — built on ONLY the public
+// `@n-uf/hypr-tiling` `.` API + the four helper primitives. Neutral interactive
+// tokens (invalid-drop ring, drag-source fade, selected badge, body text) come
+// from the consumer-authored `CANVAS_THEME`; the LED accent language is
+// resolved locally so focus lights each pane in its own hue.
 
-const DROP_TARGET_RING: string = "ring-1 ring-cyan-400/60";
-const DROP_HOVER_RING: string = "ring-1 ring-slate-300";
-const DROP_ELIGIBLE_RING: string = "ring-1 ring-dashed ring-slate-300";
+// Per-pane LED palette — the saturated indicator set from the reference panel,
+// aligned to `CANVAS_TICKS`. Each pane is assigned one LED by its ordinal, so a
+// tiled workspace reads as a row of distinct status lights. Full literal class
+// strings so the runtime Tailwind pass resolves every hue.
+interface CanvasLed {
+  readonly bar: string;
+  readonly litRing: string;
+  readonly litText: string;
+  readonly litGlow: string;
+}
+
+const CANVAS_LEDS: readonly CanvasLed[] = [
+  {
+    bar: "bg-pink-400",
+    litRing: "ring-pink-400/60",
+    litText: "text-pink-600",
+    litGlow: "shadow-[0_0_5px_0_rgba(244,114,182,0.85)]",
+  },
+  {
+    bar: "bg-orange-400",
+    litRing: "ring-orange-400/60",
+    litText: "text-orange-600",
+    litGlow: "shadow-[0_0_5px_0_rgba(251,146,60,0.85)]",
+  },
+  {
+    bar: "bg-amber-400",
+    litRing: "ring-amber-400/60",
+    litText: "text-amber-600",
+    litGlow: "shadow-[0_0_5px_0_rgba(251,191,36,0.85)]",
+  },
+  {
+    bar: "bg-emerald-400",
+    litRing: "ring-emerald-400/60",
+    litText: "text-emerald-600",
+    litGlow: "shadow-[0_0_5px_0_rgba(52,211,153,0.85)]",
+  },
+  {
+    bar: "bg-cyan-400",
+    litRing: "ring-cyan-400/60",
+    litText: "text-cyan-600",
+    litGlow: "shadow-[0_0_5px_0_rgba(34,211,238,0.85)]",
+  },
+];
+
+function paneLed(paneOrdinal: number): CanvasLed {
+  const count: number = CANVAS_LEDS.length;
+  const index: number = (((paneOrdinal - 1) % count) + count) % count;
+  return CANVAS_LEDS[index] ?? CANVAS_LEDS[0];
+}
+
+// Drop-state rings — squared, hairline; cyan target aligns with the LED set,
+// rose (from the theme) stays semantically distinct for an invalid drop.
+const DROP_TARGET_RING: string = "ring-1 ring-inset ring-cyan-400/70";
+const DROP_HOVER_RING: string = "ring-1 ring-inset ring-slate-400/60";
+const DROP_ELIGIBLE_RING: string = "ring-1 ring-inset ring-dashed ring-slate-300";
 
 function dropStateRing(args: TilingRenderTileProps): string {
   if (args.isInvalidDrop) {
@@ -59,110 +118,101 @@ function dropStateRing(args: TilingRenderTileProps): string {
   return "";
 }
 
-// The floating window shell: a heavily rounded card lifted off the desk by a
-// soft two-layer drop-shadow. This rounding + elevation, plus the three-row
-// stack below, is what separates the Canvas silhouette from the flatter
-// header-bar cards of Mosaic and Editorial.
-const WINDOW_SHELL: string =
-  "relative flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_2px_4px_rgba(15,23,42,0.05),0_28px_52px_-26px_rgba(15,23,42,0.5)] outline-none transition-[border-color,box-shadow,opacity] duration-200";
+// The machined panel: squared right angles (1px hairline radius at most),
+// hairline slate rim, flat neutral field, NO soft elevation. This flatness +
+// the squared corners + the LED bands is what separates the Canvas silhouette
+// from the rounded, softly-shadowed header-bar cards of Mosaic and Editorial.
+const PANEL_SHELL: string =
+  "relative flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-[1px] border border-slate-300 bg-white outline-none transition-[border-color,box-shadow,opacity] duration-150";
 
-// The standing title bar: a subtly recessed top strip (traffic lights left,
-// centered title, actions right) resolved as a 3-column grid so the title stays
-// optically centered regardless of the left/right cluster widths.
-const TITLE_BAR: string =
-  "grid shrink-0 cursor-grab touch-none select-none grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-slate-200/70 bg-gradient-to-b from-slate-50 to-slate-100/70 px-3.5 py-2.5 active:cursor-grabbing";
+// Header rail: a dense control-panel row resolved as a 3-column grid
+// (LED + label | flex gap | index + controls). Squared, hairline, tight.
+const HEADER_RAIL: string =
+  "grid shrink-0 cursor-grab touch-none select-none grid-cols-[auto_1fr_auto] items-center gap-2.5 border-b border-slate-200 bg-slate-50 px-3 py-1.5 active:cursor-grabbing";
 
-// A traffic-light dot: 12px, with a hairline inset rim for a little depth.
-const DOT: string =
-  "h-3 w-3 shrink-0 rounded-full shadow-[inset_0_0_0_0.5px_rgba(15,23,42,0.14)]";
+// A squared LED-keycap control (maximize / group) in the instrument idiom.
+const LED_KEYCAP: string =
+  "flex h-[18px] shrink-0 items-center justify-center rounded-[1px] border border-slate-300 bg-white px-1.5 font-mono text-[9px] uppercase leading-none tracking-[0.14em] text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-800";
 
-// The title-bar group/max chip — a quiet keycap in the Canvas idiom.
-const WINDOW_CHIP: string =
-  "rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[9px] uppercase leading-none tracking-[0.16em] text-slate-500 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300 hover:text-slate-700";
+// Body field — flat neutral panel; text tokens from the consumer theme.
+const PANEL_BODY: string = CANVAS_THEME.paneShell.bodyText;
 
 export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
+  const led: CanvasLed = paneLed(args.paneOrdinal);
   const dropRing: string = dropStateRing(args);
+  // Drop-state rings take precedence over the resting focus glow during a drag.
   const ring: string =
     dropRing !== ""
       ? dropRing
       : args.isFocused
-        ? CANVAS_THEME.resolveFocusFrame(args.tile.accent)
+        ? `ring-1 ring-inset ${led.litRing}`
         : "";
+  const border: string = args.isMoveSource
+    ? "border-dashed border-slate-400"
+    : args.isFocused
+      ? "border-slate-400"
+      : "";
   const sourceFade: string = args.isDragSource
     ? CANVAS_THEME.paneShell.dragSourceOpacity
     : "";
-  const moveDash: string = args.isMoveSource
-    ? "border-dashed border-slate-300"
-    : "";
-  const folio: string = String(args.paneOrdinal).padStart(2, "0");
+  const index: string = String(args.paneOrdinal).padStart(2, "0");
 
   return (
     <TilingPaneRoot
       pane={args}
-      className={`${WINDOW_SHELL} ${moveDash} ${ring} ${sourceFade}`}
+      className={`${PANEL_SHELL} ${border} ${ring} ${sourceFade}`}
     >
       <TilingDragHandle
         pane={args}
-        className={`${TITLE_BAR} ${
-          args.isFocused ? "from-white to-slate-100" : ""
+        className={`${HEADER_RAIL} ${
+          args.isFocused ? "bg-white" : ""
         } ${
           args.isMultiSelected
-            ? "outline-dashed outline-1 -outline-offset-2 outline-slate-300"
+            ? "outline-dashed outline-1 -outline-offset-2 outline-slate-400"
             : ""
         }`}
       >
-        {/* Left: macOS-style traffic lights — green is the live maximize control. */}
-        <span className="group/lights flex items-center gap-2 justify-self-start">
-          <span aria-hidden className={`${DOT} bg-red-400/90`} />
-          <span aria-hidden className={`${DOT} bg-amber-400/90`} />
-          {args.isMaximizeEnabled ? (
-            <TilingPaneAction
-              onClick={(): void => args.onToggleMaximize()}
-              aria-label={args.isMaximized ? "restore pane" : "maximize pane"}
-              title={args.isMaximized ? "restore pane (Esc)" : "maximize pane"}
-              className={`${DOT} flex items-center justify-center bg-emerald-400/90 text-[7px] leading-none text-emerald-950/70 transition-colors hover:bg-emerald-400`}
-            >
-              <span
-                aria-hidden
-                className="opacity-0 transition-opacity group-hover/lights:opacity-100"
-              >
-                {args.isMaximized ? "\u2013" : "\u2922"}
-              </span>
-            </TilingPaneAction>
-          ) : (
-            <span aria-hidden className={`${DOT} bg-emerald-400/90`} />
-          )}
-        </span>
-
-        {/* Center: the window title, optically centered. */}
-        <span className="flex min-w-0 items-center justify-center gap-2 justify-self-center">
+        {/* Left: status LED (lit on focus) + hairline rule + monospace label. */}
+        <span className="flex min-w-0 items-center gap-2.5 justify-self-start">
           <span
             aria-hidden
-            className={`h-[3px] w-3 shrink-0 rounded-full ${canvasAccentTick(
-              args.tile.accent,
-            )}`}
+            className={`h-2 w-2 shrink-0 rounded-[1px] transition-all ${
+              args.isFocused ? `${led.bar} ${led.litGlow}` : "bg-slate-300"
+            }`}
           />
+          <span aria-hidden className="h-3 w-px shrink-0 bg-slate-200" />
           <span
             className={`truncate font-mono text-[10px] font-medium uppercase tracking-[0.18em] ${
-              args.isFocused ? "text-slate-700" : "text-slate-400"
+              args.isFocused ? "text-slate-800" : "text-slate-400"
             }`}
           >
             {args.tile.title}
           </span>
         </span>
 
-        {/* Right: transient state + group action. */}
-        <span className="flex shrink-0 items-center justify-end gap-1.5 justify-self-end">
+        {/* Spacer column keeps the label left and the readout/controls right. */}
+        <span aria-hidden />
+
+        {/* Right: tabular index + transient state + squared LED-keycap controls. */}
+        <span className="flex shrink-0 items-center justify-end gap-2 justify-self-end">
           {args.isMoveSource ? (
             <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-slate-400">
               moving
             </span>
           ) : null}
+          <span
+            aria-hidden
+            className={`shrink-0 font-mono text-[9px] tabular-nums tracking-[0.14em] ${
+              args.isFocused ? led.litText : "text-slate-400"
+            }`}
+          >
+            {index}
+          </span>
           {args.isMultiSelected ? (
             <span
               aria-label={`pane ${args.leafId} selected`}
               title="selected (Alt/Opt+click to deselect)"
-              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] font-mono text-[9px] leading-none ${CANVAS_THEME.paneHeader.selectedBadge}`}
+              className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[1px] font-mono text-[9px] leading-none ${CANVAS_THEME.paneHeader.selectedBadge}`}
             >
               <span aria-hidden>{"\u2713"}</span>
             </span>
@@ -172,33 +222,45 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
               onClick={(): void => args.onGroupMultiSelection(args.leafId)}
               aria-label={`group ${args.leafId} with the selected panes`}
               title="group selected panes into a tabbed group"
-              className={WINDOW_CHIP}
+              className={LED_KEYCAP}
             >
               Group
+            </TilingPaneAction>
+          ) : null}
+          {args.isMaximizeEnabled ? (
+            <TilingPaneAction
+              onClick={(): void => args.onToggleMaximize()}
+              aria-label={args.isMaximized ? "restore pane" : "maximize pane"}
+              title={args.isMaximized ? "restore pane (Esc)" : "maximize pane"}
+              className={`${LED_KEYCAP} w-[18px] px-0 text-[11px]`}
+            >
+              <span aria-hidden>{args.isMaximized ? "\u2013" : "\u2922"}</span>
             </TilingPaneAction>
           ) : null}
         </span>
       </TilingDragHandle>
 
-      <TilingPaneBody pane={args} className={CANVAS_THEME.paneShell.bodyText}>
+      <TilingPaneBody pane={args} className={PANEL_BODY}>
         {args.tile.content}
       </TilingPaneBody>
 
-      {/* Base strip: grounds the window on the desk — folio index, the signature
-          Canvas accent-tick row, and a window "foot" grip. Decorative. */}
+      {/* LED status footer: the signature multi-color indicator row + tabular
+          readout, like the status-light strip on an instrument. Squared,
+          hairline, decorative. */}
       <div
         aria-hidden
-        className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200/70 bg-slate-50/80 px-3.5 py-1.5"
+        className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-3 py-1"
       >
-        <span className="font-mono text-[9px] tabular-nums tracking-[0.16em] text-slate-400">
-          {folio}
-        </span>
         <span className="flex items-center gap-1.5">
           {CANVAS_TICKS.map((tick: string): React.ReactElement => (
-            <span key={tick} className={`h-[3px] w-3.5 rounded-full ${tick}`} />
+            <span key={tick} className={`h-[3px] w-3.5 rounded-[1px] ${tick}`} />
           ))}
         </span>
-        <span className="h-1 w-8 rounded-full bg-slate-200" />
+        <span className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.16em] text-slate-400">
+          <span className="tabular-nums">{index}</span>
+          <span aria-hidden className="h-2.5 w-px bg-slate-200" />
+          <span className="truncate">{args.leafId}</span>
+        </span>
       </div>
     </TilingPaneRoot>
   );
