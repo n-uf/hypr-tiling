@@ -19,24 +19,35 @@ import {
   type ApiReferenceSection,
 } from "./api-reference/generated";
 
-// The prerendered /docs route: hand-written guides followed by the generated
-// public-API reference. Rendered by both the SSR prerender (static HTML for
-// crawlers / LLM fetchers) and the client (hydration). The API reference bodies
-// are pre-rendered HTML strings from `pnpm api:docs`, injected verbatim so no
-// Markdown parser ships to the browser and the two passes stay byte-identical.
+// The prerendered /docs route: a CONSUMER-facing documentation system. A
+// "consumer" is a developer who USES `@n-uf/hypr-tiling` in their app; the docs
+// describe only the public SDK surface (the curated barrel enforced by API
+// Extractor). Contributor material (architecture / internals) lives off this
+// site — see CONTRIBUTING.md and apps/web/_agent/docs-ia.md.
+//
+// Two-lane information architecture:
+//   1. SDK map        — a short landing section that routes the reader.
+//   2. Lane A         — Fast track: one copy-paste path to the first tiles.
+//   3. Lane B         — Full SDK spectrum: the consumable surface grouped by
+//                       capability, each group linking into the generated
+//                       per-symbol reference, which follows last.
 //
 // Styling reuses the homepage "mosaic" vocabulary (graphite canvas, single gold
 // accent, Fraunces headings, Inter body, JetBrains Mono code). The injected API
 // HTML is styled through the scoped `.ht-api` rules below since the Tailwind CDN
-// build carries no typography plugin.
+// build carries no typography plugin. The reference bundle stays code-split.
 
-const GETTING_STARTED_SNIPPET: string = `import { TilingRenderer, DEFAULT_TILING_LAYOUT_CONFIG } from "@n-uf/hypr-tiling";
-import type { TilingLayoutNode, TilingTile } from "@n-uf/hypr-tiling";
+// Lane A — Fast track. One copy-paste-runnable path optimized for
+// time-to-first-tile: a minimal controlled TilingRenderer with a layout config,
+// a tile registry, and a renderTile callback that paints each tile. No concept
+// deep-dives; those live in Lane B.
+const FAST_TRACK_SNIPPET: string = `import { TilingRenderer, DEFAULT_TILING_LAYOUT_CONFIG } from "@n-uf/hypr-tiling";
+import type { TilingLayoutNode, TilingTile, TilingRenderTileProps } from "@n-uf/hypr-tiling";
 import { useState } from "react";
 
 const tiles: TilingTile[] = [
-  { id: "a", title: "editor", content: <Editor /> },
-  { id: "b", title: "preview", content: <Preview /> },
+  { id: "a", title: "editor" },
+  { id: "b", title: "preview" },
 ];
 
 const initial: TilingLayoutNode = {
@@ -46,13 +57,16 @@ const initial: TilingLayoutNode = {
 };
 
 export function Workspace() {
-  const [layout, setLayout] = useState(initial);
+  const [layout, setLayout] = useState<TilingLayoutNode>(initial);
   return (
     <TilingRenderer
       layout={layout}
       tiles={tiles}
       config={DEFAULT_TILING_LAYOUT_CONFIG}
       onLayoutChange={setLayout}
+      renderTile={({ tile }: TilingRenderTileProps) => (
+        <div style={{ padding: 12 }}>{tile.title}</div>
+      )}
     />
   );
 }`;
@@ -67,15 +81,33 @@ export default {
   ],
 };`;
 
-const CAPABILITIES_SNIPPET: string = `import type { TilingInteractionCapabilities } from "@n-uf/hypr-tiling";
+// Lane B snippets — one focused example per capability group.
+const LAYOUT_MUTATION_SNIPPET: string = `import { groupLeaves, updateSplitRatio } from "@n-uf/hypr-tiling";
 
-// Every capability is on by default; pass a partial to narrow behavior.
+// Every mutation helper is pure: it returns a NEW tree, never mutates in place.
+// Apply the result into the same state you pass to TilingRenderer.layout.
+setLayout((current) => updateSplitRatio(current, "root", 0.66));
+setLayout((current) => groupLeaves(current, ["l", "r"]));`;
+
+const CAPABILITIES_SNIPPET: string = `import type { TilingInteractionCapabilities } from "@n-uf/hypr-tiling";
+import { TILING_DASHBOARD_PRESET } from "@n-uf/hypr-tiling";
+
+// Every capability is on by default; pass a partial to narrow behavior,
+// or start from a preset and override.
 const interaction: TilingInteractionCapabilities = {
-  dragAndDrop: { enabled: true },
+  ...TILING_DASHBOARD_PRESET,
   resize: { enabled: true },
-  keyboard: { enabled: true },
   grouping: { enabled: true },
 };`;
+
+const THEMING_SNIPPET: string = `import { TilingThemeProvider, useTilingTheme } from "@n-uf/hypr-tiling";
+
+// Wrap a subtree and read the active theme with the hook. Switching themeId
+// is live — no remount.
+function Toolbar() {
+  const theme = useTilingTheme();
+  return <span>{theme.id}</span>;
+}`;
 
 const GROUPING_SNIPPET: string = `import { canGroupMultiSelection, groupLeaves } from "@n-uf/hypr-tiling";
 
@@ -84,6 +116,56 @@ if (canGroupMultiSelection(layout, selection)) {
   const next = groupLeaves(layout, [...selection]);
   setLayout(next);
 }`;
+
+const DEVTOOLS_SNIPPET: string = `// Opt-in, advanced. A renderer-only consumer never imports this subpath.
+import { TilingObservabilityPanel } from "@n-uf/hypr-tiling/devtools";`;
+
+// --- Capability groups (Lane B) -------------------------------------------
+// Each group is task-oriented and links into the generated per-symbol reference
+// cards. Symbol names are resolved against API_REFERENCE_SECTIONS so a link is
+// only emitted when the symbol is actually on the public barrel — broken
+// anchors and accidental references to `@internal` symbols are impossible.
+
+function ReferenceLinks({
+  symbols,
+}: {
+  symbols: ReadonlyArray<string>;
+}): React.ReactElement | null {
+  const resolved: ReadonlyArray<ApiReferenceSection> = symbols
+    .map(
+      (name): ApiReferenceSection | undefined =>
+        API_REFERENCE_SECTIONS.find(
+          (section): boolean =>
+            section.name === name || section.name === `${name}()`,
+        ),
+    )
+    .filter(
+      (section): section is ApiReferenceSection => section != null,
+    );
+  if (resolved.length === 0) {
+    return null;
+  }
+  return (
+    <div className="flex flex-col gap-1.5 pt-1">
+      <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-stone-500">
+        In the reference
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {resolved.map(
+          (section): React.ReactElement => (
+            <a
+              key={section.id}
+              href={`#${section.id}`}
+              className="rounded-md border border-white/[0.08] bg-white/[0.02] px-2.5 py-1 font-mono text-[11px] text-amber-200/85 transition-colors hover:border-amber-300/40 hover:text-amber-100"
+            >
+              {section.name}
+            </a>
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
 
 function GuideHeading({
   id,
@@ -122,6 +204,27 @@ function GuideSection({
       </GuideHeading>
       {children}
     </section>
+  );
+}
+
+// A Lane B capability section: task-oriented prose, an optional focused
+// example, and the reference-card links for the symbols the capability exposes.
+function CapabilitySection({
+  id,
+  title,
+  symbols,
+  children,
+}: {
+  id: string;
+  title: string;
+  symbols: ReadonlyArray<string>;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <GuideSection id={id} eyebrow="capability" title={title}>
+      {children}
+      <ReferenceLinks symbols={symbols} />
+    </GuideSection>
   );
 }
 
@@ -211,25 +314,52 @@ function DocsNav({
   );
 }
 
+const LANE_LABEL: Record<string, string> = {
+  start: "Start here",
+  spectrum: "Full SDK spectrum",
+};
+
+function SidebarLane({
+  lane,
+}: {
+  lane: "start" | "spectrum";
+}): React.ReactElement {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-amber-300/70">
+        {LANE_LABEL[lane]}
+      </span>
+      {DOCS_GUIDE_TOPICS.filter(
+        (topic): boolean => topic.lane === lane,
+      ).map((topic) => (
+        <a
+          key={topic.id}
+          href={`#${topic.id}`}
+          className="text-stone-400 transition-colors hover:text-amber-100"
+        >
+          {topic.title}
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function DocsSidebar(): React.ReactElement {
   return (
     <aside className="hidden lg:block">
       <nav className="sticky top-[68px] flex max-h-[calc(100vh-84px)] flex-col gap-5 overflow-y-auto pr-2 pb-10 text-[13px]">
+        <SidebarLane lane="start" />
+        <SidebarLane lane="spectrum" />
         <div className="flex flex-col gap-1.5">
           <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-amber-300/70">
-            Guides
+            Reference
           </span>
-          {DOCS_GUIDE_TOPICS.filter(
-            (topic): boolean => topic.id !== "api-reference",
-          ).map((topic) => (
-            <a
-              key={topic.id}
-              href={`#${topic.id}`}
-              className="text-stone-400 transition-colors hover:text-amber-100"
-            >
-              {topic.title}
-            </a>
-          ))}
+          <a
+            href="#api-reference"
+            className="text-stone-400 transition-colors hover:text-amber-100"
+          >
+            API reference
+          </a>
         </div>
         {API_KIND_ORDER.map((kind) => {
           const items = sectionsByKind(kind);
@@ -267,7 +397,8 @@ function ApiReference(): React.ReactElement {
       <SectionLead>
         The curated public API surface, generated from the library&rsquo;s TSDoc
         via API Extractor and API Documenter. Internal and devtools-only symbols
-        are excluded. The full machine-readable report is published in the{" "}
+        are excluded, so every symbol below is part of the supported consumer
+        contract. The full machine-readable report is published in the{" "}
         <Link href={API_REFERENCE_URL}>API report</Link>.
       </SectionLead>
       {API_KIND_ORDER.map((kind) => {
@@ -320,6 +451,62 @@ const API_PROSE_STYLES: string = `
 .ht-api ul, .ht-api ol { margin: 0 0 0.75rem; padding-left: 1.15rem; font-size: 13px; line-height: 1.7; color: rgb(214 211 209 / 0.9); }
 `;
 
+// SDK map (landing) — three concrete routes into the docs, kept terse.
+function SdkMap(): React.ReactElement {
+  return (
+    <section className="flex flex-col gap-4 scroll-mt-24" id="sdk-map">
+      <Eyebrow>sdk map</Eyebrow>
+      <h2 className="font-display text-[26px] font-medium leading-tight tracking-[-0.015em] text-stone-50">
+        Where to start
+      </h2>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <a
+          href="#fast-track"
+          className="group flex flex-col gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.015] p-4 transition-colors hover:border-amber-300/40"
+        >
+          <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber-300/70">
+            Brand-new
+          </span>
+          <span className="text-[14px] font-medium text-stone-100 group-hover:text-amber-100">
+            Take the Fast track
+          </span>
+          <span className="text-[12px] leading-[1.6] text-stone-400">
+            One copy-paste path to your first rendered tiles.
+          </span>
+        </a>
+        <a
+          href="#cap-renderer"
+          className="group flex flex-col gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.015] p-4 transition-colors hover:border-amber-300/40"
+        >
+          <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber-300/70">
+            Know what you need
+          </span>
+          <span className="text-[14px] font-medium text-stone-100 group-hover:text-amber-100">
+            Jump to a capability
+          </span>
+          <span className="text-[12px] leading-[1.6] text-stone-400">
+            The full SDK spectrum, grouped by task.
+          </span>
+        </a>
+        <a
+          href="#api-reference"
+          className="group flex flex-col gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.015] p-4 transition-colors hover:border-amber-300/40"
+        >
+          <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber-300/70">
+            Look up a symbol
+          </span>
+          <span className="text-[14px] font-medium text-stone-100 group-hover:text-amber-100">
+            Go to the reference
+          </span>
+          <span className="text-[12px] leading-[1.6] text-stone-400">
+            Generated per-symbol cards for the public barrel.
+          </span>
+        </a>
+      </div>
+    </section>
+  );
+}
+
 export function DocsPage({
   navigate,
 }: {
@@ -333,132 +520,243 @@ export function DocsPage({
         <DocsSidebar />
         <main className="flex min-w-0 flex-col gap-10">
           <div className="flex flex-col gap-4">
-            <Eyebrow>documentation</Eyebrow>
+            <Eyebrow>consumer documentation</Eyebrow>
             <h1 className="font-display text-[clamp(2rem,3vw,2.6rem)] font-medium leading-[1.05] tracking-[-0.015em] text-stone-50">
               {PACKAGE_NAME} documentation
             </h1>
             <SectionLead>
-              Guides for installing and integrating hypr-tiling, the core layout
-              and interaction model, common recipes, and the generated reference
-              for the public API. Every page is prerendered to static HTML.
+              Everything a consumer needs to render tiling layouts with{" "}
+              hypr-tiling: a fast track to the first tiles, the full SDK surface
+              grouped by capability, and the generated per-symbol reference.
+              These docs cover only the public SDK; contributors working on the
+              library itself start from <Code>CONTRIBUTING.md</Code>. Every page
+              is prerendered to static HTML.
             </SectionLead>
           </div>
 
-          <GuideSection
-            id="getting-started"
-            eyebrow="guide"
-            title="Getting started"
-          >
-            <SectionLead>
-              Install the scoped package with its React 19 peers, then render{" "}
-              <Code>TilingRenderer</Code> as a controlled component: your app
-              owns the layout tree in state and applies every edit the renderer
-              reports through <Code>onLayoutChange</Code>.
-            </SectionLead>
-            <Pre>{INSTALL_SNIPPET}</Pre>
-            <Pre>{GETTING_STARTED_SNIPPET}</Pre>
-          </GuideSection>
+          <SdkMap />
 
-          <GuideSection
-            id="install"
-            eyebrow="guide"
-            title="Install & Tailwind setup"
-          >
+          <GuideSection id="fast-track" eyebrow="lane a · quickstart" title="Fast track">
             <SectionLead>
-              hypr-tiling targets <Code>react</Code> and <Code>react-dom</Code>{" "}
-              version 19 as peer dependencies.
+              The shortest path to a working layout. Install the package with its
+              React 19 peers, register its <Code>dist</Code> in your Tailwind{" "}
+              <Code>content</Code> glob (the library ships utility classes, not
+              CSS), then render a controlled <Code>TilingRenderer</Code>: you own
+              the layout tree in state and apply every edit it reports through{" "}
+              <Code>onLayoutChange</Code>.
             </SectionLead>
             <Pre>{INSTALL_SNIPPET}</Pre>
             <SectionLead>
-              The library ships Tailwind utility classes in its{" "}
-              <Code>dist</Code> output. If your app uses Tailwind, add the
-              package&rsquo;s dist directory to your <Code>content</Code> globs
-              so the pane, divider, and drag-ghost classes are not purged from
-              your build:
+              Add the package&rsquo;s dist directory to your Tailwind{" "}
+              <Code>content</Code> globs so the pane, divider, and drag-ghost
+              classes are not purged from your build:
             </SectionLead>
             <Pre>{TAILWIND_CONTENT_SNIPPET}</Pre>
+            <SectionLead>
+              A minimal renderer: a layout config, a two-tile registry, and a{" "}
+              <Code>renderTile</Code> callback that paints each tile. This
+              renders two draggable, resizable panes.
+            </SectionLead>
+            <Pre>{FAST_TRACK_SNIPPET}</Pre>
+            <SectionLead>
+              Next steps: narrow behavior in{" "}
+              <Link href="#cap-interaction">Interaction capabilities</Link>,
+              mutate the tree in{" "}
+              <Link href="#cap-layout">Layout tree &amp; mutation</Link>, restyle
+              in <Link href="#cap-theming">Theming</Link>, or look up any symbol
+              in the <Link href="#api-reference">reference</Link>.
+            </SectionLead>
           </GuideSection>
 
-          <GuideSection
-            id="core-concepts"
-            eyebrow="guide"
-            title="Core concepts"
+          <CapabilitySection
+            id="cap-renderer"
+            title="Renderer & props"
+            symbols={[
+              "TilingRenderer",
+              "TilingRendererProps",
+              "TilingRenderTileProps",
+              "TilingTile",
+            ]}
           >
-            <h3 className="font-display text-[16px] font-medium text-stone-100">
-              Layout tree
-            </h3>
             <SectionLead>
-              A layout is a recursive tree of nodes you own in state:{" "}
-              <Code>leaf</Code> nodes hold a tile, <Code>split</Code> nodes
-              divide space along an axis by a ratio, and <Code>group</Code>{" "}
-              nodes stack leaves behind a tab strip. See{" "}
-              <Link href="#api-tilinglayoutnode">TilingLayoutNode</Link> and the{" "}
-              <Link href="#api-tilingsplitnode">split</Link> /{" "}
-              <Link href="#api-tilingleafnode">leaf</Link> /{" "}
-              <Link href="#api-tilinggroupnode">group</Link> node types.
+              <Code>TilingRenderer</Code> is the single entry component and a
+              controlled component: <Code>layout</Code>, <Code>tiles</Code>,{" "}
+              <Code>config</Code>, and <Code>onLayoutChange</Code> are the four
+              required props; everything else is optional and resolves to a
+              documented default. Supply a <Code>renderTile</Code> callback (
+              <Code>TilingRenderTileProps</Code>) to render custom pane bodies,
+              or omit it for the default tile surface. A <Code>TilingTile</Code>{" "}
+              only requires <Code>id</Code> and <Code>title</Code>.
             </SectionLead>
-            <h3 className="font-display text-[16px] font-medium text-stone-100">
-              Interaction capabilities
-            </h3>
+          </CapabilitySection>
+
+          <CapabilitySection
+            id="cap-layout"
+            title="Layout tree & mutation"
+            symbols={[
+              "TilingLayoutNode",
+              "TilingLeafNode",
+              "TilingSplitNode",
+              "TilingGroupNode",
+              "TilingLayoutConfig",
+              "DEFAULT_TILING_LAYOUT_CONFIG",
+              "TilingInsertionOptions",
+              "insertLeafAdjacent",
+              "moveLeafToSplitContainer",
+              "moveLeafToRoot",
+              "swapLeafTiles",
+              "updateSplitRatio",
+              "toggleSplitAxis",
+              "removeLeafTile",
+              "groupLeaves",
+              "GroupLeavesOptions",
+              "ungroupNode",
+            ]}
+          >
             <SectionLead>
-              Drag-and-drop, resize, keyboard control, grouping, and maximize
-              are all enabled by default and configured through the single{" "}
+              A layout is a recursive tree you own in state: <Code>leaf</Code>{" "}
+              nodes hold a tile, <Code>split</Code> nodes divide space along an
+              axis by a ratio, and <Code>group</Code> nodes stack leaves behind a
+              tab strip (<Code>TilingLayoutNode</Code> is the union). The mutation
+              helpers are pure — each returns a new tree you feed back into{" "}
+              <Code>layout</Code>, so edits stay diffable and persistable.
+            </SectionLead>
+            <Pre>{LAYOUT_MUTATION_SNIPPET}</Pre>
+          </CapabilitySection>
+
+          <CapabilitySection
+            id="cap-interaction"
+            title="Interaction capabilities & presets"
+            symbols={[
+              "TilingInteractionCapabilities",
+              "ResolvedTilingInteractionCapabilities",
+              "resolveInteractionCapabilities",
+              "TILING_INTERACTION_CAPABILITY_DEFAULTS",
+              "TILING_DASHBOARD_PRESET",
+              "TilingResizeCapability",
+              "TilingMaximizeCapability",
+              "TilingPaneSwitchingCapability",
+              "TilingPaneTitleBarControlsCapability",
+              "TilingSlotCommitmentCapability",
+            ]}
+          >
+            <SectionLead>
+              Drag-and-drop, resize, keyboard control, grouping, and maximize are
+              all enabled by default and configured through the single{" "}
               <Code>interaction</Code> prop (
-              <Link href="#api-tilinginteractioncapabilities">
-                TilingInteractionCapabilities
-              </Link>
-              ). Pass a partial to narrow behavior.
+              <Code>TilingInteractionCapabilities</Code>). Pass a partial to
+              narrow behavior, or start from a preset like{" "}
+              <Code>TILING_DASHBOARD_PRESET</Code>.{" "}
+              <Code>resolveInteractionCapabilities</Code> materializes the fully
+              resolved shape.
             </SectionLead>
             <Pre>{CAPABILITIES_SNIPPET}</Pre>
-            <h3 className="font-display text-[16px] font-medium text-stone-100">
-              Theming
-            </h3>
+          </CapabilitySection>
+
+          <CapabilitySection
+            id="cap-theming"
+            title="Theming"
+            symbols={[
+              "TilingThemeProvider",
+              "TilingTheme",
+              "useTilingTheme",
+              "TilingThemeId",
+              "TILING_THEMES",
+              "DEFAULT_TILING_THEME_ID",
+              "resolveTilingTheme",
+            ]}
+          >
             <SectionLead>
               Choose a built-in theme with the <Code>themeId</Code> prop, or wrap
               a subtree in <Code>TilingThemeProvider</Code> and read the active{" "}
-              <Link href="#api-tilingtheme">TilingTheme</Link> with{" "}
-              <Code>useTilingTheme</Code>. Theme switching is live — no remount.
+              <Code>TilingTheme</Code> with <Code>useTilingTheme</Code>. Theme
+              switching is live — no remount. <Code>TILING_THEMES</Code> and{" "}
+              <Code>resolveTilingTheme</Code> back the registry.
             </SectionLead>
-          </GuideSection>
+            <Pre>{THEMING_SNIPPET}</Pre>
+          </CapabilitySection>
 
-          <GuideSection id="recipes" eyebrow="guide" title="Recipes">
-            <h3 className="font-display text-[16px] font-medium text-stone-100">
-              Multi-select grouping
-            </h3>
+          <CapabilitySection
+            id="cap-grouping"
+            title="Multi-select & grouping"
+            symbols={[
+              "canGroupMultiSelection",
+              "groupLeaves",
+              "GroupLeavesOptions",
+              "toggleLeafMultiSelection",
+              "pruneMultiSelection",
+              "isMultiSelectModifierActive",
+              "MULTI_SELECT_GROUP_MIN_MEMBERS",
+            ]}
+          >
             <SectionLead>
-              Fold several selected leaves into one tabbed group. Gate the
-              control with{" "}
-              <Link href="#api-cangroupmultiselection">
-                canGroupMultiSelection
-              </Link>{" "}
-              and apply the change with{" "}
-              <Link href="#api-groupleaves">groupLeaves</Link>.
+              Fold several selected leaves into one tabbed group (the Alt/Opt+G
+              flow). Track the selection with{" "}
+              <Code>toggleLeafMultiSelection</Code>, gate the Group control with{" "}
+              <Code>canGroupMultiSelection</Code> so it is only offered when the
+              op would actually change the tree, then apply it with{" "}
+              <Code>groupLeaves</Code>.
             </SectionLead>
             <Pre>{GROUPING_SNIPPET}</Pre>
-            <h3 className="font-display text-[16px] font-medium text-stone-100">
-              Drag &amp; FLIP behavior
-            </h3>
+          </CapabilitySection>
+
+          <CapabilitySection
+            id="cap-drag"
+            title="Drag / FLIP & recovery"
+            symbols={[
+              "TilingDragRecoveryCapability",
+              "ResolvedTilingDragRecoveryCapability",
+              "TilingTouchDragCapability",
+              "ResolvedTilingTouchDragCapability",
+              "DEFAULT_DRAG_ANIMATION_SPEED_PERCENT",
+              "DEFAULT_DRAG_HOP_EASING",
+              "DEFAULT_DRAG_REFLOW_EASING",
+              "BASELINE_DRAG_HOP_DURATION_MS",
+            ]}
+          >
             <SectionLead>
               Dragging a pane header detaches the source, freezes the tree, and
               floats a cursor-following ghost that hops between seats; the move
-              commits on release (swap, edge-insert, split-container-insert, or
-              group-merge). FLIP-animated survivor reflow and a self-healing
-              recovery backstop guarantee the tree never strands mid-transition.
+              commits on release. FLIP-animated survivor reflow and a
+              self-healing recovery backstop guarantee the tree never strands
+              mid-transition. As a consumer you tune the motion through props on{" "}
+              <Code>TilingRendererProps</Code> — <Code>dragAnimationEnabled</Code>
+              , <Code>dragHopEasing</Code>, <Code>dragReflowEasing</Code>,{" "}
+              <Code>ghostTransitSpeedPercent</Code> — and configure touch-drag and
+              recovery through the capabilities below. The deep-engine drag math
+              is <Code>@internal</Code> and excluded from the surface.
             </SectionLead>
-            <h3 className="font-display text-[16px] font-medium text-stone-100">
-              /devtools observability
-            </h3>
+          </CapabilitySection>
+
+          <CapabilitySection
+            id="cap-devtools"
+            title="Devtools (opt-in)"
+            symbols={[
+              "TilingObservabilityColorConfig",
+              "TilingObservabilityColorEnableConfig",
+              "TilingDropIntentDebugState",
+              "TilingLiveHitLogState",
+              "TilingPaneHitZoneOverlayDebugState",
+            ]}
+          >
             <SectionLead>
-              The <Code>@n-uf/hypr-tiling/devtools</Code> entry point exposes
-              opt-in overlays for drop-intent resolution and pane hit-zone
-              debugging — useful when tuning custom interaction behavior. These
-              symbols are excluded from the production reference below.
+              Advanced and opt-in. The{" "}
+              <Code>@n-uf/hypr-tiling/devtools</Code> subpath exposes
+              observability overlays (the <Code>TilingObservabilityPanel</Code>{" "}
+              and its seed defaults) for drop-intent resolution and pane hit-zone
+              debugging — useful when tuning custom interaction behavior. It lives
+              on its own entry point so a renderer-only consumer never pulls the
+              panel into its bundle, and it is intentionally kept out of the fast
+              track. The observability <em>types</em> referenced by public
+              renderer props remain on the main entry and appear in the reference
+              below; the panel implementation does not.
             </SectionLead>
-          </GuideSection>
+            <Pre>{DEVTOOLS_SNIPPET}</Pre>
+          </CapabilitySection>
 
           <GuideSection
             id="migration"
-            eyebrow="guide"
+            eyebrow="release"
             title="Migration & changelog"
           >
             <SectionLead>

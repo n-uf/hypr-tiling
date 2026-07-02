@@ -53,7 +53,7 @@ export function buildLlmsTxt(): string {
   lines.push(`## Documentation (${DOCS_URL})`);
   lines.push("");
   lines.push(
-    "Guides and the generated API reference are published as prerendered static HTML at the /docs route:",
+    "Consumer documentation, prerendered as static HTML at the /docs route. A consumer is a developer who uses @n-uf/hypr-tiling in their app; these docs cover only the public SDK surface. The information architecture has two lanes: an SDK map that routes the reader, Lane A (Fast track — the shortest copy-paste path to the first rendered tiles), and Lane B (the full SDK spectrum, grouped by capability), each capability linking into the generated per-symbol reference that follows:",
   );
   lines.push("");
   for (const topic of DOCS_GUIDE_TOPICS) {
@@ -89,7 +89,7 @@ export function buildLlmsTxt(): string {
   lines.push("## Contributing");
   lines.push("");
   lines.push(
-    "hypr-tiling welcomes collaboration — framework adapters, rendering backends, bug reports, and roadmap ideas. To get involved, email metelin@gmail.com.",
+    "hypr-tiling welcomes collaboration — framework adapters, rendering backends, bug reports, and roadmap ideas. Contributors working ON the library (architecture, internals, maintenance) start from CONTRIBUTING.md in the repository root; that material is intentionally kept off this consumer documentation site. To get involved, email metelin@gmail.com.",
   );
   lines.push("");
   return lines.join("\n");

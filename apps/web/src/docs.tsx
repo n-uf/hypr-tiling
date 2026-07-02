@@ -1,6 +1,5 @@
 import * as React from "react";
 import type { TilingTileAccent } from "@n-uf/hypr-tiling";
-import { API_REFERENCE_SECTIONS } from "./api-reference/generated";
 
 // Single source of truth for the homepage's documentation surface. The same
 // section content is rendered (a) inside the tiling panes for the interactive
@@ -558,138 +557,112 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
   },
 ];
 
+// Which lane a consumer-docs topic belongs to, used to group the /docs sidebar.
+// "start" = the SDK map + Lane A fast track; "spectrum" = Lane B capability
+// groups + the consumer-relevant migration pointer; "reference" = the generated
+// per-symbol API reference.
+type DocsLane = "start" | "spectrum" | "reference";
+
 interface DocsGuideTopic {
-  // Stable anchor id on the /docs route (e.g. `getting-started`).
+  // Stable anchor id on the /docs route (e.g. `fast-track`).
   readonly id: string;
   // Sidebar / heading label.
   readonly title: string;
+  // Which lane the topic belongs to (drives the sidebar grouping).
+  readonly lane: DocsLane;
   // Plain-text summary mirrored into llms.txt for LLM discoverability.
   readonly summary: string;
 }
 
-// Hand-written guide topics rendered on the /docs route. This is the single
-// source for the docs sidebar, the llms.txt guide index, and the sitemap; the
-// prose bodies themselves live in docs-page.tsx (JSX), keyed by these ids.
+// Consumer-facing guide topics rendered on the /docs route. This is the single
+// source for the docs sidebar, the llms.txt guide index, the JSON-LD hasPart,
+// and the sitemap; the prose bodies themselves live in docs-page.tsx (JSX),
+// keyed by these ids. Every topic documents ONLY the public `@n-uf/hypr-tiling`
+// (+ `/devtools`) barrel — no architecture/internals. The two-lane IA is: an SDK
+// map that routes the reader, Lane A (Fast track / time-to-first-tile), then
+// Lane B (the full consumable surface grouped by capability), ending in the
+// generated reference.
 export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
   {
-    id: "getting-started",
-    title: "Getting started",
+    id: "sdk-map",
+    title: "SDK map",
+    lane: "start",
     summary:
-      "Install @n-uf/hypr-tiling with its React 19 peers, then render TilingRenderer as a controlled component: hold the layout tree in state and apply every edit from onLayoutChange.",
+      "Routes the reader: brand-new consumers take the Fast track; consumers who know what they need jump to a capability guide; symbol look-ups go straight to the generated reference.",
   },
   {
-    id: "install",
-    title: "Install & Tailwind setup",
+    id: "fast-track",
+    title: "Fast track",
+    lane: "start",
     summary:
-      "pnpm add @n-uf/hypr-tiling react react-dom. The library ships Tailwind utility classes; a Tailwind consumer must add node_modules/@n-uf/hypr-tiling/dist to the Tailwind content globs so the pane/divider/ghost classes are not purged.",
+      "One copy-paste-runnable path to the first rendered tiles: pnpm add @n-uf/hypr-tiling react react-dom, add the package dist to your Tailwind content glob, then render a minimal controlled TilingRenderer with a layout config, a tile registry, and a renderTile callback.",
   },
   {
-    id: "core-concepts",
-    title: "Core concepts",
+    id: "cap-renderer",
+    title: "Renderer & props",
+    lane: "spectrum",
     summary:
-      "The layout is a recursive tree of leaf, split, and group nodes you own in state. Interaction capabilities (drag, resize, keyboard, grouping, maximize) are configured through the single interaction prop. Theming is driven by themeId plus the TilingThemeProvider/useTilingTheme API.",
+      "TilingRenderer is the single controlled entry component (layout + tiles + config + onLayoutChange are the four required props). TilingRendererProps is the full prop surface; renderTile (TilingRenderTileProps) customizes pane bodies; TilingTile is the tile payload.",
   },
   {
-    id: "recipes",
-    title: "Recipes",
+    id: "cap-layout",
+    title: "Layout tree & mutation",
+    lane: "spectrum",
     summary:
-      "Multi-select grouping via canGroupMultiSelection + groupLeaves; the Hyprland-style detach/ghost/FLIP drag behavior and its self-healing recovery; and /devtools observability overlays for drop-intent and hit-zone debugging.",
+      "The layout is a recursive tree of leaf, split, and group nodes you own in state (TilingLayoutNode / TilingLeafNode / TilingSplitNode / TilingGroupNode). Pure mutation helpers return a new tree: groupLeaves/GroupLeavesOptions, insertLeafAdjacent, moveLeafToSplitContainer, swapLeafTiles, updateSplitRatio, toggleSplitAxis, removeLeafTile, ungroupNode.",
+  },
+  {
+    id: "cap-interaction",
+    title: "Interaction capabilities & presets",
+    lane: "spectrum",
+    summary:
+      "Drag, resize, keyboard, grouping, and maximize are all enabled by default and narrowed through the single interaction prop (TilingInteractionCapabilities). Presets like TILING_DASHBOARD_PRESET and TILING_INTERACTION_CAPABILITY_DEFAULTS seed common shapes; resolveInteractionCapabilities produces the Resolved variant.",
+  },
+  {
+    id: "cap-theming",
+    title: "Theming",
+    lane: "spectrum",
+    summary:
+      "Choose a built-in theme via the themeId prop, or wrap a subtree in TilingThemeProvider and read the active TilingTheme with useTilingTheme. Live theme switching, no remount. TILING_THEMES / DEFAULT_TILING_THEME_ID / resolveTilingTheme back the registry.",
+  },
+  {
+    id: "cap-grouping",
+    title: "Multi-select & grouping",
+    lane: "spectrum",
+    summary:
+      "Fold several selected leaves into one tabbed group (Alt/Opt+G). Gate the control with canGroupMultiSelection and apply the change with groupLeaves; toggleLeafMultiSelection / pruneMultiSelection manage the selection set.",
+  },
+  {
+    id: "cap-drag",
+    title: "Drag / FLIP & recovery",
+    lane: "spectrum",
+    summary:
+      "Consumer-visible drag choreography: dragAnimationEnabled, dragHopEasing, dragReflowEasing, and ghostTransitSpeedPercent on TilingRendererProps tune the Hyprland-style ghost hop and FLIP survivor reflow. Touch-drag and self-healing recovery are capability-configured; the deep-engine drag math stays internal.",
+  },
+  {
+    id: "cap-devtools",
+    title: "Devtools (opt-in)",
+    lane: "spectrum",
+    summary:
+      "The @n-uf/hypr-tiling/devtools subpath exposes opt-in observability overlays (TilingObservabilityPanel and its seed defaults) for drop-intent and pane hit-zone debugging. Advanced/optional — kept out of the fast track; a renderer-only consumer never pulls the panel into its bundle.",
   },
   {
     id: "migration",
     title: "Migration & changelog",
+    lane: "spectrum",
     summary:
       "hypr-tiling follows calendar versioning; breaking changes and release notes are tracked in the package CHANGELOG.md. The curated public API surface is enforced by API Extractor and mirrored in the API reference below.",
   },
   {
     id: "api-reference",
     title: "API reference",
+    lane: "reference",
     summary:
-      "Generated reference for the curated public API surface (TilingRenderer, TilingRendererProps, TilingInteractionCapabilities and its Resolved variant, the layout-node types, the state.ts layout operations, theming, and drop-preview types). Generated from source TSDoc via API Extractor + API Documenter.",
+      "Generated per-symbol reference for the curated public API surface, produced from source TSDoc via API Extractor + API Documenter. Internal and devtools-only-implementation symbols are excluded.",
   },
 ];
 
-type ApiReferenceKind = "variable" | "function" | "interface" | "type";
-
-export function buildLlmsTxt(): string {
-  const lines: string[] = [];
-  lines.push(`# ${PACKAGE_NAME}`);
-  lines.push("");
-  lines.push(`> ${CANONICAL_DESCRIPTION}`);
-  lines.push("");
-  lines.push(`Homepage: ${SITE_URL}`);
-  lines.push(`Showcase: ${SHOWCASE_URL}`);
-  lines.push(`Repository: ${REPO_URL}`);
-  lines.push(`Install: ${INSTALL_SNIPPET}`);
-  lines.push(`License: ${LICENSE_NAME} (${LICENSE_URL})`);
-  lines.push("");
-
-  for (const pane of DOC_PANES) {
-    lines.push(`## ${pane.title}`);
-    lines.push("");
-    lines.push(pane.summary);
-    lines.push("");
-  }
-
-  lines.push("## Features");
-  lines.push("");
-  for (const fact of FEATURE_FACTS) {
-    lines.push(`- ${fact.term}: ${fact.detail}`);
-  }
-  lines.push("");
-
-  lines.push("## Roadmap (planned, not yet shipped)");
-  lines.push("");
-  for (const item of ROADMAP_ITEMS) {
-    lines.push(`- ${item.term}: ${item.detail}`);
-  }
-  lines.push("");
-
-  lines.push(`## Documentation (${DOCS_URL})`);
-  lines.push("");
-  lines.push(
-    "Guides and the generated API reference are published as prerendered static HTML at the /docs route:",
-  );
-  lines.push("");
-  for (const topic of DOCS_GUIDE_TOPICS) {
-    lines.push(`- [${topic.title}](${DOCS_URL}#${topic.id}): ${topic.summary}`);
-  }
-  lines.push("");
-
-  lines.push("## API reference");
-  lines.push("");
-  lines.push(
-    `The curated public API surface (generated from source TSDoc). Full report: ${API_REFERENCE_URL}`,
-  );
-  lines.push("");
-
-  const kinds: ReadonlyArray<ApiReferenceKind> = [
-    "variable",
-    "function",
-    "interface",
-    "type",
-  ];
-  for (const kind of kinds) {
-    const inKind = API_REFERENCE_SECTIONS.filter(
-      (section): boolean => section.kind === kind,
-    );
-    if (inKind.length === 0) {
-      continue;
-    }
-    lines.push(`### ${kind}s`);
-    lines.push("");
-    for (const section of inKind) {
-      lines.push(`- [${section.name}](${DOCS_URL}#${section.id})`);
-    }
-    lines.push("");
-  }
-
-  lines.push("## Contributing");
-  lines.push("");
-  lines.push(
-    "hypr-tiling welcomes collaboration — framework adapters, rendering backends, bug reports, and roadmap ideas. To get involved, email metelin@gmail.com.",
-  );
-  lines.push("");
-  return lines.join("\n");
-}
+// The `/llms.txt` mirror is built in `llms.ts` (`buildLlmsTxt`), the single
+// source imported by the SSR prerender entry, so the large generated
+// API-reference bundle stays out of the homepage client chunk.
 
