@@ -289,16 +289,44 @@ deliberate power-user escape.
 
 ---
 
-## 8. Guardrails (Stage 6)
+## 8. Guardrails (Stage 6 — as landed)
 
-- **Layering lint** (`no-restricted-imports` / `import/no-restricted-paths`):
-  forbid `engine/`→`react/`; forbid app/deep imports of `engine/…` (must use an
-  entry point); forbid the facade importing engine except via `react/`.
-- **`'use client'` preservation**: the directive survives the facade re-export
-  to `dist/index.*` (esbuild directive-preserving), asserted by a build-time
-  check script (the pre-revamp build did NOT preserve it — this is a real fix).
-- **CI** (`.github/workflows/ci.yml`, extended not duplicated): 3× `api:check`
-  + `api:docs` drift gate + the new lint + the `'use client'` assertion.
+**Tooling decision — bespoke `.mjs` guard, not ESLint.** The repo ships NO
+ESLint toolchain (no config, no `eslint` dep, no `lint` script) and instead uses
+hand-written `.mjs` check scripts (`generate-api-docs.mjs`,
+`calendar-version-bump.mjs`). Introducing a full ESLint stack +
+`eslint-plugin-import` just for `import/no-restricted-paths` would add a new
+dependency surface and CI toolchain for a single rule. Instead the layering
+invariants are enforced by a dependency-free
+`scripts/check-guardrails.mjs` (`pnpm check:guardrails`) in the house style. This
+is a deliberate deviation from the `import/no-restricted-paths` wording; the
+enforced invariants are identical.
+
+- **Layering (engine ↛ react)**: `engine/**` must not **value**-import
+  `react`/`react-dom` or reach into `react/`. Type-only imports
+  (`import type * as React` for `React.ReactNode` in a prop DTO — as in
+  `engine/types.ts`) are **allowed**: they are erased at build and create no
+  runtime framework edge, so the engine stays framework-free at runtime.
+- **No deep consumer imports**: `apps/web/src` + `packages/showcase/src` may
+  import only `@n-uf/hypr-tiling`, `…/devtools`, or `…/engine` — never a deep
+  path (`…/engine/state`, `…/react/…`, `…/dist/…`).
+- **Facade → engine import rule NOT enforced.** The user brief listed "forbid
+  the facade importing engine except via `react/`", but the facade's *entire
+  job* is to curate + re-export engine symbols directly (`export { … } from
+  "./engine/…"`). Enforcing that rule would contradict the implemented facade.
+  The meaningful, non-contradictory invariant — engine cannot depend on react —
+  is enforced instead. Facade→engine leakage of *unintended* symbols is already
+  caught structurally (the facade is hand-authored) + by the `.` API report.
+- **`'use client'` preservation**: `index.ts` carries the directive; tsup/esbuild
+  preserves it to `dist/index.mjs` (verified: line 1 is `"use client";`). The
+  CJS build correctly emits `"use strict"` — App Router consumers resolve the
+  `import` condition to the `.mjs`, so the ESM artifact is the one asserted.
+  `check-guardrails.mjs` asserts `dist/index.mjs`'s first meaningful line is a
+  `use client` directive.
+- **CI** (`.github/workflows/ci.yml`, extended not duplicated): the existing
+  `api:check` step now runs all 3 entry configs; the `api:docs` drift gate is
+  unchanged; a new **Architectural guardrails** step runs `check:guardrails`
+  after build (so the `dist/index.mjs` assertion has an artifact).
 
 ---
 

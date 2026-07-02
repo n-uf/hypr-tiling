@@ -29,12 +29,20 @@ jobs:
       - name: Build (packages + web, incl. prerender)
         run: pnpm build
 
-      # API Extractor leak + TSDoc-coverage gate: fails if the checked-in report
-      # is out of date, if an @internal symbol leaks back onto the public entry
-      # point, OR if any public symbol lacks a doc summary (ae-undocumented is
-      # set to `error` in api-extractor.json).
-      - name: API Extractor leak + TSDoc-coverage gate
+      # API Extractor gate — runs all THREE entry configs
+      # (api-extractor.{index,devtools,engine}.json). Fails if any checked-in
+      # report is out of date; the strict `.` config additionally fails if an
+      # engine-grade type leaks onto the public entry (ae-forgotten-export) or a
+      # public symbol lacks a doc summary (ae-undocumented) — both `error`.
+      - name: API Extractor leak + TSDoc-coverage gate (index + devtools + engine)
         run: pnpm --filter @n-uf/hypr-tiling api:check
+
+      # Architectural guardrails: engine↛react layering, no deep consumer
+      # imports of @n-uf/hypr-tiling internals, and the built dist/index.mjs
+      # facade keeps its `use client` directive (App Router consumers rely on it).
+      # Runs after build so the dist assertion has an artifact.
+      - name: Architectural guardrails (layering + use-client)
+        run: pnpm --filter @n-uf/hypr-tiling check:guardrails
 
       # Generated API reference must not drift from the source TSDoc: regenerate
       # and fail on any diff to the committed snapshot.
