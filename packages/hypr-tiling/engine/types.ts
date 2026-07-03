@@ -1248,6 +1248,19 @@ export interface TilingLayoutConfig {
 }
 
 /**
+ * The renderer surface a `renderTile` invocation paints:
+ *
+ * - `"pane"` — the seated in-tree pane (the normal, interactive case).
+ * - `"drag-ghost"` — the floating, portaled pickup ghost that travels with the
+ *   cursor during a drag. `aria-hidden` + `pointer-events-none`: handlers are
+ *   inert no-ops, capability display flags stay real.
+ * - `"drag-cancel"` — the cancel fly-back overlay (the ghost gliding home after
+ *   a cancelled drag). Same inert-handlers / real-flags semantics as
+ *   `"drag-ghost"`.
+ */
+export type TilingRenderSurface = "pane" | "drag-ghost" | "drag-cancel";
+
+/**
  * The argument object passed to a custom `renderTile`. This is the clean,
  * consumer-facing pane contract: the tile payload, this pane's derived state
  * (focus / drag / drop / sizing), and the imperative callbacks a custom pane
@@ -1271,6 +1284,17 @@ export interface TilingLayoutConfig {
  *   drag ghost reuses the same render path).
  */
 export interface TilingRenderTileProps {
+  /**
+   * Which renderer surface these args paint (see {@link TilingRenderSurface}).
+   * `"pane"` for the seated in-tree pane; `"drag-ghost"` for the floating
+   * pickup ghost that follows the cursor; `"drag-cancel"` for the cancel
+   * fly-back overlay. On the two drag surfaces every interaction handler is an
+   * inert no-op while the capability display flags stay REAL (reflecting the
+   * resolved capabilities), so capability-keyed chrome does not vanish
+   * mid-drag; a custom pane that wants different drag chrome branches on this
+   * discriminator.
+   */
+  readonly surface: TilingRenderSurface;
   /** The leaf node id this render targets. */
   leafId: string;
   /** The resolved tile payload for this leaf. */

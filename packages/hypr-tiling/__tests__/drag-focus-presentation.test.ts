@@ -8,6 +8,7 @@ import {
   buildDragPaneSnapshot,
   buildGhostTileArgs,
   renderDragPaneShell,
+  type GhostTileCapabilityFlags,
 } from "../react/tiling-renderer";
 import { resolveDragCommitFocusLeafId } from "../engine/drag-machine";
 import {
@@ -201,6 +202,17 @@ describe("floating drag ghost routes through consumer renderTile (custom skin tr
     content: createElement("div", { "data-custom-body": "1" }, "custom body"),
   };
   const SOURCE_LEAF = "leaf-src";
+  /**
+   * A deliberately non-uniform flag set (mixed true/false) so the tests can
+   * prove the ghost args carry the REAL resolved values, not hardcoded ones.
+   */
+  const REAL_FLAGS: GhostTileCapabilityFlags = {
+    isRearrangeEnabled: true,
+    isMaximizeEnabled: true,
+    isTitleBarSizingEnabled: false,
+    isTitleBarAcquireSpaceEnabled: true,
+    isMultiSelectGroupingEnabled: false,
+  };
 
   it("buildGhostTileArgs sets the traveling-pane flags a consumer expects", (): void => {
     const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
@@ -210,6 +222,8 @@ describe("floating drag ghost routes through consumer renderTile (custom skin tr
       3,
       420,
       true,
+      "drag-ghost",
+      REAL_FLAGS,
     );
     expect(args.leafId).toBe(SOURCE_LEAF);
     expect(args.tile.id).toBe("tile-src");
@@ -234,6 +248,70 @@ describe("floating drag ghost routes through consumer renderTile (custom skin tr
     expect(args.preview).toBeNull();
   });
 
+  it("ghost args discriminate as surface 'drag-ghost' (in-tree panes are 'pane')", (): void => {
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
+    const ghost: TilingRenderTileProps = buildGhostTileArgs(
+      snapshot,
+      SOURCE_LEAF,
+      1,
+      300,
+      true,
+      "drag-ghost",
+      REAL_FLAGS,
+    );
+    expect(ghost.surface).toBe("drag-ghost");
+    const cancel: TilingRenderTileProps = buildGhostTileArgs(
+      snapshot,
+      SOURCE_LEAF,
+      1,
+      300,
+      true,
+      "drag-cancel",
+      REAL_FLAGS,
+    );
+    expect(cancel.surface).toBe("drag-cancel");
+  });
+
+  it("ghost args carry the REAL capability display flags (no mid-drag silhouette pop)", (): void => {
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
+    const args: TilingRenderTileProps = buildGhostTileArgs(
+      snapshot,
+      SOURCE_LEAF,
+      1,
+      300,
+      true,
+      "drag-ghost",
+      REAL_FLAGS,
+    );
+    // The mixed true/false fixture flows through verbatim — capability-keyed
+    // chrome (maximize button, sizing controls, multi-select affordance) keeps
+    // the exact visibility it had on the in-tree pane.
+    expect(args.isRearrangeEnabled).toBe(true);
+    expect(args.isMaximizeEnabled).toBe(true);
+    expect(args.isTitleBarSizingEnabled).toBe(false);
+    expect(args.isTitleBarAcquireSpaceEnabled).toBe(true);
+    expect(args.isMultiSelectGroupingEnabled).toBe(false);
+    // And the inverse mix proves nothing is hardcoded.
+    const inverse: TilingRenderTileProps = buildGhostTileArgs(
+      snapshot,
+      SOURCE_LEAF,
+      1,
+      300,
+      true,
+      "drag-ghost",
+      {
+        isRearrangeEnabled: false,
+        isMaximizeEnabled: false,
+        isTitleBarSizingEnabled: true,
+        isTitleBarAcquireSpaceEnabled: false,
+        isMultiSelectGroupingEnabled: true,
+      },
+    );
+    expect(inverse.isMaximizeEnabled).toBe(false);
+    expect(inverse.isTitleBarSizingEnabled).toBe(true);
+    expect(inverse.isMultiSelectGroupingEnabled).toBe(true);
+  });
+
   it("respects the content toggle: hidden content → render-empty body mode", (): void => {
     const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
     const hidden: TilingRenderTileProps = buildGhostTileArgs(
@@ -242,6 +320,8 @@ describe("floating drag ghost routes through consumer renderTile (custom skin tr
       1,
       300,
       false,
+      "drag-ghost",
+      REAL_FLAGS,
     );
     expect(hidden.isPaneContentVisible).toBe(false);
     expect(hidden.paneBodyRenderMode).toBe("render-empty");
@@ -255,6 +335,8 @@ describe("floating drag ghost routes through consumer renderTile (custom skin tr
       1,
       300,
       true,
+      "drag-ghost",
+      REAL_FLAGS,
     );
     // Invoking every wired callback must not throw and must return nothing.
     expect(args.onToggleMaximize()).toBeUndefined();
@@ -276,6 +358,8 @@ describe("floating drag ghost routes through consumer renderTile (custom skin tr
       1,
       300,
       true,
+      "drag-ghost",
+      REAL_FLAGS,
     );
     // A custom skin: a root carrying data-leaf-id + a distinctive marker + a body
     // gated on paneBodyRenderMode (the documented custom-pane contract).

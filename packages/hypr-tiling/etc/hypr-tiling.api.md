@@ -621,6 +621,9 @@ export interface TilingRendererProps {
 }
 
 // @public
+export type TilingRenderSurface = "pane" | "drag-ghost" | "drag-cancel";
+
+// @public
 export interface TilingRenderTileProps {
     canGroupMultiSelection: boolean;
     dropZone: TilingLeafDropZone | null;
@@ -655,6 +658,7 @@ export interface TilingRenderTileProps {
     paneOrdinal: number;
     paneWidthPx: number;
     preview: TilingLeafDropPreview | null;
+    readonly surface: TilingRenderSurface;
     tile: TilingTile;
     widthSizingMode: TilingPaneSizingMode;
 }

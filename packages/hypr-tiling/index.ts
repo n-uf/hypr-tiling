@@ -150,6 +150,7 @@ export type {
   TilingCommandHandle,
   // Renderer props / render-tile contract
   TilingRendererProps,
+  TilingRenderSurface,
   TilingRenderTileProps,
   TilingPaneBodyRenderMode,
   // Drop zones / previews

@@ -227,6 +227,7 @@ import type {
   TilingPaneFootprint,
   TilingPaneHitZoneCandidateDebugState,
   TilingPaneHitZoneOverlayDebugState,
+  TilingRenderSurface,
   TilingRenderTileProps,
   TilingDefaultTileProps,
   TilingSplitAxis,
@@ -1241,11 +1242,36 @@ function OverlayPortal({
 const GHOST_TILE_NOOP = (): void => {};
 
 /**
- * Builds the `TilingRenderTileProps` the floating ghost passes to a consumer
- * `renderTile` so a custom skin's pane chrome TRAVELS with the drag. It is a
- * faithful representation of the dragged SOURCE leaf's resting/focused pane,
- * mirroring the in-tree `tileArgs` construction in `renderBranch`:
+ * The REAL resolved capability display flags the drag surfaces (`"drag-ghost"`
+ * / `"drag-cancel"`) carry on their `TilingRenderTileProps`. These mirror the
+ * in-tree pane's flags so capability-keyed chrome (maximize button, sizing /
+ * acquire-space controls, multi-select affordance) does NOT vanish mid-drag —
+ * the mid-drag silhouette pop. The matching HANDLERS stay inert no-ops (the
+ * overlays are `aria-hidden` + `pointer-events-none`); a custom pane that
+ * wants different drag chrome branches on `surface` instead.
+ */
+export interface GhostTileCapabilityFlags {
+  /** Whether drag-to-rearrange is enabled (always true mid-drag by construction). */
+  readonly isRearrangeEnabled: boolean;
+  /** Whether the maximize capability is enabled. */
+  readonly isMaximizeEnabled: boolean;
+  /** Whether the per-pane title-bar sizing control is enabled. */
+  readonly isTitleBarSizingEnabled: boolean;
+  /** Whether the per-pane acquire-space controls are enabled. */
+  readonly isTitleBarAcquireSpaceEnabled: boolean;
+  /** Whether Alt/Opt+click header multi-selection grouping is live. */
+  readonly isMultiSelectGroupingEnabled: boolean;
+}
+
+/**
+ * Builds the `TilingRenderTileProps` the drag overlays (the floating pickup
+ * ghost and the cancel fly-back) pass to a consumer `renderTile` so a custom
+ * pane's chrome TRAVELS with the drag. It is a faithful representation of the
+ * dragged SOURCE leaf's resting/focused pane, mirroring the in-tree `tileArgs`
+ * construction in `renderBranch`:
  *
+ * - `surface` discriminates the overlay (`"drag-ghost"` / `"drag-cancel"`) from
+ *   the seated `"pane"` render, so a consumer can branch its drag chrome;
  * - identity + payload come from the pickup `snapshot` (the SAME captured
  *   content `renderDragPaneShell` paints — never a live re-read; the ghost is
  *   the single pickup-time instance), reconstructed into a `TilingTile`;
@@ -1254,13 +1280,17 @@ const GHOST_TILE_NOOP = (): void => {};
  * - `paneBodyRenderMode` from the SAME uniform CONTENT rule the shell uses
  *   (`resolvePaneBodyRenderMode(false, isPaneContentVisible)` — the ghost is the
  *   single painted instance, never a seat reservation, so `false`);
- * - every drop / maximize / multi-select / move flag in its resting-false state,
- *   and every interaction handler a safe no-op (`GHOST_TILE_NOOP`): the floating
- *   ghost is `aria-hidden` + `pointer-events-none`, so a consumer pane's wired
- *   callbacks are inert on it (the live drag gesture is owned by the captured
- *   window listener + the in-tree reservation slot, not the ghost).
+ * - the capability DISPLAY flags come through REAL (`capabilityFlags`,
+ *   reflecting the resolved capabilities) so capability-keyed chrome does not
+ *   vanish mid-drag, while every interaction handler stays a safe no-op
+ *   (`GHOST_TILE_NOOP`): the overlays are `aria-hidden` + `pointer-events-none`,
+ *   so a consumer pane's wired callbacks are inert on them (the live drag
+ *   gesture is owned by the captured window listener + the in-tree reservation
+ *   slot, not the ghost);
+ * - every drop / maximize / multi-select / move STATE flag is in its
+ *   resting-false state.
  *
- * Pure + DOM-free so the ghost-routing contract (custom skin travels; flags;
+ * Pure + DOM-free so the ghost-routing contract (custom chrome travels; flags;
  * no-op handlers) is unit-testable without simulating a pointer drag.
  */
 export function buildGhostTileArgs(
@@ -1269,6 +1299,8 @@ export function buildGhostTileArgs(
   paneOrdinal: number,
   paneWidthPx: number,
   isPaneContentVisible: boolean,
+  surface: Exclude<TilingRenderSurface, "pane">,
+  capabilityFlags: GhostTileCapabilityFlags,
 ): TilingRenderTileProps {
   const ghostTile: TilingTile = {
     id: snapshot.tileId,
@@ -1279,6 +1311,7 @@ export function buildGhostTileArgs(
     content: snapshot.content,
   };
   return {
+    surface,
     leafId: sourceLeafId,
     tile: ghostTile,
     paneOrdinal,
@@ -1291,21 +1324,23 @@ export function buildGhostTileArgs(
     isHoveringDropCandidate: false,
     isInvalidDrop: false,
     isFocused: true,
-    isRearrangeEnabled: true,
+    isRearrangeEnabled: capabilityFlags.isRearrangeEnabled,
     isMoveSource: false,
     moveTargetPlacement: null,
     isMaximized: false,
-    isMaximizeEnabled: false,
+    isMaximizeEnabled: capabilityFlags.isMaximizeEnabled,
     onToggleMaximize: GHOST_TILE_NOOP,
-    isTitleBarSizingEnabled: false,
-    isTitleBarAcquireSpaceEnabled: false,
+    isTitleBarSizingEnabled: capabilityFlags.isTitleBarSizingEnabled,
+    isTitleBarAcquireSpaceEnabled:
+      capabilityFlags.isTitleBarAcquireSpaceEnabled,
     widthSizingMode: "flexible",
     heightSizingMode: "flexible",
     onSetSizingMode: GHOST_TILE_NOOP,
     onAcquireSpace: GHOST_TILE_NOOP,
     dropZone: null,
     preview: null,
-    isMultiSelectGroupingEnabled: false,
+    isMultiSelectGroupingEnabled:
+      capabilityFlags.isMultiSelectGroupingEnabled,
     isMultiSelected: false,
     canGroupMultiSelection: false,
     onToggleMultiSelect: GHOST_TILE_NOOP,
@@ -1340,6 +1375,7 @@ function DragPaneOverlay({
   frameDeadlineMs,
   renderTile,
   ghostPaneOrdinal,
+  ghostCapabilityFlags,
 }: {
   dragVisualState: TilingDragVisualState | null;
   dragHopDurationMs: number;
@@ -1369,6 +1405,12 @@ function DragPaneOverlay({
     | undefined;
   /** 1-based pane ordinal of the dragged source leaf (for the ghost tileArgs). */
   ghostPaneOrdinal: number;
+  /**
+   * The REAL resolved capability display flags to carry on the ghost tileArgs
+   * (see {@link GhostTileCapabilityFlags}) so capability-keyed chrome does not
+   * vanish mid-drag.
+   */
+  ghostCapabilityFlags: GhostTileCapabilityFlags;
 }): React.ReactElement | null {
   const theme: TilingTheme = useTilingTheme();
   const nodeRef = React.useRef<HTMLDivElement | null>(null);
@@ -1626,6 +1668,8 @@ function DragPaneOverlay({
     ghostPaneOrdinal,
     baseRect.width,
     isPaneContentVisible,
+    "drag-ghost",
+    ghostCapabilityFlags,
   );
   return (
     <OverlayPortal>
@@ -3917,6 +3961,26 @@ const TilingRendererComponent = React.forwardRef<
     isMaximizeEnabled &&
     interactionCapabilities.paneSwitching.tabDoubleClickMaximize;
   const keymap: ResolvedTilingKeymap = interactionCapabilities.keymap;
+  // The REAL capability display flags the drag overlays (pickup ghost + cancel
+  // fly-back) carry on their tileArgs, mirroring the in-tree pane so
+  // capability-keyed chrome does not vanish mid-drag (handlers stay inert
+  // no-ops inside `buildGhostTileArgs`).
+  const ghostCapabilityFlags: GhostTileCapabilityFlags = React.useMemo(
+    (): GhostTileCapabilityFlags => ({
+      isRearrangeEnabled,
+      isMaximizeEnabled,
+      isTitleBarSizingEnabled,
+      isTitleBarAcquireSpaceEnabled,
+      isMultiSelectGroupingEnabled,
+    }),
+    [
+      isRearrangeEnabled,
+      isMaximizeEnabled,
+      isTitleBarSizingEnabled,
+      isTitleBarAcquireSpaceEnabled,
+      isMultiSelectGroupingEnabled,
+    ],
+  );
   // Any divider resize is enabled unless the resize capability is `"none"`; the
   // per-axis filter (`isResizeAxisEnabled`) still applies to a SPECIFIC split at
   // execution time, so this gate only short-circuits a wholly-disabled resize.
@@ -6850,6 +6914,7 @@ const TilingRendererComponent = React.forwardRef<
           leafPresentation.dropChromeZone;
 
         const tileArgs: TilingRenderTileProps = {
+          surface: "pane",
           leafId: node.id,
           tile: tileForDisplay,
           paneOrdinal: Math.max(1, leafIds.indexOf(node.id) + 1),
@@ -7773,6 +7838,7 @@ const TilingRendererComponent = React.forwardRef<
           isPaneContentVisible={isPaneContentVisible}
           frameDeadlineMs={dragRecoveryFrameDeadlineMs}
           renderTile={renderTile}
+          ghostCapabilityFlags={ghostCapabilityFlags}
           ghostPaneOrdinal={
             dragVisualState != null
               ? Math.max(
