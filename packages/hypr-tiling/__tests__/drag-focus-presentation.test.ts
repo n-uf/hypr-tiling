@@ -396,6 +396,108 @@ describe("floating drag ghost routes through consumer renderTile (custom skin tr
   });
 });
 
+/**
+ * The cancel fly-back mirrors the pickup-ghost characterization exactly:
+ * `DragCancelOverlay` renders `renderTile(buildGhostTileArgs(snapshot, …,
+ * "drag-cancel", flags))` when a consumer `renderTile` is supplied, keeping
+ * `renderDragPaneShell` as the `renderTile == null` built-in fallback. Same
+ * inert-handlers / real-capability-flags / no-group semantics as
+ * `"drag-ghost"`; the only difference a custom pane observes is the
+ * `surface: "drag-cancel"` discriminator.
+ */
+describe("cancel fly-back routes through consumer renderTile (custom skin glides home)", (): void => {
+  const CANCEL_TILE: TilingTile = {
+    id: "tile-cancel",
+    title: "Cancelled Pane",
+    accent: "emerald",
+    rows: ["going home"],
+    content: createElement("div", { "data-cancel-body": "1" }, "cancel body"),
+  };
+  const SOURCE_LEAF = "leaf-cancel-src";
+  const FLAGS: GhostTileCapabilityFlags = {
+    isRearrangeEnabled: true,
+    isMaximizeEnabled: false,
+    isTitleBarSizingEnabled: true,
+    isTitleBarAcquireSpaceEnabled: false,
+    isMultiSelectGroupingEnabled: true,
+  };
+
+  it("cancel tileArgs mirror the ghost semantics under the drag-cancel surface", (): void => {
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(CANCEL_TILE);
+    const args: TilingRenderTileProps = buildGhostTileArgs(
+      snapshot,
+      SOURCE_LEAF,
+      2,
+      360,
+      true,
+      "drag-cancel",
+      FLAGS,
+    );
+    expect(args.surface).toBe("drag-cancel");
+    expect(args.leafId).toBe(SOURCE_LEAF);
+    expect(args.tile.title).toBe("Cancelled Pane");
+    // REAL capability display flags flow through (mixed fixture, verbatim).
+    expect(args.isMaximizeEnabled).toBe(false);
+    expect(args.isTitleBarSizingEnabled).toBe(true);
+    expect(args.isMultiSelectGroupingEnabled).toBe(true);
+    // Inert-handler + no-group semantics, identical to the pickup ghost.
+    expect(args.group).toBeNull();
+    expect(args.onToggleMaximize()).toBeUndefined();
+    expect(args.onFocus()).toBeUndefined();
+    expect(args.onHandlePointerDown({} as never)).toBeUndefined();
+  });
+
+  it("with a custom renderTile the cancel fly-back paints the custom skin (surface branch observable)", (): void => {
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(CANCEL_TILE);
+    const args: TilingRenderTileProps = buildGhostTileArgs(
+      snapshot,
+      SOURCE_LEAF,
+      1,
+      300,
+      true,
+      "drag-cancel",
+      FLAGS,
+    );
+    // A custom skin that branches on the surface discriminator: interactive
+    // controls only on "pane", a marker attribute on the drag surfaces.
+    const renderTile = (a: TilingRenderTileProps): ReactElement =>
+      createElement(
+        "section",
+        {
+          "data-leaf-id": a.leafId,
+          "data-custom-skin": "yes",
+          "data-render-surface": a.surface,
+        },
+        a.tile.title,
+        a.surface === "pane"
+          ? createElement("button", { type: "button" }, "controls")
+          : null,
+        a.paneBodyRenderMode === "render-content" ? a.tile.content : null,
+      );
+    // DragCancelOverlay routing (renderTile != null → renderTile(cancelArgs)).
+    const markup: string = renderToStaticMarkup(renderTile(args));
+    expect(markup).toContain('data-render-surface="drag-cancel"');
+    expect(markup).toContain(`data-leaf-id="${SOURCE_LEAF}"`);
+    expect(markup).toContain("Cancelled Pane");
+    expect(markup).toContain("data-cancel-body");
+    // The surface branch suppressed the interactive controls.
+    expect(markup).not.toContain("<button");
+    // And no built-in shell chrome leaked in.
+    expect(markup).not.toContain("drag header to swap");
+  });
+
+  it("with no renderTile the cancel fly-back keeps the built-in shell fallback exactly", (): void => {
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(CANCEL_TILE);
+    // DragCancelOverlay routing (renderTile == null → renderDragPaneShell(...)).
+    const markup: string = renderToStaticMarkup(
+      renderDragPaneShell(snapshot, NEON, true),
+    );
+    expect(markup).toContain("Cancelled Pane");
+    expect(markup).not.toContain("data-custom-skin");
+    expect(markup).toContain(accentHue("emerald").focusBorder);
+  });
+});
+
 describe("seat / hop-in slot wears the focus frame", (): void => {
   it("the reservation seat carries the DRAGGED pane's focus frame", (): void => {
     const markup: string = renderToStaticMarkup(

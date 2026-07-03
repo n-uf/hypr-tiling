@@ -1949,9 +1949,29 @@ function DragCursorOverlay({
 function DragCancelOverlay({
   cancelVisualState,
   isPaneContentVisible,
+  renderTile,
+  cancelPaneOrdinal,
+  ghostCapabilityFlags,
 }: {
   cancelVisualState: TilingDragCancelVisualState | null;
   isPaneContentVisible: boolean;
+  /**
+   * The consumer `renderTile`, when supplied: the cancel fly-back paints the
+   * gliding pane THROUGH it (`surface: "drag-cancel"`) so a custom skin keeps
+   * its own chrome for the whole cancel animation; `renderDragPaneShell` stays
+   * the `renderTile == null` built-in fallback — the exact pattern of the
+   * pickup-ghost routing in `DragPaneOverlay`.
+   */
+  renderTile:
+    | ((args: TilingRenderTileProps) => React.ReactNode)
+    | undefined;
+  /** 1-based pane ordinal of the cancelled drag's source leaf. */
+  cancelPaneOrdinal: number;
+  /**
+   * The REAL resolved capability display flags for the cancel tileArgs (see
+   * {@link GhostTileCapabilityFlags}); handlers stay inert no-ops.
+   */
+  ghostCapabilityFlags: GhostTileCapabilityFlags;
 }): React.ReactElement | null {
   const theme: TilingTheme = useTilingTheme();
   const [isAnimating, setIsAnimating] = React.useState<boolean>(false);
@@ -1974,6 +1994,25 @@ function DragCancelOverlay({
   if (cancelVisualState == null) {
     return null;
   }
+
+  // Same body-portal invariant as the pickup ghost (`DragPaneOverlay`): the
+  // overlay renders through the `document.body` `OverlayPortal`
+  // (`position: fixed`), OUTSIDE both `rootRef` (which scopes
+  // `measureReservationRect` / `measureLeafRect`) and `viewportRef` (which
+  // scopes the survivor-reflow `querySelectorAll('[data-leaf-id]')`) — so a
+  // consumer `renderTile` root carrying `data-leaf-id` here is never collected
+  // by a measurement selector (no `cc23956`-class regression). Theme context
+  // propagates through `createPortal`, so the consumer's `useTilingTheme()`
+  // resolves the active theme inside the portal too.
+  const cancelTileArgs: TilingRenderTileProps = buildGhostTileArgs(
+    cancelVisualState.snapshot,
+    cancelVisualState.sourceLeafId,
+    cancelPaneOrdinal,
+    cancelVisualState.fromFootprint.width,
+    isPaneContentVisible,
+    "drag-cancel",
+    ghostCapabilityFlags,
+  );
 
   return (
     <OverlayPortal>
@@ -2001,11 +2040,13 @@ function DragCancelOverlay({
         aria-hidden
       >
         <div className="h-full w-full shadow-[0_18px_34px_rgba(2,6,23,0.5)]">
-          {renderDragPaneShell(
-            cancelVisualState.snapshot,
-            theme,
-            isPaneContentVisible,
-          )}
+          {renderTile == null
+            ? renderDragPaneShell(
+                cancelVisualState.snapshot,
+                theme,
+                isPaneContentVisible,
+              )
+            : renderTile(cancelTileArgs)}
         </div>
       </div>
     </OverlayPortal>
@@ -7882,6 +7923,16 @@ const TilingRendererComponent = React.forwardRef<
         <DragCancelOverlay
           cancelVisualState={cancelVisualState}
           isPaneContentVisible={isPaneContentVisible}
+          renderTile={renderTile}
+          ghostCapabilityFlags={ghostCapabilityFlags}
+          cancelPaneOrdinal={
+            cancelVisualState != null
+              ? Math.max(
+                  1,
+                  leafIds.indexOf(cancelVisualState.sourceLeafId) + 1,
+                )
+              : 1
+          }
         />
         <DragPaneOverlay
           dragVisualState={dragVisualState}
