@@ -2,19 +2,11 @@ import * as React from "react";
 import {
   isMultiSelectModifierActive,
   TilingPaneAction,
-  type TilingCommand,
-  type TilingGroupNode,
+  type TilingGroupMemberView,
+  type TilingRenderTileGroupContext,
   type TilingRenderTileProps,
-  type TilingTile,
 } from "@n-uf/hypr-tiling";
 import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
-import {
-  groupCommands,
-  groupMemberViews,
-  resolveActiveGroup,
-  type GroupMemberView,
-  type HomeTileProps,
-} from "./group-switcher";
 
 // Custom pane renderer for the homepage ("mosaic" identity) — a worked example
 // of a fully custom pane frame + header (see the /docs "custom look-and-feel"
@@ -55,24 +47,15 @@ function dropStateRing(args: TilingRenderTileProps): string {
 // The Mosaic grouped-stack representation: a compact row of member chips in the
 // pane FOOTER (mono smallcaps ordinal + truncated title, gold-lit when active),
 // replacing the library's suppressed default group tab strip for this skin.
-// Click a chip → `group-tab-jump` activates that member; a hover-revealed "×"
-// per chip ejects it (`remove-from-group`); a trailing "ungroup" chip dissolves
-// the group (`ungroup`). All route through the shared `dispatch` ref — no public
-// API is added. Only the group's active member renders, so this shows once.
+// Consumes the library's `args.group` context directly: click a chip →
+// `group.activateMember`; a hover-revealed "×" per chip ejects it
+// (`group.removeMember`); a trailing "ungroup" chip dissolves the group
+// (`group.ungroup`). Only the group's active member renders, so this shows once.
 function MosaicGroupSwitcher({
   group,
-  tilesById,
-  dispatch,
 }: {
-  group: TilingGroupNode;
-  tilesById: ReadonlyMap<string, TilingTile>;
-  dispatch: (command: TilingCommand) => void;
+  group: TilingRenderTileGroupContext;
 }): React.ReactElement {
-  const members: ReadonlyArray<GroupMemberView> = groupMemberViews(
-    group,
-    tilesById,
-  );
-  const commands = groupCommands(group.id);
   return (
     <span className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden">
       <span
@@ -82,41 +65,44 @@ function MosaicGroupSwitcher({
         grp
       </span>
       <span className="flex shrink items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {members.map((member: GroupMemberView): React.ReactElement => (
-          <span
-            key={member.memberId}
-            className="group/tab flex shrink-0 items-center"
-          >
-            <TilingPaneAction
-              onClick={(): void => dispatch(commands.jump(member.memberNumber))}
-              aria-label={`activate ${member.title}`}
-              aria-pressed={member.isActive}
-              title={member.title}
-              className={`flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] transition-colors ${
-                member.isActive
-                  ? "border-amber-300/55 bg-amber-300/10 text-amber-100"
-                  : "border-white/[0.08] bg-white/[0.02] text-stone-400 hover:border-white/20 hover:text-stone-100"
-              }`}
+        {group.members.map((member: TilingGroupMemberView): React.ReactElement => {
+          const title: string = member.tile?.title ?? member.tileId;
+          return (
+            <span
+              key={member.leafId}
+              className="group/tab flex shrink-0 items-center"
             >
-              <span className="font-semibold tabular-nums opacity-70">
-                {String(member.memberNumber).padStart(2, "0")}
-              </span>
-              <span className="max-w-[9ch] truncate">{member.title}</span>
-            </TilingPaneAction>
-            <TilingPaneAction
-              onClick={(): void => dispatch(commands.remove(member.memberId))}
-              aria-label={`remove ${member.title} from group`}
-              title={`remove ${member.title} from group`}
-              className="ml-0.5 hidden rounded border border-white/10 px-1 py-0.5 font-mono text-[9px] leading-none text-stone-500 transition-colors hover:border-rose-400/50 hover:text-rose-200 group-hover/tab:inline-flex"
-            >
-              <span aria-hidden>{"\u00d7"}</span>
-            </TilingPaneAction>
-          </span>
-        ))}
+              <TilingPaneAction
+                onClick={(): void => group.activateMember(member.memberNumber)}
+                aria-label={`activate ${title}`}
+                aria-pressed={member.isActive}
+                title={title}
+                className={`flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] transition-colors ${
+                  member.isActive
+                    ? "border-amber-300/55 bg-amber-300/10 text-amber-100"
+                    : "border-white/[0.08] bg-white/[0.02] text-stone-400 hover:border-white/20 hover:text-stone-100"
+                }`}
+              >
+                <span className="font-semibold tabular-nums opacity-70">
+                  {String(member.memberNumber).padStart(2, "0")}
+                </span>
+                <span className="max-w-[9ch] truncate">{title}</span>
+              </TilingPaneAction>
+              <TilingPaneAction
+                onClick={(): void => group.removeMember(member.leafId)}
+                aria-label={`remove ${title} from group`}
+                title={`remove ${title} from group`}
+                className="ml-0.5 hidden rounded border border-white/10 px-1 py-0.5 font-mono text-[9px] leading-none text-stone-500 transition-colors hover:border-rose-400/50 hover:text-rose-200 group-hover/tab:inline-flex"
+              >
+                <span aria-hidden>{"\u00d7"}</span>
+              </TilingPaneAction>
+            </span>
+          );
+        })}
       </span>
       <TilingPaneAction
-        onClick={(): void => dispatch(commands.ungroup())}
-        aria-label={`ungroup ${group.id}`}
+        onClick={(): void => group.ungroup()}
+        aria-label={`ungroup ${group.groupId}`}
         title="ungroup this stack"
         className="shrink-0 rounded border border-white/[0.08] bg-white/[0.02] px-1 py-0.5 font-mono text-[9px] uppercase leading-none tracking-[0.12em] text-stone-400 transition-colors hover:border-amber-300/40 hover:text-amber-100"
       >
@@ -126,12 +112,8 @@ function MosaicGroupSwitcher({
   );
 }
 
-export function DocTile(args: HomeTileProps): React.ReactElement {
+export function DocTile(args: TilingRenderTileProps): React.ReactElement {
   const dropRing: string = dropStateRing(args);
-  const group: TilingGroupNode | null = resolveActiveGroup(
-    args.layout,
-    args.leafId,
-  );
   // Drop-state rings take precedence over the resting focus ring during a drag.
   const ring: string =
     dropRing !== "" ? dropRing : args.isFocused ? "ring-1 ring-amber-300/35" : "";
@@ -264,13 +246,7 @@ export function DocTile(args: HomeTileProps): React.ReactElement {
         >
           {ordinal}
         </span>
-        {group != null ? (
-          <MosaicGroupSwitcher
-            group={group}
-            tilesById={args.tilesById}
-            dispatch={args.dispatch}
-          />
-        ) : null}
+        {args.group != null ? <MosaicGroupSwitcher group={args.group} /> : null}
         {metrics != null ? (
           <span
             aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(

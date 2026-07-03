@@ -4,20 +4,12 @@ import {
   TilingDragHandle,
   TilingPaneAction,
   TilingPaneBody,
-  type TilingCommand,
-  type TilingGroupNode,
+  type TilingGroupMemberView,
+  type TilingRenderTileGroupContext,
   type TilingRenderTileProps,
-  type TilingTile,
 } from "@n-uf/hypr-tiling";
 import { CANVAS_THEME } from "./canvas-theme";
 import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
-import {
-  groupCommands,
-  groupMemberViews,
-  resolveActiveGroup,
-  type GroupMemberView,
-  type HomeTileProps,
-} from "./group-switcher";
 
 // The CANVAS skin's pane chrome — an ENGINEERING INSTRUMENT panel, LED-lit.
 // This supersedes the earlier standup desktop-window frame entirely (no
@@ -192,27 +184,17 @@ const PANEL_BODY: string = CANVAS_THEME.paneShell.bodyText;
 
 // The Canvas grouped-stack representation: a row of squared LEDs in the pane
 // FOOTER, one per group member, with the active member's LED lit in its hue +
-// glow (the rest dim slate). Click an LED → `group-tab-jump` activates that
-// member; hover a member LED → a small squared "×" reveals to eject it
-// (`remove-from-group`); a trailing "ungroup" key dissolves the whole group
-// (`ungroup`). All three route through the SAME `TilingCommandHandle.dispatch`
-// the shortcut bar uses (passed down as `dispatch`); no public API is added.
-// This replaces the library's suppressed default group tab strip for the Canvas
-// skin. Only renders for a group's active member (the one pane that renders).
+// glow (the rest dim slate). Consumes the library's `args.group` context
+// directly: click an LED → `group.activateMember`; hover a member LED → a
+// small squared "×" reveals to eject it (`group.removeMember`); a trailing
+// "ungroup" key dissolves the whole group (`group.ungroup`). This replaces the
+// library's suppressed default group tab strip for the Canvas skin. Only
+// renders for a group's active member (the one pane that renders).
 function CanvasGroupLeds({
   group,
-  tilesById,
-  dispatch,
 }: {
-  group: TilingGroupNode;
-  tilesById: ReadonlyMap<string, TilingTile>;
-  dispatch: (command: TilingCommand) => void;
+  group: TilingRenderTileGroupContext;
 }): React.ReactElement {
-  const members: ReadonlyArray<GroupMemberView> = groupMemberViews(
-    group,
-    tilesById,
-  );
-  const commands = groupCommands(group.id);
   return (
     <span className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden">
       <span
@@ -222,18 +204,19 @@ function CanvasGroupLeds({
         grp
       </span>
       <span className="flex shrink items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {members.map((member: GroupMemberView): React.ReactElement => {
+        {group.members.map((member: TilingGroupMemberView): React.ReactElement => {
           const memberLed: CanvasLed = paneLed(member.memberNumber);
+          const title: string = member.tile?.title ?? member.tileId;
           return (
             <span
-              key={member.memberId}
+              key={member.leafId}
               className="group/led relative flex shrink-0 items-center"
             >
               <TilingPaneAction
-                onClick={(): void => dispatch(commands.jump(member.memberNumber))}
-                aria-label={`activate ${member.title}`}
+                onClick={(): void => group.activateMember(member.memberNumber)}
+                aria-label={`activate ${title}`}
                 aria-pressed={member.isActive}
-                title={member.title}
+                title={title}
                 className={`h-3 w-3 rounded-[1px] border transition-all ${
                   member.isActive
                     ? `border-transparent ${memberLed.bar} ${memberLed.litGlow}`
@@ -241,9 +224,9 @@ function CanvasGroupLeds({
                 }`}
               />
               <TilingPaneAction
-                onClick={(): void => dispatch(commands.remove(member.memberId))}
-                aria-label={`remove ${member.title} from group`}
-                title={`remove ${member.title} from group`}
+                onClick={(): void => group.removeMember(member.leafId)}
+                aria-label={`remove ${title} from group`}
+                title={`remove ${title} from group`}
                 className="absolute -right-1.5 -top-1.5 hidden h-3 w-3 items-center justify-center rounded-[1px] border border-slate-300 bg-white font-mono text-[9px] leading-none text-slate-500 transition-colors hover:border-rose-400 hover:text-rose-500 group-hover/led:flex"
               >
                 <span aria-hidden>{"\u00d7"}</span>
@@ -253,8 +236,8 @@ function CanvasGroupLeds({
         })}
       </span>
       <TilingPaneAction
-        onClick={(): void => dispatch(commands.ungroup())}
-        aria-label={`ungroup ${group.id}`}
+        onClick={(): void => group.ungroup()}
+        aria-label={`ungroup ${group.groupId}`}
         title="ungroup this stack"
         className="shrink-0 rounded-[1px] border border-slate-300 bg-white px-1 py-0.5 font-mono text-[8px] uppercase leading-none tracking-[0.14em] text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-800"
       >
@@ -264,12 +247,8 @@ function CanvasGroupLeds({
   );
 }
 
-export function CanvasTile(args: HomeTileProps): React.ReactElement {
+export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
   const led: CanvasLed = paneLed(args.paneOrdinal);
-  const group: TilingGroupNode | null = resolveActiveGroup(
-    args.layout,
-    args.leafId,
-  );
   const dropRing: string = dropStateRing(args);
   // Drop-state rings take precedence over the resting focus glow during a drag.
   const ring: string =
@@ -288,10 +267,18 @@ export function CanvasTile(args: HomeTileProps): React.ReactElement {
     : "";
   const index: string = String(args.paneOrdinal).padStart(2, "0");
   const metrics: PaneContentMetrics | null = paneContentMetrics(args.tile.id);
+  // Canvas ghost chrome: the drag surfaces (`"drag-ghost"` / `"drag-cancel"`)
+  // carry REAL capability flags but INERT handlers, and the Canvas control
+  // squares are bright saturated "lit key" chips — rendering them on a ghost
+  // would read as live controls that do nothing. Branch on `args.surface`:
+  // interactive controls render on the seated pane only; the traveling
+  // silhouette keeps the label / index / LED identity bands.
+  const isPaneSurface: boolean = args.surface === "pane";
   // Whether either uniform-color control key renders (drives the divider that
   // separates the control cluster from the per-pane LED identity).
   const hasControls: boolean =
-    args.isMaximizeEnabled || args.isMultiSelectGroupingEnabled;
+    isPaneSurface &&
+    (args.isMaximizeEnabled || args.isMultiSelectGroupingEnabled);
 
   return (
     <TilingPaneRoot
@@ -419,13 +406,7 @@ export function CanvasTile(args: HomeTileProps): React.ReactElement {
             {index}
           </span>
         </span>
-        {group != null ? (
-          <CanvasGroupLeds
-            group={group}
-            tilesById={args.tilesById}
-            dispatch={args.dispatch}
-          />
-        ) : null}
+        {args.group != null ? <CanvasGroupLeds group={args.group} /> : null}
         {metrics != null ? (
           <span
             aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(

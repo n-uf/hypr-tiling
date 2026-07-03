@@ -14,14 +14,11 @@ import {
 // color — a small tick in each pane's accent hue plus the signature multi-color
 // tick row (pink · orange · yellow · green · cyan).
 //
-// Library boundary (no library change): `TilingTheme.id` is the closed
-// `TilingThemeId` union (`neon-terminal | clean-flat | mosaic`), so a bespoke
-// "canvas" id cannot be minted without editing the library. The renderer also
-// resolves its OWN internal surfaces (root/viewport/divider/ghost) from the
-// `themeId` prop, overriding any outer `TilingThemeProvider`. So this theme is
-// authored for and consumed by the CONSUMER surfaces — the Canvas pane chrome,
-// content, and top bar import `CANVAS_THEME` directly. `id` is set to the
-// neutral `clean-flat` member purely to satisfy the union; it drives nothing.
+// The theme carries its own open `id: "canvas"` (`TilingTheme.id` accepts any
+// consumer-minted string alongside the built-in `TilingThemeId` union) and is
+// passed to the renderer via the `theme` prop, so the renderer-owned surfaces
+// (root/viewport/divider/ghost shell) paint the Canvas vocabulary too — the
+// Canvas pane chrome, content, and top bar also import `CANVAS_THEME` directly.
 
 /** Resolve an accent (or the default) to its public hue atoms. */
 function accentHue(accent: TilingTileAccent | undefined): TilingAccentHue {
@@ -49,9 +46,7 @@ export function canvasAccentTick(accent: TilingTileAccent | undefined): string {
 }
 
 export const CANVAS_THEME: TilingTheme = {
-  // See the library-boundary note above: `clean-flat` is a placeholder for the
-  // closed union; the Canvas look lives entirely in the tokens below.
-  id: "clean-flat",
+  id: "canvas",
   label: "canvas",
   root: {
     container:

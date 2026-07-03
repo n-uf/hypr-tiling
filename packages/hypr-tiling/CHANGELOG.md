@@ -61,7 +61,43 @@ The package exposes three import paths through `package.json#exports`
   (`paneSwitching.showContentToggle`, default `false`), so a consumer that
   renders its own pane content never surfaces an end-user control that blanks it
   and panes paint content at rest with no wiring.
-- **Hand-authored facade** — 99 public API items. Engine-grade internals are
+
+### Consumer theming & chrome contract
+
+Every painted pixel is reachable from a consumer-authored `TilingTheme` or
+routed through the consumer `renderTile` — no renderer state paints chrome the
+consumer didn't choose. Defaults stay zero-config (built-in themes,
+`DefaultTilingTile`, the built-in group strip). Concretely:
+
+- **`theme` prop on `TilingRendererProps`** — a full consumer-authored
+  `TilingTheme`; takes precedence over `themeId`. `TilingTheme.id` is open
+  (`TilingThemeId | (string & {})`) so a consumer mints its own theme id;
+  `TILING_THEME_REGISTRY` stays keyed by the closed built-in union, and the
+  built-in theme switcher (`onThemeChange`, typed `TilingThemeId`) remains
+  built-ins-only — consumers running a custom theme simply don't wire it.
+- **`grouping` capability object form** — `boolean | TilingGroupingCapability`
+  (`{ enable?, showGroupTabStrip? }`; bare boolean = `{ enable }`,
+  `showGroupTabStrip` default `true`). `showGroupTabStrip: false` suppresses
+  the built-in per-group tab strip so a consumer paints its own group chrome;
+  keyboard group commands stay live. `paneSwitching.showTabStrip` governs the
+  TOP-LEVEL tab strip only.
+- **`surface` discriminator on `TilingRenderTileProps`**
+  (`TilingRenderSurface`: `"pane" | "drag-ghost" | "drag-cancel"`). The two
+  drag surfaces carry the REAL resolved capability display flags (no mid-drag
+  silhouette pop) with inert no-op handlers; a custom pane that wants different
+  drag chrome branches on `surface`.
+- **`group` context on `TilingRenderTileProps`** —
+  `TilingRenderTileGroupContext | null`, populated for a tabbed group's ACTIVE
+  member: the `TilingGroupMemberView` member list (leaf/tile ids, resolved
+  tile, 1-based `memberNumber`, `isActive`) plus `activateMember` /
+  `removeMember` / `ungroup` callbacks that route through the same internal
+  command router as the built-in strip and the keyboard layer. `null` for
+  loose leaves and drag surfaces.
+- **Cancel fly-back fidelity** — the drag-cancel overlay renders through the
+  consumer `renderTile` (`surface: "drag-cancel"`) when one is supplied, so a
+  custom skin keeps its own chrome for the whole cancel glide; the built-in
+  shell remains the no-`renderTile` fallback.
+- **Hand-authored facade** — 104 public API items. Engine-grade internals are
   physically layered under `engine/` and reached only through the `.` facade (via
   `react/`) or the explicit `./engine` entry. An
   [API Extractor](https://api-extractor.com/) report per entry is checked in

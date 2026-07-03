@@ -17,9 +17,8 @@ import { EditorialTile } from "./editorial-tile";
 import { EditorialPaneContent } from "./content-editorial";
 import { CanvasTile } from "./canvas-tile";
 import { CanvasPaneContent } from "./content-canvas";
-import { CANVAS_TICKS } from "./canvas-theme";
+import { CANVAS_THEME, CANVAS_TICKS } from "./canvas-theme";
 import { HomeShortcuts } from "./shortcuts";
-import { type HomeTileProps } from "./group-switcher";
 
 // The homepage is a live hypr-tiling layout that can present in three SKINS — a
 // "skin" being a whole bundled look (theme + pane chrome + content presentation),
@@ -540,15 +539,22 @@ export function HomePage({
   );
 
   // Interaction: the homepage keeps the library's own top tab strip OFF (the top
-  // chrome bar owns pane switching) for every skin. The two light skins
-  // (Editorial, Canvas) additionally hide the resize handles so the airy gutters
-  // carry the separation (drag resize still works through the invisible hit area).
+  // chrome bar owns pane switching) and the per-group tab strip OFF
+  // (`grouping.showGroupTabStrip: false` — every skin paints its OWN
+  // grouped-stack representation from `args.group`) for every skin. The two
+  // light skins (Editorial, Canvas) additionally hide the resize handles so the
+  // airy gutters carry the separation (drag resize still works through the
+  // invisible hit area).
   const interaction: TilingInteractionCapabilities = React.useMemo(
     (): TilingInteractionCapabilities =>
       skin === "mosaic"
-        ? { paneSwitching: { showTabStrip: false } }
+        ? {
+            paneSwitching: { showTabStrip: false },
+            grouping: { showGroupTabStrip: false },
+          }
         : {
             paneSwitching: { showTabStrip: false },
+            grouping: { showGroupTabStrip: false },
             resizeHandlesVisible: false,
           },
     [skin],
@@ -589,31 +595,30 @@ export function HomePage({
           config={LAYOUT_CONFIG}
           interaction={interaction}
           onLayoutChange={setLayout}
+          // Canvas runs its full consumer-authored `TilingTheme` (the `theme`
+          // prop takes precedence over `themeId`), so the renderer-owned
+          // surfaces (root/viewport/divider/ghost shell) paint the Canvas desk
+          // vocabulary too. Mosaic and Editorial keep the built-in `mosaic`
+          // theme via `themeId` (Editorial's pane chrome is fully custom and
+          // its renderer-owned surfaces stay transparent under `mosaic`).
+          theme={skin === "canvas" ? CANVAS_THEME : undefined}
           themeId="mosaic"
           focusedLeafId={focusedLeafId}
           onFocusedLeafChange={setFocusedLeafId}
           maximizedLeafId={maximizedLeafId}
           onMaximizedLeafChange={setMaximizedLeafId}
-          renderTile={(args: TilingRenderTileProps): React.ReactNode => {
-            // Thread the live layout + the SAME command-dispatch ref the shortcut
-            // bar uses + the tile registry into each skin's renderer, so every
-            // skin paints its OWN grouped-stack representation (the library's
-            // default group tab strip is suppressed). No public API is added —
-            // group commands route through the existing `TilingCommandHandle`.
-            const homeArgs: HomeTileProps = {
-              ...args,
-              layout,
-              dispatch,
-              tilesById,
-            };
-            return skin === "editorial" ? (
-              <EditorialTile {...homeArgs} />
+          renderTile={(args: TilingRenderTileProps): React.ReactNode =>
+            // Each skin's tile consumes the library `TilingRenderTileProps`
+            // directly — group representation comes from `args.group`, drag
+            // surfaces discriminate on `args.surface`. No prop threading.
+            skin === "editorial" ? (
+              <EditorialTile {...args} />
             ) : skin === "canvas" ? (
-              <CanvasTile {...homeArgs} />
+              <CanvasTile {...args} />
             ) : (
-              <DocTile {...homeArgs} />
-            );
-          }}
+              <DocTile {...args} />
+            )
+          }
         />
       </div>
       <HomeBottomBar
