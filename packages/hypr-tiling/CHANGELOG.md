@@ -6,6 +6,24 @@ This package uses calendar-aligned versioning (`YY.M.R`), which cannot signal a
 SemVer "major" bump. **Read the per-release notes below for breaking changes** —
 the version number alone does not flag them.
 
+## 26.7.1 — npm README absolute URLs + tsconfig cleanup
+
+A docs/tooling patch — no runtime or public-API changes. (Calendar-aligned
+versioning `YY.M.R`; the trailing `.1` is the release counter within `26.7`.)
+
+- **npm README now uses absolute URLs.** The README rendered on
+  [npmjs.org](https://www.npmjs.com/package/@n-uf/hypr-tiling) resolves asset
+  and doc references against npm's own CDN, not the GitHub repo, so the
+  previous repo-relative paths broke: the logo image 404'd and the
+  `etc/hypr-tiling.api.md` API-report links went nowhere. Asset references now
+  point at absolute `raw.githubusercontent.com` URLs and doc links at
+  `github.com/n-uf/hypr-tiling/blob/main/...`, so the logo renders and the
+  API-report links resolve on the npm package page.
+- **Removed an invalid `ignoreDeprecations: "6.0"` value** from the
+  `apps/web` and `packages/showcase` tsconfigs. That value is not a legal
+  `ignoreDeprecations` target under TypeScript 6.0.3 and was rejected by the
+  compiler; dropping it lets those workspaces typecheck cleanly.
+
 ## 26.7.0 — initial public release
 
 First published release of `@n-uf/hypr-tiling`, a dynamic tiling layout engine
