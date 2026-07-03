@@ -1,4 +1,8 @@
 import type * as React from "react";
+// Type-only edge (erased at build): `TilingTheme` is the react-layer theme
+// contract surfaced on `TilingRendererProps.theme`. No runtime engine→react
+// coupling (see check-guardrails.mjs rule 1).
+import type { TilingTheme } from "../react/theme";
 
 /**
  * Orientation of a binary split. `"horizontal"` places its two children
@@ -1835,11 +1839,22 @@ export interface TilingRendererProps {
    */
   themeId?: TilingThemeId;
   /**
+   * Full consumer-authored theme; takes precedence over `themeId`. Every
+   * renderer-painted surface (pane shells, header, focus frame, ghost,
+   * dividers, root, tab strip) and every accent-composition resolver comes
+   * from this object, so a consumer owns the complete chrome without touching
+   * library internals. Undefined → the built-in theme selected by `themeId`.
+   */
+  theme?: TilingTheme;
+  /**
    * Notified when the in-renderer theme switcher (top-bar control) requests a
    * different theme. Present this control only when wired; the consumer owns
    * the `themeId` state (controlled). Omit to hide the switcher — the theme
-   * stays whatever `themeId` resolves to. Generic mechanism; the demo theme
-   * composition lives with the consumer.
+   * stays whatever `themeId` (or the `theme` prop) resolves to. Generic
+   * mechanism; the demo theme composition lives with the consumer. BUILT-INS
+   * ONLY: the switcher enumerates the built-in registry and reports
+   * `TilingThemeId` members — a consumer running a custom `theme` object does
+   * not wire this callback (its theme never appears in the switcher).
    */
   onThemeChange?: (themeId: TilingThemeId) => void;
   /**

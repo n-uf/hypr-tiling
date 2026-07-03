@@ -170,8 +170,14 @@ export interface TilingThemeTopBarTokens {
  * spends on the resting surface, title text, focus frame, and active tab.
  */
 export interface TilingTheme {
-  /** The theme's id (matches a `TilingThemeId` member). */
-  readonly id: TilingThemeId;
+  /**
+   * The theme's id. A built-in theme uses a `TilingThemeId` member; a
+   * consumer-authored theme mints its own id string (the `string & {}`
+   * widening keeps built-in ids autocompletable while admitting any id).
+   * `TILING_THEME_REGISTRY` stays keyed by the closed `TilingThemeId` union,
+   * so the compile-time built-in coverage guarantee is unaffected.
+   */
+  readonly id: TilingThemeId | (string & {});
   /** Human-readable theme label (e.g. for a theme picker). */
   readonly label: string;
   /** Renderer-root + viewport surface tokens. */

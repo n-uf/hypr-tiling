@@ -3395,7 +3395,12 @@ interface PaneTabStripAccentPicker {
  * active-chip highlight) and a commit callback. Mirrors the accent picker.
  */
 interface PaneTabStripThemePicker {
-  activeThemeId: TilingThemeId;
+  /**
+   * The active theme's id for the active-chip highlight. Wide (`TilingTheme["id"]`)
+   * because a consumer-authored `theme` prop can carry a custom id — such an id
+   * simply matches no built-in chip. The switcher itself stays built-ins-only.
+   */
+  activeThemeId: TilingTheme["id"];
   onSelect: (themeId: TilingThemeId) => void;
 }
 
@@ -3443,6 +3448,10 @@ function PaneTabStrip({
           className={theme.topBar.controlGroup}
         >
           {TILING_THEMES.map((entry: TilingTheme): React.ReactElement => {
+            // TILING_THEMES enumerates the built-in registry only, so every
+            // entry's id is a `TilingThemeId` member (the widened `TilingTheme["id"]`
+            // admits consumer-minted ids that never appear in this list).
+            const entryThemeId: TilingThemeId = entry.id as TilingThemeId;
             const isActiveTheme: boolean =
               entry.id === themePicker.activeThemeId;
             return (
@@ -3452,7 +3461,7 @@ function PaneTabStrip({
                 aria-label={`set renderer theme to ${entry.label}`}
                 aria-pressed={isActiveTheme}
                 title={entry.label}
-                onClick={(): void => themePicker.onSelect(entry.id)}
+                onClick={(): void => themePicker.onSelect(entryThemeId)}
                 className={cn(
                   "rounded px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.12em] transition-colors",
                   isActiveTheme
@@ -3750,6 +3759,7 @@ const TilingRendererComponent = React.forwardRef<
     onFocusedLeafChange,
     onTileAccentChange,
     themeId,
+    theme: themeProp,
     onThemeChange,
     maximizedLeafId,
     onMaximizedLeafChange,
@@ -3775,11 +3785,13 @@ const TilingRendererComponent = React.forwardRef<
   }: TilingRendererProps & TilingRendererObservabilityProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
 ): React.ReactElement {
-  // Active theme resolved from the prop (or the library default). The registry
-  // returns a stable object reference per id, so this is referentially stable
-  // across renders unless `themeId` changes — safe to thread through the
-  // `renderBranch` memo deps. Provided to every subcomponent via context.
-  const theme: TilingTheme = resolveTilingTheme(themeId);
+  // Active theme: a full consumer-authored `theme` object takes precedence
+  // over the built-in `themeId` selection. The registry returns a stable
+  // object reference per id (and a consumer is expected to pass a stable
+  // `theme` object), so this is referentially stable across renders unless
+  // the props change — safe to thread through the `renderBranch` memo deps.
+  // Provided to every subcomponent via context.
+  const theme: TilingTheme = themeProp ?? resolveTilingTheme(themeId);
   const projectedOverlayBackgroundAlphaSafe: number = Math.min(
     Math.max(projectedOverlayBackgroundAlpha, 0),
     1,

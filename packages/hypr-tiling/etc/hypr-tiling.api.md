@@ -615,6 +615,7 @@ export interface TilingRendererProps {
     showDropPreviewOverlays?: boolean;
     survivorReflowSpeedPercent?: number;
     swapBounceMagnitudePercent?: number;
+    theme?: TilingTheme;
     themeId?: TilingThemeId;
     tiles: ReadonlyArray<TilingTile> | ReadonlyMap<string, TilingTile>;
 }
@@ -693,7 +694,7 @@ export interface TilingSplitNode {
 export interface TilingTheme {
     readonly divider: TilingThemeDividerTokens;
     readonly ghost: TilingThemeGhostTokens;
-    readonly id: TilingThemeId;
+    readonly id: TilingThemeId | (string & {});
     readonly label: string;
     readonly paneHeader: TilingThemePaneHeaderTokens;
     readonly paneShell: TilingThemePaneShellTokens;
