@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="../../assets/hypr-tiling-logo-transparent.png" alt="hypr-tiling" width="48" align="center" />
+  <img src="https://raw.githubusercontent.com/n-uf/hypr-tiling/main/assets/hypr-tiling-logo-transparent.png" alt="hypr-tiling" width="48" align="center" />
   @n-uf/hypr-tiling
 </h1>
 <p align="center">Dynamic tiling for React</p>
@@ -16,7 +16,7 @@ your app keeps strict, controlled ownership of the layout state.
 
 - Documentation homepage: <https://hypr-tiling.n-uf.com/>
 - Interactive showcase route: <https://hypr-tiling.n-uf.com/showcase>
-- API report index: [`etc/hypr-tiling.api.md`](etc/hypr-tiling.api.md)
+- API report index: [`etc/hypr-tiling.api.md`](https://github.com/n-uf/hypr-tiling/blob/main/packages/hypr-tiling/etc/hypr-tiling.api.md)
 - Repository issues: <https://github.com/n-uf/hypr-tiling/issues>
 
 ## Install
@@ -152,7 +152,7 @@ Other layout-tree helpers are exported for advanced/internal use, but the
 reducers above are the stable, documented surface for application code.
 
 For complete generated API signatures, see
-[`etc/hypr-tiling.api.md`](etc/hypr-tiling.api.md).
+[`etc/hypr-tiling.api.md`](https://github.com/n-uf/hypr-tiling/blob/main/packages/hypr-tiling/etc/hypr-tiling.api.md).
 
 ## Features
 
