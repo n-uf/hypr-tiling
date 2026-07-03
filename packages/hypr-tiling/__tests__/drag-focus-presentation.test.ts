@@ -246,6 +246,9 @@ describe("floating drag ghost routes through consumer renderTile (custom skin tr
     expect(args.isMultiSelected).toBe(false);
     expect(args.dropZone).toBeNull();
     expect(args.preview).toBeNull();
+    // The traveling ghost is a single-pane silhouette — never a seated group
+    // member — so the drag surfaces carry no group context.
+    expect(args.group).toBeNull();
   });
 
   it("ghost args discriminate as surface 'drag-ghost' (in-tree panes are 'pane')", (): void => {

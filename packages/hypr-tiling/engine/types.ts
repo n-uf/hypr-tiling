@@ -1261,6 +1261,62 @@ export interface TilingLayoutConfig {
 export type TilingRenderSurface = "pane" | "drag-ghost" | "drag-cancel";
 
 /**
+ * One member of a tabbed group, as seen by a custom `renderTile` through
+ * {@link TilingRenderTileGroupContext.members}. Mirrors what the built-in
+ * group tab strip paints per tab: the member's identity, its resolved tile
+ * payload, its 1-based position (the `group-tab-jump` operand — also the
+ * keyboard `Alt+<n>` label), and whether it is the active (rendered) member.
+ */
+export interface TilingGroupMemberView {
+  /** The member's leaf node id. */
+  readonly leafId: string;
+  /** The tile id the member's leaf points at. */
+  readonly tileId: string;
+  /** The resolved tile payload, or `null` when the tile map has no match. */
+  readonly tile: TilingTile | null;
+  /**
+   * 1-based position in the group's member order — the operand
+   * {@link TilingRenderTileGroupContext.activateMember} takes (and the number
+   * the built-in strip / keyboard `Alt+<n>` jump display).
+   */
+  readonly memberNumber: number;
+  /** Whether this member is the group's active (rendered) member. */
+  readonly isActive: boolean;
+}
+
+/**
+ * Group context on {@link TilingRenderTileProps.group}: present when the pane
+ * being rendered is a tabbed group's ACTIVE member (the only member that
+ * renders, per the stacking contract), `null` for loose leaves and for the
+ * drag-ghost / drag-cancel surfaces. A custom pane uses it to paint its own
+ * group chrome (tabs, member list, eject/ungroup controls) instead of the
+ * built-in strip — typically with the strip suppressed via the `grouping`
+ * capability's `showGroupTabStrip: false`.
+ *
+ * The callbacks route through the SAME internal command router the built-in
+ * strip and the keyboard layer use (`group-tab-jump` / `remove-from-group` /
+ * `ungroup`), so capability gating and observability stay uniform.
+ */
+export interface TilingRenderTileGroupContext {
+  /** The group node id. */
+  readonly groupId: string;
+  /** The group's members in member order (see {@link TilingGroupMemberView}). */
+  readonly members: ReadonlyArray<TilingGroupMemberView>;
+  /**
+   * Activate the member at `memberNumber` (1-based; a
+   * {@link TilingGroupMemberView.memberNumber}) — dispatches `group-tab-jump`.
+   */
+  readonly activateMember: (memberNumber: number) => void;
+  /**
+   * Eject the member with `leafId` from the group (it re-seats as a loose
+   * pane) — dispatches `remove-from-group`.
+   */
+  readonly removeMember: (leafId: string) => void;
+  /** Dissolve the whole group into loose panes — dispatches `ungroup`. */
+  readonly ungroup: () => void;
+}
+
+/**
  * The argument object passed to a custom `renderTile`. This is the clean,
  * consumer-facing pane contract: the tile payload, this pane's derived state
  * (focus / drag / drop / sizing), and the imperative callbacks a custom pane
@@ -1369,6 +1425,13 @@ export interface TilingRenderTileProps {
   dropZone: TilingLeafDropZone | null;
   /** The projected landing/result preview for this pane, or `null`. */
   preview: TilingLeafDropPreview | null;
+  /**
+   * Group context when this pane is a tabbed group's ACTIVE member (the only
+   * member that renders, per the stacking contract); `null` for loose leaves
+   * and on the `"drag-ghost"` / `"drag-cancel"` surfaces. See
+   * {@link TilingRenderTileGroupContext}.
+   */
+  readonly group: TilingRenderTileGroupContext | null;
   /**
    * Establish single focus on this pane (and clear any in-progress
    * multi-selection). Wire to the pane root's `onFocus`. The renderer reads the

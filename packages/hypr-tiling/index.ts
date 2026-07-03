@@ -152,6 +152,8 @@ export type {
   TilingRendererProps,
   TilingRenderSurface,
   TilingRenderTileProps,
+  TilingGroupMemberView,
+  TilingRenderTileGroupContext,
   TilingPaneBodyRenderMode,
   // Drop zones / previews
   TilingLeafDropZone,

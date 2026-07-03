@@ -388,6 +388,15 @@ export interface TilingGroupingCapability {
 }
 
 // @public
+export interface TilingGroupMemberView {
+    readonly isActive: boolean;
+    readonly leafId: string;
+    readonly memberNumber: number;
+    readonly tile: TilingTile | null;
+    readonly tileId: string;
+}
+
+// @public
 export interface TilingGroupNode {
     activeMemberId: string;
     id: string;
@@ -624,9 +633,19 @@ export interface TilingRendererProps {
 export type TilingRenderSurface = "pane" | "drag-ghost" | "drag-cancel";
 
 // @public
+export interface TilingRenderTileGroupContext {
+    readonly activateMember: (memberNumber: number) => void;
+    readonly groupId: string;
+    readonly members: ReadonlyArray<TilingGroupMemberView>;
+    readonly removeMember: (leafId: string) => void;
+    readonly ungroup: () => void;
+}
+
+// @public
 export interface TilingRenderTileProps {
     canGroupMultiSelection: boolean;
     dropZone: TilingLeafDropZone | null;
+    readonly group: TilingRenderTileGroupContext | null;
     heightSizingMode: TilingPaneSizingMode;
     isDragSource: boolean;
     isDropEligible: boolean;

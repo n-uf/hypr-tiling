@@ -397,6 +397,149 @@ describe("per-group tab strip governance (grouping.showGroupTabStrip)", (): void
   });
 });
 
+describe("group context on renderTile args (args.group)", (): void => {
+  // A 3-member group (so remove-from-group leaves a still-valid 2-member
+  // group) + a loose leaf. `gamma` is deliberately ABSENT from the tile map to
+  // exercise the `tile: null` arm of the membership view.
+  function groupedTree(): TilingLayoutNode {
+    const group: TilingGroupNode = {
+      kind: "group",
+      id: "g1",
+      members: [leaf("alpha"), leaf("beta"), leaf("gamma")],
+      activeMemberId: "alpha",
+    };
+    return split("root", "horizontal", group, leaf("loose"));
+  }
+
+  const GROUP_TILES: ReadonlyArray<TilingTile> = ["alpha", "beta", "loose"].map(
+    (id: string): TilingTile => ({ id, title: `${id} title`, accent: "amber" }),
+  );
+
+  interface CaptureHarnessProps {
+    argsByLeafId: Map<string, TilingRenderTileProps>;
+    onLayout?: (layout: TilingLayoutNode) => void;
+  }
+
+  function CaptureHarness(props: CaptureHarnessProps): React.ReactElement {
+    const [layout, setLayout] = React.useState<TilingLayoutNode>(groupedTree());
+    return React.createElement(TilingRenderer, {
+      layout,
+      tiles: GROUP_TILES,
+      config: { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 },
+      focusedLeafId: "alpha",
+      onLayoutChange: (next: TilingLayoutNode): void => {
+        setLayout(next);
+        props.onLayout?.(next);
+      },
+      renderTile: (args: TilingRenderTileProps): React.ReactNode => {
+        props.argsByLeafId.set(args.leafId, args);
+        return renderDocTile(args);
+      },
+    });
+  }
+
+  it("resolves the membership view for the group's active member; loose leaves get null", (): void => {
+    const argsByLeafId = new Map<string, TilingRenderTileProps>();
+    render(React.createElement(CaptureHarness, { argsByLeafId }));
+
+    const activeArgs: TilingRenderTileProps | undefined =
+      argsByLeafId.get("alpha");
+    expect(activeArgs?.group).not.toBeNull();
+    expect(activeArgs?.group?.groupId).toBe("g1");
+    expect(
+      activeArgs?.group?.members.map(
+        (member): [string, string, number, boolean, string | null] => [
+          member.leafId,
+          member.tileId,
+          member.memberNumber,
+          member.isActive,
+          member.tile?.title ?? null,
+        ],
+      ),
+    ).toEqual([
+      ["alpha", "alpha", 1, true, "alpha title"],
+      ["beta", "beta", 2, false, "beta title"],
+      // No tile map entry → `tile: null`, membership itself intact.
+      ["gamma", "gamma", 3, false, null],
+    ]);
+    // The loose leaf renders with no group context.
+    expect(argsByLeafId.get("loose")?.group).toBeNull();
+    // Inactive members never render at all (the stacking contract).
+    expect(argsByLeafId.has("beta")).toBe(false);
+  });
+
+  it("activateMember dispatches group-tab-jump (active member switches, context follows)", (): void => {
+    const argsByLeafId = new Map<string, TilingRenderTileProps>();
+    const layouts: TilingLayoutNode[] = [];
+    render(
+      React.createElement(CaptureHarness, {
+        argsByLeafId,
+        onLayout: (layout: TilingLayoutNode): void => {
+          layouts.push(layout);
+        },
+      }),
+    );
+    act((): void => {
+      argsByLeafId.get("alpha")?.group?.activateMember(2);
+    });
+    const groups: ReadonlyArray<TilingGroupNode> = collectGroups(
+      layouts[layouts.length - 1],
+    );
+    expect(groups[0].activeMemberId).toBe("beta");
+    // The context re-keys onto the NEW active member with fresh isActive flags.
+    const betaArgs: TilingRenderTileProps | undefined = argsByLeafId.get("beta");
+    expect(betaArgs?.group?.members[0].isActive).toBe(false);
+    expect(betaArgs?.group?.members[1].isActive).toBe(true);
+  });
+
+  it("removeMember dispatches remove-from-group (the member re-seats as a loose pane)", (): void => {
+    const argsByLeafId = new Map<string, TilingRenderTileProps>();
+    const layouts: TilingLayoutNode[] = [];
+    render(
+      React.createElement(CaptureHarness, {
+        argsByLeafId,
+        onLayout: (layout: TilingLayoutNode): void => {
+          layouts.push(layout);
+        },
+      }),
+    );
+    act((): void => {
+      argsByLeafId.get("alpha")?.group?.removeMember("beta");
+    });
+    const groups: ReadonlyArray<TilingGroupNode> = collectGroups(
+      layouts[layouts.length - 1],
+    );
+    expect(groups.length).toBe(1);
+    expect(
+      groups[0].members.map((member: TilingLeafNode): string => member.id),
+    ).toEqual(["alpha", "gamma"]);
+    // Beta re-seated as a loose pane → renders with `group: null`.
+    expect(argsByLeafId.get("beta")?.group).toBeNull();
+  });
+
+  it("ungroup dispatches ungroup (the whole group dissolves into loose panes)", (): void => {
+    const argsByLeafId = new Map<string, TilingRenderTileProps>();
+    const layouts: TilingLayoutNode[] = [];
+    render(
+      React.createElement(CaptureHarness, {
+        argsByLeafId,
+        onLayout: (layout: TilingLayoutNode): void => {
+          layouts.push(layout);
+        },
+      }),
+    );
+    act((): void => {
+      argsByLeafId.get("alpha")?.group?.ungroup();
+    });
+    const last: TilingLayoutNode = layouts[layouts.length - 1];
+    expect(collectGroups(last).length).toBe(0);
+    // All former members render as loose panes with no group context.
+    expect(argsByLeafId.get("alpha")?.group).toBeNull();
+    expect(argsByLeafId.get("beta")?.group).toBeNull();
+    expect(argsByLeafId.get("gamma")?.group).toBeNull();
+  });
+});
+
 describe("Alt+G is the keyboard twin of the Group button", (): void => {
   function engage(container: HTMLElement): void {
     // The document-level keydown listener only fires while the instance is

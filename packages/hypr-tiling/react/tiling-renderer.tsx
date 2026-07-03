@@ -213,6 +213,7 @@ import type {
   TilingDragVisualState,
   TilingDropIntentDebugState,
   TilingFocusDirection,
+  TilingGroupMemberView,
   TilingGroupNode,
   TilingLayoutConfig,
   TilingLayoutNode,
@@ -228,6 +229,7 @@ import type {
   TilingPaneHitZoneCandidateDebugState,
   TilingPaneHitZoneOverlayDebugState,
   TilingRenderSurface,
+  TilingRenderTileGroupContext,
   TilingRenderTileProps,
   TilingDefaultTileProps,
   TilingSplitAxis,
@@ -1339,6 +1341,9 @@ export function buildGhostTileArgs(
     onAcquireSpace: GHOST_TILE_NOOP,
     dropZone: null,
     preview: null,
+    // Drag surfaces never carry group context: the traveling ghost is a
+    // single-pane silhouette, not a seated group member.
+    group: null,
     isMultiSelectGroupingEnabled:
       capabilityFlags.isMultiSelectGroupingEnabled,
     isMultiSelected: false,
@@ -6855,6 +6860,62 @@ const TilingRendererComponent = React.forwardRef<
     ],
   );
 
+  // Group context for renderTile args (HT-GROUP-TABBED-STACKING): one context
+  // per group, keyed by the group's ACTIVE member leaf id — the only member
+  // the leaf arm ever renders (the stacking contract), so a loose leaf misses
+  // the map and gets `group: null`. Memoized on layout/tiles/dispatchCommand
+  // (NOT per frame) so the hot render path reuses stable member views and
+  // callback closures; the callbacks route through the SAME `dispatchCommand`
+  // router the built-in strip and the keyboard layer use, keeping capability
+  // gating and observability uniform.
+  const groupContextByActiveLeafId: ReadonlyMap<
+    string,
+    TilingRenderTileGroupContext
+  > = React.useMemo((): ReadonlyMap<string, TilingRenderTileGroupContext> => {
+    const contexts = new Map<string, TilingRenderTileGroupContext>();
+    for (const groupNode of collectGroups(layout)) {
+      const members: ReadonlyArray<TilingGroupMemberView> =
+        groupNode.members.map(
+          (member: TilingLeafNode, memberIndex: number): TilingGroupMemberView => ({
+            leafId: member.id,
+            tileId: member.tileId,
+            tile: resolveTile(tiles, member.tileId) ?? null,
+            memberNumber: memberIndex + 1,
+            isActive: member.id === groupNode.activeMemberId,
+          }),
+        );
+      // Key by the member the group arm actually renders: `activeMemberId`,
+      // with the same first-member fallback the group arm applies.
+      const renderedMember: TilingLeafNode =
+        groupNode.members.find(
+          (member: TilingLeafNode): boolean =>
+            member.id === groupNode.activeMemberId,
+        ) ?? groupNode.members[0];
+      contexts.set(renderedMember.id, {
+        groupId: groupNode.id,
+        members,
+        activateMember: (memberNumber: number): void => {
+          dispatchCommand({
+            kind: "group-tab-jump",
+            groupId: groupNode.id,
+            memberNumber,
+          });
+        },
+        removeMember: (leafId: string): void => {
+          dispatchCommand({
+            kind: "remove-from-group",
+            groupId: groupNode.id,
+            memberId: leafId,
+          });
+        },
+        ungroup: (): void => {
+          dispatchCommand({ kind: "ungroup", groupId: groupNode.id });
+        },
+      });
+    }
+    return contexts;
+  }, [layout, tiles, dispatchCommand]);
+
   const renderBranch = React.useCallback(
     (
       node: TilingLayoutNode,
@@ -6953,6 +7014,7 @@ const TilingRendererComponent = React.forwardRef<
             dragSourceLeafId,
             dropState,
           ),
+          group: groupContextByActiveLeafId.get(node.id) ?? null,
           isMultiSelectGroupingEnabled,
           isMultiSelected: multiSelectedLeafIds.has(node.id),
           canGroupMultiSelection: canGroupMultiSelectionNow,
@@ -7711,6 +7773,7 @@ const TilingRendererComponent = React.forwardRef<
       dispatchCommand,
       isGroupingEnabled,
       showGroupTabStrip,
+      groupContextByActiveLeafId,
       isMultiSelectGroupingEnabled,
       multiSelectedLeafIds,
       canGroupMultiSelectionNow,
