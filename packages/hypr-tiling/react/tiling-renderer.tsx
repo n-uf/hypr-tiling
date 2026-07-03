@@ -3881,7 +3881,12 @@ const TilingRendererComponent = React.forwardRef<
   const [isPaneContentVisible, setIsPaneContentVisible] =
     React.useState<boolean>(resolveInitialPaneContentVisible(showContentToggle));
   const isMasterLayoutEnabled: boolean = interactionCapabilities.masterLayout;
-  const isGroupingEnabled: boolean = interactionCapabilities.grouping;
+  const isGroupingEnabled: boolean = interactionCapabilities.grouping.enable;
+  // Per-group tab strip governance (distinct from the TOP-LEVEL
+  // `paneSwitching.showTabStrip`): with the strip suppressed a group renders
+  // only its active member; the keyboard group commands stay live.
+  const showGroupTabStrip: boolean =
+    interactionCapabilities.grouping.showGroupTabStrip;
   // Alt/Opt+click header multi-select → group. Gated by its own opt-out flag
   // AND the `grouping` capability (the whole point is to reach `group-leaves`),
   // so with grouping off the Group control is suppressed and a modified header
@@ -3917,7 +3922,7 @@ const TilingRendererComponent = React.forwardRef<
       acquireSpaceEnabled: isTitleBarAcquireSpaceEnabled,
       resizeEnabled: isResizeEnabled,
       layoutEnabled: interactionCapabilities.masterLayout,
-      groupingEnabled: interactionCapabilities.grouping,
+      groupingEnabled: isGroupingEnabled,
     }),
     [
       isMaximizeEnabled,
@@ -3928,7 +3933,7 @@ const TilingRendererComponent = React.forwardRef<
       isTitleBarAcquireSpaceEnabled,
       isResizeEnabled,
       interactionCapabilities.masterLayout,
-      interactionCapabilities.grouping,
+      isGroupingEnabled,
     ],
   );
   const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -6177,7 +6182,7 @@ const TilingRendererComponent = React.forwardRef<
         sourceLeafId,
         previousTarget,
         isRearrangeEnabled,
-        groupingEnabled: interactionCapabilities.grouping,
+        groupingEnabled: isGroupingEnabled,
         dropHitZoneGeometry: interactionCapabilities.dropHitZoneGeometry,
         liveDragModeEnabled,
         liveHitFootprintsById,
@@ -6191,7 +6196,7 @@ const TilingRendererComponent = React.forwardRef<
     [
       config,
       isRearrangeEnabled,
-      interactionCapabilities.grouping,
+      isGroupingEnabled,
       interactionCapabilities.dropHitZoneGeometry,
       layout,
       leafFootprintsById,
@@ -7176,6 +7181,7 @@ const TilingRendererComponent = React.forwardRef<
                 : "overflow-hidden",
             )}
           >
+            {showGroupTabStrip ? (
             <div
               ref={(element: HTMLDivElement | null): void =>
                 setGroupTabStripRef(groupNode.id, element)
@@ -7263,6 +7269,7 @@ const TilingRendererComponent = React.forwardRef<
                 },
               )}
             </div>
+            ) : null}
             <div className="hpt-group-active relative min-h-0 w-full flex-1 overflow-hidden">
               {renderBranch(activeMember, containerWidthPx, containerHeightPx)}
             </div>
@@ -7626,6 +7633,7 @@ const TilingRendererComponent = React.forwardRef<
       tiles,
       dispatchCommand,
       isGroupingEnabled,
+      showGroupTabStrip,
       isMultiSelectGroupingEnabled,
       multiSelectedLeafIds,
       canGroupMultiSelectionNow,

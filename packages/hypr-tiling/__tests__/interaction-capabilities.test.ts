@@ -50,7 +50,7 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   keymap: TILING_KEYMAP_DEFAULTS,
   keyBindings: { bindings: [], replaceDefaults: false },
   masterLayout: true,
-  grouping: true,
+  grouping: { enable: true, showGroupTabStrip: true },
 };
 
 describe("resolveInteractionCapabilities (defaulting)", (): void => {
@@ -509,6 +509,49 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       ...RESOLVED_DEFAULTS,
       dropHitZoneGeometry: { centerRatio: 0.34, centerRatioX: 0.34, centerRatioY: 0.34, centerMinPx: 24, hysteresisPx: 0 },
     });
+  });
+
+  it("defaults grouping to enabled with the per-group strip rendered", (): void => {
+    expect(resolveInteractionCapabilities(undefined).grouping).toEqual({
+      enable: true,
+      showGroupTabStrip: true,
+    });
+    expect(resolveInteractionCapabilities({}).grouping).toEqual({
+      enable: true,
+      showGroupTabStrip: true,
+    });
+  });
+
+  it("treats a bare grouping boolean as shorthand for { enable }", (): void => {
+    expect(resolveInteractionCapabilities({ grouping: true })).toEqual(RESOLVED_DEFAULTS);
+    expect(resolveInteractionCapabilities({ grouping: false })).toEqual({
+      ...RESOLVED_DEFAULTS,
+      grouping: { enable: false, showGroupTabStrip: true },
+    });
+  });
+
+  it("merges a partial grouping object field-by-field over the defaults", (): void => {
+    expect(resolveInteractionCapabilities({ grouping: { showGroupTabStrip: false } })).toEqual({
+      ...RESOLVED_DEFAULTS,
+      grouping: { enable: true, showGroupTabStrip: false },
+    });
+    expect(resolveInteractionCapabilities({ grouping: { enable: false } })).toEqual({
+      ...RESOLVED_DEFAULTS,
+      grouping: { enable: false, showGroupTabStrip: true },
+    });
+    expect(
+      resolveInteractionCapabilities({ grouping: { enable: false, showGroupTabStrip: false } }),
+    ).toEqual({
+      ...RESOLVED_DEFAULTS,
+      grouping: { enable: false, showGroupTabStrip: false },
+    });
+  });
+
+  it("is idempotent over grouping (re-resolving a resolved grouping object)", (): void => {
+    const once: ResolvedTilingInteractionCapabilities = resolveInteractionCapabilities({
+      grouping: { enable: false, showGroupTabStrip: false },
+    });
+    expect(resolveInteractionCapabilities(once)).toEqual(once);
   });
 
   it("is idempotent when re-resolving a resolved object", (): void => {

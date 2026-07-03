@@ -62,6 +62,12 @@ export interface ResolvedTilingDropHitZoneGeometryCapability {
 }
 
 // @public
+export interface ResolvedTilingGroupingCapability {
+    enable: boolean;
+    showGroupTabStrip: boolean;
+}
+
+// @public
 export interface ResolvedTilingInteractionCapabilities {
     coherentTransit: boolean;
     customCursor: boolean;
@@ -70,7 +76,7 @@ export interface ResolvedTilingInteractionCapabilities {
     dropHitZoneGeometry: ResolvedTilingDropHitZoneGeometryCapability;
     focus: boolean;
     ghostPickupScalePercent: number;
-    grouping: boolean;
+    grouping: ResolvedTilingGroupingCapability;
     keyBindings: ResolvedTilingKeyBindings;
     keymap: ResolvedTilingKeymap;
     masterLayout: boolean;
@@ -376,6 +382,12 @@ export interface TilingDropHitZoneGeometryCapability {
 export type TilingFocusDirection = "left" | "right" | "up" | "down";
 
 // @public
+export interface TilingGroupingCapability {
+    enable?: boolean;
+    showGroupTabStrip?: boolean;
+}
+
+// @public
 export interface TilingGroupNode {
     activeMemberId: string;
     id: string;
@@ -393,7 +405,7 @@ export interface TilingInteractionCapabilities {
     dropHitZoneGeometry?: TilingDropHitZoneGeometryCapability;
     focus?: boolean;
     ghostPickupScalePercent?: number;
-    grouping?: boolean;
+    grouping?: boolean | TilingGroupingCapability;
     keyBindings?: TilingKeyBindings;
     keymap?: TilingKeymap;
     masterLayout?: boolean;

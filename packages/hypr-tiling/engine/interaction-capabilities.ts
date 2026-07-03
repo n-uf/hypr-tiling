@@ -13,7 +13,9 @@ import { TILING_DROP_INTENT_CONFIG } from "./drop-intent-resolver";
 import { TILING_KEYMAP_DEFAULTS, resolveKeymap } from "./pane-switching";
 import type {
   TilingSplitAxis,
+  ResolvedTilingGroupingCapability,
   ResolvedTilingInteractionCapabilities,
+  TilingGroupingCapability,
   TilingInteractionCapabilities,
   TilingKeymap,
   TilingMaximizeCapability,
@@ -78,7 +80,7 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
   keymap: TILING_KEYMAP_DEFAULTS,
   keyBindings: { bindings: [], replaceDefaults: false },
   masterLayout: true,
-  grouping: true,
+  grouping: { enable: true, showGroupTabStrip: true },
 };
 
 /**
@@ -245,7 +247,30 @@ export function resolveInteractionCapabilities(
         ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.keyBindings.replaceDefaults,
     },
     masterLayout: capabilities?.masterLayout ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.masterLayout,
-    grouping: capabilities?.grouping ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.grouping,
+    grouping: resolveGroupingCapability(capabilities?.grouping),
+  };
+}
+
+/**
+ * Resolve the `grouping` capability. A bare boolean is shorthand for
+ * `{ enable }` (`showGroupTabStrip` keeps its default `true`); the object form
+ * merges field-by-field over the all-enabled defaults via nullish coalescing,
+ * so an explicit `false` on either field is preserved.
+ */
+function resolveGroupingCapability(
+  grouping: boolean | TilingGroupingCapability | undefined,
+): ResolvedTilingGroupingCapability {
+  if (typeof grouping === "boolean") {
+    return {
+      enable: grouping,
+      showGroupTabStrip: TILING_INTERACTION_CAPABILITY_DEFAULTS.grouping.showGroupTabStrip,
+    };
+  }
+  return {
+    enable: grouping?.enable ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.grouping.enable,
+    showGroupTabStrip:
+      grouping?.showGroupTabStrip
+      ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.grouping.showGroupTabStrip,
   };
 }
 

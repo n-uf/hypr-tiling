@@ -301,6 +301,102 @@ describe("header Group button (custom renderTile) folds the multi-selection", ()
   });
 });
 
+describe("per-group tab strip governance (grouping.showGroupTabStrip)", (): void => {
+  function groupedTree(): TilingLayoutNode {
+    const group: TilingGroupNode = {
+      kind: "group",
+      id: "g1",
+      members: [leaf("alpha"), leaf("beta")],
+      activeMemberId: "alpha",
+    };
+    return split("root", "horizontal", group, leaf("loose"));
+  }
+
+  const GROUP_TILES: ReadonlyArray<TilingTile> = ["alpha", "beta", "loose"].map(
+    (id: string): TilingTile => ({ id, title: id, accent: "amber" }),
+  );
+
+  interface GroupHarnessProps {
+    interaction?: TilingInteractionCapabilities;
+    onLayout?: (layout: TilingLayoutNode) => void;
+  }
+
+  function GroupHarness(props: GroupHarnessProps): React.ReactElement {
+    const [layout, setLayout] = React.useState<TilingLayoutNode>(groupedTree());
+    return React.createElement(TilingRenderer, {
+      layout,
+      tiles: GROUP_TILES,
+      config: { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 },
+      interaction: props.interaction,
+      focusedLeafId: "alpha",
+      onLayoutChange: (next: TilingLayoutNode): void => {
+        setLayout(next);
+        props.onLayout?.(next);
+      },
+      renderTile: (args: TilingRenderTileProps): React.ReactNode =>
+        renderDocTile(args),
+    });
+  }
+
+  it("renders the strip by default (undefined / bare-boolean / object grouping forms)", (): void => {
+    for (const interaction of [
+      undefined,
+      { grouping: true },
+      { grouping: {} },
+      { grouping: { showGroupTabStrip: true } },
+    ] as ReadonlyArray<TilingInteractionCapabilities | undefined>) {
+      const { container, unmount } = render(
+        React.createElement(GroupHarness, { interaction }),
+      );
+      const tabStrip: HTMLElement = requireEl(container, ".hpt-group-tab-strip");
+      expect(tabStrip.querySelectorAll('[role="tab"]').length).toBe(2);
+      unmount();
+    }
+  });
+
+  it("suppresses the strip under grouping.showGroupTabStrip: false, still rendering the active member only", (): void => {
+    const { container } = render(
+      React.createElement(GroupHarness, {
+        interaction: { grouping: { showGroupTabStrip: false } },
+      }),
+    );
+    expect(query(container, ".hpt-group-tab-strip")).toBeNull();
+    // The stacking contract is unchanged: the active member renders, the
+    // inactive member does not.
+    expect(query(container, '[data-leaf-id="alpha"]')).not.toBeNull();
+    expect(query(container, '[data-leaf-id="beta"]')).toBeNull();
+  });
+
+  it("keeps the keyboard group commands live with the strip hidden (Alt+K cycles the active member)", (): void => {
+    const layouts: TilingLayoutNode[] = [];
+    const { container } = render(
+      React.createElement(GroupHarness, {
+        interaction: { grouping: { showGroupTabStrip: false } },
+        onLayout: (layout: TilingLayoutNode): void => {
+          layouts.push(layout);
+        },
+      }),
+    );
+    // Engage the instance (document-level keydown listener) without focusing.
+    act((): void => {
+      fireEvent.pointerEnter(container.firstElementChild as HTMLElement);
+    });
+    // Default `groupTabNext` chord: Alt+K → `group-tab-cycle` next, resolved
+    // against the focused member's containing group.
+    act((): void => {
+      fireEvent.keyDown(document, { code: "KeyK", key: "k", altKey: true });
+    });
+    const last: TilingLayoutNode = layouts[layouts.length - 1];
+    const groups: ReadonlyArray<TilingGroupNode> = collectGroups(last);
+    expect(groups.length).toBe(1);
+    expect(groups[0].activeMemberId).toBe("beta");
+    // The render followed: beta is now the (only) rendered member; still no strip.
+    expect(query(container, '[data-leaf-id="beta"]')).not.toBeNull();
+    expect(query(container, '[data-leaf-id="alpha"]')).toBeNull();
+    expect(query(container, ".hpt-group-tab-strip")).toBeNull();
+  });
+});
+
 describe("Alt+G is the keyboard twin of the Group button", (): void => {
   function engage(container: HTMLElement): void {
     // The document-level keydown listener only fires while the instance is

@@ -106,7 +106,7 @@ function gatesFromCapabilities(
     acquireSpaceEnabled: capabilities.paneTitleBarControls.acquireSpace,
     resizeEnabled: capabilities.resize !== "none",
     layoutEnabled: capabilities.masterLayout,
-    groupingEnabled: capabilities.grouping,
+    groupingEnabled: capabilities.grouping.enable,
   };
 }
 

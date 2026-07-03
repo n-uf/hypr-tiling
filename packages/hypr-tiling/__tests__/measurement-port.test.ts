@@ -95,7 +95,7 @@ function pointerInput(
     sourceLeafId,
     previousTarget: null,
     isRearrangeEnabled: true,
-    groupingEnabled: CAPS.grouping,
+    groupingEnabled: CAPS.grouping.enable,
     dropHitZoneGeometry: CAPS.dropHitZoneGeometry,
     liveDragModeEnabled: true,
     liveHitFootprintsById: FOOTPRINTS,

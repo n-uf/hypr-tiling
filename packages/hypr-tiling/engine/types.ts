@@ -605,7 +605,14 @@ export interface TilingMaximizeCapability {
 export interface TilingPaneSwitchingCapability {
   /** Enable pane switching (tab strip + cycle/jump shortcuts). Default `true`. */
   enable?: boolean;
-  /** Render the tab strip. Default `true`. The shortcuts work regardless. */
+  /**
+   * Render the TOP-LEVEL tab strip (the single strip across the top of the
+   * tiling region listing every pane). Default `true`. The cycle/jump shortcuts
+   * work regardless. This flag does NOT govern the per-group tab strip a
+   * tabbed-stacking group renders above its active member — that strip is
+   * governed by `grouping.showGroupTabStrip` (see
+   * {@link TilingGroupingCapability}).
+   */
   showTabStrip?: boolean;
   /**
    * Render the tab strip's pane-content visibility checkbox (the "content"
@@ -970,14 +977,50 @@ export interface TilingInteractionCapabilities {
    */
   masterLayout?: boolean;
   /**
-   * Group / tabbed-stacking (HT-GROUP-TABBED-STACKING). When `true` (default),
-   * the grouping commands (`toggle-group`, `ungroup`, `add-to-group`,
-   * `group-tab-cycle`, `group-tab-jump`, `group-leaves`) and their default
-   * keybindings are live, and drag-onto-the-center-of-a-group merges into the
-   * group. When `false`, those commands are no-ops and drag-into-group is
-   * disabled (an existing group still renders its tab strip). Default `true`.
+   * Group / tabbed-stacking (HT-GROUP-TABBED-STACKING). A bare boolean is
+   * shorthand for `{ enable }`; the object form additionally governs the
+   * per-group tab strip via `showGroupTabStrip` (see
+   * {@link TilingGroupingCapability}). Default `true` (grouping enabled, strip
+   * rendered).
    */
-  grouping?: boolean;
+  grouping?: boolean | TilingGroupingCapability;
+}
+
+/**
+ * Group / tabbed-stacking capability (HT-GROUP-TABBED-STACKING), the object
+ * form of the `grouping` capability. A bare boolean at the `grouping` slot is
+ * shorthand for `{ enable }`.
+ */
+export interface TilingGroupingCapability {
+  /**
+   * Enable grouping. When `true` (default), the grouping commands
+   * (`toggle-group`, `ungroup`, `add-to-group`, `group-tab-cycle`,
+   * `group-tab-jump`, `group-leaves`) and their default keybindings are live,
+   * and drag-onto-a-group's-tab-strip merges into the group. When `false`,
+   * those commands are no-ops and drag-into-group is disabled (an existing
+   * group still renders per this capability's `showGroupTabStrip`).
+   */
+  enable?: boolean;
+  /**
+   * Render the per-group tab strip (the member tabs a tabbed-stacking group
+   * paints above its active member). Default `true`. When `false`, the strip
+   * is suppressed and the group renders only its active member; the keyboard
+   * group commands (`group-tab-cycle`, `group-tab-jump`, `remove-from-group`,
+   * `ungroup`) keep working, so a consumer that hides the strip can paint its
+   * own group chrome and route it through the same commands. Note:
+   * drag-onto-the-strip group merge requires a mounted strip, so hiding the
+   * strip also removes that drop target. Distinct from
+   * `paneSwitching.showTabStrip`, which governs the TOP-LEVEL tab strip only.
+   */
+  showGroupTabStrip?: boolean;
+}
+
+/** Resolved group / tabbed-stacking capability (no optional fields). */
+export interface ResolvedTilingGroupingCapability {
+  /** Whether group / tabbed-stacking is enabled. */
+  enable: boolean;
+  /** Whether the per-group tab strip renders. */
+  showGroupTabStrip: boolean;
 }
 
 /**
@@ -1029,8 +1072,8 @@ export interface ResolvedTilingInteractionCapabilities {
   keyBindings: ResolvedTilingKeyBindings;
   /** Whether the master/stack layout engine is enabled. */
   masterLayout: boolean;
-  /** Whether group / tabbed-stacking is enabled. */
-  grouping: boolean;
+  /** Resolved group / tabbed-stacking capability. */
+  grouping: ResolvedTilingGroupingCapability;
 }
 
 /** Fully-resolved key-binding registry (no optional fields). */

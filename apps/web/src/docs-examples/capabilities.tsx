@@ -25,7 +25,7 @@ const interaction: TilingInteractionCapabilities = {
 
 // Effective, fully-defaulted capabilities — handy for driving your own UI.
 const resolved = resolveInteractionCapabilities(interaction);
-export const isGroupingEnabled: boolean = resolved.grouping;
+export const isGroupingEnabled: boolean = resolved.grouping.enable;
 
 const tiles: TilingTile[] = [
   { id: "a", title: "Board" },

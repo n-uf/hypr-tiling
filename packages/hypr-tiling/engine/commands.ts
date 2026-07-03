@@ -128,7 +128,7 @@ export function commandRequiredCapability(command: TilingCommand): keyof TilingC
  *     acquireSpaceEnabled: caps.paneTitleBarControls.acquireSpace,
  *     resizeEnabled: caps.resize !== "none",
  *     layoutEnabled: caps.masterLayout,
- *     groupingEnabled: caps.grouping,
+ *     groupingEnabled: caps.grouping.enable,
  *   };
  * }
  *
