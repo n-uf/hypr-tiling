@@ -141,7 +141,11 @@ export interface TilingThemeGhostTokens {
 
 /** Split-divider / gap handle chrome across visible + hidden states. */
 export interface TilingThemeDividerTokens {
-  /** Structural base incl. focus-visible ring color. */
+  /**
+   * Structural base incl. focus-visible ring color. Include `box-border` +
+   * `bg-clip-content` so the renderer can pad the full gutter hit-target while
+   * chrome paints only the center `handleSizePx` content box.
+   */
   readonly base: string;
   /** Visible + resizable handle (resting + hover). */
   readonly visibleInteractive: string;
@@ -471,7 +475,7 @@ const NEON_TERMINAL_THEME: TilingTheme = {
     subtitleText: "text-slate-500",
   },
   divider: {
-    base: "shrink-0 rounded outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60",
+    base: "box-border shrink-0 rounded bg-clip-content outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60",
     visibleInteractive: "bg-white/10 hover:bg-cyan-300/30",
     visibleStatic: "bg-white/[0.04] cursor-default",
     hidden: "bg-transparent hover:bg-transparent",
@@ -566,7 +570,7 @@ const CLEAN_FLAT_THEME: TilingTheme = {
     subtitleText: "text-slate-500",
   },
   divider: {
-    base: "shrink-0 rounded outline-none focus-visible:ring-2 focus-visible:ring-slate-400/60",
+    base: "box-border shrink-0 rounded bg-clip-content outline-none focus-visible:ring-2 focus-visible:ring-slate-400/60",
     visibleInteractive: "bg-slate-600/40 hover:bg-slate-400/60",
     visibleStatic: "bg-slate-700/30 cursor-default",
     hidden: "bg-transparent hover:bg-transparent",
@@ -653,7 +657,7 @@ const MOSAIC_THEME: TilingTheme = {
     subtitleText: "text-stone-500",
   },
   divider: {
-    base: "shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-amber-300/55",
+    base: "box-border shrink-0 rounded-full bg-clip-content outline-none focus-visible:ring-2 focus-visible:ring-amber-300/55",
     visibleInteractive: "bg-white/[0.06] hover:bg-amber-300/45",
     visibleStatic: "bg-white/[0.04] cursor-default",
     hidden: "bg-transparent hover:bg-transparent",

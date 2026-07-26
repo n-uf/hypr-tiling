@@ -1243,7 +1243,11 @@ export interface TilingLayoutConfig {
   gapPx: number;
   /** Minimum pane extent (CSS px) a resize divider will not shrink a pane below. */
   minPaneSizePx: number;
-  /** Resize-handle hit-target thickness (CSS px). */
+  /**
+   * Resize-handle chrome thickness (CSS px). The interactive hit-target spans
+   * the full boundary gutter (`gapPx + handleSizePx`); this value is the painted
+   * center strip when `resizeHandlesVisible` is on.
+   */
   handleSizePx: number;
 }
 

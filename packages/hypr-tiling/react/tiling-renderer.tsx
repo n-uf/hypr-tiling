@@ -329,9 +329,11 @@ export const TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS: TilingObservabilityColo
  * call site), but consumers that don't tune spacing can spread this for a
  * tasteful, well-readable inter-pane gutter out of the box instead of inventing
  * their own magic numbers. `gapPx` + `handleSizePx` together form the visible
- * inter-pane gap (the divider element occupies `handleSizePx` flanked by
- * `gapPx / 2` margins; each child subtracts `(gapPx + handleSizePx) / 2` of
- * basis — see `splitGapOffsetPx` in the split renderer for the balancing math).
+ * inter-pane gap (the divider element's hit-target spans the full
+ * `gapPx + handleSizePx` gutter via padding; chrome paints only the center
+ * `handleSizePx` through `bg-clip-content`. Each child subtracts
+ * `(gapPx + handleSizePx) / 2` of basis — see `splitGapOffsetPx` in the split
+ * renderer for the balancing math).
  */
 export const DEFAULT_TILING_LAYOUT_CONFIG: TilingLayoutConfig = {
   gapPx: 6,
@@ -7792,16 +7794,23 @@ const TilingRendererComponent = React.forwardRef<
                     ),
               )}
               style={
+                // Full-gutter hit target: outer box = gapPx + handleSizePx so
+                // col/row-resize cursor + pointer drag work across the whole
+                // inter-pane strip (not only the center handleSizePx paint).
+                // Theme `bg-clip-content` keeps chrome painted on the center
+                // content box only (padding stays transparent host chrome).
                 isHorizontal
                   ? {
-                      width: config.handleSizePx,
-                      marginLeft: resolvedGapPx / 2,
-                      marginRight: resolvedGapPx / 2,
+                      width: boundaryGutterPx,
+                      boxSizing: "border-box",
+                      paddingLeft: resolvedGapPx / 2,
+                      paddingRight: resolvedGapPx / 2,
                     }
                   : {
-                      height: config.handleSizePx,
-                      marginTop: resolvedGapPx / 2,
-                      marginBottom: resolvedGapPx / 2,
+                      height: boundaryGutterPx,
+                      boxSizing: "border-box",
+                      paddingTop: resolvedGapPx / 2,
+                      paddingBottom: resolvedGapPx / 2,
                     }
               }
             />
