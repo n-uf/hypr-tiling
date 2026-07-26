@@ -441,7 +441,9 @@ export function findGroupById(
  *   `ratio` in the open interval `(0, 1)`;
  * - NO leaf id appears more than once across the whole tree (the single-instance
  *   invariant at the data layer — a duplicated dragged leaf is exactly the BUG-1
- *   class this rejects).
+ *   class this rejects);
+ * - NO `tileId` appears more than once (at most one tile per slot — two leaves
+ *   claiming the same host tile leaves another tile unplaced / void).
  *
  * The renderer calls this on the derived candidate BEFORE `onLayoutChange`; an
  * invalid tree is refused (the drag falls back to cancel) so a broken commit can
@@ -449,16 +451,18 @@ export function findGroupById(
  */
 export function isStructurallyValidLayout(node: TilingLayoutNode): boolean {
   const seenLeafIds = new Set<string>();
+  const seenTileIds = new Set<string>();
 
   function walk(current: TilingLayoutNode): boolean {
     if (current.kind === "leaf") {
       if (current.id.length === 0 || current.tileId.length === 0) {
         return false;
       }
-      if (seenLeafIds.has(current.id)) {
+      if (seenLeafIds.has(current.id) || seenTileIds.has(current.tileId)) {
         return false;
       }
       seenLeafIds.add(current.id);
+      seenTileIds.add(current.tileId);
       return true;
     }
     if (current.kind === "group") {

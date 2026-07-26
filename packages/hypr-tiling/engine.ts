@@ -39,10 +39,15 @@ export {
   type GroupLeavesOptions,
 } from "./engine/state";
 export {
+  LAYOUT_COLLAPSED_RATIO_EPS,
   LAYOUT_FILL_SLACK_TOLERANCE_PX,
   LAYOUT_RECONCILE_IDLE_MS,
+  assessLayoutTileIntegrity,
+  buildDefaultDwindleLayout,
   measureLayoutFillSlackPx,
   normalizeLayout,
+  type AssessLayoutTileIntegrityOptions,
+  type LayoutTileIntegrityReport,
   type NormalizeLayoutOptions,
 } from "./engine/layout-normalize";
 

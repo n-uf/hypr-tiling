@@ -8,7 +8,19 @@
 export function accentHue(accent: TilingTileAccent | undefined): TilingAccentHue;
 
 // @public
+export function assessLayoutTileIntegrity(node: TilingLayoutNode, options?: AssessLayoutTileIntegrityOptions): LayoutTileIntegrityReport;
+
+// @public
+export interface AssessLayoutTileIntegrityOptions {
+    // (undocumented)
+    expectedTileIds?: ReadonlyArray<string>;
+}
+
+// @public
 export const BASELINE_DRAG_HOP_DURATION_MS: number;
+
+// @public
+export function buildDefaultDwindleLayout(tileIds: ReadonlyArray<string>, axis?: TilingSplitAxis): TilingLayoutNode;
 
 // @public
 export function canGroupMultiSelection(layout: TilingLayoutNode, selection: ReadonlySet<string>): boolean;
@@ -123,6 +135,9 @@ export function isStructurallyValidLayout(node: TilingLayoutNode): boolean;
 export function keyboardActionToCommand(action: TilingKeyboardAction): TilingCommand;
 
 // @public
+export const LAYOUT_COLLAPSED_RATIO_EPS: number;
+
+// @public
 export const LAYOUT_FILL_SLACK_TOLERANCE_PX: number;
 
 // @public
@@ -130,6 +145,17 @@ export const LAYOUT_RECONCILE_IDLE_MS: number;
 
 // @public
 export function layoutContainsStaticPane(node: TilingLayoutNode): boolean;
+
+// @public
+export interface LayoutTileIntegrityReport {
+    readonly duplicateTileIds: ReadonlyArray<string>;
+    readonly hasCollapsedRatio: boolean;
+    readonly hasEmptyTileId: boolean;
+    readonly missingTileIds: ReadonlyArray<string>;
+    readonly ok: boolean;
+    readonly requiresRebuild: boolean;
+    readonly unknownTileIds: ReadonlyArray<string>;
+}
 
 // @public
 export function matchKeyBinding(event: TilingKeyboardEventLike, bindings: ReadonlyArray<TilingKeyBinding>): TilingCommand | null;
@@ -160,6 +186,8 @@ export interface NormalizeLayoutOptions {
     config: TilingLayoutConfig;
     containerHeightPx: number;
     containerWidthPx: number;
+    expectedTileIds?: ReadonlyArray<string>;
+    fallbackLayout?: TilingLayoutNode;
 }
 
 // @public

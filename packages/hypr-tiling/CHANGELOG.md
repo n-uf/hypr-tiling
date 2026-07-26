@@ -17,6 +17,14 @@ the version number alone does not flag them.
   Exported from `@n-uf/hypr-tiling/engine` as `normalizeLayout`,
   `measureLayoutFillSlackPx`, `LAYOUT_RECONCILE_IDLE_MS`,
   `LAYOUT_FILL_SLACK_TOLERANCE_PX`.
+- **Tile-slot integrity on reconcile.** `normalizeLayout` accepts optional
+  `expectedTileIds` / `fallbackLayout`. When the host declares expected tiles,
+  reconcile detects duplicate/missing/unknown/empty `tileId`s and rebuilds a
+  sane default dwindle (or the host fallback) instead of leaving void slots.
+  Collapsed ratios near 0/1 are clamped in place. New helpers:
+  `assessLayoutTileIntegrity`, `buildDefaultDwindleLayout`,
+  `LAYOUT_COLLAPSED_RATIO_EPS`. `isStructurallyValidLayout` also rejects
+  duplicate `tileId`s (at most one tile per slot).
 - **Pane titlebar middle slot.** `TilingTile.titleBarContent` renders custom
   chrome between the title (left) and native window controls (right). The
   default tile wires the slot; custom `renderTile` panes can wrap

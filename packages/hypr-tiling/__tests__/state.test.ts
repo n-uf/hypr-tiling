@@ -933,6 +933,18 @@ describe("isStructurallyValidLayout — commit-time tree verification backstop",
     expect(isStructurallyValidLayout(duplicated)).toBe(false);
   });
 
+  it("REJECTS a duplicated tileId across distinct leaf ids (at most one tile per slot)", (): void => {
+    const duplicatedTile: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: leaf("A", "cases"),
+      second: leaf("B", "cases"),
+    };
+    expect(isStructurallyValidLayout(duplicatedTile)).toBe(false);
+  });
+
   it("REJECTS a NaN / out-of-range split ratio", (): void => {
     const nanRatio: TilingSplitNode = { ...baseLayout(), ratio: Number.NaN };
     const zeroRatio: TilingSplitNode = { ...baseLayout(), ratio: 0 };

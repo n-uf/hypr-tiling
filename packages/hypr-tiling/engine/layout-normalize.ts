@@ -11,6 +11,7 @@ import type {
   TilingDimension,
   TilingLayoutConfig,
   TilingLayoutNode,
+  TilingLeafNode,
   TilingPaneSizing,
   TilingSplitAxis,
   TilingSplitNode,
@@ -29,6 +30,13 @@ export const LAYOUT_RECONCILE_IDLE_MS: number = 150;
  */
 export const LAYOUT_FILL_SLACK_TOLERANCE_PX: number = 1;
 
+/**
+ * Split ratios at or beyond this distance from 0/1 are treated as collapsed
+ * (zero-width visual slots). Geometry normalize clamps them; integrity assessment
+ * flags them so hosts can reset when combined with missing tiles.
+ */
+export const LAYOUT_COLLAPSED_RATIO_EPS: number = 0.02;
+
 /** Options for container-aware layout reconciliation. */
 export interface NormalizeLayoutOptions {
   /** Viewport / root container width in CSS pixels. */
@@ -37,6 +45,48 @@ export interface NormalizeLayoutOptions {
   containerHeightPx: number;
   /** Gap / min-pane / handle geometry used by the live renderer. */
   config: TilingLayoutConfig;
+  /**
+   * Host tile ids that must appear exactly once across leaves. When provided,
+   * {@link normalizeLayout} enforces tile uniqueness + coverage and rebuilds a
+   * sane default dwindle (or {@link fallbackLayout}) on integrity failure.
+   */
+  expectedTileIds?: ReadonlyArray<string>;
+  /**
+   * Preferred replacement tree when tile integrity fails badly. Geometry-
+   * normalized before return. When omitted, a right-associative horizontal
+   * dwindle is built from {@link expectedTileIds}.
+   */
+  fallbackLayout?: TilingLayoutNode;
+}
+
+/** Result of {@link assessLayoutTileIntegrity}. */
+export interface LayoutTileIntegrityReport {
+  /**
+   * True when tile coverage/uniqueness is sound and no split ratio is collapsed.
+   * Collapsed ratios alone are healed in place by {@link normalizeLayout};
+   * {@link requiresRebuild} is the signal for void/missing-tile recovery.
+   */
+  readonly ok: boolean;
+  /**
+   * True when empty/duplicate/missing/unknown tileIds require replacing the
+   * tree (fallback or default dwindle) rather than geometry-only healing.
+   */
+  readonly requiresRebuild: boolean;
+  /** `tileId` values that appear on more than one leaf/group member. */
+  readonly duplicateTileIds: ReadonlyArray<string>;
+  /** Expected ids absent from the tree (only when `expectedTileIds` given). */
+  readonly missingTileIds: ReadonlyArray<string>;
+  /** Leaf tileIds not in `expectedTileIds` (only when that list is given). */
+  readonly unknownTileIds: ReadonlyArray<string>;
+  /** True when any leaf has an empty `tileId`. */
+  readonly hasEmptyTileId: boolean;
+  /** True when any dwindle split ratio is collapsed near 0 or 1. */
+  readonly hasCollapsedRatio: boolean;
+}
+
+/** Options for {@link assessLayoutTileIntegrity}. */
+export interface AssessLayoutTileIntegrityOptions {
+  expectedTileIds?: ReadonlyArray<string>;
 }
 
 /**
@@ -277,11 +327,165 @@ function normalizeLayoutNode(
   };
 }
 
+function collectTileIds(node: TilingLayoutNode, out: string[]): void {
+  if (node.kind === "leaf") {
+    out.push(node.tileId);
+    return;
+  }
+  if (node.kind === "group") {
+    for (const member of node.members) {
+      out.push(member.tileId);
+    }
+    return;
+  }
+  collectTileIds(node.first, out);
+  collectTileIds(node.second, out);
+}
+
+function hasCollapsedRatioSplit(node: TilingLayoutNode): boolean {
+  if (node.kind === "leaf" || node.kind === "group") {
+    return false;
+  }
+  if (node.layoutMode !== "master") {
+    const ratio: number = node.ratio;
+    if (
+      !Number.isFinite(ratio) ||
+      ratio <= LAYOUT_COLLAPSED_RATIO_EPS ||
+      ratio >= 1 - LAYOUT_COLLAPSED_RATIO_EPS
+    ) {
+      return true;
+    }
+  }
+  return hasCollapsedRatioSplit(node.first) || hasCollapsedRatioSplit(node.second);
+}
+
+/**
+ * Tile-slot integrity report: uniqueness, expected coverage, empty/unknown
+ * tileIds, and collapsed ratios that create zero-width visual slots.
+ */
+export function assessLayoutTileIntegrity(
+  node: TilingLayoutNode,
+  options: AssessLayoutTileIntegrityOptions = {},
+): LayoutTileIntegrityReport {
+  const tileIds: string[] = [];
+  collectTileIds(node, tileIds);
+
+  const counts = new Map<string, number>();
+  let hasEmptyTileId: boolean = false;
+  for (const tileId of tileIds) {
+    if (tileId.length === 0) {
+      hasEmptyTileId = true;
+      continue;
+    }
+    counts.set(tileId, (counts.get(tileId) ?? 0) + 1);
+  }
+
+  const duplicateTileIds: string[] = [];
+  for (const [tileId, count] of counts) {
+    if (count > 1) {
+      duplicateTileIds.push(tileId);
+    }
+  }
+  duplicateTileIds.sort();
+
+  const expected: ReadonlyArray<string> | undefined = options.expectedTileIds;
+  const missingTileIds: string[] = [];
+  const unknownTileIds: string[] = [];
+  if (expected != null) {
+    const expectedSet = new Set(expected);
+    const present = new Set(
+      tileIds.filter((tileId: string): boolean => tileId.length > 0),
+    );
+    for (const tileId of expected) {
+      if (!present.has(tileId)) {
+        missingTileIds.push(tileId);
+      }
+    }
+    for (const tileId of present) {
+      if (!expectedSet.has(tileId)) {
+        unknownTileIds.push(tileId);
+      }
+    }
+    unknownTileIds.sort();
+  }
+
+  const hasCollapsedRatio: boolean = hasCollapsedRatioSplit(node);
+  const requiresRebuild: boolean =
+    hasEmptyTileId ||
+    duplicateTileIds.length > 0 ||
+    missingTileIds.length > 0 ||
+    unknownTileIds.length > 0;
+  const ok: boolean = !requiresRebuild && !hasCollapsedRatio;
+
+  return {
+    ok,
+    requiresRebuild,
+    duplicateTileIds,
+    missingTileIds,
+    unknownTileIds,
+    hasEmptyTileId,
+    hasCollapsedRatio,
+  };
+}
+
+/**
+ * Right-associative horizontal dwindle over `tileIds` with equal first-share
+ * ratios (`1/n`, `1/(n-1)`, …). Used when integrity fails and no
+ * {@link NormalizeLayoutOptions.fallbackLayout} is supplied.
+ */
+export function buildDefaultDwindleLayout(
+  tileIds: ReadonlyArray<string>,
+  axis: TilingSplitAxis = "horizontal",
+): TilingLayoutNode {
+  if (tileIds.length === 0) {
+    return { kind: "leaf", id: "leaf-empty", tileId: "empty" };
+  }
+  if (tileIds.length === 1) {
+    const only: string = tileIds[0]!;
+    return { kind: "leaf", id: `leaf-${only}`, tileId: only };
+  }
+  const firstTileId: string = tileIds[0]!;
+  const rest: ReadonlyArray<string> = tileIds.slice(1);
+  const first: TilingLeafNode = {
+    kind: "leaf",
+    id: `leaf-${firstTileId}`,
+    tileId: firstTileId,
+  };
+  return {
+    kind: "split",
+    id: `split-${firstTileId}`,
+    axis,
+    ratio: 1 / tileIds.length,
+    first,
+    second: buildDefaultDwindleLayout(rest, axis),
+  };
+}
+
+function geometryNormalizeLayout(
+  node: TilingLayoutNode,
+  widthPx: number,
+  heightPx: number,
+  config: TilingLayoutConfig,
+): TilingLayoutNode {
+  const structurallyNormalized: TilingLayoutNode = normalizeStaticAxisFill(node);
+  if (widthPx <= 1 || heightPx <= 1) {
+    return structurallyNormalized;
+  }
+  return normalizeLayoutNode(
+    structurallyNormalized,
+    widthPx,
+    heightPx,
+    config,
+  );
+}
+
 /**
  * Commit-time layout reconciliation: demote unfit static pins, clamp split
- * ratios against min-pane + full gutters, and enforce the
+ * ratios against min-pane + full gutters, enforce the
  * {@link normalizeStaticAxisFill} both-static filler invariant so
- * panes+gutters fill the container.
+ * panes+gutters fill the container, and (when {@link NormalizeLayoutOptions.expectedTileIds}
+ * is set) heal tile-slot integrity failures by rebuilding a sane default tree
+ * rather than leaving empty/void slots.
  *
  * Pure and idempotent when the tree already satisfies the invariants (returns
  * the same reference). Call on every resize/rearrange gesture end, on idle
@@ -293,16 +497,76 @@ export function normalizeLayout(
 ): TilingLayoutNode {
   const widthPx: number = Math.max(0, options.containerWidthPx);
   const heightPx: number = Math.max(0, options.containerHeightPx);
-  const structurallyNormalized: TilingLayoutNode = normalizeStaticAxisFill(node);
-  if (widthPx <= 1 || heightPx <= 1) {
-    return structurallyNormalized;
+
+  const expectedTileIds: ReadonlyArray<string> | undefined =
+    options.expectedTileIds;
+  let working: TilingLayoutNode = node;
+
+  if (expectedTileIds != null || options.fallbackLayout != null) {
+    const integrity: LayoutTileIntegrityReport = assessLayoutTileIntegrity(
+      working,
+      expectedTileIds != null ? { expectedTileIds } : {},
+    );
+    if (integrity.requiresRebuild) {
+      if (options.fallbackLayout != null) {
+        working = options.fallbackLayout;
+      } else if (expectedTileIds != null && expectedTileIds.length > 0) {
+        working = preserveLeafSizingByTileId(
+          node,
+          buildDefaultDwindleLayout(expectedTileIds),
+        );
+      }
+    }
   }
-  return normalizeLayoutNode(
-    structurallyNormalized,
-    widthPx,
-    heightPx,
-    options.config,
+
+  return geometryNormalizeLayout(working, widthPx, heightPx, options.config);
+}
+
+function findLeafByTileId(
+  node: TilingLayoutNode,
+  tileId: string,
+): TilingLeafNode | null {
+  if (node.kind === "leaf") {
+    return node.tileId === tileId ? node : null;
+  }
+  if (node.kind === "group") {
+    return node.members.find((member) => member.tileId === tileId) ?? null;
+  }
+  return (
+    findLeafByTileId(node.first, tileId) ?? findLeafByTileId(node.second, tileId)
   );
+}
+
+function preserveLeafSizingByTileId(
+  source: TilingLayoutNode,
+  target: TilingLayoutNode,
+): TilingLayoutNode {
+  if (target.kind === "leaf") {
+    const prior: TilingLeafNode | null = findLeafByTileId(source, target.tileId);
+    if (prior?.sizing == null) {
+      return target;
+    }
+    return { ...target, sizing: prior.sizing };
+  }
+  if (target.kind === "group") {
+    return {
+      ...target,
+      members: target.members.map((member: TilingLeafNode): TilingLeafNode => {
+        const prior: TilingLeafNode | null = findLeafByTileId(
+          source,
+          member.tileId,
+        );
+        return prior?.sizing == null
+          ? member
+          : { ...member, sizing: prior.sizing };
+      }),
+    };
+  }
+  return {
+    ...target,
+    first: preserveLeafSizingByTileId(source, target.first),
+    second: preserveLeafSizingByTileId(source, target.second),
+  };
 }
 
 interface AxisSlackWalk {

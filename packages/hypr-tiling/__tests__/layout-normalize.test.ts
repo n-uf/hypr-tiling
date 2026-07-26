@@ -1,16 +1,24 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   LAYOUT_FILL_SLACK_TOLERANCE_PX,
+  assessLayoutTileIntegrity,
   measureLayoutFillSlackPx,
   normalizeLayout,
 } from "../engine/layout-normalize";
 import { isStaticAlongSplitAxis } from "../engine/pane-sizing";
+import { tileOrderByLeafId } from "../engine/state";
 import type {
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,
   TilingSplitNode,
 } from "../engine/types";
+
+const EXPECTED_ANNOTATE_TILES: ReadonlyArray<string> = [
+  "cases",
+  "document",
+  "review",
+];
 
 const CONFIG: TilingLayoutConfig = {
   gapPx: 8,
@@ -183,5 +191,112 @@ describe("normalizeLayout", (): void => {
       config: CONFIG,
     });
     expect(slackPx).toBeGreaterThanOrEqual(LAYOUT_FILL_SLACK_TOLERANCE_PX);
+  });
+
+  it("rebuilds when a duplicate tileId leaves another expected tile unplaced", (): void => {
+    const input: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: leaf("leaf-cases", "cases", { width: "static", widthPx: 256 }),
+      second: {
+        kind: "split",
+        id: "main",
+        axis: "horizontal",
+        ratio: 0.5,
+        // Duplicate "cases" — document missing → void slot class.
+        first: leaf("leaf-dup", "cases"),
+        second: leaf("leaf-review", "review", {
+          width: "static",
+          widthPx: 384,
+        }),
+      },
+    };
+    const integrity = assessLayoutTileIntegrity(input, {
+      expectedTileIds: EXPECTED_ANNOTATE_TILES,
+    });
+    expect(integrity.requiresRebuild).toBe(true);
+    expect(integrity.duplicateTileIds).toContain("cases");
+    expect(integrity.missingTileIds).toContain("document");
+
+    const normalized: TilingLayoutNode = normalizeLayout(input, {
+      containerWidthPx: 1400,
+      containerHeightPx: 900,
+      config: CONFIG,
+      expectedTileIds: EXPECTED_ANNOTATE_TILES,
+    });
+    const order: ReadonlyArray<string> = tileOrderByLeafId(normalized);
+    expect(new Set(order)).toEqual(new Set(EXPECTED_ANNOTATE_TILES));
+    expect(order).toHaveLength(EXPECTED_ANNOTATE_TILES.length);
+    expect(
+      assessLayoutTileIntegrity(normalized, {
+        expectedTileIds: EXPECTED_ANNOTATE_TILES,
+      }).requiresRebuild,
+    ).toBe(false);
+  });
+
+  it("rebuilds via fallbackLayout when an expected tile is missing", (): void => {
+    const input: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.4,
+      first: leaf("leaf-cases", "cases"),
+      second: leaf("leaf-review", "review"),
+    };
+    const fallback: TilingLayoutNode = annotateStyleLayout();
+    const normalized: TilingLayoutNode = normalizeLayout(input, {
+      containerWidthPx: 1400,
+      containerHeightPx: 900,
+      config: CONFIG,
+      expectedTileIds: EXPECTED_ANNOTATE_TILES,
+      fallbackLayout: fallback,
+    });
+    expect([...tileOrderByLeafId(normalized)].sort()).toEqual(
+      [...EXPECTED_ANNOTATE_TILES].sort(),
+    );
+    expect(findLeaf(normalized, "leaf-document")).not.toBeNull();
+    expect(
+      isStaticAlongSplitAxis(findLeaf(normalized, "leaf-cases")!, "horizontal"),
+    ).toBe(true);
+  });
+
+  it("heals a collapsed ratio empty branch without dropping tiles", (): void => {
+    const input: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.001,
+      first: leaf("A", "a"),
+      second: {
+        kind: "split",
+        id: "main",
+        axis: "horizontal",
+        ratio: 0.999,
+        first: leaf("B", "b"),
+        second: leaf("C", "c"),
+      },
+    };
+    const integrity = assessLayoutTileIntegrity(input, {
+      expectedTileIds: ["a", "b", "c"],
+    });
+    expect(integrity.hasCollapsedRatio).toBe(true);
+    expect(integrity.requiresRebuild).toBe(false);
+
+    const normalized = normalizeLayout(input, {
+      containerWidthPx: 1200,
+      containerHeightPx: 800,
+      config: CONFIG,
+      expectedTileIds: ["a", "b", "c"],
+    }) as TilingSplitNode;
+    expect(normalized.kind).toBe("split");
+    expect(normalized.ratio).toBeGreaterThanOrEqual(0.05);
+    expect(normalized.ratio).toBeLessThanOrEqual(0.95);
+    const main = normalized.second as TilingSplitNode;
+    expect(main.kind).toBe("split");
+    expect(main.ratio).toBeGreaterThanOrEqual(0.05);
+    expect(main.ratio).toBeLessThanOrEqual(0.95);
+    expect(tileOrderByLeafId(normalized)).toEqual(["a", "b", "c"]);
   });
 });
