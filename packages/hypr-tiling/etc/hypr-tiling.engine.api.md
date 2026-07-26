@@ -144,6 +144,9 @@ export function moveLeafToSplitContainer(layout: TilingLayoutNode, sourceLeafId:
 export const MULTI_SELECT_GROUP_MIN_MEMBERS: number;
 
 // @public
+export function normalizeStaticAxisFill(node: TilingLayoutNode): TilingLayoutNode;
+
+// @public
 export function pruneFocusHistory(history: FocusHistory, validLeafIds: ReadonlyArray<string>): FocusHistory;
 
 // @public
