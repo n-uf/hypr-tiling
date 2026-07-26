@@ -63,13 +63,13 @@ describe("collectLeafFootprints — flexible (ratio) parity", (): void => {
 });
 
 describe("collectLeafFootprints — static-aware (pinned along-axis child)", (): void => {
-  it("gives a pinned static-width child its exact px, reserves gapPx, and fills the sibling", (): void => {
+  it("gives a pinned static-width child its exact px, reserves gapPx+handleSizePx, and fills the sibling", (): void => {
     // sidebar static-width pinned 200; main flexible. Horizontal split → width is along-axis.
+    // Boundary gutter = gapPx(10) + handleSizePx(4) = 14 — same total as a flexible divider.
     const layout: TilingLayoutNode = hsplit(0.5, leaf("sidebar", { width: "static", widthPx: 200 }), leaf("main"));
     const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAPPED_CONFIG));
     expect(map.get("sidebar")).toEqual({ leafId: "sidebar", left: 0, top: 0, width: 200, height: 800 });
-    // sibling FILLS the remainder after a visual gapPx gutter (no resize handle).
-    expect(map.get("main")).toEqual({ leafId: "main", left: 210, top: 0, width: 790, height: 800 });
+    expect(map.get("main")).toEqual({ leafId: "main", left: 214, top: 0, width: 786, height: 800 });
   });
 
   it("honors a pinned static-height child on a vertical split", (): void => {
@@ -100,6 +100,14 @@ describe("collectLeafFootprints — static-aware (pinned along-axis child)", ():
     expect(map.get("main")?.width).toBe(500);
   });
 
+  it("falls back to ratio when pin fits the raw container but not pin+gutter", (): void => {
+    // pin 990 + gutter 14 = 1004 > 1000 → ratio, not a crushed flexible sibling.
+    const layout: TilingLayoutNode = hsplit(0.5, leaf("sidebar", { width: "static", widthPx: 990 }), leaf("main"));
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAPPED_CONFIG));
+    expect(map.get("sidebar")?.width).toBeCloseTo(500 - 7);
+    expect(map.get("main")?.width).toBeCloseTo(500 - 7);
+  });
+
   it("falls back to ratio for an UNPINNED static-along-axis child (px unknowable)", (): void => {
     const layout: TilingLayoutNode = hsplit(0.6, leaf("sidebar", { width: "static" }), leaf("main"));
     const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
@@ -113,6 +121,80 @@ describe("collectLeafFootprints — static-aware (pinned along-axis child)", ():
     const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
     expect(map.get("A")?.width).toBe(500);
     expect(map.get("B")?.width).toBe(500);
+  });
+});
+
+describe("collectLeafFootprints — multi-static composite (nested W• pins + gaps)", (): void => {
+  // Annotate-shaped tree: cases(static) | [document(flex) | review(static)].
+  // Each inter-pane boundary reserves gapPx+handleSizePx; statics keep exact pins;
+  // the flexible middle absorbs the remainder after BOTH gutters + BOTH pins.
+  const ANNOTATE_LIKE: TilingLayoutNode = hsplit(
+    0.18,
+    leaf("cases", { width: "static", widthPx: 256 }),
+    hsplit(0.66, leaf("document"), leaf("review", { width: "static", widthPx: 384 })),
+  );
+
+  it("honors both pinned widths and reserves a full gutter on every boundary", (): void => {
+    const gutter: number = GAPPED_CONFIG.gapPx + GAPPED_CONFIG.handleSizePx; // 14
+    const map = byId(collectLeafFootprints(ANNOTATE_LIKE, 0, 0, 1200, 800, GAPPED_CONFIG));
+
+    expect(map.get("cases")).toEqual({ leafId: "cases", left: 0, top: 0, width: 256, height: 800 });
+    expect(map.get("review")).toEqual({
+      leafId: "review",
+      left: 1200 - 384,
+      top: 0,
+      width: 384,
+      height: 800,
+    });
+    const document = map.get("document");
+    expect(document).toBeDefined();
+    expect(document?.left).toBe(256 + gutter);
+    expect(document?.width).toBe(1200 - 256 - gutter - gutter - 384);
+    expect(document?.left! + document?.width! + gutter).toBe(map.get("review")!.left);
+
+    // Invariant: leaf extents + all inter-pane gutters reconstruct the container.
+    const leafWidths: number =
+      map.get("cases")!.width + map.get("document")!.width + map.get("review")!.width;
+    expect(leafWidths + 2 * gutter).toBe(1200);
+  });
+
+  it("fit-guards an inner static against the FILL remainder, not the outer container", (): void => {
+    // Outer pin 256 + gutter 14 leaves 330 for the inner split. Inner review pin
+    // 320 + gutter 14 = 334 does NOT fit 330 — must fall back to ratio inside the
+    // fill region (the multi-static defect used to fit-guard against the outer
+    // 600 and overflow the fill).
+    const tight: TilingLayoutNode = hsplit(
+      0.18,
+      leaf("cases", { width: "static", widthPx: 256 }),
+      hsplit(0.5, leaf("document"), leaf("review", { width: "static", widthPx: 320 })),
+    );
+    const gutter: number = GAPPED_CONFIG.gapPx + GAPPED_CONFIG.handleSizePx;
+    const map = byId(collectLeafFootprints(tight, 0, 0, 600, 800, GAPPED_CONFIG));
+    const fillWidth: number = 600 - 256 - gutter; // 330
+    expect(map.get("cases")?.width).toBe(256);
+    // Inner fell back to ratio inside the fill region (offset 7 each side).
+    expect(map.get("document")?.width).toBeCloseTo(fillWidth * 0.5 - 7);
+    expect(map.get("review")?.width).toBeCloseTo(fillWidth * 0.5 - 7);
+    expect(map.get("document")?.left).toBe(256 + gutter);
+  });
+
+  it("chains two leading static widths with gutters before a flexible tail", (): void => {
+    const layout: TilingLayoutNode = hsplit(
+      0.5,
+      leaf("A", { width: "static", widthPx: 200 }),
+      hsplit(0.5, leaf("B", { width: "static", widthPx: 200 }), leaf("C")),
+    );
+    const gutter: number = GAPPED_CONFIG.gapPx + GAPPED_CONFIG.handleSizePx;
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAPPED_CONFIG));
+    expect(map.get("A")).toMatchObject({ left: 0, width: 200 });
+    expect(map.get("B")).toMatchObject({ left: 200 + gutter, width: 200 });
+    expect(map.get("C")).toMatchObject({
+      left: 200 + gutter + 200 + gutter,
+      width: 1000 - 400 - 2 * gutter,
+    });
+    expect(
+      map.get("A")!.width + map.get("B")!.width + map.get("C")!.width + 2 * gutter,
+    ).toBe(1000);
   });
 });
 

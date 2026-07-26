@@ -139,7 +139,9 @@ import {
   isStaticOnCrossAxis,
   measuredStaticSizing,
   resolveBinarySplitDistribution,
+  resolveStaticAlongExtents,
   resolveSizingMode,
+  splitBoundaryGutterPx,
   titleBarSizingModeId,
   type SplitChildMainSizing,
 } from "../engine/pane-sizing";
@@ -7570,11 +7572,16 @@ const TilingRendererComponent = React.forwardRef<
         });
       const renderDivider: boolean =
         dividerRenderMode !== "render-divider-absent";
-      // Static-along boundaries omit the resize handle but still reserve a
-      // transparent `gapPx` spacer so gutters match flexible splits (and host
-      // chrome shows through — root/viewport themes must not invent a fill).
+      // Static-along boundaries omit the resize handle but still reserve the
+      // FULL boundary gutter (`gapPx + handleSizePx`) via a transparent spacer
+      // so W•/H• locks keep gutter parity with flexible splits (and host chrome
+      // shows through — root/viewport themes must not invent a fill).
+      const boundaryGutterPx: number = splitBoundaryGutterPx(
+        resolvedGapPx,
+        config.handleSizePx,
+      );
       const renderStaticGapSpacer: boolean =
-        !renderDivider && resolvedGapPx > 0;
+        !renderDivider && boundaryGutterPx > 0;
       const isRenderedDividerInteractive: boolean =
         dividerRenderMode === "render-divider-enabled-visible" ||
         dividerRenderMode === "render-divider-enabled-hidden";
@@ -7582,7 +7589,7 @@ const TilingRendererComponent = React.forwardRef<
         dividerRenderMode === "render-divider-enabled-visible" ||
         dividerRenderMode === "render-divider-disabled-visible";
       const splitGapOffsetPx: number = renderDivider
-        ? (resolvedGapPx + config.handleSizePx) / 2
+        ? boundaryGutterPx / 2
         : 0;
       const distribution = resolveBinarySplitDistribution(
         firstStaticAlongAxis,
@@ -7605,15 +7612,61 @@ const TilingRendererComponent = React.forwardRef<
           flexBasis: `calc(${sizing.basisFraction * 100}% - ${splitGapOffsetPx}px)`,
         };
       };
-      const childMainPx = (sizing: SplitChildMainSizing): number =>
-        sizing.kind === "ratio"
-          ? Math.max(
-              0,
-              axisContainerSizePx * sizing.basisFraction - splitGapOffsetPx,
+
+      // Nested branches need the TRUE along-axis px for content/fill children
+      // (pin / remainder-after-pin+gutter). Passing the parent container size for
+      // both arms was the multi-static composite defect: an inner static pin
+      // would fit-guard against the outer width and overflow the fill region.
+      const alongPinPx = (child: TilingLayoutNode): number | null => {
+        if (!isStaticAlongSplitAxis(child, node.axis)) {
+          return null;
+        }
+        const pinPx: number | undefined = isHorizontal
+          ? child.sizing?.widthPx
+          : child.sizing?.heightPx;
+        if (pinPx == null || !Number.isFinite(pinPx) || pinPx <= 0) {
+          return null;
+        }
+        return pinPx;
+      };
+      const firstPinPx: number | null = alongPinPx(node.first);
+      const secondPinPx: number | null = alongPinPx(node.second);
+      const staticExtents =
+        distribution.first.kind === "content" && firstPinPx != null
+          ? resolveStaticAlongExtents(
+              axisContainerSizePx,
+              firstPinPx,
+              true,
+              resolvedGapPx,
+              config.handleSizePx,
             )
-          : axisContainerSizePx;
-      const firstMainPx: number = childMainPx(distribution.first);
-      const secondMainPx: number = childMainPx(distribution.second);
+          : distribution.second.kind === "content" && secondPinPx != null
+            ? resolveStaticAlongExtents(
+                axisContainerSizePx,
+                secondPinPx,
+                false,
+                resolvedGapPx,
+                config.handleSizePx,
+              )
+            : null;
+
+      const childMainPx = (sizing: SplitChildMainSizing): number => {
+        if (sizing.kind === "ratio") {
+          return Math.max(
+            0,
+            axisContainerSizePx * sizing.basisFraction - splitGapOffsetPx,
+          );
+        }
+        return axisContainerSizePx;
+      };
+      const firstMainPx: number =
+        staticExtents != null
+          ? staticExtents.firstPx
+          : childMainPx(distribution.first);
+      const secondMainPx: number =
+        staticExtents != null
+          ? staticExtents.secondPx
+          : childMainPx(distribution.second);
       const firstBranchWidthPx: number = isHorizontal
         ? firstMainPx
         : containerWidthPx;
@@ -7759,8 +7812,8 @@ const TilingRendererComponent = React.forwardRef<
               className="shrink-0 bg-transparent"
               style={
                 isHorizontal
-                  ? { width: resolvedGapPx, height: "100%" }
-                  : { height: resolvedGapPx, width: "100%" }
+                  ? { width: boundaryGutterPx, height: "100%" }
+                  : { height: boundaryGutterPx, width: "100%" }
               }
             />
           ) : null}

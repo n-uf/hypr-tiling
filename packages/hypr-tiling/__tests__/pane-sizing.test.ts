@@ -8,9 +8,11 @@ import {
   measuredStaticSizing,
   renormalizeFlexibleRatios,
   resolveBinarySplitDistribution,
+  resolveStaticAlongExtents,
   resolveSizingMode,
   shouldRenderSplitDivider,
   splitAxisDimension,
+  splitBoundaryGutterPx,
   titleBarSizingModeId,
 } from "../engine/pane-sizing";
 import type { TilingLeafNode, TilingLayoutNode, TilingPaneSizing } from "../engine/types";
@@ -267,6 +269,36 @@ describe("resolveBinarySplitDistribution", () => {
         distribution.first.kind === "content" && distribution.second.kind === "content";
       expect(bothContent).toBe(false);
     }
+  });
+});
+
+describe("splitBoundaryGutterPx / resolveStaticAlongExtents", () => {
+  it("boundary gutter is gapPx + handleSizePx (flexible and static share the same total)", () => {
+    expect(splitBoundaryGutterPx(8, 4)).toBe(12);
+    expect(splitBoundaryGutterPx(0, 4)).toBe(4);
+    expect(splitBoundaryGutterPx(8, 0)).toBe(8);
+    expect(splitBoundaryGutterPx(-2, -3)).toBe(0);
+  });
+
+  it("static-first: pin exact, gutter reserved, flexible fills remainder", () => {
+    expect(resolveStaticAlongExtents(1000, 200, true, 10, 4)).toEqual({
+      firstPx: 200,
+      secondPx: 786,
+      gutterPx: 14,
+    });
+  });
+
+  it("static-second: flexible fills leading remainder after pin + gutter", () => {
+    expect(resolveStaticAlongExtents(1000, 384, false, 8, 4)).toEqual({
+      firstPx: 1000 - 384 - 12,
+      secondPx: 384,
+      gutterPx: 12,
+    });
+  });
+
+  it("returns null when pin + gutter cannot fit (fit-guard)", () => {
+    expect(resolveStaticAlongExtents(1000, 990, true, 10, 4)).toBeNull();
+    expect(resolveStaticAlongExtents(1000, 0, true, 10, 4)).toBeNull();
   });
 });
 

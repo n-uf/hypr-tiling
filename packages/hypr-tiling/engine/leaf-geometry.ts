@@ -1,4 +1,10 @@
-import { clampByMinSize, isStaticAlongSplitAxis, splitAxisDimension } from "./pane-sizing";
+import {
+  clampByMinSize,
+  isStaticAlongSplitAxis,
+  resolveStaticAlongExtents,
+  splitAxisDimension,
+  splitBoundaryGutterPx,
+} from "./pane-sizing";
 import type {
   TilingLayoutConfig,
   TilingLayoutNode,
@@ -63,9 +69,10 @@ function alongAxisPinPx(node: TilingLayoutNode, axis: TilingSplitAxis): number |
 
 /**
  * Distribute a split's along-axis extent when ONE child is static-along-axis
- * with a fitting pin: the static child takes exactly `staticPinPx`, a visual
- * `gapPx` gutter is reserved between siblings (no resize handle — matches the
- * renderer static spacer), and the flexible sibling FILLS the remainder.
+ * with a fitting pin: the static child takes exactly `staticPinPx`, a full
+ * boundary gutter (`gapPx + handleSizePx`) is reserved between siblings (no
+ * resize handle — matches the renderer static spacer), and the flexible sibling
+ * FILLS the remainder.
  */
 function collectStaticAlongFootprints(
   node: { axis: TilingSplitAxis; first: TilingLayoutNode; second: TilingLayoutNode },
@@ -74,39 +81,32 @@ function collectStaticAlongFootprints(
   width: number,
   height: number,
   config: TilingLayoutConfig,
-  staticPinPx: number,
-  staticIsFirst: boolean,
-  gapPx: number,
+  firstPx: number,
+  secondPx: number,
+  gutterPx: number,
 ): ReadonlyArray<TilingLeafFootprint> {
-  const gutterPx: number = Math.max(0, gapPx);
   if (node.axis === "horizontal") {
-    const flexibleWidth: number = Math.max(0, width - staticPinPx - gutterPx);
-    const firstWidth: number = staticIsFirst ? staticPinPx : flexibleWidth;
-    const secondWidth: number = staticIsFirst ? flexibleWidth : staticPinPx;
     return [
-      ...collectLeafFootprints(node.first, left, top, firstWidth, height, config),
+      ...collectLeafFootprints(node.first, left, top, firstPx, height, config),
       ...collectLeafFootprints(
         node.second,
-        left + firstWidth + gutterPx,
+        left + firstPx + gutterPx,
         top,
-        secondWidth,
+        secondPx,
         height,
         config,
       ),
     ];
   }
 
-  const flexibleHeight: number = Math.max(0, height - staticPinPx - gutterPx);
-  const firstHeight: number = staticIsFirst ? staticPinPx : flexibleHeight;
-  const secondHeight: number = staticIsFirst ? flexibleHeight : staticPinPx;
   return [
-    ...collectLeafFootprints(node.first, left, top, width, firstHeight, config),
+    ...collectLeafFootprints(node.first, left, top, width, firstPx, config),
     ...collectLeafFootprints(
       node.second,
       left,
-      top + firstHeight + gutterPx,
+      top + firstPx + gutterPx,
       width,
-      secondHeight,
+      secondPx,
       config,
     ),
   ];
@@ -326,53 +326,66 @@ export function collectLeafFootprints(
   const axisContainerSizePx: number = node.axis === "horizontal" ? width : height;
 
   // Static-aware arm: a child static ALONG the split axis with a fitting pin
-  // (`pin + gap < axisSize`, so the sibling keeps a positive extent after the
-  // visual gutter) is content-sized to that pin, a `gapPx` gutter is reserved,
-  // and the sibling fills the rest. The fit-guard also makes the normalized
-  // unit-space wrapper (axisSize ~= 1) fall through to ratio — a CSS px pin is
-  // undefined against a 1-unit container. `normalizeStaticAxisFill` forbids a
-  // stored both-static-along-axis split, so at most one child is static-along
-  // here; the first-static arm wins (matches the renderer
-  // `resolveBinarySplitDistribution` `{content, fill}` precedence) if both ever
-  // reach this point on an unnormalized tree.
+  // (`pin + gutter < axisSize`, gutter = gapPx + handleSizePx) is content-sized
+  // to that pin, the full boundary gutter is reserved, and the sibling fills the
+  // rest. The fit-guard also makes the normalized unit-space wrapper
+  // (axisSize ~= 1) fall through to ratio — a CSS px pin is undefined against a
+  // 1-unit container. `normalizeStaticAxisFill` forbids a stored
+  // both-static-along-axis split, so at most one child is static-along here; the
+  // first-static arm wins (matches the renderer `resolveBinarySplitDistribution`
+  // `{content, fill}` precedence) if both ever reach this point on an
+  // unnormalized tree.
   const resolvedGapPx: number = node.gapPx ?? config.gapPx;
+  const boundaryGutterPx: number = splitBoundaryGutterPx(resolvedGapPx, config.handleSizePx);
   const firstStaticAlong: boolean = isStaticAlongSplitAxis(node.first, node.axis);
   const secondStaticAlong: boolean = isStaticAlongSplitAxis(node.second, node.axis);
   if (firstStaticAlong) {
     const firstPinPx: number | null = alongAxisPinPx(node.first, node.axis);
-    if (
-      firstPinPx != null &&
-      firstPinPx + Math.max(0, resolvedGapPx) < axisContainerSizePx
-    ) {
-      return collectStaticAlongFootprints(
-        node,
-        left,
-        top,
-        width,
-        height,
-        config,
+    if (firstPinPx != null) {
+      const extents = resolveStaticAlongExtents(
+        axisContainerSizePx,
         firstPinPx,
         true,
         resolvedGapPx,
+        config.handleSizePx,
       );
+      if (extents != null) {
+        return collectStaticAlongFootprints(
+          node,
+          left,
+          top,
+          width,
+          height,
+          config,
+          extents.firstPx,
+          extents.secondPx,
+          extents.gutterPx,
+        );
+      }
     }
   } else if (secondStaticAlong) {
     const secondPinPx: number | null = alongAxisPinPx(node.second, node.axis);
-    if (
-      secondPinPx != null &&
-      secondPinPx + Math.max(0, resolvedGapPx) < axisContainerSizePx
-    ) {
-      return collectStaticAlongFootprints(
-        node,
-        left,
-        top,
-        width,
-        height,
-        config,
+    if (secondPinPx != null) {
+      const extents = resolveStaticAlongExtents(
+        axisContainerSizePx,
         secondPinPx,
         false,
         resolvedGapPx,
+        config.handleSizePx,
       );
+      if (extents != null) {
+        return collectStaticAlongFootprints(
+          node,
+          left,
+          top,
+          width,
+          height,
+          config,
+          extents.firstPx,
+          extents.secondPx,
+          extents.gutterPx,
+        );
+      }
     }
   }
   const resolvedMinPaneSizePx: number = node.minPaneSizePx ?? config.minPaneSizePx;
@@ -382,7 +395,7 @@ export function collectLeafFootprints(
     resolvedGapPx,
     resolvedMinPaneSizePx,
   );
-  const splitGapOffsetPx: number = (resolvedGapPx + config.handleSizePx) / 2;
+  const splitGapOffsetPx: number = boundaryGutterPx / 2;
 
   if (node.axis === "horizontal") {
     const firstWidth: number = Math.max(0, width * safeRatio - splitGapOffsetPx);

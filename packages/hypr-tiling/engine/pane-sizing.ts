@@ -218,6 +218,45 @@ export interface BinarySplitDistribution {
 }
 
 /**
+ * Total along-axis px reserved between two sibling panes at a binary split
+ * boundary. Flexible boundaries render a handle of `handleSizePx` flanked by
+ * `gapPx / 2` margins; static-along boundaries omit the handle but reserve the
+ * SAME total via a transparent spacer so W• / H• locks keep gutter parity with
+ * unlocked neighbors (and so multi-static composites don't accumulate a
+ * per-boundary shortfall of `handleSizePx`).
+ * @internal
+ */
+export function splitBoundaryGutterPx(gapPx: number, handleSizePx: number): number {
+  return Math.max(0, gapPx) + Math.max(0, handleSizePx);
+}
+
+/**
+ * Resolved along-axis extents for a static-along binary split: the pinned child
+ * takes exactly `staticPinPx`, a full boundary gutter is reserved, and the
+ * flexible sibling fills the remainder. Returns `null` when the pin + gutter
+ * cannot fit (caller falls back to ratio distribution).
+ * @internal
+ */
+export function resolveStaticAlongExtents(
+  containerPx: number,
+  staticPinPx: number,
+  staticIsFirst: boolean,
+  gapPx: number,
+  handleSizePx: number,
+): { firstPx: number; secondPx: number; gutterPx: number } | null {
+  const gutterPx: number = splitBoundaryGutterPx(gapPx, handleSizePx);
+  if (!(staticPinPx > 0 && staticPinPx + gutterPx < containerPx)) {
+    return null;
+  }
+  const flexiblePx: number = Math.max(0, containerPx - staticPinPx - gutterPx);
+  return {
+    firstPx: staticIsFirst ? staticPinPx : flexiblePx,
+    secondPx: staticIsFirst ? flexiblePx : staticPinPx,
+    gutterPx,
+  };
+}
+
+/**
  * Resolve how the two children of a binary split are sized ALONG the split axis,
  * given each child's static-along-axis flag and the split ratio:
  *
