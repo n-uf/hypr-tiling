@@ -47,6 +47,15 @@
         -webkit-font-smoothing: antialiased;
         text-rendering: optimizeLegibility;
       }
+      /* Suppress UA focus frames on shell tabs/buttons; custom chrome uses
+         border/fill. Divider focus rings use box-shadow (Tailwind ring). */
+      :is(button, [role="tab"], a, summary):focus,
+      :is(button, [role="tab"], a, summary):focus-visible {
+        outline: none;
+      }
+      :is(button, [role="tab"], a, summary) {
+        -webkit-tap-highlight-color: transparent;
+      }
       /* Mosaic motion: a single considered entrance for the shell, plus a
          staggered settle for panes. Everything is disabled under
          prefers-reduced-motion. */

@@ -3670,6 +3670,31 @@ function PaneTabStrip({
 const PANE_SWITCHER_OVERLAY_Z_INDEX: number = 240;
 
 /**
+ * Scoped chrome stylesheet: kill browser-native focus outlines on tabs/buttons
+ * inside the tiling root. Custom focus is border/fill (`resolveFocusFrame`,
+ * active tab chips); divider `focus-visible:ring-*` uses box-shadow, not outline.
+ * React 19 hoists+dedupes `<style href>` so this lands once per document.
+ */
+const TILING_CHROME_STYLE_HREF: string = "hypr-tiling-chrome-focus";
+const TILING_CHROME_CSS: string = `
+.hpt-root :is(button, [role="tab"], a, summary):focus,
+.hpt-root :is(button, [role="tab"], a, summary):focus-visible {
+  outline: none;
+}
+.hpt-root :is(button, [role="tab"], a, summary) {
+  -webkit-tap-highlight-color: transparent;
+}
+`;
+
+function TilingChromeStyles(): React.ReactElement {
+  return (
+    <style href={TILING_CHROME_STYLE_HREF} precedence="default">
+      {TILING_CHROME_CSS}
+    </style>
+  );
+}
+
+/**
  * macOS Cmd+Tab-style centered switcher overlay. Lists every pane as a small
  * card (number + title) and highlights the currently-selected pane. Driven by
  * the held-modifier cycle flow; clicking a card commits that selection
@@ -3709,7 +3734,7 @@ function PaneSwitcherOverlay({
                   title={`select pane ${tab.leafId} (Alt+${tabIndex + 1})`}
                   onClick={(): void => onSelect(tab.leafId)}
                   className={cn(
-                    "flex w-28 flex-col items-start gap-1 rounded-lg border px-2.5 py-2 text-left transition-colors",
+                    "flex w-28 flex-col items-start gap-1 rounded-lg border px-2.5 py-2 text-left outline-none transition-colors",
                     isSelected
                       ? theme.resolveTabActive(tab.accent)
                       : theme.topBar.switcherCardInactive,
@@ -7415,7 +7440,7 @@ const TilingRendererComponent = React.forwardRef<
                           });
                         }}
                         className={cn(
-                          "flex shrink-0 items-center gap-1.5 rounded px-2 py-1 transition-colors",
+                          "flex shrink-0 items-center gap-1.5 rounded px-2 py-1 outline-none transition-colors",
                           isActiveMember
                             ? "text-inherit"
                             : "hover:border-white/25 hover:text-slate-200",
@@ -7443,7 +7468,7 @@ const TilingRendererComponent = React.forwardRef<
                               memberId: member.id,
                             });
                           }}
-                          className="hpt-group-tab-remove mr-0.5 rounded border border-white/10 px-1 py-0.5 text-[9px] text-slate-500 transition-colors hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-rose-200"
+                          className="hpt-group-tab-remove mr-0.5 rounded border border-white/10 px-1 py-0.5 text-[9px] text-slate-500 outline-none transition-colors hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-rose-200"
                         >
                           ×
                         </button>
@@ -7928,6 +7953,7 @@ const TilingRendererComponent = React.forwardRef<
       ref={rootRef}
       tabIndex={-1}
       className={cn(
+        "hpt-root",
         theme.root.container,
         // Suppress native text selection across panes for the whole drag
         // gesture (`select-none` emits both `-webkit-user-select` and
@@ -7946,6 +7972,7 @@ const TilingRendererComponent = React.forwardRef<
         isPointerWithinRootRef.current = false;
       }}
     >
+      <TilingChromeStyles />
       {showTabStrip && paneTabs.length > 0 ? (
         <div className="mb-1.5 shrink-0">
           <PaneTabStrip

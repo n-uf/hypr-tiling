@@ -172,7 +172,7 @@ const SKIN_CHROME: Record<HomeSkin, SkinChromeTokens> = {
     tabRail:
       "flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
     tabBase:
-      "flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors",
+      "flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] outline-none transition-colors",
     tabActive: "border-amber-300/55 bg-amber-300/10 text-amber-100",
     tabInactive:
       "border-white/[0.07] bg-white/[0.02] text-stone-400 hover:border-white/20 hover:text-stone-100",
@@ -195,7 +195,7 @@ const SKIN_CHROME: Record<HomeSkin, SkinChromeTokens> = {
     tabRail:
       "flex min-w-0 flex-1 items-center gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
     tabBase:
-      "flex shrink-0 items-baseline gap-1.5 border-b-2 pb-0.5 pt-1 font-mono text-[10px] uppercase tracking-[0.16em] transition-colors",
+      "flex shrink-0 items-baseline gap-1.5 border-b-2 pb-0.5 pt-1 font-mono text-[10px] uppercase tracking-[0.16em] outline-none transition-colors",
     tabActive: "border-b-[#241f17] text-[#241f17]",
     tabInactive:
       "border-b-transparent text-[#9c8f77] hover:text-[#241f17]",
@@ -218,7 +218,7 @@ const SKIN_CHROME: Record<HomeSkin, SkinChromeTokens> = {
     tabRail:
       "flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
     tabBase:
-      "flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors",
+      "flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] outline-none transition-colors",
     tabActive: "border-cyan-300 bg-cyan-50 text-cyan-700",
     tabInactive:
       "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-800",

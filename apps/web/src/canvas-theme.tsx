@@ -98,7 +98,7 @@ export const CANVAS_THEME: TilingTheme = {
     controlGroup:
       "flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-1",
     tabBase:
-      "flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors",
+      "flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] outline-none transition-colors",
     tabInactive:
       "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-800",
     switcherCard:

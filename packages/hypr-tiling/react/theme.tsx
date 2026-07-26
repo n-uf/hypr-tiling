@@ -494,7 +494,7 @@ const NEON_TERMINAL_THEME: TilingTheme = {
     controlGroup:
       "flex shrink-0 items-center gap-1 rounded-md border border-white/10 bg-zinc-950/60 px-1.5 py-1",
     tabBase:
-      "flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
+      "flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] outline-none transition-colors",
     tabInactive:
       "border-white/15 bg-zinc-950/80 text-slate-300 hover:border-white/30 hover:text-slate-100",
     switcherCard:
@@ -583,7 +583,7 @@ const CLEAN_FLAT_THEME: TilingTheme = {
     controlGroup:
       "flex shrink-0 items-center gap-1 rounded-md border border-slate-700/60 bg-slate-800/50 px-1.5 py-1",
     tabBase:
-      "flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
+      "flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] outline-none transition-colors",
     tabInactive:
       "border-slate-700/60 bg-slate-800/40 text-slate-400 hover:border-slate-500 hover:text-slate-100",
     switcherCard:
@@ -668,7 +668,7 @@ const MOSAIC_THEME: TilingTheme = {
     controlGroup:
       "flex shrink-0 items-center gap-1 rounded-md border border-white/[0.07] bg-white/[0.02] px-1.5 py-1",
     tabBase:
-      "flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors",
+      "flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] outline-none transition-colors",
     tabInactive:
       "border-white/[0.07] bg-white/[0.02] text-stone-400 hover:border-white/20 hover:text-stone-100",
     switcherCard:
