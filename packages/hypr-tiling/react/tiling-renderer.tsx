@@ -167,6 +167,12 @@ import {
   resolveProjectedDropLayout,
   resolveProjectedLandingOverlays,
 } from "../engine/projected-layout";
+import {
+  LAYOUT_FILL_SLACK_TOLERANCE_PX,
+  LAYOUT_RECONCILE_IDLE_MS,
+  measureLayoutFillSlackPx,
+  normalizeLayout,
+} from "../engine/layout-normalize";
 import type { TilingGrowConstraints } from "../engine/state";
 import {
   addLeafToGroup,
@@ -4142,6 +4148,17 @@ const TilingRendererComponent = React.forwardRef<
   layoutRef.current = layout;
   const onLayoutChangeRef = React.useRef(onLayoutChange);
   onLayoutChangeRef.current = onLayoutChange;
+  const configRef = React.useRef(config);
+  configRef.current = config;
+  const viewportSizeRef = React.useRef(viewportSize);
+  viewportSizeRef.current = viewportSize;
+  // Live resize ratio updates are rAF-coalesced (one layout commit per frame).
+  // Pending values flush on pointerup before commit-time normalizeLayout.
+  const pendingResizeRatioRef = React.useRef<number | null>(null);
+  const resizeRafHandleRef = React.useRef<number | null>(null);
+  const layoutIdleSettleHandleRef = React.useRef<number | null>(null);
+  const resizeStateRef = React.useRef<TilingSplitResizeState | null>(null);
+  resizeStateRef.current = resizeState;
   // SINGLE drag-lifecycle owner (Pointer Events + explicit FSM). Replaces the
   // scattered HTML5-DnD state slots (`dragSourceLeafId` / `dropState` /
   // `dragHoverLeafId` / `dragVisualState` useStates + `didDropSucceedRef` /
@@ -5057,10 +5074,126 @@ const TilingRendererComponent = React.forwardRef<
     [],
   );
 
+  const cancelLayoutIdleSettle = React.useCallback((): void => {
+    if (layoutIdleSettleHandleRef.current != null) {
+      WINDOW_SCHEDULER_PORT.clearTimer(layoutIdleSettleHandleRef.current);
+      layoutIdleSettleHandleRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Commit-time layout reconciliation — demote unfit pins, clamp ratios, ensure
+   * panes+gutters fill the viewport. Emits through `onLayoutChange` only when
+   * the tree actually changes (idempotent when already reconciled).
+   */
+  const commitNormalizedLayout = React.useCallback(
+    (tree: TilingLayoutNode): TilingLayoutNode => {
+      const normalized: TilingLayoutNode = normalizeLayout(tree, {
+        containerWidthPx: viewportSizeRef.current.width,
+        containerHeightPx: viewportSizeRef.current.height,
+        config: configRef.current,
+      });
+      if (normalized !== tree) {
+        onLayoutChangeRef.current(normalized);
+      }
+      return normalized;
+    },
+    [],
+  );
+
+  const armLayoutIdleSettle = React.useCallback((): void => {
+    cancelLayoutIdleSettle();
+    layoutIdleSettleHandleRef.current = WINDOW_SCHEDULER_PORT.setTimer((): void => {
+      layoutIdleSettleHandleRef.current = null;
+      // Skip while a resize gesture is live — commit-time normalize on pointerup
+      // is authoritative; idle settle is the belt-and-suspenders path.
+      if (
+        resizeStateRef.current != null ||
+        resizeRafHandleRef.current != null ||
+        pendingResizeRatioRef.current != null
+      ) {
+        return;
+      }
+      commitNormalizedLayout(layoutRef.current);
+    }, LAYOUT_RECONCILE_IDLE_MS);
+  }, [cancelLayoutIdleSettle, commitNormalizedLayout]);
+
+  // Dev fill invariant: if geometry underflows/overflows by ≥1px, log and force
+  // normalize so voids cannot stick after a missed commit path.
+  React.useEffect((): void => {
+    const isDev: boolean =
+      typeof process !== "undefined" &&
+      process.env != null &&
+      process.env.NODE_ENV !== "production";
+    if (!isDev) {
+      return;
+    }
+    if (viewportSize.width <= 1 || viewportSize.height <= 1) {
+      return;
+    }
+    // Avoid fighting an in-flight resize coalesce.
+    if (resizeState != null) {
+      return;
+    }
+    const slackPx: number = measureLayoutFillSlackPx(layout, {
+      containerWidthPx: viewportSize.width,
+      containerHeightPx: viewportSize.height,
+      config,
+    });
+    if (slackPx < LAYOUT_FILL_SLACK_TOLERANCE_PX) {
+      return;
+    }
+    console.warn(
+      `[hypr-tiling] layout fill invariant violated (slack=${slackPx.toFixed(2)}px); forcing normalizeLayout`,
+    );
+    commitNormalizedLayout(layout);
+  }, [
+    commitNormalizedLayout,
+    config,
+    layout,
+    resizeState,
+    viewportSize.height,
+    viewportSize.width,
+  ]);
+
   React.useEffect((): (() => void) | void => {
     if (resizeState == null) {
       return;
     }
+
+    const flushPendingResizeRatio = (): void => {
+      if (resizeRafHandleRef.current != null) {
+        WINDOW_SCHEDULER_PORT.cancelFrame(resizeRafHandleRef.current);
+        resizeRafHandleRef.current = null;
+      }
+      const pendingRatio: number | null = pendingResizeRatioRef.current;
+      pendingResizeRatioRef.current = null;
+      if (pendingRatio == null) {
+        return;
+      }
+      onLayoutChangeRef.current(
+        updateSplitRatio(layoutRef.current, resizeState.splitId, pendingRatio),
+      );
+    };
+
+    const scheduleResizeRatio = (nextRatio: number): void => {
+      pendingResizeRatioRef.current = nextRatio;
+      if (resizeRafHandleRef.current != null) {
+        return;
+      }
+      resizeRafHandleRef.current = WINDOW_SCHEDULER_PORT.requestFrame((): void => {
+        resizeRafHandleRef.current = null;
+        const pendingRatio: number | null = pendingResizeRatioRef.current;
+        pendingResizeRatioRef.current = null;
+        if (pendingRatio == null) {
+          return;
+        }
+        onLayoutChangeRef.current(
+          updateSplitRatio(layoutRef.current, resizeState.splitId, pendingRatio),
+        );
+        armLayoutIdleSettle();
+      });
+    };
 
     const handlePointerMove = (event: PointerEvent): void => {
       const deltaPx: number =
@@ -5073,13 +5206,14 @@ const TilingRendererComponent = React.forwardRef<
         resizeState.gapPx,
         resizeState.minPaneSizePx,
       );
-
-      onLayoutChangeRef.current(
-        updateSplitRatio(layoutRef.current, resizeState.splitId, nextRatio),
-      );
+      scheduleResizeRatio(nextRatio);
     };
 
     const endResize = (): void => {
+      flushPendingResizeRatio();
+      // Commit-time reconciliation is mandatory on every resize end edge.
+      commitNormalizedLayout(layoutRef.current);
+      armLayoutIdleSettle();
       setResizeState(null);
     };
 
@@ -5093,8 +5227,25 @@ const TilingRendererComponent = React.forwardRef<
       window.removeEventListener("pointerup", endResize);
       window.removeEventListener("pointercancel", endResize);
       window.removeEventListener("lostpointercapture", endResize);
+      // Effect cleanup must NOT end the gesture (layout identity changes no
+      // longer rebind this effect). Cancel only a stray coalesced frame so a
+      // torn-down subscription cannot leak a rAF into the next gesture.
+      if (resizeRafHandleRef.current != null) {
+        WINDOW_SCHEDULER_PORT.cancelFrame(resizeRafHandleRef.current);
+        resizeRafHandleRef.current = null;
+      }
     };
-  }, [resizeState]);
+  }, [armLayoutIdleSettle, commitNormalizedLayout, resizeState]);
+
+  React.useEffect((): (() => void) => {
+    return (): void => {
+      cancelLayoutIdleSettle();
+      if (resizeRafHandleRef.current != null) {
+        WINDOW_SCHEDULER_PORT.cancelFrame(resizeRafHandleRef.current);
+        resizeRafHandleRef.current = null;
+      }
+    };
+  }, [cancelLayoutIdleSettle]);
 
   const beginResize = React.useCallback(
     (
@@ -5381,16 +5532,22 @@ const TilingRendererComponent = React.forwardRef<
     ) {
       return;
     }
-    onLayoutChange(
-      insertLeafAdjacent(
-        layout,
-        current.sourceLeafId,
-        current.targetLeafId,
-        current.placement,
-      ),
+    const nextLayout: TilingLayoutNode = insertLeafAdjacent(
+      layout,
+      current.sourceLeafId,
+      current.targetLeafId,
+      current.placement,
     );
+    onLayoutChange(
+      normalizeLayout(nextLayout, {
+        containerWidthPx: viewportSizeRef.current.width,
+        containerHeightPx: viewportSizeRef.current.height,
+        config: configRef.current,
+      }),
+    );
+    armLayoutIdleSettle();
     setFocusedLeaf(current.sourceLeafId);
-  }, [controller, layout, onLayoutChange, setFocusedLeaf]);
+  }, [armLayoutIdleSettle, controller, layout, onLayoutChange, setFocusedLeaf]);
 
   // The ONE effectful command router (HT-API-COMMAND-KEYBOARD-SURFACE §7). Both
   // the keyboard layer and the imperative `dispatch` handle funnel a
@@ -6727,7 +6884,15 @@ const TilingRendererComponent = React.forwardRef<
     // sound candidates commit through the SAME reducer args as the last preview
     // frame (no release-time jump).
     if (committedTree != null && isStructurallyValidLayout(committedTree)) {
-      onLayoutChange(committedTree);
+      // Rearrange commit-time reconciliation (same normalizeLayout as resize
+      // pointerup) so unfit pins / ratios cannot persist after a drop.
+      const reconciledTree: TilingLayoutNode = normalizeLayout(committedTree, {
+        containerWidthPx: viewportSizeRef.current.width,
+        containerHeightPx: viewportSizeRef.current.height,
+        config: configRef.current,
+      });
+      onLayoutChange(reconciledTree);
+      armLayoutIdleSettle();
       // Focus follows the dragged pane through the drop: focus the leaf the
       // dragged content now occupies (the resolved target for a swap, the source
       // leaf for an edge-insert / group-merge). The dragged pane therefore ends
@@ -6760,6 +6925,7 @@ const TilingRendererComponent = React.forwardRef<
     didPaintDraggingFrameRef.current = false;
     dispatchDrag({ type: "SETTLE_DONE" });
   }, [
+    armLayoutIdleSettle,
     beginCancelFlyBackAnimation,
     dragState,
     layout,

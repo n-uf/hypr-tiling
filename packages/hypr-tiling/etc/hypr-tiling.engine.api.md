@@ -123,6 +123,12 @@ export function isStructurallyValidLayout(node: TilingLayoutNode): boolean;
 export function keyboardActionToCommand(action: TilingKeyboardAction): TilingCommand;
 
 // @public
+export const LAYOUT_FILL_SLACK_TOLERANCE_PX: number;
+
+// @public
+export const LAYOUT_RECONCILE_IDLE_MS: number;
+
+// @public
 export function layoutContainsStaticPane(node: TilingLayoutNode): boolean;
 
 // @public
@@ -135,6 +141,9 @@ export function matchKeyChord(event: TilingKeyboardEventLike, chord: ResolvedTil
 export function matchKeymapAction(event: TilingKeyboardEventLike, keymap: ResolvedTilingKeymap, guards: TilingKeymapActionGuards): TilingKeyboardAction | null;
 
 // @public
+export function measureLayoutFillSlackPx(node: TilingLayoutNode, options: NormalizeLayoutOptions): number;
+
+// @public
 export function moveLeafToRoot(layout: TilingLayoutNode, sourceLeafId: string, placement: "first" | "second", options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
 
 // @public
@@ -142,6 +151,16 @@ export function moveLeafToSplitContainer(layout: TilingLayoutNode, sourceLeafId:
 
 // @public
 export const MULTI_SELECT_GROUP_MIN_MEMBERS: number;
+
+// @public
+export function normalizeLayout(node: TilingLayoutNode, options: NormalizeLayoutOptions): TilingLayoutNode;
+
+// @public
+export interface NormalizeLayoutOptions {
+    config: TilingLayoutConfig;
+    containerHeightPx: number;
+    containerWidthPx: number;
+}
 
 // @public
 export function normalizeStaticAxisFill(node: TilingLayoutNode): TilingLayoutNode;

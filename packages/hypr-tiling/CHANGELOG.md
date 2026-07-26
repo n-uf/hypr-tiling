@@ -8,6 +8,15 @@ the version number alone does not flag them.
 
 ## Unreleased
 
+- **Layout reconciliation (`normalizeLayout`).** Commit-time normalization on
+  every resize/rearrange `pointerup` / `pointercancel` / `lostpointercapture`
+  demotes unfit static pins, clamps ratios against min-pane + full gutters, and
+  enforces the both-static filler invariant so panes+gutters fill the container.
+  Live resize ratio updates are rAF-coalesced; an idle settle (~150ms) and a dev
+  fill-slack invariant (`measureLayoutFillSlackPx`) are belt-and-suspenders.
+  Exported from `@n-uf/hypr-tiling/engine` as `normalizeLayout`,
+  `measureLayoutFillSlackPx`, `LAYOUT_RECONCILE_IDLE_MS`,
+  `LAYOUT_FILL_SLACK_TOLERANCE_PX`.
 - **Pane titlebar middle slot.** `TilingTile.titleBarContent` renders custom
   chrome between the title (left) and native window controls (right). The
   default tile wires the slot; custom `renderTile` panes can wrap

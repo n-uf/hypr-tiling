@@ -38,6 +38,13 @@ export {
   normalizeStaticAxisFill,
   type GroupLeavesOptions,
 } from "./engine/state";
+export {
+  LAYOUT_FILL_SLACK_TOLERANCE_PX,
+  LAYOUT_RECONCILE_IDLE_MS,
+  measureLayoutFillSlackPx,
+  normalizeLayout,
+  type NormalizeLayoutOptions,
+} from "./engine/layout-normalize";
 
 // ── Layout tree — low-level read walkers (composed by `queryTilingLayout` on `.`) ─
 export {
