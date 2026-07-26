@@ -5161,7 +5161,7 @@ const TilingRendererComponent = React.forwardRef<
       return;
     }
 
-    const flushPendingResizeRatio = (): void => {
+    const takePendingResizeTree = (): TilingLayoutNode => {
       if (resizeRafHandleRef.current != null) {
         WINDOW_SCHEDULER_PORT.cancelFrame(resizeRafHandleRef.current);
         resizeRafHandleRef.current = null;
@@ -5169,11 +5169,11 @@ const TilingRendererComponent = React.forwardRef<
       const pendingRatio: number | null = pendingResizeRatioRef.current;
       pendingResizeRatioRef.current = null;
       if (pendingRatio == null) {
-        return;
+        return layoutRef.current;
       }
-      onLayoutChangeRef.current(
-        updateSplitRatio(layoutRef.current, resizeState.splitId, pendingRatio),
-      );
+      // Apply locally so commit-time normalize sees the flushed ratio even
+      // before React re-renders `layout` / refreshes `layoutRef`.
+      return updateSplitRatio(layoutRef.current, resizeState.splitId, pendingRatio);
     };
 
     const scheduleResizeRatio = (nextRatio: number): void => {
@@ -5210,9 +5210,16 @@ const TilingRendererComponent = React.forwardRef<
     };
 
     const endResize = (): void => {
-      flushPendingResizeRatio();
+      const flushedTree: TilingLayoutNode = takePendingResizeTree();
       // Commit-time reconciliation is mandatory on every resize end edge.
-      commitNormalizedLayout(layoutRef.current);
+      // Always emit the reconciled tree (covers a flushed mid-frame ratio).
+      const normalized: TilingLayoutNode = normalizeLayout(flushedTree, {
+        containerWidthPx: viewportSizeRef.current.width,
+        containerHeightPx: viewportSizeRef.current.height,
+        config: configRef.current,
+      });
+      onLayoutChangeRef.current(normalized);
+      layoutRef.current = normalized;
       armLayoutIdleSettle();
       setResizeState(null);
     };
@@ -5235,7 +5242,7 @@ const TilingRendererComponent = React.forwardRef<
         resizeRafHandleRef.current = null;
       }
     };
-  }, [armLayoutIdleSettle, commitNormalizedLayout, resizeState]);
+  }, [armLayoutIdleSettle, resizeState]);
 
   React.useEffect((): (() => void) => {
     return (): void => {
