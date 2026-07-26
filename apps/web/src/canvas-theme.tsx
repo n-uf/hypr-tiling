@@ -109,10 +109,10 @@ export const CANVAS_THEME: TilingTheme = {
   resolvePaneAccentSurface: (): string => "",
   // Titles are quiet neutral ink; the accent is expressed as a tick, not text.
   resolveAccentText: (): string => "text-slate-600",
-  // Calm focus: a hairline slate border + a single 1px ring in the pane's accent
-  // hue (the solid `focusRing` atom reads well on the light canvas).
+  // Calm focus: recolor the resting hairline in the pane's accent hue. A single
+  // border stroke follows border-radius; stacking border + ring left corner ticks.
   resolveFocusFrame: (accent: TilingTileAccent | undefined): string =>
-    `border border-slate-300 ring-1 ring-offset-0 ${accentHue(accent).focusRing}`,
+    accentHue(accent).focusBorder,
   // Active chip: a soft cyan primary — the workspace's one interactive accent.
   resolveTabActive: (): string => "border-cyan-300 bg-cyan-50 text-cyan-700",
 };

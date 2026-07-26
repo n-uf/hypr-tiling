@@ -177,8 +177,7 @@ describe("dragged ghost wears the focus frame (focus follows the dragged pane)",
     const markup: string = renderToStaticMarkup(
       renderDragPaneShell(snapshot, NEON, true),
     );
-    expect(markup).toContain(accentHue("violet").focusBorder);
-    expect(markup).toContain(accentHue("violet").focusRing);
+    expect(markup).toContain(accentHue("violet").focusGlowSoft);
   });
 });
 
@@ -392,7 +391,7 @@ describe("floating drag ghost routes through consumer renderTile (custom skin tr
     // Built-in ghost surface chrome present; no custom-skin markers.
     expect(markup).toContain("Source Pane");
     expect(markup).not.toContain("data-custom-skin");
-    expect(markup).toContain(accentHue("violet").focusBorder);
+    expect(markup).toContain(accentHue("violet").focusGlowSoft);
   });
 });
 
@@ -494,7 +493,7 @@ describe("cancel fly-back routes through consumer renderTile (custom skin glides
     );
     expect(markup).toContain("Cancelled Pane");
     expect(markup).not.toContain("data-custom-skin");
-    expect(markup).toContain(accentHue("emerald").focusBorder);
+    expect(markup).toContain(accentHue("emerald").focusGlowSoft);
   });
 });
 
@@ -508,8 +507,7 @@ describe("seat / hop-in slot wears the focus frame", (): void => {
         observabilityColorEnables: TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
       }),
     );
-    expect(markup).toContain(accentHue("emerald").focusBorder);
-    expect(markup).toContain(accentHue("emerald").focusRing);
+    expect(markup).toContain(accentHue("emerald").focusGlowSoft);
     expect(markup).toContain("data-drag-source-reservation");
   });
 
@@ -525,7 +523,7 @@ describe("seat / hop-in slot wears the focus frame", (): void => {
         },
       }),
     );
-    expect(markup).toContain(accentHue("rose").focusBorder);
+    expect(markup).toContain(accentHue("rose").focusGlowSoft);
   });
 });
 

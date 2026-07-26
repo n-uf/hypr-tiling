@@ -210,7 +210,11 @@ export interface TilingTheme {
   ) => string;
   /** Accent title-text color. */
   readonly resolveAccentText: (accent: TilingTileAccent | undefined) => string;
-  /** Full focused-pane frame (structural border/ring + accent glow). */
+  /**
+   * Full focused-pane frame. Prefer a SINGLE radius-following stroke
+   * (`box-shadow` / one `border-*` recolor) — stacking `border` + `ring` (or
+   * `outline`) at the corners produces square tick artifacts on rounded panes.
+   */
   readonly resolveFocusFrame: (accent: TilingTileAccent | undefined) => string;
   /** Active tab / switcher / group-member chip. */
   readonly resolveTabActive: (accent: TilingTileAccent | undefined) => string;
@@ -430,10 +434,10 @@ export function resolvePaneDropAffordanceClasses(
  * Built-in theme: NEON-TERMINAL — the neon-terminal direction, REFINED and
  * dialed back from the original heavy look. Calmer glass (blur `xl`→`md`,
  * saturate `150`→`125`; ghost `2xl`→`lg`), softer drop shadows, a lower-contrast
- * focus glow (`focusGlowSoft` + a single `ring-1` instead of `ring-2`), and more
- * disciplined accent use (resting panes wear only a faint accent border — the
- * colored shadow tint is dropped). Keeps the direction; makes it tasteful.
- * Default library theme.
+ * focus glow (`focusGlowSoft` alone — a 1px box-shadow ring + soft bloom, no
+ * stacked `border`/`ring`), and more disciplined accent use (resting panes wear
+ * only a faint accent border — the colored shadow tint is dropped). Keeps the
+ * direction; makes it tasteful. Default library theme.
  */
 const NEON_TERMINAL_THEME: TilingTheme = {
   id: "neon-terminal",
@@ -502,16 +506,10 @@ const NEON_TERMINAL_THEME: TilingTheme = {
     accentHue(accent).surfaceBorder,
   resolveAccentText: (accent: TilingTileAccent | undefined): string =>
     accentHue(accent).text,
-  // Lower-contrast focus frame: border-2 + single ring-1 + softened glow.
-  resolveFocusFrame: (accent: TilingTileAccent | undefined): string => {
-    const hue: TilingAccentHue = accentHue(accent);
-    return cn(
-      "border-2 ring-1 ring-offset-0",
-      hue.focusBorder,
-      hue.focusRing,
-      hue.focusGlowSoft,
-    );
-  },
+  // Single box-shadow frame (1px ring + soft bloom). No border/ring stack —
+  // those fight the pane's rounded corners and leave square corner ticks.
+  resolveFocusFrame: (accent: TilingTileAccent | undefined): string =>
+    accentHue(accent).focusGlowSoft,
   resolveTabActive: (accent: TilingTileAccent | undefined): string => {
     const hue: TilingAccentHue = accentHue(accent);
     return cn(hue.tabBorder, hue.tabBg, hue.textStrong);
@@ -523,8 +521,8 @@ const NEON_TERMINAL_THEME: TilingTheme = {
  * of the heavy-neon look. No glass blur, restrained hairline borders, subtle
  * shadows, neutral slate surfaces. Accents are spent sparingly: resting panes
  * stay neutral (no colored border), and an accent only appears on the focus
- * frame (thin 1px ring, no glow), the active tab chip (soft tint), and the
- * title text. Quiet and professional.
+ * frame (recolor the resting hairline — no outer ring), the active tab chip
+ * (soft tint), and the title text. Quiet and professional.
  *
  * Root + viewport are TRANSPARENT on purpose (same contract as mosaic): gap
  * flanks and corner gutters inherit the host chrome. An opaque slate fill here
@@ -596,11 +594,9 @@ const CLEAN_FLAT_THEME: TilingTheme = {
   resolvePaneAccentSurface: (): string => "",
   resolveAccentText: (accent: TilingTileAccent | undefined): string =>
     accentHue(accent).text,
-  // Thin 1px accent border + 1px ring, no glow.
-  resolveFocusFrame: (accent: TilingTileAccent | undefined): string => {
-    const hue: TilingAccentHue = accentHue(accent);
-    return cn("border ring-1 ring-offset-0", hue.focusBorder, hue.focusRing);
-  },
+  // Recolor the resting 1px border — one stroke, follows border-radius.
+  resolveFocusFrame: (accent: TilingTileAccent | undefined): string =>
+    accentHue(accent).focusBorder,
   // Soft accent fill + accent text on the active chip.
   resolveTabActive: (accent: TilingTileAccent | undefined): string => {
     const hue: TilingAccentHue = accentHue(accent);
@@ -685,9 +681,9 @@ const MOSAIC_THEME: TilingTheme = {
   resolveAccentText: (accent: TilingTileAccent | undefined): string =>
     accentHue(accent).text,
   // Unified gold focus frame regardless of the per-pane accent — one coherent
-  // accent across the whole surface, hairline (no neon glow).
-  resolveFocusFrame: (): string =>
-    "border border-amber-300/45 ring-1 ring-amber-300/35 ring-offset-0",
+  // accent across the whole surface. Recolor the resting hairline only (no
+  // outer ring stack that squares the rounded corners).
+  resolveFocusFrame: (): string => "border-amber-300/45",
   // Unified gold active tab/chip.
   resolveTabActive: (): string =>
     "border-amber-300/55 bg-amber-300/10 text-amber-100",

@@ -114,9 +114,9 @@ function MosaicGroupSwitcher({
 
 export function DocTile(args: TilingRenderTileProps): React.ReactElement {
   const dropRing: string = dropStateRing(args);
-  // Drop-state rings take precedence over the resting focus ring during a drag.
-  const ring: string =
-    dropRing !== "" ? dropRing : args.isFocused ? "ring-1 ring-amber-300/35" : "";
+  // Focus uses a single border recolor (no outer ring) so rounded corners stay
+  // clean. Drop-state rings still win during a drag.
+  const ring: string = dropRing;
   const border: string = args.isMoveSource
     ? "border-amber-300/60 border-dashed"
     : args.isFocused
