@@ -3,6 +3,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { cn } from "./cn";
+import { TilingPaneTitleBarContent } from "./tiling-pane-primitives";
 import {
   TILING_TILE_ACCENT_SWATCHES,
   TILING_THEMES,
@@ -1040,6 +1041,7 @@ export function buildDragPaneSnapshot(
     title: tile.title,
     description: tile.description ?? null,
     content: tile.content ?? null,
+    titleBarContent: tile.titleBarContent ?? null,
     rows: (tile.rows ?? []).slice(0, DRAG_PANE_PREVIEW_MAX_ROWS),
     accent: tile.accent ?? "cyan",
   };
@@ -1074,8 +1076,8 @@ export function renderDragPaneShell(
       )}
       aria-hidden
     >
-      <header className={theme.ghost.header}>
-        <div className="min-w-0">
+      <header className={cn(theme.ghost.header, "gap-2")}>
+        <div className="min-w-0 shrink-0">
           <div
             className={cn(
               "truncate font-mono text-[11px] font-semibold uppercase tracking-[0.2em]",
@@ -1093,7 +1095,12 @@ export function renderDragPaneShell(
             {snapshot.description ?? "drag header to swap"}
           </div>
         </div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-400">
+        {snapshot.titleBarContent != null ? (
+          <div className="min-w-0 flex-1 overflow-hidden">
+            {snapshot.titleBarContent}
+          </div>
+        ) : null}
+        <div className="ml-auto shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-slate-400">
           tile
         </div>
       </header>
@@ -1315,6 +1322,7 @@ export function buildGhostTileArgs(
     accent: snapshot.accent,
     rows: snapshot.rows,
     content: snapshot.content,
+    titleBarContent: snapshot.titleBarContent ?? undefined,
   };
   return {
     surface,
@@ -2641,6 +2649,7 @@ function DefaultTilingTile({
         style={isRearrangeEnabled ? { touchAction: "none" } : undefined}
         className={cn(
           theme.paneHeader.base,
+          "gap-2",
           isRearrangeEnabled
             ? "cursor-grab active:cursor-grabbing"
             : "cursor-default",
@@ -2648,7 +2657,12 @@ function DefaultTilingTile({
           isMultiSelected ? theme.paneHeader.selected : "",
         )}
       >
-        <div className="min-w-0 text-left">
+        <div
+          className={cn(
+            "min-w-0 text-left",
+            tile.titleBarContent != null ? "max-w-[40%] shrink-0" : "",
+          )}
+        >
           <div
             className={cn(
               theme.paneHeader.titleText,
@@ -2670,7 +2684,12 @@ function DefaultTilingTile({
             </div>
           ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        {tile.titleBarContent != null ? (
+          <TilingPaneTitleBarContent className="min-w-0 flex-1 overflow-hidden">
+            {tile.titleBarContent}
+          </TilingPaneTitleBarContent>
+        ) : null}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {isMultiSelected ? (
             <span
               aria-label={`pane ${leafId} selected`}

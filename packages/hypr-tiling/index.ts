@@ -21,16 +21,19 @@ export { TilingRenderer } from "./react/tiling-renderer";
 // ── Custom-pane helper primitives (optional; layered over `renderTile`) ───────
 // Unstyled conveniences that encode the pane wiring rules a custom `renderTile`
 // can otherwise get wrong (data-leaf-id root, drag handle + touch-action, action
-// buttons that stop propagation, body render-mode gate). Use them for the easy
-// path; the raw `renderTile` args stay the full escape hatch.
+// buttons that stop propagation, titlebar middle-slot wrapper, body render-mode
+// gate). Use them for the easy path; the raw `renderTile` args stay the full
+// escape hatch.
 export {
   TilingPaneRoot,
   TilingDragHandle,
   TilingPaneAction,
+  TilingPaneTitleBarContent,
   TilingPaneBody,
   type TilingPaneRootProps,
   type TilingDragHandleProps,
   type TilingPaneActionProps,
+  type TilingPaneTitleBarContentProps,
   type TilingPaneBodyProps,
 } from "./react/tiling-pane-primitives";
 

@@ -593,6 +593,13 @@ export interface TilingPaneSwitchingCapability {
 }
 
 // @public
+export function TilingPaneTitleBarContent(input: TilingPaneTitleBarContentProps): React_2.ReactElement;
+
+// @public
+export interface TilingPaneTitleBarContentProps extends React_2.HTMLAttributes<HTMLDivElement> {
+}
+
+// @public
 export interface TilingPaneTitleBarControlsCapability {
     acquireSpace?: boolean;
     sizing?: boolean;
@@ -800,6 +807,7 @@ export interface TilingTile {
     id: string;
     rows?: ReadonlyArray<string>;
     title: string;
+    titleBarContent?: React_2.ReactNode;
 }
 
 // @public

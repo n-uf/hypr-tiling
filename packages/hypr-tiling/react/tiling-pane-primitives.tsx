@@ -148,6 +148,36 @@ export function TilingPaneAction({
   );
 }
 
+/** Props for {@link TilingPaneTitleBarContent}. */
+export interface TilingPaneTitleBarContentProps
+  extends React.HTMLAttributes<HTMLDivElement> {}
+
+/**
+ * Middle slot of a custom pane titlebar — between the title (left) and native
+ * window controls (right). Stops pointer-down propagation so toolbar clicks /
+ * find inputs do not start a rearrange drag from the surrounding
+ * {@link TilingDragHandle}. Unstyled: bring `className` (typically
+ * `min-w-0 flex-1` so the slot fills remaining header width and truncates).
+ * Prefer reading `tile.titleBarContent` from {@link TilingRenderTileProps} and
+ * wrapping it here.
+ *
+ * @param props - {@link TilingPaneTitleBarContentProps}
+ */
+export function TilingPaneTitleBarContent({
+  onPointerDown,
+  ...rest
+}: TilingPaneTitleBarContentProps): React.ReactElement {
+  return (
+    <div
+      {...rest}
+      onPointerDown={(event: React.PointerEvent<HTMLDivElement>): void => {
+        event.stopPropagation();
+        onPointerDown?.(event);
+      }}
+    />
+  );
+}
+
 /** Props for {@link TilingPaneBody}. */
 export interface TilingPaneBodyProps
   extends React.HTMLAttributes<HTMLDivElement> {

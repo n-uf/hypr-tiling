@@ -6,6 +6,15 @@ This package uses calendar-aligned versioning (`YY.M.R`), which cannot signal a
 SemVer "major" bump. **Read the per-release notes below for breaking changes** —
 the version number alone does not flag them.
 
+## Unreleased
+
+- **Pane titlebar middle slot.** `TilingTile.titleBarContent` renders custom
+  chrome between the title (left) and native window controls (right). The
+  default tile wires the slot; custom `renderTile` panes can wrap
+  `tile.titleBarContent` with the new `TilingPaneTitleBarContent` primitive
+  (stops pointer-down so toolbar interactions do not start a rearrange drag).
+  Drag ghosts carry the same slot. Existing title-only headers are unchanged.
+
 ## 26.7.1 — npm README absolute URLs + tsconfig cleanup
 
 A docs/tooling patch — no runtime or public-API changes. (Calendar-aligned

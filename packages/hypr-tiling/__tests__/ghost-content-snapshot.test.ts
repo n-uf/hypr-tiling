@@ -58,4 +58,30 @@ describe("drag-pane ghost content sourcing — snapshot carries the rich content
     expect(snapshot.content).toBe(content);
     expect(snapshot.rows).toEqual(["fallback row"]);
   });
+
+  it("captures titleBarContent so custom titlebar chrome rides the ghost", (): void => {
+    const titleBarContent: ReactElement = createElement("div", {
+      "data-testid": "titlebar-toolbar",
+    });
+    const tile: TilingTile = {
+      id: "tile-doc",
+      title: "Document",
+      titleBarContent,
+    };
+
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(tile);
+
+    expect(snapshot.titleBarContent).toBe(titleBarContent);
+  });
+
+  it("falls back to null titleBarContent when the tile omits the slot", (): void => {
+    const tile: TilingTile = {
+      id: "tile-plain",
+      title: "Plain",
+    };
+
+    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(tile);
+
+    expect(snapshot.titleBarContent).toBeNull();
+  });
 });

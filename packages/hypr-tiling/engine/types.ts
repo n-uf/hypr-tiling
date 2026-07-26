@@ -1134,6 +1134,8 @@ export interface TilingTileAccentSwatch {
  * and the drag-pane snapshot chrome; when omitted they fall back (accent →
  * `"cyan"`, rows → `[]`), so a tile without them renders correctly under the
  * default tile surface. `content` is the slot a custom `renderTile` reads.
+ * `titleBarContent` is the optional middle slot between the title and the
+ * native pane controls (sizing / maximize / …).
  */
 export interface TilingTile {
   /** Stable tile identity; leaf nodes reference a tile by this `id`. */
@@ -1148,6 +1150,15 @@ export interface TilingTile {
   rows?: ReadonlyArray<string>;
   /** Rich body a custom `renderTile` reads (and the drag ghost paints). */
   content?: React.ReactNode;
+  /**
+   * Optional custom chrome for the pane titlebar middle slot — rendered
+   * between the title (left) and native window controls (right: W/H/max, …).
+   * The default tile (and the `TilingPaneTitleBarContent` primitive for custom
+   * `renderTile` panes) stop pointer-down propagation so interacting with this
+   * content does not start a drag. Omit for a title-only header (existing
+   * themes unchanged).
+   */
+  titleBarContent?: React.ReactNode;
 }
 
 /**
@@ -1755,6 +1766,12 @@ export interface TilingDragPaneSnapshot {
    * `rows` only when a tile supplies no `content` (the legacy text-row body).
    */
   content: React.ReactNode;
+  /**
+   * Titlebar middle-slot chrome captured at pickup (`TilingTile.titleBarContent`).
+   * Custom `renderTile` ghosts rehydrate it onto the ghost tile; the built-in
+   * drag shell paints it between title and the trailing "tile" label.
+   */
+  titleBarContent: React.ReactNode;
   rows: ReadonlyArray<string>;
   accent: TilingTileAccent;
 }
