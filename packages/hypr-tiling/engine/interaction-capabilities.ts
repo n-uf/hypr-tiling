@@ -38,7 +38,9 @@ import type {
  */
 export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   resize: "both",
-  resizeHandlesVisible: false,
+  // Visible chrome (resting + hover bar / resize cursor) whenever resize is on.
+  // Opt out with `resizeHandlesVisible: false` for airy gap-only separators.
+  resizeHandlesVisible: true,
   slotHopInEnabled: true,
   rearrange: true,
   dragMode: "live",

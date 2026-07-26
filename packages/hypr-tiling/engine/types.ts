@@ -856,7 +856,7 @@ export interface TilingInteractionCapabilities {
    * Whether split-divider resize handles are visibly rendered. `false` hides
    * handle chrome (separator paint / hover affordance) while preserving the
    * divider hit-target and resize capability gating from `resize`.
-   * Default `false`.
+   * Default `true` (chrome on when resize is enabled; opt out for gap-only).
    */
   resizeHandlesVisible?: boolean;
   /**

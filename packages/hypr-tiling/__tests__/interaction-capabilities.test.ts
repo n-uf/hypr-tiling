@@ -14,7 +14,7 @@ import type {
 
 const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   resize: "both",
-  resizeHandlesVisible: false,
+  resizeHandlesVisible: true,
   slotHopInEnabled: true,
   rearrange: true,
   dragMode: "live",
@@ -75,12 +75,12 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     });
   });
 
-  it("defaults divider-handle rendering to hidden and preserves explicit visibility toggles", (): void => {
-    expect(resolveInteractionCapabilities(undefined).resizeHandlesVisible).toBe(false);
-    expect(resolveInteractionCapabilities({}).resizeHandlesVisible).toBe(false);
-    expect(resolveInteractionCapabilities({ resizeHandlesVisible: true })).toEqual({
+  it("defaults divider-handle rendering to visible and preserves explicit visibility toggles", (): void => {
+    expect(resolveInteractionCapabilities(undefined).resizeHandlesVisible).toBe(true);
+    expect(resolveInteractionCapabilities({}).resizeHandlesVisible).toBe(true);
+    expect(resolveInteractionCapabilities({ resizeHandlesVisible: false })).toEqual({
       ...RESOLVED_DEFAULTS,
-      resizeHandlesVisible: true,
+      resizeHandlesVisible: false,
     });
   });
 
