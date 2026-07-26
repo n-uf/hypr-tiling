@@ -7560,14 +7560,21 @@ const TilingRendererComponent = React.forwardRef<
         interactionCapabilities.resize,
         node.axis,
       );
+      const isBoundaryResizable: boolean =
+        !firstStaticAlongAxis && !secondStaticAlongAxis;
       const dividerRenderMode: TilingSplitDividerRenderMode =
         resolveSplitDividerRenderMode({
-          isBoundaryResizable: !firstStaticAlongAxis && !secondStaticAlongAxis,
+          isBoundaryResizable,
           resizeHandlesVisible: interactionCapabilities.resizeHandlesVisible,
           isResizeAxisEnabled: isDividerResizeEnabled,
         });
       const renderDivider: boolean =
         dividerRenderMode !== "render-divider-absent";
+      // Static-along boundaries omit the resize handle but still reserve a
+      // transparent `gapPx` spacer so gutters match flexible splits (and host
+      // chrome shows through — root/viewport themes must not invent a fill).
+      const renderStaticGapSpacer: boolean =
+        !renderDivider && resolvedGapPx > 0;
       const isRenderedDividerInteractive: boolean =
         dividerRenderMode === "render-divider-enabled-visible" ||
         dividerRenderMode === "render-divider-enabled-hidden";
@@ -7743,6 +7750,17 @@ const TilingRendererComponent = React.forwardRef<
                       marginTop: resolvedGapPx / 2,
                       marginBottom: resolvedGapPx / 2,
                     }
+              }
+            />
+          ) : renderStaticGapSpacer ? (
+            <div
+              aria-hidden="true"
+              data-static-gap-spacer=""
+              className="shrink-0 bg-transparent"
+              style={
+                isHorizontal
+                  ? { width: resolvedGapPx, height: "100%" }
+                  : { height: resolvedGapPx, width: "100%" }
               }
             />
           ) : null}

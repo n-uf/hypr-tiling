@@ -63,13 +63,13 @@ describe("collectLeafFootprints — flexible (ratio) parity", (): void => {
 });
 
 describe("collectLeafFootprints — static-aware (pinned along-axis child)", (): void => {
-  it("gives a pinned static-width child its exact px and the flexible sibling the remainder (no gap)", (): void => {
+  it("gives a pinned static-width child its exact px, reserves gapPx, and fills the sibling", (): void => {
     // sidebar static-width pinned 200; main flexible. Horizontal split → width is along-axis.
     const layout: TilingLayoutNode = hsplit(0.5, leaf("sidebar", { width: "static", widthPx: 200 }), leaf("main"));
     const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAPPED_CONFIG));
     expect(map.get("sidebar")).toEqual({ leafId: "sidebar", left: 0, top: 0, width: 200, height: 800 });
-    // sibling FILLS the remainder; no splitter gap reserved on a static boundary.
-    expect(map.get("main")).toEqual({ leafId: "main", left: 200, top: 0, width: 800, height: 800 });
+    // sibling FILLS the remainder after a visual gapPx gutter (no resize handle).
+    expect(map.get("main")).toEqual({ leafId: "main", left: 210, top: 0, width: 790, height: 800 });
   });
 
   it("honors a pinned static-height child on a vertical split", (): void => {

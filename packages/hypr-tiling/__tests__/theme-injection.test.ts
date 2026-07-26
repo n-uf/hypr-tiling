@@ -143,4 +143,20 @@ describe("TilingRenderer `theme` prop (consumer theme injection)", (): void => {
       resolveTilingTheme("clean-flat").root.container.split(" ")[0],
     );
   });
+
+  it("clean-flat root/viewport stay transparent so gap flanks inherit host chrome", (): void => {
+    const cleanFlat = resolveTilingTheme("clean-flat");
+    expect(cleanFlat.root.container).toContain("bg-transparent");
+    expect(cleanFlat.root.viewport).toContain("bg-transparent");
+    expect(cleanFlat.root.container).not.toMatch(/bg-slate-/);
+    expect(cleanFlat.root.viewport).not.toMatch(/bg-slate-/);
+
+    const container: HTMLElement = renderWith({ themeId: "clean-flat" });
+    const root: HTMLElement = container.firstElementChild as HTMLElement;
+    expect(root.className).toContain("bg-transparent");
+    const viewport: HTMLElement | null = container.querySelector(
+      ".bg-transparent.relative.isolate",
+    );
+    expect(viewport).not.toBeNull();
+  });
 });

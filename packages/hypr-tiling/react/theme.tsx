@@ -71,7 +71,15 @@ export interface TilingAccentHue {
   readonly tabBgSoft: string;
 }
 
-/** Renderer-root + viewport surfaces. */
+/**
+ * Renderer-root + viewport surfaces.
+ *
+ * Gap flanks (divider margins / static spacers) and rounded-pane corner
+ * gutters show whatever paints here. Prefer `bg-transparent` so the host
+ * chrome shows through; set an opaque bg only when the tiling surface is a
+ * self-contained canvas (neon-terminal). Consumers can override via the
+ * `theme` prop without forking the library.
+ */
 export interface TilingThemeRootTokens {
   /** Outer renderer container: bg/gradient, radius, padding, outline. */
   readonly container: string;
@@ -513,15 +521,21 @@ const NEON_TERMINAL_THEME: TilingTheme = {
  * stay neutral (no colored border), and an accent only appears on the focus
  * frame (thin 1px ring, no glow), the active tab chip (soft tint), and the
  * title text. Quiet and professional.
+ *
+ * Root + viewport are TRANSPARENT on purpose (same contract as mosaic): gap
+ * flanks and corner gutters inherit the host chrome. An opaque slate fill here
+ * used to peek navy/blue through every inter-pane gap when embedders painted
+ * charcoal panels — consumers that want a self-contained canvas can inject a
+ * `theme` with opaque `root.container` / `root.viewport` tokens.
  */
 const CLEAN_FLAT_THEME: TilingTheme = {
   id: "clean-flat",
   label: "clean flat",
   root: {
     container:
-      "flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg bg-slate-950 p-1 outline-none",
+      "flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg bg-transparent p-0 outline-none",
     viewport:
-      "relative isolate min-h-0 min-w-0 flex-1 overflow-hidden rounded-md bg-slate-900/60",
+      "relative isolate min-h-0 min-w-0 flex-1 overflow-hidden bg-transparent",
   },
   paneShell: {
     surface:
