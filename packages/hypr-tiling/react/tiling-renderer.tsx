@@ -139,7 +139,7 @@ import {
   isStaticOnCrossAxis,
   measuredStaticSizing,
   resolveBinarySplitDistribution,
-  resolveStaticAlongExtents,
+  resolveEffectiveStaticAlong,
   resolveSizingMode,
   splitBoundaryGutterPx,
   titleBarSizingModeId,
@@ -4115,6 +4115,14 @@ const TilingRendererComponent = React.forwardRef<
   });
   const [resizeState, setResizeState] =
     React.useState<TilingSplitResizeState | null>(null);
+  // Resize pointer handlers must NOT rebind when `layout` changes — every move
+  // commits a new ratio, and rebinding tore down the `{ once: true }` pointerup
+  // listener (race: release between cleanup and re-subscribe → stuck resize,
+  // persisted mid-drag ratios, no self-heal on pointerup).
+  const layoutRef = React.useRef(layout);
+  layoutRef.current = layout;
+  const onLayoutChangeRef = React.useRef(onLayoutChange);
+  onLayoutChangeRef.current = onLayoutChange;
   // SINGLE drag-lifecycle owner (Pointer Events + explicit FSM). Replaces the
   // scattered HTML5-DnD state slots (`dragSourceLeafId` / `dropState` /
   // `dragHoverLeafId` / `dragVisualState` useStates + `didDropSucceedRef` /
@@ -5047,21 +5055,27 @@ const TilingRendererComponent = React.forwardRef<
         resizeState.minPaneSizePx,
       );
 
-      onLayoutChange(updateSplitRatio(layout, resizeState.splitId, nextRatio));
+      onLayoutChangeRef.current(
+        updateSplitRatio(layoutRef.current, resizeState.splitId, nextRatio),
+      );
     };
 
-    const handlePointerUp = (): void => {
+    const endResize = (): void => {
       setResizeState(null);
     };
 
     window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp, { once: true });
+    window.addEventListener("pointerup", endResize);
+    window.addEventListener("pointercancel", endResize);
+    window.addEventListener("lostpointercapture", endResize);
 
     return (): void => {
       window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointerup", endResize);
+      window.removeEventListener("pointercancel", endResize);
+      window.removeEventListener("lostpointercapture", endResize);
     };
-  }, [layout, onLayoutChange, resizeState]);
+  }, [resizeState]);
 
   const beginResize = React.useCallback(
     (
@@ -5069,6 +5083,7 @@ const TilingRendererComponent = React.forwardRef<
       node: TilingSplitNode,
       resolvedGapPx: number,
       resolvedMinPaneSizePx: number,
+      handleSizePx: number,
     ): void => {
       if (!isResizeAxisEnabled(interactionCapabilities.resize, node.axis)) {
         return;
@@ -5089,10 +5104,16 @@ const TilingRendererComponent = React.forwardRef<
 
       const startPointerPx: number =
         node.axis === "horizontal" ? event.clientX : event.clientY;
+      // Store the full boundary gutter in `gapPx` so live clamp matches the
+      // divider/flexBasis reservation (gapPx + handleSizePx).
+      const boundaryGutterPx: number = splitBoundaryGutterPx(
+        resolvedGapPx,
+        handleSizePx,
+      );
       const boundedRatio: number = clampByMinSize(
         node.ratio,
         containerSizePx,
-        resolvedGapPx,
+        boundaryGutterPx,
         resolvedMinPaneSizePx,
       );
 
@@ -5102,7 +5123,7 @@ const TilingRendererComponent = React.forwardRef<
         containerSizePx,
         startPointerPx,
         startRatio: boundedRatio,
-        gapPx: resolvedGapPx,
+        gapPx: boundaryGutterPx,
         minPaneSizePx: resolvedMinPaneSizePx,
       });
 
@@ -5161,15 +5182,24 @@ const TilingRendererComponent = React.forwardRef<
       event.preventDefault();
       event.stopPropagation();
       const boundedSizePx: number = containerSizePx > 1 ? containerSizePx : 1;
+      const boundaryGutterPx: number = splitBoundaryGutterPx(
+        resolvedGapPx,
+        config.handleSizePx,
+      );
       const clampedRatio: number = clampByMinSize(
         nextRatio,
         boundedSizePx,
-        resolvedGapPx,
+        boundaryGutterPx,
         resolvedMinPaneSizePx,
       );
       onLayoutChange(updateSplitRatio(layout, node.id, clampedRatio));
     },
-    [interactionCapabilities.resize, layout, onLayoutChange],
+    [
+      config.handleSizePx,
+      interactionCapabilities.resize,
+      layout,
+      onLayoutChange,
+    ],
   );
 
   const setFocusedLeaf = React.useCallback(
@@ -6986,11 +7016,27 @@ const TilingRendererComponent = React.forwardRef<
     return contexts;
   }, [layout, tiles, dispatchCommand]);
 
+  /**
+   * Whether a leaf may apply its stored width/height px pins. Parent splits
+   * suppress the ALONG-axis pin when the child's distribution arm is `fill` or
+   * ratio-after-failed-fit — a pinned leaf inside a growing fill wrapper leaves
+   * a dead-space void (the Round-2 gap, visible as a black hole between panes).
+   */
+  type LeafPinPermission = {
+    allowWidthPin: boolean;
+    allowHeightPin: boolean;
+  };
+  const DEFAULT_LEAF_PIN_PERMISSION: LeafPinPermission = {
+    allowWidthPin: true,
+    allowHeightPin: true,
+  };
+
   const renderBranch = React.useCallback(
     (
       node: TilingLayoutNode,
       containerWidthPx: number,
       containerHeightPx: number,
+      pinPermission: LeafPinPermission = DEFAULT_LEAF_PIN_PERMISSION,
     ): React.ReactElement => {
       if (node.kind === "leaf") {
         const tile: TilingTile | undefined = resolveTile(tiles, node.tileId);
@@ -7281,12 +7327,16 @@ const TilingRendererComponent = React.forwardRef<
         // when flexible it keeps the fill + overflow clamp.
         const leafStaticHeight: boolean = isStaticInDimension(node, "height");
         const leafStaticWidth: boolean = isStaticInDimension(node, "width");
-        const pinnedHeightPx: number | undefined = leafStaticHeight
-          ? node.sizing?.heightPx
-          : undefined;
-        const pinnedWidthPx: number | undefined = leafStaticWidth
-          ? node.sizing?.widthPx
-          : undefined;
+        // Suppress along-axis pins when the parent arm is fill/ratio — the leaf
+        // must stretch with its flex slot or a fixed px pin opens dead space.
+        const pinnedHeightPx: number | undefined =
+          leafStaticHeight && pinPermission.allowHeightPin
+            ? node.sizing?.heightPx
+            : undefined;
+        const pinnedWidthPx: number | undefined =
+          leafStaticWidth && pinPermission.allowWidthPin
+            ? node.sizing?.widthPx
+            : undefined;
         const leafWrapperStyle: React.CSSProperties = {};
         if (pinnedHeightPx != null) {
           leafWrapperStyle.height = pinnedHeightPx;
@@ -7296,16 +7346,20 @@ const TilingRendererComponent = React.forwardRef<
           leafWrapperStyle.width = pinnedWidthPx;
           leafWrapperStyle.flexShrink = 0;
         }
-        const leafHeightClass: string = leafStaticHeight
-          ? pinnedHeightPx != null
-            ? ""
-            : "h-auto"
-          : "h-full max-h-full min-h-0";
-        const leafWidthClass: string = leafStaticWidth
-          ? pinnedWidthPx != null
-            ? ""
-            : "w-auto"
-          : "w-full min-w-0";
+        // When an along-axis pin is suppressed, treat the leaf as flexible fill
+        // in that dimension so it absorbs the parent flex slot.
+        const leafHeightClass: string =
+          leafStaticHeight && pinPermission.allowHeightPin
+            ? pinnedHeightPx != null
+              ? ""
+              : "h-auto"
+            : "h-full max-h-full min-h-0";
+        const leafWidthClass: string =
+          leafStaticWidth && pinPermission.allowWidthPin
+            ? pinnedWidthPx != null
+              ? ""
+              : "w-auto"
+            : "w-full min-w-0";
         const showMoveAffordance: boolean =
           isMoveSource || moveTargetPlacement != null;
         // Single-instance gate: when the picked-up source leaf appears in the
@@ -7562,11 +7616,11 @@ const TilingRendererComponent = React.forwardRef<
       // content-sized + excluded from ratio + removes the divider; a child static
       // on the CROSS axis content-sizes that axis (align-self:flex-start) but
       // still shares the split-axis ratio.
-      const firstStaticAlongAxis: boolean = isStaticAlongSplitAxis(
+      const declaredFirstStaticAlong: boolean = isStaticAlongSplitAxis(
         node.first,
         node.axis,
       );
-      const secondStaticAlongAxis: boolean = isStaticAlongSplitAxis(
+      const declaredSecondStaticAlong: boolean = isStaticAlongSplitAxis(
         node.second,
         node.axis,
       );
@@ -7579,10 +7633,53 @@ const TilingRendererComponent = React.forwardRef<
         node.axis,
       );
 
+      // Nested branches need the TRUE along-axis px for content/fill children
+      // (pin / remainder-after-pin+gutter). Passing the parent container size for
+      // both arms was the multi-static composite defect: an inner static pin
+      // would fit-guard against the outer width and overflow the fill region.
+      const alongPinPx = (child: TilingLayoutNode): number | null => {
+        if (!isStaticAlongSplitAxis(child, node.axis)) {
+          return null;
+        }
+        const pinPx: number | undefined = isHorizontal
+          ? child.sizing?.widthPx
+          : child.sizing?.heightPx;
+        if (pinPx == null || !Number.isFinite(pinPx) || pinPx <= 0) {
+          return null;
+        }
+        return pinPx;
+      };
+      const firstPinPx: number | null = alongPinPx(node.first);
+      const secondPinPx: number | null = alongPinPx(node.second);
+      // Static-along boundaries omit the resize handle but still reserve the
+      // FULL boundary gutter (`gapPx + handleSizePx`) via a transparent spacer
+      // so W•/H• locks keep gutter parity with flexible splits (and host chrome
+      // shows through — root/viewport themes must not invent a fill).
+      const boundaryGutterPx: number = splitBoundaryGutterPx(
+        resolvedGapPx,
+        config.handleSizePx,
+      );
+      // Pin fit-guard: a static pin that cannot fit demotes that child to
+      // flexible for this frame (matches leaf-geometry ratio fallback) so DOM
+      // flex never keeps a non-shrinking pin in a too-small container.
+      const effectiveStatic = resolveEffectiveStaticAlong(
+        declaredFirstStaticAlong,
+        declaredSecondStaticAlong,
+        firstPinPx,
+        secondPinPx,
+        axisContainerSizePx,
+        resolvedGapPx,
+        config.handleSizePx,
+      );
+      const firstStaticAlongAxis: boolean = effectiveStatic.firstStaticAlongAxis;
+      const secondStaticAlongAxis: boolean =
+        effectiveStatic.secondStaticAlongAxis;
+      const staticExtents = effectiveStatic.staticExtents;
+
       const safeRatio: number = clampByMinSize(
         node.ratio,
         axisContainerSizePx,
-        resolvedGapPx,
+        boundaryGutterPx,
         resolvedMinPaneSizePx,
       );
       const isDividerResizeEnabled: boolean = isResizeAxisEnabled(
@@ -7599,14 +7696,6 @@ const TilingRendererComponent = React.forwardRef<
         });
       const renderDivider: boolean =
         dividerRenderMode !== "render-divider-absent";
-      // Static-along boundaries omit the resize handle but still reserve the
-      // FULL boundary gutter (`gapPx + handleSizePx`) via a transparent spacer
-      // so W•/H• locks keep gutter parity with flexible splits (and host chrome
-      // shows through — root/viewport themes must not invent a fill).
-      const boundaryGutterPx: number = splitBoundaryGutterPx(
-        resolvedGapPx,
-        config.handleSizePx,
-      );
       const renderStaticGapSpacer: boolean =
         !renderDivider && boundaryGutterPx > 0;
       const isRenderedDividerInteractive: boolean =
@@ -7640,43 +7729,6 @@ const TilingRendererComponent = React.forwardRef<
         };
       };
 
-      // Nested branches need the TRUE along-axis px for content/fill children
-      // (pin / remainder-after-pin+gutter). Passing the parent container size for
-      // both arms was the multi-static composite defect: an inner static pin
-      // would fit-guard against the outer width and overflow the fill region.
-      const alongPinPx = (child: TilingLayoutNode): number | null => {
-        if (!isStaticAlongSplitAxis(child, node.axis)) {
-          return null;
-        }
-        const pinPx: number | undefined = isHorizontal
-          ? child.sizing?.widthPx
-          : child.sizing?.heightPx;
-        if (pinPx == null || !Number.isFinite(pinPx) || pinPx <= 0) {
-          return null;
-        }
-        return pinPx;
-      };
-      const firstPinPx: number | null = alongPinPx(node.first);
-      const secondPinPx: number | null = alongPinPx(node.second);
-      const staticExtents =
-        distribution.first.kind === "content" && firstPinPx != null
-          ? resolveStaticAlongExtents(
-              axisContainerSizePx,
-              firstPinPx,
-              true,
-              resolvedGapPx,
-              config.handleSizePx,
-            )
-          : distribution.second.kind === "content" && secondPinPx != null
-            ? resolveStaticAlongExtents(
-                axisContainerSizePx,
-                secondPinPx,
-                false,
-                resolvedGapPx,
-                config.handleSizePx,
-              )
-            : null;
-
       const childMainPx = (sizing: SplitChildMainSizing): number => {
         if (sizing.kind === "ratio") {
           return Math.max(
@@ -7707,6 +7759,28 @@ const TilingRendererComponent = React.forwardRef<
         ? containerHeightPx
         : secondMainPx;
 
+      // Along-axis pin only when the child's arm is `content`. Fill / ratio arms
+      // must stretch the leaf (suppress pin) or a fixed px pin leaves dead space
+      // inside the growing flex slot — the black void between document & review.
+      const pinPermissionFor = (
+        sizing: SplitChildMainSizing,
+      ): LeafPinPermission =>
+        isHorizontal
+          ? {
+              allowWidthPin: sizing.kind === "content",
+              allowHeightPin: true,
+            }
+          : {
+              allowWidthPin: true,
+              allowHeightPin: sizing.kind === "content",
+            };
+      const firstPinPermission: LeafPinPermission = pinPermissionFor(
+        distribution.first,
+      );
+      const secondPinPermission: LeafPinPermission = pinPermissionFor(
+        distribution.second,
+      );
+
       return (
         <section
           ref={(element: HTMLDivElement | null): void =>
@@ -7732,7 +7806,12 @@ const TilingRendererComponent = React.forwardRef<
               ...(firstStaticCross ? { alignSelf: "flex-start" } : {}),
             }}
           >
-            {renderBranch(node.first, firstBranchWidthPx, firstBranchHeightPx)}
+            {renderBranch(
+              node.first,
+              firstBranchWidthPx,
+              firstBranchHeightPx,
+              firstPinPermission,
+            )}
           </div>
 
           {renderDivider ? (
@@ -7765,6 +7844,7 @@ const TilingRendererComponent = React.forwardRef<
                         node,
                         resolvedGapPx,
                         resolvedMinPaneSizePx,
+                        config.handleSizePx,
                       )
                   : undefined
               }
@@ -7868,6 +7948,7 @@ const TilingRendererComponent = React.forwardRef<
               node.second,
               secondBranchWidthPx,
               secondBranchHeightPx,
+              secondPinPermission,
             )}
           </div>
         </section>

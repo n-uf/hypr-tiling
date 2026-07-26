@@ -257,6 +257,65 @@ export function resolveStaticAlongExtents(
 }
 
 /**
+ * Effective static-along flags for a binary split after pin fit-guards.
+ *
+ * A child declared static-along with a px pin that cannot fit
+ * (`pin + gutter >= container`) is treated as flexible for this frame — matching
+ * `collectLeafFootprints` ratio fallback — so the renderer never keeps a
+ * non-shrinking pin inside a too-small container (overflow / dead-space void).
+ * When a pin fits, `staticExtents` carries the resolved along-axis px.
+ * @internal
+ */
+export function resolveEffectiveStaticAlong(
+  firstStaticAlongAxis: boolean,
+  secondStaticAlongAxis: boolean,
+  firstPinPx: number | null,
+  secondPinPx: number | null,
+  containerPx: number,
+  gapPx: number,
+  handleSizePx: number,
+): {
+  firstStaticAlongAxis: boolean;
+  secondStaticAlongAxis: boolean;
+  staticExtents: { firstPx: number; secondPx: number; gutterPx: number } | null;
+} {
+  let effectiveFirstStatic: boolean = firstStaticAlongAxis;
+  let effectiveSecondStatic: boolean = secondStaticAlongAxis;
+  let staticExtents: { firstPx: number; secondPx: number; gutterPx: number } | null =
+    null;
+
+  if (firstStaticAlongAxis && firstPinPx != null) {
+    staticExtents = resolveStaticAlongExtents(
+      containerPx,
+      firstPinPx,
+      true,
+      gapPx,
+      handleSizePx,
+    );
+    if (staticExtents == null) {
+      effectiveFirstStatic = false;
+    }
+  } else if (secondStaticAlongAxis && secondPinPx != null) {
+    staticExtents = resolveStaticAlongExtents(
+      containerPx,
+      secondPinPx,
+      false,
+      gapPx,
+      handleSizePx,
+    );
+    if (staticExtents == null) {
+      effectiveSecondStatic = false;
+    }
+  }
+
+  return {
+    firstStaticAlongAxis: effectiveFirstStatic,
+    secondStaticAlongAxis: effectiveSecondStatic,
+    staticExtents,
+  };
+}
+
+/**
  * Resolve how the two children of a binary split are sized ALONG the split axis,
  * given each child's static-along-axis flag and the split ratio:
  *

@@ -8,6 +8,7 @@ import {
   measuredStaticSizing,
   renormalizeFlexibleRatios,
   resolveBinarySplitDistribution,
+  resolveEffectiveStaticAlong,
   resolveStaticAlongExtents,
   resolveSizingMode,
   shouldRenderSplitDivider,
@@ -299,6 +300,34 @@ describe("splitBoundaryGutterPx / resolveStaticAlongExtents", () => {
   it("returns null when pin + gutter cannot fit (fit-guard)", () => {
     expect(resolveStaticAlongExtents(1000, 990, true, 10, 4)).toBeNull();
     expect(resolveStaticAlongExtents(1000, 0, true, 10, 4)).toBeNull();
+  });
+});
+
+describe("resolveEffectiveStaticAlong (pin fit-guard demotes to flexible)", () => {
+  it("keeps a fitting pin as static-along and returns extents", () => {
+    const resolved = resolveEffectiveStaticAlong(true, false, 256, null, 1200, 8, 4);
+    expect(resolved.firstStaticAlongAxis).toBe(true);
+    expect(resolved.secondStaticAlongAxis).toBe(false);
+    expect(resolved.staticExtents).toEqual({
+      firstPx: 256,
+      secondPx: 1200 - 256 - 12,
+      gutterPx: 12,
+    });
+  });
+
+  it("demotes a non-fitting pin to flexible so DOM can fall back to ratio", () => {
+    // pin 990 + gutter 14 does not fit 1000 — treat as flexible this frame.
+    const resolved = resolveEffectiveStaticAlong(true, false, 990, null, 1000, 10, 4);
+    expect(resolved.firstStaticAlongAxis).toBe(false);
+    expect(resolved.secondStaticAlongAxis).toBe(false);
+    expect(resolved.staticExtents).toBeNull();
+  });
+
+  it("demotes a non-fitting second-child pin (annotate review-in-tight-fill)", () => {
+    const resolved = resolveEffectiveStaticAlong(false, true, null, 320, 330, 8, 4);
+    expect(resolved.firstStaticAlongAxis).toBe(false);
+    expect(resolved.secondStaticAlongAxis).toBe(false);
+    expect(resolved.staticExtents).toBeNull();
   });
 });
 

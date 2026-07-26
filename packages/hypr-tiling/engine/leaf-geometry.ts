@@ -389,10 +389,13 @@ export function collectLeafFootprints(
     }
   }
   const resolvedMinPaneSizePx: number = node.minPaneSizePx ?? config.minPaneSizePx;
+  // Min-pane clamp must reserve the SAME gutter the ratio flexBasis / divider
+  // uses (gapPx + handleSizePx) — clamping against gap alone under-bounds the
+  // floor by handleSizePx and can leave a visible shortfall between panes.
   const safeRatio: number = clampByMinSize(
     node.ratio,
     axisContainerSizePx,
-    resolvedGapPx,
+    boundaryGutterPx,
     resolvedMinPaneSizePx,
   );
   const splitGapOffsetPx: number = boundaryGutterPx / 2;
