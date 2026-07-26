@@ -170,6 +170,8 @@ import {
 import {
   LAYOUT_FILL_SLACK_TOLERANCE_PX,
   LAYOUT_RECONCILE_IDLE_MS,
+  expectedTileIdsFromHostTiles,
+  layoutCoversExpectedTiles,
   measureLayoutFillSlackPx,
   normalizeLayout,
 } from "../engine/layout-normalize";
@@ -4150,6 +4152,12 @@ const TilingRendererComponent = React.forwardRef<
   onLayoutChangeRef.current = onLayoutChange;
   const configRef = React.useRef(config);
   configRef.current = config;
+  // Host tile map is the source of truth for coverage: every commit/idle
+  // normalize must heal missing/duplicate/unknown tileIds against it.
+  const expectedTileIdsRef = React.useRef<ReadonlyArray<string>>(
+    expectedTileIdsFromHostTiles(tiles),
+  );
+  expectedTileIdsRef.current = expectedTileIdsFromHostTiles(tiles);
   const viewportSizeRef = React.useRef(viewportSize);
   viewportSizeRef.current = viewportSize;
   // Live resize ratio updates are rAF-coalesced (one layout commit per frame).
@@ -5092,6 +5100,7 @@ const TilingRendererComponent = React.forwardRef<
         containerWidthPx: viewportSizeRef.current.width,
         containerHeightPx: viewportSizeRef.current.height,
         config: configRef.current,
+        expectedTileIds: expectedTileIdsRef.current,
       });
       if (normalized !== tree) {
         onLayoutChangeRef.current(normalized);
@@ -5118,40 +5127,54 @@ const TilingRendererComponent = React.forwardRef<
     }, LAYOUT_RECONCILE_IDLE_MS);
   }, [cancelLayoutIdleSettle, commitNormalizedLayout]);
 
-  // Dev fill invariant: if geometry underflows/overflows by ≥1px, log and force
-  // normalize so voids cannot stick after a missed commit path.
+  // Integrity settle: heal missing/duplicate host tiles and (in dev) fill-slack
+  // voids so a poison controlled tree cannot stick after load or a missed commit.
   React.useEffect((): void => {
+    if (viewportSize.width <= 1 || viewportSize.height <= 1) {
+      return;
+    }
+    // Avoid fighting an in-flight resize or rearrange gesture.
+    if (resizeState != null || dragState.phase !== "idle") {
+      return;
+    }
+    const expectedTileIds: ReadonlyArray<string> = expectedTileIdsRef.current;
+    const tileCoverageBroken: boolean =
+      expectedTileIds.length > 0 &&
+      !layoutCoversExpectedTiles(layout, expectedTileIds);
     const isDev: boolean =
       typeof process !== "undefined" &&
       process.env != null &&
       process.env.NODE_ENV !== "production";
-    if (!isDev) {
+    let fillSlackBroken: boolean = false;
+    if (isDev) {
+      const slackPx: number = measureLayoutFillSlackPx(layout, {
+        containerWidthPx: viewportSize.width,
+        containerHeightPx: viewportSize.height,
+        config,
+      });
+      fillSlackBroken = slackPx >= LAYOUT_FILL_SLACK_TOLERANCE_PX;
+      if (fillSlackBroken) {
+        console.warn(
+          `[hypr-tiling] layout fill invariant violated (slack=${slackPx.toFixed(2)}px); forcing normalizeLayout`,
+        );
+      }
+    }
+    if (!tileCoverageBroken && !fillSlackBroken) {
       return;
     }
-    if (viewportSize.width <= 1 || viewportSize.height <= 1) {
-      return;
+    if (tileCoverageBroken && isDev) {
+      console.warn(
+        "[hypr-tiling] layout tile coverage broken vs host tiles; forcing normalizeLayout",
+      );
     }
-    // Avoid fighting an in-flight resize coalesce.
-    if (resizeState != null) {
-      return;
-    }
-    const slackPx: number = measureLayoutFillSlackPx(layout, {
-      containerWidthPx: viewportSize.width,
-      containerHeightPx: viewportSize.height,
-      config,
-    });
-    if (slackPx < LAYOUT_FILL_SLACK_TOLERANCE_PX) {
-      return;
-    }
-    console.warn(
-      `[hypr-tiling] layout fill invariant violated (slack=${slackPx.toFixed(2)}px); forcing normalizeLayout`,
-    );
     commitNormalizedLayout(layout);
   }, [
     commitNormalizedLayout,
     config,
+    dragState.phase,
     layout,
     resizeState,
+    tiles,
     viewportSize.height,
     viewportSize.width,
   ]);
@@ -5217,6 +5240,7 @@ const TilingRendererComponent = React.forwardRef<
         containerWidthPx: viewportSizeRef.current.width,
         containerHeightPx: viewportSizeRef.current.height,
         config: configRef.current,
+        expectedTileIds: expectedTileIdsRef.current,
       });
       onLayoutChangeRef.current(normalized);
       layoutRef.current = normalized;
@@ -5550,6 +5574,7 @@ const TilingRendererComponent = React.forwardRef<
         containerWidthPx: viewportSizeRef.current.width,
         containerHeightPx: viewportSizeRef.current.height,
         config: configRef.current,
+        expectedTileIds: expectedTileIdsRef.current,
       }),
     );
     armLayoutIdleSettle();
@@ -6890,13 +6915,26 @@ const TilingRendererComponent = React.forwardRef<
     // to the cancel fly-back instead of persisting a broken layout. Structurally
     // sound candidates commit through the SAME reducer args as the last preview
     // frame (no release-time jump).
-    if (committedTree != null && isStructurallyValidLayout(committedTree)) {
+    // Refuse gap-closed / missing-tile candidates: deriveCandidateTree may
+    // return removeLeafTile for non-committable targets, which is structurally
+    // valid but drops a host tile. Prefer cancel fly-back over persisting a void.
+    const expectedTileIds: ReadonlyArray<string> = expectedTileIdsRef.current;
+    const coversHostTiles: boolean =
+      committedTree != null &&
+      (expectedTileIds.length === 0 ||
+        layoutCoversExpectedTiles(committedTree, expectedTileIds));
+    if (
+      committedTree != null &&
+      isStructurallyValidLayout(committedTree) &&
+      coversHostTiles
+    ) {
       // Rearrange commit-time reconciliation (same normalizeLayout as resize
-      // pointerup) so unfit pins / ratios cannot persist after a drop.
+      // pointerup) so unfit pins / ratios / tile-slot breaks cannot persist.
       const reconciledTree: TilingLayoutNode = normalizeLayout(committedTree, {
         containerWidthPx: viewportSizeRef.current.width,
         containerHeightPx: viewportSizeRef.current.height,
         config: configRef.current,
+        expectedTileIds,
       });
       onLayoutChange(reconciledTree);
       armLayoutIdleSettle();

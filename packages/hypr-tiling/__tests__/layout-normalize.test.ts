@@ -1,17 +1,22 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   LAYOUT_FILL_SLACK_TOLERANCE_PX,
+  assertLayoutIntegrity,
   assessLayoutTileIntegrity,
+  expectedTileIdsFromHostTiles,
+  layoutCoversExpectedTiles,
   measureLayoutFillSlackPx,
   normalizeLayout,
+  repairLayout,
 } from "../engine/layout-normalize";
 import { isStaticAlongSplitAxis } from "../engine/pane-sizing";
-import { tileOrderByLeafId } from "../engine/state";
+import { removeLeafTile, tileOrderByLeafId } from "../engine/state";
 import type {
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,
   TilingSplitNode,
+  TilingTile,
 } from "../engine/types";
 
 const EXPECTED_ANNOTATE_TILES: ReadonlyArray<string> = [
@@ -299,4 +304,178 @@ describe("normalizeLayout", (): void => {
     expect(main.ratio).toBeLessThanOrEqual(0.95);
     expect(tileOrderByLeafId(normalized)).toEqual(["a", "b", "c"]);
   });
+
+  it("detects a gone tile (missing from tree while still expected by host)", (): void => {
+    const gone: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: leaf("leaf-cases", "cases"),
+      second: leaf("leaf-review", "review"),
+    };
+    const integrity = assertLayoutIntegrity(gone, {
+      expectedTileIds: EXPECTED_ANNOTATE_TILES,
+    });
+    expect(integrity.missingTileIds).toContain("document");
+    expect(integrity.requiresRebuild).toBe(true);
+    expect(layoutCoversExpectedTiles(gone, EXPECTED_ANNOTATE_TILES)).toBe(false);
+
+    const repaired: TilingLayoutNode = repairLayout(gone, {
+      containerWidthPx: 1400,
+      containerHeightPx: 900,
+      config: CONFIG,
+      expectedTileIds: EXPECTED_ANNOTATE_TILES,
+      fallbackLayout: annotateStyleLayout(),
+    });
+    expect(layoutCoversExpectedTiles(repaired, EXPECTED_ANNOTATE_TILES)).toBe(
+      true,
+    );
+    expect(
+      assertLayoutIntegrity(repaired, {
+        expectedTileIds: EXPECTED_ANNOTATE_TILES,
+        containerWidthPx: 1400,
+        containerHeightPx: 900,
+        config: CONFIG,
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("detects empty tileId slots and rebuilds to expected coverage", (): void => {
+    const emptySlot: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: leaf("leaf-empty", ""),
+      second: {
+        kind: "split",
+        id: "main",
+        axis: "horizontal",
+        ratio: 0.5,
+        first: leaf("leaf-document", "document"),
+        second: leaf("leaf-review", "review"),
+      },
+    };
+    const integrity = assertLayoutIntegrity(emptySlot, {
+      expectedTileIds: EXPECTED_ANNOTATE_TILES,
+    });
+    expect(integrity.hasEmptyTileId).toBe(true);
+    expect(integrity.requiresRebuild).toBe(true);
+
+    const repaired: TilingLayoutNode = repairLayout(emptySlot, {
+      containerWidthPx: 1400,
+      containerHeightPx: 900,
+      config: CONFIG,
+      expectedTileIds: EXPECTED_ANNOTATE_TILES,
+    });
+    expect([...tileOrderByLeafId(repaired)].sort()).toEqual(
+      [...EXPECTED_ANNOTATE_TILES].sort(),
+    );
+  });
+
+  it("flags zero-area leaf geometry as integrity failure and heals it", (): void => {
+    // Extreme stored ratio → first leaf footprint collapses below 1px.
+    const collapsed: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.00001,
+      first: leaf("A", "a"),
+      second: leaf("B", "b"),
+    };
+    const pre = assertLayoutIntegrity(collapsed, {
+      expectedTileIds: ["a", "b"],
+      containerWidthPx: 1000,
+      containerHeightPx: 600,
+      config: { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 },
+    });
+    expect(pre.hasZeroAreaLeaf || pre.hasCollapsedRatio).toBe(true);
+
+    const repaired: TilingLayoutNode = repairLayout(collapsed, {
+      containerWidthPx: 1000,
+      containerHeightPx: 600,
+      config: CONFIG,
+      expectedTileIds: ["a", "b"],
+    });
+    const post = assertLayoutIntegrity(repaired, {
+      expectedTileIds: ["a", "b"],
+      containerWidthPx: 1000,
+      containerHeightPx: 600,
+      config: CONFIG,
+    });
+    expect(post.requiresRebuild).toBe(false);
+    expect(post.hasZeroAreaLeaf).toBe(false);
+    expect(post.hasOverlappingLeaves).toBe(false);
+    expect(layoutCoversExpectedTiles(repaired, ["a", "b"])).toBe(true);
+  });
+
+  it("heals both-static pin clash without dropping tiles", (): void => {
+    const bothStatic: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: leaf("A", "a", { width: "static", widthPx: 900 }),
+      second: leaf("B", "b", { width: "static", widthPx: 900 }),
+    };
+    const repaired: TilingLayoutNode = repairLayout(bothStatic, {
+      containerWidthPx: 1000,
+      containerHeightPx: 600,
+      config: CONFIG,
+      expectedTileIds: ["a", "b"],
+    });
+    const post = assertLayoutIntegrity(repaired, {
+      expectedTileIds: ["a", "b"],
+      containerWidthPx: 1000,
+      containerHeightPx: 600,
+      config: CONFIG,
+    });
+    expect(post.requiresRebuild).toBe(false);
+    expect(post.hasOverlappingLeaves).toBe(false);
+    expect(layoutCoversExpectedTiles(repaired, ["a", "b"])).toBe(true);
+  });
+
+  it("derives expected tile ids from a host tile registry", (): void => {
+    const tiles: ReadonlyArray<TilingTile> = [
+      { id: "cases", title: "Cases" },
+      { id: "document", title: "Document" },
+      { id: "review", title: "Review" },
+    ];
+    expect(expectedTileIdsFromHostTiles(tiles)).toEqual([
+      "cases",
+      "document",
+      "review",
+    ]);
+    const asMap = new Map(tiles.map((tile) => [tile.id, tile]));
+    expect(expectedTileIdsFromHostTiles(asMap)).toEqual([
+      "cases",
+      "document",
+      "review",
+    ]);
+  });
+
+  it("refuses gap-closed rearrange candidates that drop a host tile", (): void => {
+    const full: TilingLayoutNode = annotateStyleLayout();
+    const gapClosed: TilingLayoutNode = removeLeafTile(full, "leaf-document");
+    expect(layoutCoversExpectedTiles(full, EXPECTED_ANNOTATE_TILES)).toBe(true);
+    expect(layoutCoversExpectedTiles(gapClosed, EXPECTED_ANNOTATE_TILES)).toBe(
+      false,
+    );
+    // repair recovers coverage rather than persisting the void.
+    const repaired: TilingLayoutNode = repairLayout(gapClosed, {
+      containerWidthPx: 1400,
+      containerHeightPx: 900,
+      config: CONFIG,
+      expectedTileIds: EXPECTED_ANNOTATE_TILES,
+      fallbackLayout: ANNOTATE_DEFAULT_AS_FALLBACK(),
+    });
+    expect(layoutCoversExpectedTiles(repaired, EXPECTED_ANNOTATE_TILES)).toBe(
+      true,
+    );
+  });
 });
+
+function ANNOTATE_DEFAULT_AS_FALLBACK(): TilingLayoutNode {
+  return annotateStyleLayout();
+}

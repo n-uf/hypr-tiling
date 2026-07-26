@@ -42,13 +42,19 @@ export {
   LAYOUT_COLLAPSED_RATIO_EPS,
   LAYOUT_FILL_SLACK_TOLERANCE_PX,
   LAYOUT_RECONCILE_IDLE_MS,
+  assertLayoutIntegrity,
   assessLayoutTileIntegrity,
   buildDefaultDwindleLayout,
+  expectedTileIdsFromHostTiles,
+  layoutCoversExpectedTiles,
   measureLayoutFillSlackPx,
   normalizeLayout,
+  repairLayout,
+  type AssertLayoutIntegrityOptions,
   type AssessLayoutTileIntegrityOptions,
   type LayoutTileIntegrityReport,
   type NormalizeLayoutOptions,
+  type RepairLayoutOptions,
 } from "./engine/layout-normalize";
 
 // ── Layout tree — low-level read walkers (composed by `queryTilingLayout` on `.`) ─

@@ -1,3 +1,4 @@
+import { collectLeafFootprints, type TilingLeafFootprint } from "./leaf-geometry";
 import {
   clampByMinSize,
   crossAxisDimension,
@@ -15,6 +16,7 @@ import type {
   TilingPaneSizing,
   TilingSplitAxis,
   TilingSplitNode,
+  TilingTile,
 } from "./types";
 
 /**
@@ -59,17 +61,21 @@ export interface NormalizeLayoutOptions {
   fallbackLayout?: TilingLayoutNode;
 }
 
-/** Result of {@link assessLayoutTileIntegrity}. */
+/** Result of {@link assessLayoutTileIntegrity} / {@link assertLayoutIntegrity}. */
 export interface LayoutTileIntegrityReport {
   /**
-   * True when tile coverage/uniqueness is sound and no split ratio is collapsed.
-   * Collapsed ratios alone are healed in place by {@link normalizeLayout};
-   * {@link requiresRebuild} is the signal for void/missing-tile recovery.
+   * True when tile coverage/uniqueness is sound, no split ratio is collapsed,
+   * and (when geometry options are supplied) no zero-area / overlapping leaves
+   * or fill-slack voids remain.
+   * Collapsed ratios and fill slack alone are healed in place by
+   * {@link normalizeLayout} / {@link repairLayout}; {@link requiresRebuild} is
+   * the signal for empty/duplicate/missing-tile or unhealable geometry recovery.
    */
   readonly ok: boolean;
   /**
-   * True when empty/duplicate/missing/unknown tileIds require replacing the
-   * tree (fallback or default dwindle) rather than geometry-only healing.
+   * True when empty/duplicate/missing/unknown tileIds — or unhealable zero-area /
+   * overlapping leaf geometry — require replacing the tree (fallback or default
+   * dwindle) rather than geometry-only healing.
    */
   readonly requiresRebuild: boolean;
   /** `tileId` values that appear on more than one leaf/group member. */
@@ -82,12 +88,43 @@ export interface LayoutTileIntegrityReport {
   readonly hasEmptyTileId: boolean;
   /** True when any dwindle split ratio is collapsed near 0 or 1. */
   readonly hasCollapsedRatio: boolean;
+  /**
+   * True when computed leaf geometry includes a zero-area leaf while the tree
+   * still hosts tiles (empty visual slot). Only set when geometry options given.
+   */
+  readonly hasZeroAreaLeaf: boolean;
+  /**
+   * True when any two leaf footprints overlap in computed geometry (bleed).
+   * Only set when geometry options given.
+   */
+  readonly hasOverlappingLeaves: boolean;
+  /**
+   * True when fill slack exceeds {@link LAYOUT_FILL_SLACK_TOLERANCE_PX}.
+   * Only set when geometry options given.
+   */
+  readonly hasFillSlack: boolean;
 }
 
 /** Options for {@link assessLayoutTileIntegrity}. */
 export interface AssessLayoutTileIntegrityOptions {
   expectedTileIds?: ReadonlyArray<string>;
+  /**
+   * When provided with a positive container size, also assess geometric
+   * integrity (zero-area leaves, overlapping footprints, fill slack).
+   */
+  containerWidthPx?: number;
+  containerHeightPx?: number;
+  config?: TilingLayoutConfig;
 }
+
+/**
+ * Options for {@link assertLayoutIntegrity} — tile coverage plus optional
+ * container-aware geometry checks.
+ */
+export type AssertLayoutIntegrityOptions = AssessLayoutTileIntegrityOptions;
+
+/** Options for {@link repairLayout} (same as {@link NormalizeLayoutOptions}). */
+export type RepairLayoutOptions = NormalizeLayoutOptions;
 
 /**
  * Demote a node's ALONG-the-given-axis static dimension back to flexible while
@@ -359,9 +396,95 @@ function hasCollapsedRatioSplit(node: TilingLayoutNode): boolean {
   return hasCollapsedRatioSplit(node.first) || hasCollapsedRatioSplit(node.second);
 }
 
+const GEOMETRY_OVERLAP_EPS_PX: number = 0.5;
+const GEOMETRY_ZERO_AREA_EPS_PX: number = 1;
+
+function footprintsOverlap(
+  a: TilingLeafFootprint,
+  b: TilingLeafFootprint,
+): boolean {
+  const aRight: number = a.left + a.width;
+  const aBottom: number = a.top + a.height;
+  const bRight: number = b.left + b.width;
+  const bBottom: number = b.top + b.height;
+  const overlapW: number =
+    Math.min(aRight, bRight) - Math.max(a.left, b.left);
+  const overlapH: number =
+    Math.min(aBottom, bBottom) - Math.max(a.top, b.top);
+  return overlapW > GEOMETRY_OVERLAP_EPS_PX && overlapH > GEOMETRY_OVERLAP_EPS_PX;
+}
+
+function assessGeometryIntegrity(
+  node: TilingLayoutNode,
+  widthPx: number,
+  heightPx: number,
+  config: TilingLayoutConfig,
+): {
+  hasZeroAreaLeaf: boolean;
+  hasOverlappingLeaves: boolean;
+  hasFillSlack: boolean;
+} {
+  if (widthPx <= 1 || heightPx <= 1) {
+    return {
+      hasZeroAreaLeaf: false,
+      hasOverlappingLeaves: false,
+      hasFillSlack: false,
+    };
+  }
+  const footprints: ReadonlyArray<TilingLeafFootprint> = collectLeafFootprints(
+    node,
+    0,
+    0,
+    widthPx,
+    heightPx,
+    config,
+  );
+  let hasZeroAreaLeaf: boolean = false;
+  for (const footprint of footprints) {
+    if (
+      footprint.width < GEOMETRY_ZERO_AREA_EPS_PX ||
+      footprint.height < GEOMETRY_ZERO_AREA_EPS_PX
+    ) {
+      hasZeroAreaLeaf = true;
+      break;
+    }
+  }
+  let hasOverlappingLeaves: boolean = false;
+  for (let i = 0; i < footprints.length && !hasOverlappingLeaves; i += 1) {
+    const a: TilingLeafFootprint = footprints[i]!;
+    if (a.width < GEOMETRY_ZERO_AREA_EPS_PX || a.height < GEOMETRY_ZERO_AREA_EPS_PX) {
+      continue;
+    }
+    for (let j = i + 1; j < footprints.length; j += 1) {
+      const b: TilingLeafFootprint = footprints[j]!;
+      if (
+        b.width < GEOMETRY_ZERO_AREA_EPS_PX ||
+        b.height < GEOMETRY_ZERO_AREA_EPS_PX
+      ) {
+        continue;
+      }
+      if (footprintsOverlap(a, b)) {
+        hasOverlappingLeaves = true;
+        break;
+      }
+    }
+  }
+  const slackPx: number = measureLayoutFillSlackPx(node, {
+    containerWidthPx: widthPx,
+    containerHeightPx: heightPx,
+    config,
+  });
+  return {
+    hasZeroAreaLeaf,
+    hasOverlappingLeaves,
+    hasFillSlack: slackPx >= LAYOUT_FILL_SLACK_TOLERANCE_PX,
+  };
+}
+
 /**
  * Tile-slot integrity report: uniqueness, expected coverage, empty/unknown
- * tileIds, and collapsed ratios that create zero-width visual slots.
+ * tileIds, collapsed ratios that create zero-width visual slots, and (when
+ * container geometry is supplied) zero-area / overlapping leaves + fill slack.
  */
 export function assessLayoutTileIntegrity(
   node: TilingLayoutNode,
@@ -410,12 +533,37 @@ export function assessLayoutTileIntegrity(
   }
 
   const hasCollapsedRatio: boolean = hasCollapsedRatioSplit(node);
-  const requiresRebuild: boolean =
+
+  let hasZeroAreaLeaf: boolean = false;
+  let hasOverlappingLeaves: boolean = false;
+  let hasFillSlack: boolean = false;
+  const widthPx: number | undefined = options.containerWidthPx;
+  const heightPx: number | undefined = options.containerHeightPx;
+  const config: TilingLayoutConfig | undefined = options.config;
+  if (
+    widthPx != null &&
+    heightPx != null &&
+    config != null &&
+    widthPx > 1 &&
+    heightPx > 1
+  ) {
+    const geometry = assessGeometryIntegrity(node, widthPx, heightPx, config);
+    hasZeroAreaLeaf = geometry.hasZeroAreaLeaf;
+    hasOverlappingLeaves = geometry.hasOverlappingLeaves;
+    hasFillSlack = geometry.hasFillSlack;
+  }
+
+  const tileSlotBroken: boolean =
     hasEmptyTileId ||
     duplicateTileIds.length > 0 ||
     missingTileIds.length > 0 ||
     unknownTileIds.length > 0;
-  const ok: boolean = !requiresRebuild && !hasCollapsedRatio;
+  // Zero-area / overlap are hard integrity failures (void / bleed). Fill slack
+  // and collapsed ratios are healed in place by geometry normalize.
+  const requiresRebuild: boolean =
+    tileSlotBroken || hasZeroAreaLeaf || hasOverlappingLeaves;
+  const ok: boolean =
+    !requiresRebuild && !hasCollapsedRatio && !hasFillSlack;
 
   return {
     ok,
@@ -425,7 +573,52 @@ export function assessLayoutTileIntegrity(
     unknownTileIds,
     hasEmptyTileId,
     hasCollapsedRatio,
+    hasZeroAreaLeaf,
+    hasOverlappingLeaves,
+    hasFillSlack,
   };
+}
+
+/**
+ * Full integrity check — same report as {@link assessLayoutTileIntegrity}.
+ * Prefer this name at host commit/load gates; pass container + config when
+ * geometric voids/overlaps must be detected.
+ */
+export function assertLayoutIntegrity(
+  node: TilingLayoutNode,
+  options: AssertLayoutIntegrityOptions = {},
+): LayoutTileIntegrityReport {
+  return assessLayoutTileIntegrity(node, options);
+}
+
+/**
+ * Host tile-registry → expected id list for reconcile. Stable order: array
+ * order, or `Map` insertion order.
+ */
+export function expectedTileIdsFromHostTiles(
+  tiles: ReadonlyArray<TilingTile> | ReadonlyMap<string, TilingTile>,
+): ReadonlyArray<string> {
+  if (!(tiles instanceof Map) && Array.isArray(tiles)) {
+    return tiles.map((tile: TilingTile): string => tile.id);
+  }
+  const byId = tiles as ReadonlyMap<string, TilingTile>;
+  return [...byId.keys()];
+}
+
+/**
+ * True when `candidate` still hosts every tile from `expectedTileIds` exactly
+ * once (no empties/dupes/extras). Used to refuse rearrange commits that would
+ * persist a gap-closed / missing-tile tree.
+ */
+export function layoutCoversExpectedTiles(
+  candidate: TilingLayoutNode,
+  expectedTileIds: ReadonlyArray<string>,
+): boolean {
+  const report: LayoutTileIntegrityReport = assessLayoutTileIntegrity(
+    candidate,
+    { expectedTileIds },
+  );
+  return !report.requiresRebuild;
 }
 
 /**
@@ -479,13 +672,50 @@ function geometryNormalizeLayout(
   );
 }
 
+function uniquePresentTileIds(node: TilingLayoutNode): string[] {
+  const tileIds: string[] = [];
+  collectTileIds(node, tileIds);
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const tileId of tileIds) {
+    if (tileId.length === 0 || seen.has(tileId)) {
+      continue;
+    }
+    seen.add(tileId);
+    unique.push(tileId);
+  }
+  return unique;
+}
+
+function rebuildForIntegrityFailure(
+  source: TilingLayoutNode,
+  options: NormalizeLayoutOptions,
+  expectedTileIds: ReadonlyArray<string> | undefined,
+): TilingLayoutNode {
+  if (options.fallbackLayout != null) {
+    return options.fallbackLayout;
+  }
+  const rebuildIds: ReadonlyArray<string> =
+    expectedTileIds != null && expectedTileIds.length > 0
+      ? expectedTileIds
+      : uniquePresentTileIds(source);
+  if (rebuildIds.length === 0) {
+    return source;
+  }
+  return preserveLeafSizingByTileId(
+    source,
+    buildDefaultDwindleLayout(rebuildIds),
+  );
+}
+
 /**
  * Commit-time layout reconciliation: demote unfit static pins, clamp split
  * ratios against min-pane + full gutters, enforce the
  * {@link normalizeStaticAxisFill} both-static filler invariant so
- * panes+gutters fill the container, and (when {@link NormalizeLayoutOptions.expectedTileIds}
- * is set) heal tile-slot integrity failures by rebuilding a sane default tree
- * rather than leaving empty/void slots.
+ * panes+gutters fill the container, and heal tile-slot / geometric integrity
+ * failures by rebuilding a sane default tree rather than leaving empty/void /
+ * overlapping slots. When {@link NormalizeLayoutOptions.expectedTileIds} is
+ * set, coverage is enforced against the host tile map.
  *
  * Pure and idempotent when the tree already satisfies the invariants (returns
  * the same reference). Call on every resize/rearrange gesture end, on idle
@@ -497,29 +727,63 @@ export function normalizeLayout(
 ): TilingLayoutNode {
   const widthPx: number = Math.max(0, options.containerWidthPx);
   const heightPx: number = Math.max(0, options.containerHeightPx);
-
   const expectedTileIds: ReadonlyArray<string> | undefined =
     options.expectedTileIds;
-  let working: TilingLayoutNode = node;
 
-  if (expectedTileIds != null || options.fallbackLayout != null) {
-    const integrity: LayoutTileIntegrityReport = assessLayoutTileIntegrity(
-      working,
-      expectedTileIds != null ? { expectedTileIds } : {},
-    );
-    if (integrity.requiresRebuild) {
-      if (options.fallbackLayout != null) {
-        working = options.fallbackLayout;
-      } else if (expectedTileIds != null && expectedTileIds.length > 0) {
-        working = preserveLeafSizingByTileId(
-          node,
-          buildDefaultDwindleLayout(expectedTileIds),
-        );
-      }
-    }
+  let working: TilingLayoutNode = node;
+  const preIntegrity: LayoutTileIntegrityReport = assessLayoutTileIntegrity(
+    working,
+    expectedTileIds != null ? { expectedTileIds } : {},
+  );
+  if (preIntegrity.requiresRebuild) {
+    working = rebuildForIntegrityFailure(node, options, expectedTileIds);
   }
 
-  return geometryNormalizeLayout(working, widthPx, heightPx, options.config);
+  let healed: TilingLayoutNode = geometryNormalizeLayout(
+    working,
+    widthPx,
+    heightPx,
+    options.config,
+  );
+
+  // Post-geometry gate: zero-area / overlap / residual tile-slot breaks must
+  // not escape. Rebuild once, geometry-normalize again, then return.
+  const postIntegrity: LayoutTileIntegrityReport = assessLayoutTileIntegrity(
+    healed,
+    {
+      expectedTileIds,
+      containerWidthPx: widthPx,
+      containerHeightPx: heightPx,
+      config: options.config,
+    },
+  );
+  if (postIntegrity.requiresRebuild) {
+    const rebuilt: TilingLayoutNode = rebuildForIntegrityFailure(
+      node,
+      options,
+      expectedTileIds,
+    );
+    healed = geometryNormalizeLayout(
+      rebuilt,
+      widthPx,
+      heightPx,
+      options.config,
+    );
+  }
+
+  return healed;
+}
+
+/**
+ * Explicit repair entry — identical to {@link normalizeLayout}. Prefer this
+ * name at host load/persist gates that must never store an integrity-failing
+ * tree.
+ */
+export function repairLayout(
+  node: TilingLayoutNode,
+  options: RepairLayoutOptions,
+): TilingLayoutNode {
+  return normalizeLayout(node, options);
 }
 
 function findLeafByTileId(

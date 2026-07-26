@@ -25,6 +25,13 @@ the version number alone does not flag them.
   `assessLayoutTileIntegrity`, `buildDefaultDwindleLayout`,
   `LAYOUT_COLLAPSED_RATIO_EPS`. `isStructurallyValidLayout` also rejects
   duplicate `tileId`s (at most one tile per slot).
+- **Hard layout integrity (empty / overlap / gone).** Reconcile now auto-derives
+  `expectedTileIds` from the host `tiles` registry on every resize/rearrange
+  commit and idle settle. Gap-closed rearrange candidates that drop a host tile
+  are refused (cancel fly-back). Geometry assessment flags zero-area leaves,
+  overlapping footprints, and fill-slack voids; unhealable cases rebuild.
+  Clear API: `assertLayoutIntegrity`, `repairLayout`,
+  `expectedTileIdsFromHostTiles`, `layoutCoversExpectedTiles`.
 - **Pane titlebar middle slot.** `TilingTile.titleBarContent` renders custom
   chrome between the title (left) and native window controls (right). The
   default tile wires the slot; custom `renderTile` panes can wrap

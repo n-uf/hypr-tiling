@@ -4,14 +4,27 @@
 
 ```ts
 
+import * as React_2 from 'react';
+
 // @public
 export function accentHue(accent: TilingTileAccent | undefined): TilingAccentHue;
+
+// @public
+export function assertLayoutIntegrity(node: TilingLayoutNode, options?: AssertLayoutIntegrityOptions): LayoutTileIntegrityReport;
+
+// @public
+export type AssertLayoutIntegrityOptions = AssessLayoutTileIntegrityOptions;
 
 // @public
 export function assessLayoutTileIntegrity(node: TilingLayoutNode, options?: AssessLayoutTileIntegrityOptions): LayoutTileIntegrityReport;
 
 // @public
 export interface AssessLayoutTileIntegrityOptions {
+    // (undocumented)
+    config?: TilingLayoutConfig;
+    // (undocumented)
+    containerHeightPx?: number;
+    containerWidthPx?: number;
     // (undocumented)
     expectedTileIds?: ReadonlyArray<string>;
 }
@@ -74,6 +87,9 @@ export type DragResolvedTarget = TilingDropIntentState;
 
 // @public
 export const EMPTY_FOCUS_HISTORY: FocusHistory;
+
+// @public
+export function expectedTileIdsFromHostTiles(tiles: ReadonlyArray<TilingTile> | ReadonlyMap<string, TilingTile>): ReadonlyArray<string>;
 
 // @public
 export function findLeafByDirection(layout: TilingLayoutNode, fromLeafId: string, direction: TilingFocusDirection): string | null;
@@ -147,10 +163,16 @@ export const LAYOUT_RECONCILE_IDLE_MS: number;
 export function layoutContainsStaticPane(node: TilingLayoutNode): boolean;
 
 // @public
+export function layoutCoversExpectedTiles(candidate: TilingLayoutNode, expectedTileIds: ReadonlyArray<string>): boolean;
+
+// @public
 export interface LayoutTileIntegrityReport {
     readonly duplicateTileIds: ReadonlyArray<string>;
     readonly hasCollapsedRatio: boolean;
     readonly hasEmptyTileId: boolean;
+    readonly hasFillSlack: boolean;
+    readonly hasOverlappingLeaves: boolean;
+    readonly hasZeroAreaLeaf: boolean;
     readonly missingTileIds: ReadonlyArray<string>;
     readonly ok: boolean;
     readonly requiresRebuild: boolean;
@@ -210,6 +232,12 @@ export function removeLeafTile(layout: TilingLayoutNode, leafId: string): Tiling
 
 // @public
 export function renormalizeFlexibleRatios(children: ReadonlyArray<FlexibleRatioChild>): number[];
+
+// @public
+export function repairLayout(node: TilingLayoutNode, options: RepairLayoutOptions): TilingLayoutNode;
+
+// @public
+export type RepairLayoutOptions = NormalizeLayoutOptions;
 
 // @public
 export function resolveDragCursorPresentation(resolvedTarget: DragResolvedTarget | null, sourceLeafId: string): DragCursorPresentation;
