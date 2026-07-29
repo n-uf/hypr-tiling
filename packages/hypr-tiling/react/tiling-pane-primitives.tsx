@@ -25,11 +25,10 @@ import type { TilingRenderTileProps } from "../engine/types";
 // easy path, drop to bare DOM whenever you need more control.
 
 /** Props for {@link TilingPaneRoot}. */
-export interface TilingPaneRootProps
-  extends Omit<
-    React.HTMLAttributes<HTMLElement>,
-    "onFocus" | "onClick" | "onPointerMove" | "onPointerLeave"
-  > {
+export interface TilingPaneRootProps extends Omit<
+  React.HTMLAttributes<HTMLElement>,
+  "onFocus" | "onClick" | "onPointerMove" | "onPointerLeave"
+> {
   /**
    * The `renderTile` args for this pane (only its `leafId` and the focus/hover
    * handlers are read). Pass the whole args object; the primitive wires the
@@ -52,12 +51,16 @@ export interface TilingPaneRootProps
  */
 export function TilingPaneRoot({
   pane,
+  className,
   ...rest
 }: TilingPaneRootProps): React.ReactElement {
   return (
     <article
       tabIndex={-1}
       {...rest}
+      // Kill UA `:focus-visible` — Shift/modifiers flip keyboard modality on an
+      // already-focused pane; theme `resolveFocusFrame` / host borders own focus.
+      className={["outline-none", className].filter(Boolean).join(" ")}
       data-leaf-id={pane.leafId}
       onFocus={pane.onFocus}
       onClick={pane.onFocus}
@@ -68,15 +71,19 @@ export function TilingPaneRoot({
 }
 
 /** Props for {@link TilingDragHandle}. */
-export interface TilingDragHandleProps
-  extends Omit<React.HTMLAttributes<HTMLElement>, "onPointerDown" | "onClick"> {
+export interface TilingDragHandleProps extends Omit<
+  React.HTMLAttributes<HTMLElement>,
+  "onPointerDown" | "onClick"
+> {
   /**
    * The `renderTile` args for this pane (the drag-pickup handler and the
    * multi-select toggle handlers are read). Pass the whole args object.
    */
   pane: Pick<
     TilingRenderTileProps,
-    "onHandlePointerDown" | "isMultiSelectGroupingEnabled" | "onToggleMultiSelect"
+    | "onHandlePointerDown"
+    | "isMultiSelectGroupingEnabled"
+    | "onToggleMultiSelect"
   >;
 }
 
@@ -149,8 +156,7 @@ export function TilingPaneAction({
 }
 
 /** Props for {@link TilingPaneTitleBarContent}. */
-export interface TilingPaneTitleBarContentProps
-  extends React.HTMLAttributes<HTMLDivElement> {}
+export interface TilingPaneTitleBarContentProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 /**
  * Middle slot of a custom pane titlebar — between the title (left) and native
@@ -179,8 +185,7 @@ export function TilingPaneTitleBarContent({
 }
 
 /** Props for {@link TilingPaneBody}. */
-export interface TilingPaneBodyProps
-  extends React.HTMLAttributes<HTMLDivElement> {
+export interface TilingPaneBodyProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
    * The `renderTile` args for this pane (only `paneBodyRenderMode` is read).
    * Pass the whole args object.

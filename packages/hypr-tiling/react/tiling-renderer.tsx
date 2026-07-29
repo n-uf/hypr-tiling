@@ -2,18 +2,6 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { cn } from "./cn";
-import { TilingPaneTitleBarContent } from "./tiling-pane-primitives";
-import {
-  TILING_TILE_ACCENT_SWATCHES,
-  TILING_THEMES,
-  TilingThemeProvider,
-  resolvePaneDropAffordanceClasses,
-  resolveTilingTheme,
-  useTilingTheme,
-  type TilingTheme,
-  type TilingThemeId,
-} from "./theme";
 import {
   isCommandEnabled,
   keyboardActionToCommand,
@@ -21,20 +9,28 @@ import {
   type TilingCommandGates,
 } from "../engine/commands";
 import {
+  createTilingController,
+  type TilingController,
+  type TilingControllerHost,
+  type TilingControllerState,
+} from "../engine/controller";
+import {
   clampCursorPointToViewport,
   resolveDragCursorPresentation,
   type DragCursorPoint,
   type DragCursorPresentation,
 } from "../engine/drag-cursor";
-import { DEFAULT_DRAG_HOP_EASING, resolveDragEasing } from "../engine/drag-easing";
+import {
+  DEFAULT_DRAG_HOP_EASING,
+  resolveDragEasing,
+} from "../engine/drag-easing";
 import {
   activeDragSourceLeafId,
   activeResolvedTarget,
-  presentationDragSourceLeafId,
-  presentationResolvedTarget,
   createFrameCoalescer,
   deriveCandidateTree,
-  isCommittableTarget,
+  presentationDragSourceLeafId,
+  presentationResolvedTarget,
   previousZoneSeed,
   resolveDragCommitFocusLeafId,
   resolveDragGhostSeatLeafId,
@@ -44,21 +40,18 @@ import {
   type FrameCoalescer,
 } from "../engine/drag-machine";
 import {
-  type DragInputDriver,
-  shouldArmIdleWatchdog,
-} from "../engine/input-driver";
-import {
-  type TilingController,
-  type TilingControllerHost,
-  type TilingControllerState,
-  createTilingController,
-} from "../engine/controller";
-import {
   isDragPresentationActive,
   resolveDragPresentation,
   resolveInitialPaneContentVisible,
   resolvePaneBodyRenderMode,
 } from "../engine/drag-presentation";
+import {
+  createDragWatchdog,
+  scheduleFrameOrTimeout,
+  stripTransientDragStyles,
+  type DragWatchdog,
+  type RacedFrameHandle,
+} from "../engine/drag-recovery";
 import type {
   TilingDropIntentHitZoneDiagnostics,
   TilingDropIntentState as TilingDropState,
@@ -79,6 +72,11 @@ import {
   collectStaticGatedLeafIds,
   evaluateZoneCandidate,
 } from "../engine/drop-validity";
+import {
+  buildCoherentDipKeyframes,
+  createSurvivorFlipScheduler,
+  type SurvivorFlipScheduler,
+} from "../engine/flip-scheduler";
 import {
   pruneFocusHistory,
   pushFocusHistory,
@@ -101,30 +99,22 @@ import {
   type GhostRect,
 } from "../engine/ghost-transit";
 import {
-  createDragWatchdog,
-  scheduleFrameOrTimeout,
-  stripTransientDragStyles,
-  type DragWatchdog,
-  type RacedFrameHandle,
-} from "../engine/drag-recovery";
-import type { SchedulerPort } from "../engine/scheduler-port";
-import { createWindowSchedulerPort } from "./window-scheduler-port";
-import type { MeasurementPort } from "../engine/measurement-port";
-import { createDomMeasurementPort } from "./dom-measurement-port";
-import type { PointerCapturePort } from "../engine/pointer-capture-port";
-import { createDomPointerCapturePort } from "./dom-pointer-capture-port";
-import type { StyleApplierPort } from "../engine/style-applier-port";
-import { createDomStyleApplierPort } from "./dom-style-applier-port";
-import {
-  buildCoherentDipKeyframes,
-  createSurvivorFlipScheduler,
-  type SurvivorFlipScheduler,
-} from "../engine/flip-scheduler";
+  shouldArmIdleWatchdog,
+  type DragInputDriver,
+} from "../engine/input-driver";
 import {
   isResizeAxisEnabled,
   resolveInteractionCapabilities,
 } from "../engine/interaction-capabilities";
 import { matchKeyBinding } from "../engine/keybindings";
+import {
+  LAYOUT_FILL_SLACK_TOLERANCE_PX,
+  LAYOUT_RECONCILE_IDLE_MS,
+  expectedTileIdsFromHostTiles,
+  layoutCoversExpectedTiles,
+  measureLayoutFillSlackPx,
+  normalizeLayout,
+} from "../engine/layout-normalize";
 import {
   collectLeafFootprints,
   collectMasterSlots,
@@ -133,6 +123,15 @@ import {
   resolveMasterStackFootprints,
   slotRepresentativeLeafId,
 } from "../engine/leaf-geometry";
+import type { MeasurementPort } from "../engine/measurement-port";
+import {
+  canGroupMultiSelection,
+  isMultiSelectModifierActive,
+  pruneMultiSelection,
+  resolveMultiSelectGroupCommand,
+  resolveMultiSelectGroupHost,
+  toggleLeafMultiSelection,
+} from "../engine/multi-selection";
 import {
   clampByMinSize,
   isStaticAlongSplitAxis,
@@ -159,6 +158,7 @@ import {
   resolveJumpedPaneId,
   resolveMaximizeToggle,
 } from "../engine/pane-switching";
+import type { PointerCapturePort } from "../engine/pointer-capture-port";
 import type {
   TilingProjectedLandingOverlay,
   TilingProjectedLandingSubject,
@@ -167,14 +167,7 @@ import {
   resolveProjectedDropLayout,
   resolveProjectedLandingOverlays,
 } from "../engine/projected-layout";
-import {
-  LAYOUT_FILL_SLACK_TOLERANCE_PX,
-  LAYOUT_RECONCILE_IDLE_MS,
-  expectedTileIdsFromHostTiles,
-  layoutCoversExpectedTiles,
-  measureLayoutFillSlackPx,
-  normalizeLayout,
-} from "../engine/layout-normalize";
+import type { SchedulerPort } from "../engine/scheduler-port";
 import type { TilingGrowConstraints } from "../engine/state";
 import {
   addLeafToGroup,
@@ -206,19 +199,19 @@ import {
   ungroupNode,
   updateSplitRatio,
 } from "../engine/state";
-import {
-  canGroupMultiSelection,
-  isMultiSelectModifierActive,
-  pruneMultiSelection,
-  resolveMultiSelectGroupCommand,
-  resolveMultiSelectGroupHost,
-  toggleLeafMultiSelection,
-} from "../engine/multi-selection";
+import type { StyleApplierPort } from "../engine/style-applier-port";
 import {
   shouldSnapSurvivorReflowOnSettleCommit,
   type SurvivorRect,
 } from "../engine/survivor-reflow";
 import type {
+  ResolvedTilingDropHitZoneGeometryCapability,
+  ResolvedTilingInteractionCapabilities,
+  ResolvedTilingKeymap,
+  ResolvedTilingSlotCommitmentCapability,
+  TilingCommand,
+  TilingCommandHandle,
+  TilingDefaultTileProps,
   TilingDragCancelVisualState,
   TilingDragPaneSnapshot,
   TilingDragVisualState,
@@ -226,12 +219,14 @@ import type {
   TilingFocusDirection,
   TilingGroupMemberView,
   TilingGroupNode,
+  TilingKeyboardAction,
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafDropPreview,
   TilingLeafDropZone,
   TilingLeafNode,
   TilingLiveHitLogState,
+  TilingMoveModeState,
   TilingMovePlacement,
   TilingObservabilityColorConfig,
   TilingObservabilityColorEnableConfig,
@@ -239,30 +234,37 @@ import type {
   TilingPaneFootprint,
   TilingPaneHitZoneCandidateDebugState,
   TilingPaneHitZoneOverlayDebugState,
+  TilingPaneSizing,
+  TilingPaneSwitcherState,
   TilingRenderSurface,
   TilingRenderTileGroupContext,
   TilingRenderTileProps,
-  TilingDefaultTileProps,
+  TilingRendererObservabilityProps,
+  TilingRendererProps,
   TilingSplitAxis,
   TilingSplitNode,
   TilingSplitResizeState,
   TilingTile,
   TilingTileAccent,
   TilingTileAccentSwatch,
-  TilingRendererProps,
-  TilingRendererObservabilityProps,
-  ResolvedTilingDropHitZoneGeometryCapability,
-  ResolvedTilingInteractionCapabilities,
-  ResolvedTilingKeymap,
-  ResolvedTilingSlotCommitmentCapability,
-  TilingCommand,
-  TilingCommandHandle,
-  TilingKeyboardAction,
-  TilingMoveModeState,
-  TilingPaneSizing,
-  TilingPaneSwitcherState,
   TilingTitleBarSizingMode,
 } from "../engine/types";
+import { cn } from "./cn";
+import { createDomMeasurementPort } from "./dom-measurement-port";
+import { createDomPointerCapturePort } from "./dom-pointer-capture-port";
+import { createDomStyleApplierPort } from "./dom-style-applier-port";
+import {
+  TILING_THEMES,
+  TILING_TILE_ACCENT_SWATCHES,
+  TilingThemeProvider,
+  resolvePaneDropAffordanceClasses,
+  resolveTilingTheme,
+  useTilingTheme,
+  type TilingTheme,
+  type TilingThemeId,
+} from "./theme";
+import { TilingPaneTitleBarContent } from "./tiling-pane-primitives";
+import { createWindowSchedulerPort } from "./window-scheduler-port";
 
 function resolveDragPointerType(pointerType: string): DragPointerType {
   if (pointerType === "touch") {
@@ -707,8 +709,9 @@ export function resolvePointerTargetFromMeasurement(
       input.clientX,
       input.clientY,
       collectGroups(input.layout).map((group: TilingGroupNode) => {
-        const stripRect: DOMRect | null =
-          measurement.measureGroupTabStripRect(group.id);
+        const stripRect: DOMRect | null = measurement.measureGroupTabStripRect(
+          group.id,
+        );
         return {
           groupId: group.id,
           activeMemberLeafId: group.activeMemberId,
@@ -757,10 +760,14 @@ export function resolvePointerTargetFromMeasurement(
     // Skip the source and any statically-gated leaf: a gated target has no
     // trustworthy footprint, so it resolves to no target (→ cancel-on-release
     // / gap-closed candidate) rather than a wrong swap/insert.
-    if (leafId === input.sourceLeafId || input.rearrangeGatedLeafIds.has(leafId)) {
+    if (
+      leafId === input.sourceLeafId ||
+      input.rearrangeGatedLeafIds.has(leafId)
+    ) {
       continue;
     }
-    const footprint: TilingPaneFootprint | undefined = hitFootprints.get(leafId);
+    const footprint: TilingPaneFootprint | undefined =
+      hitFootprints.get(leafId);
     if (
       footprint != null &&
       localX >= footprint.left &&
@@ -1364,8 +1371,7 @@ export function buildGhostTileArgs(
     // Drag surfaces never carry group context: the traveling ghost is a
     // single-pane silhouette, not a seated group member.
     group: null,
-    isMultiSelectGroupingEnabled:
-      capabilityFlags.isMultiSelectGroupingEnabled,
+    isMultiSelectGroupingEnabled: capabilityFlags.isMultiSelectGroupingEnabled,
     isMultiSelected: false,
     canGroupMultiSelection: false,
     onToggleMultiSelect: GHOST_TILE_NOOP,
@@ -1425,9 +1431,7 @@ function DragPaneOverlay({
    * library's built-in `renderDragPaneShell` (default-chrome behavior preserved
    * exactly).
    */
-  renderTile:
-    | ((args: TilingRenderTileProps) => React.ReactNode)
-    | undefined;
+  renderTile: ((args: TilingRenderTileProps) => React.ReactNode) | undefined;
   /** 1-based pane ordinal of the dragged source leaf (for the ghost tileArgs). */
   ghostPaneOrdinal: number;
   /**
@@ -1982,9 +1986,7 @@ function DragCancelOverlay({
    * the `renderTile == null` built-in fallback — the exact pattern of the
    * pickup-ghost routing in `DragPaneOverlay`.
    */
-  renderTile:
-    | ((args: TilingRenderTileProps) => React.ReactNode)
-    | undefined;
+  renderTile: ((args: TilingRenderTileProps) => React.ReactNode) | undefined;
   /** 1-based pane ordinal of the cancelled drag's source leaf. */
   cancelPaneOrdinal: number;
   /**
@@ -2519,6 +2521,9 @@ function DefaultTilingTile({
           ? "border"
           : "",
         isFocused ? theme.resolveFocusFrame(tile.accent) : "",
+        // Host focus frame is theme border/glow — never the UA outline (Shift
+        // alone promotes `:focus-visible` on this focusable article).
+        "outline-none",
       )}
       style={dragSourceBorderStyle}
       data-leaf-id={leafId}
@@ -2728,7 +2733,9 @@ function DefaultTilingTile({
               }}
               className={cn(
                 "flex shrink-0 items-center justify-center rounded-md border font-mono uppercase leading-none tracking-[0.1em] transition-colors",
-                isNarrowHeader ? "h-4 px-1.5 text-[9px]" : "h-5 px-2 text-[10px]",
+                isNarrowHeader
+                  ? "h-4 px-1.5 text-[9px]"
+                  : "h-5 px-2 text-[10px]",
                 theme.paneHeader.controlActive,
               )}
             >
@@ -2837,9 +2844,7 @@ function projectedSubjectFillColorHex(
   return observabilityColors.projectedSuccessorFillColorHex;
 }
 
-function projectedSubjectLabel(
-  subject: TilingProjectedLandingSubject,
-): string {
+function projectedSubjectLabel(subject: TilingProjectedLandingSubject): string {
   if (subject === "source") {
     return "drag source landing overlay (S')";
   }
@@ -2881,9 +2886,7 @@ function ProjectedLandingOverlays({
       aria-hidden
     >
       {overlays.map(
-        (
-          overlay: TilingProjectedLandingOverlay,
-        ): React.ReactElement | null => {
+        (overlay: TilingProjectedLandingOverlay): React.ReactElement | null => {
           const borderEnabled: boolean = projectedSubjectBorderEnabled(
             overlay.subject,
             observabilityColorEnables,
@@ -3630,7 +3633,9 @@ function PaneTabStrip({
       {showContentToggle ? (
         <label
           className="flex shrink-0 cursor-pointer select-none items-center gap-1 px-1 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-slate-400 hover:text-slate-100"
-          title={isPaneContentVisible ? "Hide pane content" : "Show pane content"}
+          title={
+            isPaneContentVisible ? "Hide pane content" : "Show pane content"
+          }
         >
           <input
             type="checkbox"
@@ -3698,17 +3703,23 @@ const PANE_SWITCHER_OVERLAY_Z_INDEX: number = 240;
 
 /**
  * Scoped chrome stylesheet: kill browser-native focus outlines on tabs/buttons
- * inside the tiling root. Custom focus is border/fill (`resolveFocusFrame`,
- * active tab chips); divider `focus-visible:ring-*` uses box-shadow, not outline.
+ * and pane roots inside the tiling root. Custom focus is border/fill
+ * (`resolveFocusFrame`, active tab chips); divider `focus-visible:ring-*` uses
+ * box-shadow, not outline.
+ *
+ * Pane roots (`article[data-leaf-id]`, default tile `tabIndex=0`) are focusable
+ * for tiler keyboard nav. A bare Shift/modifier keypress switches the UA into
+ * keyboard modality and would otherwise paint a bright `:focus-visible` ring on
+ * the already-focused pane — that is not our focus frame.
  * React 19 hoists+dedupes `<style href>` so this lands once per document.
  */
 const TILING_CHROME_STYLE_HREF: string = "hypr-tiling-chrome-focus";
 const TILING_CHROME_CSS: string = `
-.hpt-root :is(button, [role="tab"], a, summary):focus,
-.hpt-root :is(button, [role="tab"], a, summary):focus-visible {
+.hpt-root :is(button, [role="tab"], a, summary, article[data-leaf-id], [data-leaf-id]):focus,
+.hpt-root :is(button, [role="tab"], a, summary, article[data-leaf-id], [data-leaf-id]):focus-visible {
   outline: none;
 }
-.hpt-root :is(button, [role="tab"], a, summary) {
+.hpt-root :is(button, [role="tab"], a, summary, article[data-leaf-id], [data-leaf-id]) {
   -webkit-tap-highlight-color: transparent;
 }
 `;
@@ -4008,9 +4019,12 @@ const TilingRendererComponent = React.forwardRef<
   // watchdog (M3) + explicit transient-style teardown (M4) + visibilitychange
   // reconcile (M5); the rAF-with-timeout animation arming (M1) is always on as a
   // pure backstop (it cannot alter the happy path). `frameDeadlineMs` feeds M1.
-  const isDragRecoveryEnabled: boolean = interactionCapabilities.dragRecovery.enable;
-  const dragRecoveryMaxIdleMs: number = interactionCapabilities.dragRecovery.maxDraggingIdleMs;
-  const dragRecoveryFrameDeadlineMs: number = interactionCapabilities.dragRecovery.frameDeadlineMs;
+  const isDragRecoveryEnabled: boolean =
+    interactionCapabilities.dragRecovery.enable;
+  const dragRecoveryMaxIdleMs: number =
+    interactionCapabilities.dragRecovery.maxDraggingIdleMs;
+  const dragRecoveryFrameDeadlineMs: number =
+    interactionCapabilities.dragRecovery.frameDeadlineMs;
   // M2 transition-completion slack: the survivor-reflow clip-mask close fires on
   // `transitionend` OR `survivorReflowDurationMs + transitionSlackMs`, whichever
   // first (`onTransitionSettled`). Names the historical `+60` mask slack as a
@@ -4037,7 +4051,9 @@ const TilingRendererComponent = React.forwardRef<
   // body matches the in-tree body. When the toggle is shown, the legacy default
   // (content off until the checkbox is flipped) is preserved.
   const [isPaneContentVisible, setIsPaneContentVisible] =
-    React.useState<boolean>(resolveInitialPaneContentVisible(showContentToggle));
+    React.useState<boolean>(
+      resolveInitialPaneContentVisible(showContentToggle),
+    );
   const isMasterLayoutEnabled: boolean = interactionCapabilities.masterLayout;
   const isGroupingEnabled: boolean = interactionCapabilities.grouping.enable;
   // Per-group tab strip governance (distinct from the TOP-LEVEL
@@ -4050,7 +4066,8 @@ const TilingRendererComponent = React.forwardRef<
   // so with grouping off the Group control is suppressed and a modified header
   // click degrades to a plain click.
   const isMultiSelectGroupingEnabled: boolean =
-    interactionCapabilities.paneSwitching.multiSelectGrouping && isGroupingEnabled;
+    interactionCapabilities.paneSwitching.multiSelectGrouping &&
+    isGroupingEnabled;
   const showSwitcherOverlay: boolean =
     isPaneSwitchingEnabled &&
     interactionCapabilities.paneSwitching.showSwitcherOverlay;
@@ -4128,8 +4145,7 @@ const TilingRendererComponent = React.forwardRef<
   // against a single injectable measurement seam (unit-testable with synthetic
   // rects) rather than scattered inline `getBoundingClientRect()` reads.
   const measurementPort: MeasurementPort = React.useMemo(
-    () =>
-      createDomMeasurementPort({ rootRef, viewportRef, groupTabStripRefs }),
+    () => createDomMeasurementPort({ rootRef, viewportRef, groupTabStripRefs }),
     [rootRef, viewportRef, groupTabStripRefs],
   );
   const clearCancelVisualTimeoutRef = React.useRef<number | null>(null);
@@ -4216,8 +4232,9 @@ const TilingRendererComponent = React.forwardRef<
     controller.getState,
   );
   const dragState: DragMachineState = controllerState.drag;
-  const dispatchDrag: (event: Parameters<TilingController["dispatch"]>[0]) => void =
-    controller.dispatch;
+  const dispatchDrag: (
+    event: Parameters<TilingController["dispatch"]>[0],
+  ) => void = controller.dispatch;
   // Latest FSM state mirrored to a ref so the window-level pointer listeners read
   // the current phase synchronously without re-subscribing on every move.
   const dragStateRef = React.useRef<DragMachineState>(dragState);
@@ -4351,7 +4368,8 @@ const TilingRendererComponent = React.forwardRef<
       // `rootRef`, matching the focus/maximize paths) — NOT viewport-scoped — so a
       // pane rendered outside the viewport subtree still resolves, eliminating the
       // viewport-scope miss that returned `null` and pinned a zero extent.
-      const rect: DOMRect | null = measurementPort.measureLeafRect(targetLeafId);
+      const rect: DOMRect | null =
+        measurementPort.measureLeafRect(targetLeafId);
       // Guard the zero-pin collapse: a missing element / zero-area rect must NOT
       // commit a `*Px:0` pin (a zero pin + flexShrink:0 collapses the leaf and
       // surfaces dead space). On a missing measurement leave the pane flexible
@@ -4388,7 +4406,8 @@ const TilingRendererComponent = React.forwardRef<
   // Controlled.
   const acquireLeafSpace = React.useCallback(
     (targetLeafId: string, direction: TilingFocusDirection): void => {
-      const viewportRect: DOMRect | null = measurementPort.measureViewportRect();
+      const viewportRect: DOMRect | null =
+        measurementPort.measureViewportRect();
       const isHorizontalAnnex: boolean =
         direction === "left" || direction === "right";
       const viewportWidthPx: number = viewportRect?.width ?? viewportSize.width;
@@ -4456,8 +4475,9 @@ const TilingRendererComponent = React.forwardRef<
   // Prune the MRU focus history whenever the live leaf-id set changes so a pane
   // removed from the tree is never returned by the focus-current-or-last toggle.
   React.useEffect((): void => {
-    controller.updateFocusHistory((history: FocusHistory): FocusHistory =>
-      pruneFocusHistory(history, leafIds),
+    controller.updateFocusHistory(
+      (history: FocusHistory): FocusHistory =>
+        pruneFocusHistory(history, leafIds),
     );
   }, [controller, leafIds]);
   const leafFootprintsById: ReadonlyMap<string, TilingPaneFootprint> =
@@ -4733,7 +4753,8 @@ const TilingRendererComponent = React.forwardRef<
     // (degenerate / off-screen → null) is the pure `resolveSeatFootprint`.
     setSeatFootprint(
       resolveSeatFootprint({
-        reservationRect: measurementPort.measureReservationRect(ghostSeatLeafId),
+        reservationRect:
+          measurementPort.measureReservationRect(ghostSeatLeafId),
         viewportRect: measurementPort.measureViewportRect(),
       }),
     );
@@ -4781,8 +4802,7 @@ const TilingRendererComponent = React.forwardRef<
     const snapSettleCommit: boolean = shouldSnapSurvivorReflowOnSettleCommit({
       liveDragModeEnabled,
       dragPhase: dragState.phase,
-      settleOutcome:
-        dragState.phase === "settling" ? dragState.outcome : null,
+      settleOutcome: dragState.phase === "settling" ? dragState.outcome : null,
       didPaintDraggingFrame: didPaintDraggingFrameRef.current,
     });
     if (!playReflow) {
@@ -5112,19 +5132,22 @@ const TilingRendererComponent = React.forwardRef<
 
   const armLayoutIdleSettle = React.useCallback((): void => {
     cancelLayoutIdleSettle();
-    layoutIdleSettleHandleRef.current = WINDOW_SCHEDULER_PORT.setTimer((): void => {
-      layoutIdleSettleHandleRef.current = null;
-      // Skip while a resize gesture is live — commit-time normalize on pointerup
-      // is authoritative; idle settle is the belt-and-suspenders path.
-      if (
-        resizeStateRef.current != null ||
-        resizeRafHandleRef.current != null ||
-        pendingResizeRatioRef.current != null
-      ) {
-        return;
-      }
-      commitNormalizedLayout(layoutRef.current);
-    }, LAYOUT_RECONCILE_IDLE_MS);
+    layoutIdleSettleHandleRef.current = WINDOW_SCHEDULER_PORT.setTimer(
+      (): void => {
+        layoutIdleSettleHandleRef.current = null;
+        // Skip while a resize gesture is live — commit-time normalize on pointerup
+        // is authoritative; idle settle is the belt-and-suspenders path.
+        if (
+          resizeStateRef.current != null ||
+          resizeRafHandleRef.current != null ||
+          pendingResizeRatioRef.current != null
+        ) {
+          return;
+        }
+        commitNormalizedLayout(layoutRef.current);
+      },
+      LAYOUT_RECONCILE_IDLE_MS,
+    );
   }, [cancelLayoutIdleSettle, commitNormalizedLayout]);
 
   // Integrity settle: heal missing/duplicate host tiles and (in dev) fill-slack
@@ -5196,7 +5219,11 @@ const TilingRendererComponent = React.forwardRef<
       }
       // Apply locally so commit-time normalize sees the flushed ratio even
       // before React re-renders `layout` / refreshes `layoutRef`.
-      return updateSplitRatio(layoutRef.current, resizeState.splitId, pendingRatio);
+      return updateSplitRatio(
+        layoutRef.current,
+        resizeState.splitId,
+        pendingRatio,
+      );
     };
 
     const scheduleResizeRatio = (nextRatio: number): void => {
@@ -5204,18 +5231,24 @@ const TilingRendererComponent = React.forwardRef<
       if (resizeRafHandleRef.current != null) {
         return;
       }
-      resizeRafHandleRef.current = WINDOW_SCHEDULER_PORT.requestFrame((): void => {
-        resizeRafHandleRef.current = null;
-        const pendingRatio: number | null = pendingResizeRatioRef.current;
-        pendingResizeRatioRef.current = null;
-        if (pendingRatio == null) {
-          return;
-        }
-        onLayoutChangeRef.current(
-          updateSplitRatio(layoutRef.current, resizeState.splitId, pendingRatio),
-        );
-        armLayoutIdleSettle();
-      });
+      resizeRafHandleRef.current = WINDOW_SCHEDULER_PORT.requestFrame(
+        (): void => {
+          resizeRafHandleRef.current = null;
+          const pendingRatio: number | null = pendingResizeRatioRef.current;
+          pendingResizeRatioRef.current = null;
+          if (pendingRatio == null) {
+            return;
+          }
+          onLayoutChangeRef.current(
+            updateSplitRatio(
+              layoutRef.current,
+              resizeState.splitId,
+              pendingRatio,
+            ),
+          );
+          armLayoutIdleSettle();
+        },
+      );
     };
 
     const handlePointerMove = (event: PointerEvent): void => {
@@ -5408,8 +5441,9 @@ const TilingRendererComponent = React.forwardRef<
       if (!isFocusSelectionEnabled) {
         return;
       }
-      controller.updateFocusHistory((history: FocusHistory): FocusHistory =>
-        pushFocusHistory(history, leafId),
+      controller.updateFocusHistory(
+        (history: FocusHistory): FocusHistory =>
+          pushFocusHistory(history, leafId),
       );
       controller.setFocus(leafId);
       onFocusedLeafChange?.(leafId);
@@ -6580,7 +6614,10 @@ const TilingRendererComponent = React.forwardRef<
         rearrangeGatedLeafIds,
         layout,
         config,
-        viewportSize: { width: viewportSize.width, height: viewportSize.height },
+        viewportSize: {
+          width: viewportSize.width,
+          height: viewportSize.height,
+        },
       }),
     [
       config,
@@ -6618,7 +6655,12 @@ const TilingRendererComponent = React.forwardRef<
       sourceLeafId: string,
       previousTarget: TilingDropState | null,
     ): TilingDropState | null =>
-      resolvePointerTargetRef.current(clientX, clientY, sourceLeafId, previousTarget),
+      resolvePointerTargetRef.current(
+        clientX,
+        clientY,
+        sourceLeafId,
+        previousTarget,
+      ),
     capturePointer: (pointerId: number): void => {
       // Mirror the captured-id bookkeeping only when the (best-effort) root
       // capture actually ran — the port swallows a thrown/absent capture.
@@ -6773,8 +6815,7 @@ const TilingRendererComponent = React.forwardRef<
       // touch drag commits from the FSM `resolvedTarget` at POINTER_UP.
       const releaseState: DragMachineState = dragStateRef.current;
       const releaseIsTouch: boolean =
-        (releaseState.phase === "armed" ||
-          releaseState.phase === "dragging") &&
+        (releaseState.phase === "armed" || releaseState.phase === "dragging") &&
         releaseState.touchDrag;
       if (!releaseIsTouch) {
         inputDriver.processPointerSample(
@@ -7055,7 +7096,8 @@ const TilingRendererComponent = React.forwardRef<
       const geometryConfig: TilingZoneGeometryConfig = currentGeometryConfig(
         interactionCapabilities.dropHitZoneGeometry,
       );
-      const viewportRect: DOMRect | null = measurementPort.measureViewportRect();
+      const viewportRect: DOMRect | null =
+        measurementPort.measureViewportRect();
       const cursorViewport = {
         x: viewportRect == null ? pointerX : pointerX - viewportRect.left,
         y: viewportRect == null ? pointerY : pointerY - viewportRect.top,
@@ -7206,7 +7248,10 @@ const TilingRendererComponent = React.forwardRef<
     for (const groupNode of collectGroups(layout)) {
       const members: ReadonlyArray<TilingGroupMemberView> =
         groupNode.members.map(
-          (member: TilingLeafNode, memberIndex: number): TilingGroupMemberView => ({
+          (
+            member: TilingLeafNode,
+            memberIndex: number,
+          ): TilingGroupMemberView => ({
             leafId: member.id,
             tileId: member.tileId,
             tile: resolveTile(tiles, member.tileId) ?? null,
@@ -7299,7 +7344,9 @@ const TilingRendererComponent = React.forwardRef<
           dropZone:
             dropState?.leafId === node.id ? (dropState.zone ?? null) : null,
           dropDominantEdge:
-            dropState?.leafId === node.id ? (dropState.dominantEdge ?? null) : null,
+            dropState?.leafId === node.id
+              ? (dropState.dominantEdge ?? null)
+              : null,
         });
         const isDragSourceSlot: boolean = liveDragModeEnabled
           ? leafPresentation.isGhostSeatLeaf
@@ -7627,7 +7674,9 @@ const TilingRendererComponent = React.forwardRef<
             {renderReservedDragSlot ? (
               <DragSourceSlotReservation
                 theme={theme}
-                accent={dragSnapshotRef.current?.accent ?? tileForDisplay.accent}
+                accent={
+                  dragSnapshotRef.current?.accent ?? tileForDisplay.accent
+                }
                 observabilityColors={observabilityColors}
                 observabilityColorEnables={observabilityColorEnables}
               />
@@ -7675,93 +7724,93 @@ const TilingRendererComponent = React.forwardRef<
             )}
           >
             {showGroupTabStrip ? (
-            <div
-              ref={(element: HTMLDivElement | null): void =>
-                setGroupTabStripRef(groupNode.id, element)
-              }
-              role="tablist"
-              aria-label={`group ${groupNode.id} members`}
-              className={cn(
-                "hpt-group-tab-strip flex shrink-0 items-center gap-1 overflow-x-auto rounded-lg border px-1.5 py-1 transition-colors",
-                isGroupMergeTarget
-                  ? "border-violet-400/60 bg-violet-500/15 ring-2 ring-violet-400/50"
-                  : "border-white/10 bg-black/30",
-              )}
-            >
-              {groupNode.members.map(
-                (
-                  member: TilingLeafNode,
-                  memberIndex: number,
-                ): React.ReactElement => {
-                  const memberTile: TilingTile | undefined = resolveTile(
-                    tiles,
-                    member.tileId,
-                  );
-                  const memberTitle: string =
-                    memberTile?.title ?? member.tileId;
-                  const isActiveMember: boolean =
-                    member.id === groupNode.activeMemberId;
-                  return (
-                    <div
-                      key={`hpt-group-tab-${member.id}`}
-                      className={cn(
-                        "hpt-group-tab flex shrink-0 items-center gap-0.5 rounded border font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
-                        isActiveMember
-                          ? theme.resolveTabActive(memberTile?.accent)
-                          : "border-white/10 bg-slate-950/70 text-slate-400",
-                      )}
-                    >
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={isActiveMember}
-                        title={`group member ${member.id} (Alt+${memberIndex + 1})`}
-                        onClick={(): void => {
-                          dispatchCommand({
-                            kind: "group-tab-jump",
-                            groupId: groupNode.id,
-                            memberNumber: memberIndex + 1,
-                          });
-                        }}
+              <div
+                ref={(element: HTMLDivElement | null): void =>
+                  setGroupTabStripRef(groupNode.id, element)
+                }
+                role="tablist"
+                aria-label={`group ${groupNode.id} members`}
+                className={cn(
+                  "hpt-group-tab-strip flex shrink-0 items-center gap-1 overflow-x-auto rounded-lg border px-1.5 py-1 transition-colors",
+                  isGroupMergeTarget
+                    ? "border-violet-400/60 bg-violet-500/15 ring-2 ring-violet-400/50"
+                    : "border-white/10 bg-black/30",
+                )}
+              >
+                {groupNode.members.map(
+                  (
+                    member: TilingLeafNode,
+                    memberIndex: number,
+                  ): React.ReactElement => {
+                    const memberTile: TilingTile | undefined = resolveTile(
+                      tiles,
+                      member.tileId,
+                    );
+                    const memberTitle: string =
+                      memberTile?.title ?? member.tileId;
+                    const isActiveMember: boolean =
+                      member.id === groupNode.activeMemberId;
+                    return (
+                      <div
+                        key={`hpt-group-tab-${member.id}`}
                         className={cn(
-                          "flex shrink-0 items-center gap-1.5 rounded px-2 py-1 outline-none transition-colors",
+                          "hpt-group-tab flex shrink-0 items-center gap-0.5 rounded border font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
                           isActiveMember
-                            ? "text-inherit"
-                            : "hover:border-white/25 hover:text-slate-200",
+                            ? theme.resolveTabActive(memberTile?.accent)
+                            : "border-white/10 bg-slate-950/70 text-slate-400",
                         )}
                       >
-                        <span className="font-semibold opacity-70">
-                          {memberIndex + 1}
-                        </span>
-                        <span className="max-w-[12ch] truncate">
-                          {memberTitle}
-                        </span>
-                      </button>
-                      {isGroupingEnabled ? (
                         <button
                           type="button"
-                          aria-label={`remove ${memberTitle} from group ${groupNode.id}`}
-                          title={`Eject ${memberTitle} from this group`}
-                          onClick={(
-                            event: React.MouseEvent<HTMLButtonElement>,
-                          ): void => {
-                            event.stopPropagation();
+                          role="tab"
+                          aria-selected={isActiveMember}
+                          title={`group member ${member.id} (Alt+${memberIndex + 1})`}
+                          onClick={(): void => {
                             dispatchCommand({
-                              kind: "remove-from-group",
+                              kind: "group-tab-jump",
                               groupId: groupNode.id,
-                              memberId: member.id,
+                              memberNumber: memberIndex + 1,
                             });
                           }}
-                          className="hpt-group-tab-remove mr-0.5 rounded border border-white/10 px-1 py-0.5 text-[9px] text-slate-500 outline-none transition-colors hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-rose-200"
+                          className={cn(
+                            "flex shrink-0 items-center gap-1.5 rounded px-2 py-1 outline-none transition-colors",
+                            isActiveMember
+                              ? "text-inherit"
+                              : "hover:border-white/25 hover:text-slate-200",
+                          )}
                         >
-                          ×
+                          <span className="font-semibold opacity-70">
+                            {memberIndex + 1}
+                          </span>
+                          <span className="max-w-[12ch] truncate">
+                            {memberTitle}
+                          </span>
                         </button>
-                      ) : null}
-                    </div>
-                  );
-                },
-              )}
-            </div>
+                        {isGroupingEnabled ? (
+                          <button
+                            type="button"
+                            aria-label={`remove ${memberTitle} from group ${groupNode.id}`}
+                            title={`Eject ${memberTitle} from this group`}
+                            onClick={(
+                              event: React.MouseEvent<HTMLButtonElement>,
+                            ): void => {
+                              event.stopPropagation();
+                              dispatchCommand({
+                                kind: "remove-from-group",
+                                groupId: groupNode.id,
+                                memberId: member.id,
+                              });
+                            }}
+                            className="hpt-group-tab-remove mr-0.5 rounded border border-white/10 px-1 py-0.5 text-[9px] text-slate-500 outline-none transition-colors hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-rose-200"
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  },
+                )}
+              </div>
             ) : null}
             <div className="hpt-group-active relative min-h-0 w-full flex-1 overflow-hidden">
               {renderBranch(activeMember, containerWidthPx, containerHeightPx)}
@@ -7901,7 +7950,8 @@ const TilingRendererComponent = React.forwardRef<
         resolvedGapPx,
         config.handleSizePx,
       );
-      const firstStaticAlongAxis: boolean = effectiveStatic.firstStaticAlongAxis;
+      const firstStaticAlongAxis: boolean =
+        effectiveStatic.firstStaticAlongAxis;
       const secondStaticAlongAxis: boolean =
         effectiveStatic.secondStaticAlongAxis;
       const staticExtents = effectiveStatic.staticExtents;
@@ -7934,9 +7984,7 @@ const TilingRendererComponent = React.forwardRef<
       const isDividerChromeVisible: boolean =
         dividerRenderMode === "render-divider-enabled-visible" ||
         dividerRenderMode === "render-divider-disabled-visible";
-      const splitGapOffsetPx: number = renderDivider
-        ? boundaryGutterPx / 2
-        : 0;
+      const splitGapOffsetPx: number = renderDivider ? boundaryGutterPx / 2 : 0;
       const distribution = resolveBinarySplitDistribution(
         firstStaticAlongAxis,
         secondStaticAlongAxis,
@@ -8260,149 +8308,152 @@ const TilingRendererComponent = React.forwardRef<
 
   return (
     <TilingThemeProvider theme={theme}>
-    <div
-      ref={rootRef}
-      tabIndex={-1}
-      className={cn(
-        "hpt-root",
-        theme.root.container,
-        // Suppress native text selection across panes for the whole drag
-        // gesture (`select-none` emits both `-webkit-user-select` and
-        // `user-select: none`); the rule cascades to every pane body. Dropped
-        // when the FSM is `idle`, so panes are normally selectable at rest.
-        isDragGestureActive ? "select-none" : "",
-        // Hide the OS cursor while the custom drag cursor (tier "c") is rendered;
-        // `DragCursorOverlay` paints the pointer affordance instead.
-        isCustomCursorActive ? "cursor-none" : "",
-        className,
-      )}
-      onPointerEnter={(): void => {
-        isPointerWithinRootRef.current = true;
-      }}
-      onPointerLeave={(): void => {
-        isPointerWithinRootRef.current = false;
-      }}
-    >
-      <TilingChromeStyles />
-      {showTabStrip && paneTabs.length > 0 ? (
-        <div className="mb-1.5 shrink-0">
-          <PaneTabStrip
-            tabs={paneTabs}
-            activeFocusedLeafId={activeFocusedLeafId}
-            activeMaximizedLeafId={activeMaximizedLeafId}
-            isPaneContentVisible={isPaneContentVisible}
-            showContentToggle={showContentToggle}
-            accentPicker={tabStripAccentPicker}
-            themePicker={tabStripThemePicker}
-            onSelect={activateLeaf}
-            onTabDoubleClickMaximize={
-              tabDoubleClickMaximizeEnabled
-                ? (leafId: string): void => {
-                    dispatchCommand(tabDoubleClickMaximizeCommand(leafId));
-                  }
-                : null
-            }
-            onPaneContentVisibilityChange={setIsPaneContentVisible}
-          />
-        </div>
-      ) : null}
       <div
-        ref={viewportRef}
-        className={theme.root.viewport}
-        // While dragging, the reflowing candidate-tree layer is made inert so
-        // native hit-testing / `elementFromPoint` can NEVER re-target to a pane
-        // that just slid under the cursor (belt-and-suspenders with the root's
-        // pointer capture). The captured pointer routes to `rootRef` (the
-        // ancestor), not via descendant hit-testing, so input is unaffected; the
-        // ghost + cancel overlays are already `pointer-events-none`. Restored the
-        // instant the FSM leaves `dragging`.
-        style={
-          dragState.phase === "dragging" ? { pointerEvents: "none" } : undefined
-        }
+        ref={rootRef}
+        tabIndex={-1}
+        className={cn(
+          "hpt-root",
+          theme.root.container,
+          // Suppress native text selection across panes for the whole drag
+          // gesture (`select-none` emits both `-webkit-user-select` and
+          // `user-select: none`); the rule cascades to every pane body. Dropped
+          // when the FSM is `idle`, so panes are normally selectable at rest.
+          isDragGestureActive ? "select-none" : "",
+          // Hide the OS cursor while the custom drag cursor (tier "c") is rendered;
+          // `DragCursorOverlay` paints the pointer affordance instead.
+          isCustomCursorActive ? "cursor-none" : "",
+          className,
+        )}
+        onPointerEnter={(): void => {
+          isPointerWithinRootRef.current = true;
+        }}
+        onPointerLeave={(): void => {
+          isPointerWithinRootRef.current = false;
+        }}
       >
-        {maximizedLeaf != null
-          ? renderBranch(maximizedLeaf, viewportSize.width, viewportSize.height)
-          : renderBranch(
-              displayLayout,
-              viewportSize.width,
-              viewportSize.height,
-            )}
-        {showProjectedLandingOverlays ? (
-          <ProjectedLandingOverlays
-            overlays={projectedLandingOverlays}
-            showLabels={showDropIntentDebug}
-            observabilityColors={observabilityColors}
-            observabilityColorEnables={observabilityColorEnables}
-            projectedOverlayBackgroundAlpha={
-              projectedOverlayBackgroundAlphaSafe
+        <TilingChromeStyles />
+        {showTabStrip && paneTabs.length > 0 ? (
+          <div className="mb-1.5 shrink-0">
+            <PaneTabStrip
+              tabs={paneTabs}
+              activeFocusedLeafId={activeFocusedLeafId}
+              activeMaximizedLeafId={activeMaximizedLeafId}
+              isPaneContentVisible={isPaneContentVisible}
+              showContentToggle={showContentToggle}
+              accentPicker={tabStripAccentPicker}
+              themePicker={tabStripThemePicker}
+              onSelect={activateLeaf}
+              onTabDoubleClickMaximize={
+                tabDoubleClickMaximizeEnabled
+                  ? (leafId: string): void => {
+                      dispatchCommand(tabDoubleClickMaximizeCommand(leafId));
+                    }
+                  : null
+              }
+              onPaneContentVisibilityChange={setIsPaneContentVisible}
+            />
+          </div>
+        ) : null}
+        <div
+          ref={viewportRef}
+          className={theme.root.viewport}
+          // While dragging, the reflowing candidate-tree layer is made inert so
+          // native hit-testing / `elementFromPoint` can NEVER re-target to a pane
+          // that just slid under the cursor (belt-and-suspenders with the root's
+          // pointer capture). The captured pointer routes to `rootRef` (the
+          // ancestor), not via descendant hit-testing, so input is unaffected; the
+          // ghost + cancel overlays are already `pointer-events-none`. Restored the
+          // instant the FSM leaves `dragging`.
+          style={
+            dragState.phase === "dragging"
+              ? { pointerEvents: "none" }
+              : undefined
+          }
+        >
+          {maximizedLeaf != null
+            ? renderBranch(
+                maximizedLeaf,
+                viewportSize.width,
+                viewportSize.height,
+              )
+            : renderBranch(
+                displayLayout,
+                viewportSize.width,
+                viewportSize.height,
+              )}
+          {showProjectedLandingOverlays ? (
+            <ProjectedLandingOverlays
+              overlays={projectedLandingOverlays}
+              showLabels={showDropIntentDebug}
+              observabilityColors={observabilityColors}
+              observabilityColorEnables={observabilityColorEnables}
+              projectedOverlayBackgroundAlpha={
+                projectedOverlayBackgroundAlphaSafe
+              }
+            />
+          ) : null}
+          <DragCancelOverlay
+            cancelVisualState={cancelVisualState}
+            isPaneContentVisible={isPaneContentVisible}
+            renderTile={renderTile}
+            ghostCapabilityFlags={ghostCapabilityFlags}
+            cancelPaneOrdinal={
+              cancelVisualState != null
+                ? Math.max(
+                    1,
+                    leafIds.indexOf(cancelVisualState.sourceLeafId) + 1,
+                  )
+                : 1
             }
           />
-        ) : null}
-        <DragCancelOverlay
-          cancelVisualState={cancelVisualState}
-          isPaneContentVisible={isPaneContentVisible}
-          renderTile={renderTile}
-          ghostCapabilityFlags={ghostCapabilityFlags}
-          cancelPaneOrdinal={
-            cancelVisualState != null
-              ? Math.max(
-                  1,
-                  leafIds.indexOf(cancelVisualState.sourceLeafId) + 1,
-                )
-              : 1
-          }
-        />
-        <DragPaneOverlay
-          dragVisualState={dragVisualState}
-          dragHopDurationMs={ghostTransitDurationMs}
-          hopEasing={resolvedHopEasing}
-          pickupScaleFactor={ghostPickupScaleFactor(
-            interactionCapabilities.ghostPickupScalePercent,
-          )}
-          coherentDipActive={shouldApplyCoherentTransitDip({
-            enabled: interactionCapabilities.coherentTransit,
-            action: dropState?.action ?? null,
-            reducedMotion: prefersReducedMotion,
-            speedsParity,
-          })}
-          swapBounceMagnitude={swapBounceMagnitude}
-          prefersReducedMotion={prefersReducedMotion}
-          isPaneContentVisible={isPaneContentVisible}
-          frameDeadlineMs={dragRecoveryFrameDeadlineMs}
-          renderTile={renderTile}
-          ghostCapabilityFlags={ghostCapabilityFlags}
-          ghostPaneOrdinal={
-            dragVisualState != null
-              ? Math.max(
-                  1,
-                  leafIds.indexOf(dragVisualState.sourceLeafId) + 1,
-                )
-              : 1
-          }
-        />
-        {dragCursorEnabled ? (
-          <DragCursorOverlay
+          <DragPaneOverlay
             dragVisualState={dragVisualState}
-            presentation={dragCursorPresentation}
             dragHopDurationMs={ghostTransitDurationMs}
             hopEasing={resolvedHopEasing}
+            pickupScaleFactor={ghostPickupScaleFactor(
+              interactionCapabilities.ghostPickupScalePercent,
+            )}
+            coherentDipActive={shouldApplyCoherentTransitDip({
+              enabled: interactionCapabilities.coherentTransit,
+              action: dropState?.action ?? null,
+              reducedMotion: prefersReducedMotion,
+              speedsParity,
+            })}
+            swapBounceMagnitude={swapBounceMagnitude}
             prefersReducedMotion={prefersReducedMotion}
+            isPaneContentVisible={isPaneContentVisible}
+            frameDeadlineMs={dragRecoveryFrameDeadlineMs}
+            renderTile={renderTile}
+            ghostCapabilityFlags={ghostCapabilityFlags}
+            ghostPaneOrdinal={
+              dragVisualState != null
+                ? Math.max(1, leafIds.indexOf(dragVisualState.sourceLeafId) + 1)
+                : 1
+            }
           />
-        ) : null}
-        {showSwitcherOverlay &&
-        paneSwitcherState != null &&
-        paneTabs.length > 0 ? (
-          <PaneSwitcherOverlay
-            tabs={paneTabs}
-            selectedLeafId={paneSwitcherState.selectedLeafId}
-            onSelect={(leafId: string): void => {
-              controller.setSwitcher(null);
-              activateLeaf(leafId);
-            }}
-          />
-        ) : null}
+          {dragCursorEnabled ? (
+            <DragCursorOverlay
+              dragVisualState={dragVisualState}
+              presentation={dragCursorPresentation}
+              dragHopDurationMs={ghostTransitDurationMs}
+              hopEasing={resolvedHopEasing}
+              prefersReducedMotion={prefersReducedMotion}
+            />
+          ) : null}
+          {showSwitcherOverlay &&
+          paneSwitcherState != null &&
+          paneTabs.length > 0 ? (
+            <PaneSwitcherOverlay
+              tabs={paneTabs}
+              selectedLeafId={paneSwitcherState.selectedLeafId}
+              onSelect={(leafId: string): void => {
+                controller.setSwitcher(null);
+                activateLeaf(leafId);
+              }}
+            />
+          ) : null}
+        </div>
       </div>
-    </div>
     </TilingThemeProvider>
   );
 });
