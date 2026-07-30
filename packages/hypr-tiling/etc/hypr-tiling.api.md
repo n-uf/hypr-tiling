@@ -7,6 +7,19 @@
 import * as React_2 from 'react';
 
 // @public
+export function createPersistedTilingLayout(options: CreatePersistedTilingLayoutOptions): PersistedTilingLayout;
+
+// @public
+export interface CreatePersistedTilingLayoutOptions {
+    config: TilingLayoutConfig;
+    expectedTileIds: ReadonlyArray<string>;
+    fallbackLayout: TilingLayoutNode;
+    resolveContainerSize?: () => TilingLayoutContainerSize;
+    storage?: TilingLayoutStorage;
+    storageKey: string;
+}
+
+// @public
 export const DEFAULT_DRAG_ANIMATION_SPEED_PERCENT: number;
 
 // @public
@@ -39,6 +52,13 @@ export function isMultiSelectModifierActive(event: MultiSelectModifierState): bo
 // @public
 export interface MultiSelectModifierState {
     readonly altKey: boolean;
+}
+
+// @public
+export interface PersistedTilingLayout {
+    commit(layout: TilingLayoutNode): TilingLayoutNode;
+    load(): TilingLayoutNode;
+    reset(): TilingLayoutNode;
 }
 
 // @public
@@ -217,6 +237,9 @@ export interface TilingAccentHue {
     readonly text: string;
     readonly textStrong: string;
 }
+
+// @public
+export type TilingChromeFocusOutline = "suppress" | "native";
 
 // @public
 export type TilingCommand = {
@@ -490,6 +513,12 @@ export interface TilingLayoutConfig {
 }
 
 // @public
+export interface TilingLayoutContainerSize {
+    containerHeightPx: number;
+    containerWidthPx: number;
+}
+
+// @public
 export type TilingLayoutMode = "dwindle" | "master";
 
 // @public
@@ -503,6 +532,13 @@ export interface TilingLayoutQuery {
     readonly neighborLeafId: (fromLeafId: string, direction: TilingFocusDirection) => string | null;
     readonly splits: ReadonlyArray<TilingSplitNode>;
     readonly tileOrder: ReadonlyArray<string>;
+}
+
+// @public
+export interface TilingLayoutStorage {
+    getItem(key: string): string | null;
+    removeItem(key: string): void;
+    setItem(key: string, value: string): void;
 }
 
 // @public
@@ -610,6 +646,7 @@ export const TilingRenderer: React_2.ForwardRefExoticComponent<TilingRendererPro
 
 // @public
 export interface TilingRendererProps {
+    chromeFocusOutline?: TilingChromeFocusOutline;
     className?: string;
     config: TilingLayoutConfig;
     dragAnimationEnabled?: boolean;

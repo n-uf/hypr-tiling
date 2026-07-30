@@ -1891,6 +1891,27 @@ export interface TilingObservabilityColorEnableConfig {
 }
 
 /**
+ * How the renderer handles native user-agent focus outlines on its own chrome
+ * (pane roots `article[data-leaf-id]`, tabs, header buttons/links inside
+ * `.hpt-root`). The renderer injects a stylesheet SCOPED to `.hpt-root`, so it
+ * never touches app chrome outside the tiling tree.
+ *
+ * - `"suppress"` (default): inject the scoped stylesheet that removes UA focus
+ *   outlines (and tap-highlight) on hypr chrome. Hypr paints its own focus
+ *   affordance (theme border/frame), so the raw UA `:focus-visible` ring — which
+ *   a bare Shift/modifier keypress can promote on an already-focused pane — is
+ *   redundant and visually noisy. This is the historical default.
+ * - `"native"`: do NOT inject the suppression rules; native UA focus outlines
+ *   are preserved on hypr chrome. Pick this for a fully keyboard-accessible
+ *   default that relies on the browser focus ring. (Theme token classes such as
+ *   `outline-none` on the pane surface are authored in the `theme` object and
+ *   are controlled there, independently of this switch.)
+ *
+ * @public
+ */
+export type TilingChromeFocusOutline = "suppress" | "native";
+
+/**
  * Props for the {@link TilingRenderer} component — the full controlled-component
  * surface. `layout` + `tiles` + `config` + `onLayoutChange` are the four
  * required props; everything else is optional and resolves to a documented
@@ -2046,6 +2067,14 @@ export interface TilingRendererProps {
   swapBounceMagnitudePercent?: number;
   /** Whether drop border hints are painted on candidate panes during a drag. */
   showDropBorderHints?: boolean;
+  /**
+   * How native UA focus outlines are handled on the renderer's own chrome.
+   * Undefined resolves to `"suppress"` (inject the scoped `.hpt-root`
+   * stylesheet). Set `"native"` to keep browser focus rings. Only ever affects
+   * chrome inside `.hpt-root`; app chrome is untouched. See
+   * {@link TilingChromeFocusOutline}.
+   */
+  chromeFocusOutline?: TilingChromeFocusOutline;
 }
 
 /**
