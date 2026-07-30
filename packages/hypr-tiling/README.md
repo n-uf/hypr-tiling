@@ -44,11 +44,21 @@ yarn add @n-uf/hypr-tiling react react-dom
 
 ### Tailwind content requirement
 
-This package **ships no CSS**. The renderer styles itself by emitting Tailwind
-utility class strings (via `clsx` + `tailwind-merge`) — those classes only
-resolve to real styles if Tailwind scans this package's built output and
-generates the matching CSS. If you do not register the package in your Tailwind
-`content` glob, the component renders **completely unstyled**.
+The renderer styles its **visual** surfaces (pane shells, header, dividers,
+focus frame, ghost) by emitting Tailwind utility class strings (via `clsx` +
+`tailwind-merge`) — those classes only resolve to real styles if Tailwind scans
+this package's built output and generates the matching CSS. If you do not
+register the package in your Tailwind `content` glob, those surfaces render
+**unstyled**.
+
+> **Critical chrome ships as CSS, not purge-dependent classes.** The functional
+> chrome the tiler cannot work without — resize-divider `col-resize` /
+> `row-resize` cursors and the focus-outline handling below — is emitted by the
+> renderer as a small stylesheet **scoped to `.hpt-root`** (React 19
+> `<style href>` hoisting), keyed off data attributes rather than Tailwind
+> `cursor-*` utilities. So resize cursors resolve correctly **even if your
+> Tailwind build never scans our dist**. Tailwind scanning affects only the
+> *visual* theme utilities, not these affordances.
 
 Add `@n-uf/hypr-tiling` to your Tailwind `content` configuration:
 
@@ -153,6 +163,49 @@ reducers above are the stable, documented surface for application code.
 
 For complete generated API signatures, see
 [`etc/hypr-tiling.api.md`](https://github.com/n-uf/hypr-tiling/blob/main/packages/hypr-tiling/etc/hypr-tiling.api.md).
+
+### Persisted layout (optional glue)
+
+`createPersistedTilingLayout` is a **thin persistence adapter**: it persists
+ONLY the layout tree (splits, ratios, tileId leaves) to a key/value store
+(`localStorage` by default) and delegates every heal to the engine's first-class
+`assertLayoutIntegrity` / `repairLayout`. Repair is an engine trait, not a
+persistence feature — the integrity APIs stay usable with or without this
+helper. The storage key, expected tile ids, and fallback tree stay app-owned.
+
+```ts
+import { createPersistedTilingLayout } from "@n-uf/hypr-tiling";
+// also available from "@n-uf/hypr-tiling/engine"
+
+const persisted = createPersistedTilingLayout({
+  storageKey: "workspace.layout",
+  expectedTileIds: ["editor", "preview", "terminal"],
+  fallbackLayout: DEFAULT_LAYOUT,
+  config: DEFAULT_TILING_LAYOUT_CONFIG,
+  // storage? — defaults to window.localStorage (in-memory when no DOM)
+  // resolveContainerSize? — defaults to window.innerWidth/innerHeight
+});
+
+const [layout, setLayout] = useState<TilingLayoutNode>(() => persisted.load());
+// onLayoutChange={(next) => setLayout(persisted.commit(next))}
+// persisted.reset() restores + persists the fallback tree
+```
+
+`load()` reads → structurally validates → checks integrity → returns a repaired
+copy (or the fallback when nothing is stored / a saved tree fails hard
+integrity). `commit()` validates → repairs → persists the healed tree.
+
+### Focus-outline handling (SDK-controlled)
+
+By default the renderer suppresses native UA focus outlines on its own chrome
+(pane roots, tabs, buttons) via a stylesheet **scoped to `.hpt-root`** — it never
+touches app chrome. Opt out with the `chromeFocusOutline` prop to keep native
+browser focus rings:
+
+```tsx
+<TilingRenderer chromeFocusOutline="native" /* … */ />
+// "suppress" (default) | "native"
+```
 
 ## Features
 

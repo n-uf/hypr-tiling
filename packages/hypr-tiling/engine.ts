@@ -57,6 +57,15 @@ export {
   type RepairLayoutOptions,
 } from "./engine/layout-normalize";
 
+// ── Persisted-layout adapter (thin glue over the integrity APIs above) ────────
+export {
+  createPersistedTilingLayout,
+  type CreatePersistedTilingLayoutOptions,
+  type PersistedTilingLayout,
+  type TilingLayoutContainerSize,
+  type TilingLayoutStorage,
+} from "./engine/persisted-layout";
+
 // ── Layout tree — low-level read walkers (composed by `queryTilingLayout` on `.`) ─
 export {
   collectGroups,

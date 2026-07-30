@@ -92,6 +92,18 @@ export {
 } from "./engine/multi-selection";
 export { queryTilingLayout, type TilingLayoutQuery } from "./engine/state";
 
+// ── Persisted-layout adapter ─────────────────────────────────────────────────
+// Optional glue that persists ONLY the layout tree (localStorage by default)
+// and delegates every heal to the engine's first-class `assertLayoutIntegrity`
+// / `repairLayout`. Repair stays an engine trait; this is thin persistence.
+export {
+  createPersistedTilingLayout,
+  type CreatePersistedTilingLayoutOptions,
+  type PersistedTilingLayout,
+  type TilingLayoutContainerSize,
+  type TilingLayoutStorage,
+} from "./engine/persisted-layout";
+
 // ── Public type surface ──────────────────────────────────────────────────────
 // The transitive type closure of the runtime symbols above (renderer props/ref,
 // theming, capabilities, layout query, command/modifier helpers). API Extractor
@@ -153,6 +165,7 @@ export type {
   TilingCommandHandle,
   // Renderer props / render-tile contract
   TilingRendererProps,
+  TilingChromeFocusOutline,
   TilingRenderSurface,
   TilingRenderTileProps,
   TilingGroupMemberView,

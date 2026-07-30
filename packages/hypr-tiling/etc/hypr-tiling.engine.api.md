@@ -54,6 +54,19 @@ export function collectSplitNodes(node: TilingLayoutNode): ReadonlyArray<TilingS
 export function commandRequiredCapability(command: TilingCommand): keyof TilingCommandGates | null;
 
 // @public
+export function createPersistedTilingLayout(options: CreatePersistedTilingLayoutOptions): PersistedTilingLayout;
+
+// @public
+export interface CreatePersistedTilingLayoutOptions {
+    config: TilingLayoutConfig;
+    expectedTileIds: ReadonlyArray<string>;
+    fallbackLayout: TilingLayoutNode;
+    resolveContainerSize?: () => TilingLayoutContainerSize;
+    storage?: TilingLayoutStorage;
+    storageKey: string;
+}
+
+// @public
 export function defaultKeyBindings(keymap: ResolvedTilingKeymap): ReadonlyArray<TilingKeyBinding>;
 
 // @public
@@ -214,6 +227,13 @@ export interface NormalizeLayoutOptions {
 
 // @public
 export function normalizeStaticAxisFill(node: TilingLayoutNode): TilingLayoutNode;
+
+// @public
+export interface PersistedTilingLayout {
+    commit(layout: TilingLayoutNode): TilingLayoutNode;
+    load(): TilingLayoutNode;
+    reset(): TilingLayoutNode;
+}
 
 // @public
 export function pruneFocusHistory(history: FocusHistory, validLeafIds: ReadonlyArray<string>): FocusHistory;
@@ -408,6 +428,19 @@ export interface TilingKeymapActionGuards {
     maximizeEnabled: boolean;
     paneSwitchingEnabled: boolean;
     rearrangeEnabled: boolean;
+}
+
+// @public
+export interface TilingLayoutContainerSize {
+    containerHeightPx: number;
+    containerWidthPx: number;
+}
+
+// @public
+export interface TilingLayoutStorage {
+    getItem(key: string): string | null;
+    removeItem(key: string): void;
+    setItem(key: string, value: string): void;
 }
 
 // @public

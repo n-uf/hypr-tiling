@@ -222,6 +222,7 @@ import type {
   TilingKeyboardAction,
   TilingLayoutConfig,
   TilingLayoutNode,
+  TilingChromeFocusOutline,
   TilingLeafDropPreview,
   TilingLeafDropZone,
   TilingLeafNode,
@@ -3702,19 +3703,49 @@ function PaneTabStrip({
 const PANE_SWITCHER_OVERLAY_Z_INDEX: number = 240;
 
 /**
- * Scoped chrome stylesheet: kill browser-native focus outlines on tabs/buttons
- * and pane roots inside the tiling root. Custom focus is border/fill
- * (`resolveFocusFrame`, active tab chips); divider `focus-visible:ring-*` uses
- * box-shadow, not outline.
+ * Data attribute the renderer stamps on resize dividers to select their cursor
+ * from the SDK-shipped chrome stylesheet ({@link TILING_CHROME_CURSOR_CSS})
+ * instead of relying on the consumer's Tailwind build scanning `cursor-*`
+ * utility strings out of our dist. `"col"` → side-by-side (axis `horizontal`)
+ * divider, `"row"` → stacked (axis `vertical`) divider, `"default"` → an
+ * inert/hidden gutter.
+ */
+const TILING_RESIZE_CURSOR_ATTR: "data-hpt-resize-cursor" =
+  "data-hpt-resize-cursor";
+type TilingResizeCursor = "col" | "row" | "default";
+
+/**
+ * Critical chrome CSS shipped BY THE SDK (not via Tailwind purge). Resize
+ * dividers are functional affordances: their `col-resize` / `row-resize`
+ * cursors must resolve regardless of whether a consumer's Tailwind content
+ * config scans this package. React 19 hoists+dedupes `<style href>`, so these
+ * land once per document. Scoped to `.hpt-root` so they never leak to app
+ * chrome.
+ */
+const TILING_CHROME_CURSOR_STYLE_HREF: string = "hypr-tiling-chrome-cursor";
+const TILING_CHROME_CURSOR_CSS: string = `
+.hpt-root [${TILING_RESIZE_CURSOR_ATTR}="col"] { cursor: col-resize; }
+.hpt-root [${TILING_RESIZE_CURSOR_ATTR}="row"] { cursor: row-resize; }
+.hpt-root [${TILING_RESIZE_CURSOR_ATTR}="default"] { cursor: default; }
+`;
+
+/**
+ * Scoped focus-outline stylesheet: kill browser-native focus outlines on
+ * tabs/buttons and pane roots inside the tiling root. Custom focus is
+ * border/fill (`resolveFocusFrame`, active tab chips); divider
+ * `focus-visible:ring-*` uses box-shadow, not outline.
  *
  * Pane roots (`article[data-leaf-id]`, default tile `tabIndex=0`) are focusable
  * for tiler keyboard nav. A bare Shift/modifier keypress switches the UA into
  * keyboard modality and would otherwise paint a bright `:focus-visible` ring on
  * the already-focused pane — that is not our focus frame.
- * React 19 hoists+dedupes `<style href>` so this lands once per document.
+ *
+ * SDK-controlled: emitted only when `chromeFocusOutline` resolves to
+ * `"suppress"` (the default); a consumer can opt out with `"native"` to keep
+ * the browser focus ring. Scoped to `.hpt-root` so app chrome is never touched.
  */
-const TILING_CHROME_STYLE_HREF: string = "hypr-tiling-chrome-focus";
-const TILING_CHROME_CSS: string = `
+const TILING_CHROME_FOCUS_STYLE_HREF: string = "hypr-tiling-chrome-focus";
+const TILING_CHROME_FOCUS_CSS: string = `
 .hpt-root :is(button, [role="tab"], a, summary, article[data-leaf-id], [data-leaf-id]):focus,
 .hpt-root :is(button, [role="tab"], a, summary, article[data-leaf-id], [data-leaf-id]):focus-visible {
   outline: none;
@@ -3724,11 +3755,22 @@ const TILING_CHROME_CSS: string = `
 }
 `;
 
-function TilingChromeStyles(): React.ReactElement {
+function TilingChromeStyles({
+  focusOutline,
+}: {
+  focusOutline: TilingChromeFocusOutline;
+}): React.ReactElement {
   return (
-    <style href={TILING_CHROME_STYLE_HREF} precedence="default">
-      {TILING_CHROME_CSS}
-    </style>
+    <>
+      <style href={TILING_CHROME_CURSOR_STYLE_HREF} precedence="default">
+        {TILING_CHROME_CURSOR_CSS}
+      </style>
+      {focusOutline === "suppress" ? (
+        <style href={TILING_CHROME_FOCUS_STYLE_HREF} precedence="default">
+          {TILING_CHROME_FOCUS_CSS}
+        </style>
+      ) : null}
+    </>
   );
 }
 
@@ -3931,6 +3973,7 @@ const TilingRendererComponent = React.forwardRef<
     ghostTransitSpeedPercent = DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
     survivorReflowSpeedPercent = DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
     swapBounceMagnitudePercent = DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT,
+    chromeFocusOutline = "suppress",
     showDropBorderHints = true,
     showDropIntentTranslucentBg = true,
     showDropIntentDebug = true,
@@ -8113,6 +8156,21 @@ const TilingRendererComponent = React.forwardRef<
               aria-valuemax={95}
               aria-valuetext={`${Math.round(safeRatio * 100)}%`}
               data-resize-enabled={isRenderedDividerInteractive}
+              // Cursor is supplied by the SDK-shipped chrome stylesheet
+              // (`TILING_CHROME_CURSOR_CSS`) keyed off this attribute — NOT by
+              // Tailwind `cursor-*` utilities — so the resize affordance resolves
+              // even when a consumer's Tailwind build does not scan our dist.
+              // interactive → col/row; visible+inert → inherit; hidden+inert →
+              // default.
+              data-hpt-resize-cursor={
+                isRenderedDividerInteractive
+                  ? isHorizontal
+                    ? ("col" satisfies TilingResizeCursor)
+                    : ("row" satisfies TilingResizeCursor)
+                  : isDividerChromeVisible
+                    ? undefined
+                    : ("default" satisfies TilingResizeCursor)
+              }
               tabIndex={isRenderedDividerInteractive ? 0 : -1}
               onPointerDown={
                 isRenderedDividerInteractive
@@ -8140,40 +8198,19 @@ const TilingRendererComponent = React.forwardRef<
               }
               className={cn(
                 theme.divider.base,
+                // Cursor moved to the SDK-shipped stylesheet (see
+                // `data-hpt-resize-cursor` above); only sizing + theme paint
+                // remain as class strings here.
                 isDividerChromeVisible
                   ? cn(
                       isRenderedDividerInteractive
                         ? theme.divider.visibleInteractive
                         : theme.divider.visibleStatic,
-                      isHorizontal
-                        ? cn(
-                            "h-full",
-                            isRenderedDividerInteractive
-                              ? "cursor-col-resize"
-                              : undefined,
-                          )
-                        : cn(
-                            "w-full",
-                            isRenderedDividerInteractive
-                              ? "cursor-row-resize"
-                              : undefined,
-                          ),
+                      isHorizontal ? "h-full" : "w-full",
                     )
                   : cn(
                       theme.divider.hidden,
-                      isHorizontal
-                        ? cn(
-                            "h-full",
-                            isRenderedDividerInteractive
-                              ? "cursor-col-resize"
-                              : "cursor-default",
-                          )
-                        : cn(
-                            "w-full",
-                            isRenderedDividerInteractive
-                              ? "cursor-row-resize"
-                              : "cursor-default",
-                          ),
+                      isHorizontal ? "h-full" : "w-full",
                     ),
               )}
               style={
@@ -8331,7 +8368,7 @@ const TilingRendererComponent = React.forwardRef<
           isPointerWithinRootRef.current = false;
         }}
       >
-        <TilingChromeStyles />
+        <TilingChromeStyles focusOutline={chromeFocusOutline} />
         {showTabStrip && paneTabs.length > 0 ? (
           <div className="mb-1.5 shrink-0">
             <PaneTabStrip
