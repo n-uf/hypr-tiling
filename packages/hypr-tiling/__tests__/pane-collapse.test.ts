@@ -1,12 +1,15 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   findLeafById,
+  insertLeafAdjacent,
   isLeafCollapsed,
   setLeafCollapsed,
   toggleLeafCollapsed,
 } from "../engine/state";
 import { collectLeafFootprints, type TilingLeafFootprint } from "../engine/leaf-geometry";
 import { isStaticAlongSplitAxis } from "../engine/pane-sizing";
+import { collectStaticGatedLeafIds } from "../engine/drop-validity";
+import { deriveCandidateTree, type DragResolvedTarget } from "../engine/drag-machine";
 import { commandRequiredCapability, isCommandEnabled } from "../engine/commands";
 import type { TilingCommandGates } from "../engine/commands";
 import {
@@ -308,6 +311,158 @@ describe("collapse geometry — side-by-side (horizontal) split is along-axis (w
     const map = byId(collectLeafFootprints(both, 0, 0, 1000, 800, GAP_FREE_CONFIG));
     expect(map.get("A")?.width).toBe(COLLAPSE_PX);
     expect(map.get("B")?.width).toBe(1000 - COLLAPSE_PX);
+  });
+});
+
+describe("collapsed drag re-parent — axis reconciliation (HT-PANE-COLLAPSE-DRAG)", (): void => {
+  /**
+   * A drag's edge-insert (`deriveCandidateTree` / `insertLeafAdjacent`) always
+   * derives its NEW split's axis from the drop placement — independent of the
+   * axis the leaf collapsed under. Root cause of "collapsed drag doesn't work
+   * like normal drag": a collapsed leaf dropped into a split with a DIFFERENT
+   * axis kept its STALE pin (on what is now the CROSS axis), so
+   * `collectLeafFootprints` stopped along-axis-distributing it while still
+   * content-sizing the cross axis to the old chrome extent — a titlebar-sized
+   * box floating with dead space, instead of a normal collapsed strip. These
+   * tests prove the leaf re-pins to the NEW parent axis on every mover a drag
+   * can take, and that a matching-axis drop is a true no-op (no needless churn).
+   */
+
+  it("re-pins WIDTH→HEIGHT when a horizontally-collapsed leaf drags into a vertical (top/bottom) split", (): void => {
+    const collapsedLeaf: TilingLeafNode = {
+      ...leaf("cases"),
+      sizing: { width: "static", widthPx: COLLAPSE_PX },
+      collapsed: true,
+      collapsedDimension: "width",
+    };
+    const base: TilingLayoutNode = hsplit(0.5, collapsedLeaf, leaf("main"));
+    const withTarget: TilingLayoutNode = hsplit(0.5, base as TilingLayoutNode, leaf("target"));
+    // Drop "cases" on "target"'s TOP edge — a vertical (top/bottom) split, the
+    // opposite axis from the leaf's current (width) collapse pin.
+    const moved: TilingLayoutNode = insertLeafAdjacent(withTarget, "cases", "target", "top", {
+      preserveParentSplitAxis: false,
+      splitRatio: 0.5,
+    });
+    const cases: TilingLeafNode | null = findLeafById(moved, "cases");
+    expect(cases?.collapsed).toBe(true);
+    expect(cases?.collapsedDimension).toBe("height");
+    expect(cases?.sizing?.height).toBe("static");
+    expect(cases?.sizing?.heightPx).toBe(COLLAPSE_PX);
+    // The stale width pin must NOT survive as a leftover cross-axis lock.
+    expect(cases?.sizing?.width).toBeUndefined();
+
+    // No dead space: the along axis (height, under the new vertical split)
+    // pins to the chrome extent, and the cross axis (width) fills completely —
+    // exactly the normal collapsed-strip shape, not a floating titlebar box.
+    const map = byId(collectLeafFootprints(moved, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    const casesFootprint: TilingLeafFootprint | undefined = map.get("cases");
+    expect(casesFootprint?.height).toBe(COLLAPSE_PX);
+    expect(casesFootprint?.width).toBeGreaterThan(COLLAPSE_PX);
+
+    // The re-parented leaf stays a normal drag participant, exactly like an
+    // expanded peer — not re-gated by its own (now axis-correct) pin.
+    expect(collectStaticGatedLeafIds(moved).has("cases")).toBe(false);
+  });
+
+  it("re-pins HEIGHT→WIDTH when a vertically-collapsed leaf drags into a horizontal (left/right) split", (): void => {
+    const collapsedLeaf: TilingLeafNode = {
+      ...leaf("cases"),
+      sizing: { height: "static", heightPx: COLLAPSE_PX },
+      collapsed: true,
+      collapsedDimension: "height",
+    };
+    const base: TilingLayoutNode = vsplit(0.5, collapsedLeaf, leaf("main"));
+    const withTarget: TilingLayoutNode = vsplit(0.5, base as TilingLayoutNode, leaf("target"));
+    // Drop "cases" on "target"'s LEFT edge — a horizontal (left/right) split.
+    const moved: TilingLayoutNode = insertLeafAdjacent(withTarget, "cases", "target", "left", {
+      preserveParentSplitAxis: false,
+      splitRatio: 0.5,
+    });
+    const cases: TilingLeafNode | null = findLeafById(moved, "cases");
+    expect(cases?.collapsed).toBe(true);
+    expect(cases?.collapsedDimension).toBe("width");
+    expect(cases?.sizing?.width).toBe("static");
+    expect(cases?.sizing?.widthPx).toBe(COLLAPSE_PX);
+    expect(cases?.sizing?.height).toBeUndefined();
+
+    const map = byId(collectLeafFootprints(moved, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    const casesFootprint: TilingLeafFootprint | undefined = map.get("cases");
+    expect(casesFootprint?.width).toBe(COLLAPSE_PX);
+    expect(casesFootprint?.height).toBeGreaterThan(COLLAPSE_PX);
+    expect(collectStaticGatedLeafIds(moved).has("cases")).toBe(false);
+  });
+
+  it("is a true no-op when the drop lands under the SAME axis (leaf reference untouched)", (): void => {
+    const collapsedLeaf: TilingLeafNode = {
+      ...leaf("cases"),
+      sizing: { height: "static", heightPx: COLLAPSE_PX },
+      collapsed: true,
+      collapsedDimension: "height",
+    };
+    const base: TilingLayoutNode = vsplit(0.5, collapsedLeaf, leaf("main"));
+    const withTarget: TilingLayoutNode = vsplit(0.5, base as TilingLayoutNode, leaf("target"));
+    // Drop on the TOP edge — still a vertical split, matching the leaf's
+    // existing collapse axis.
+    const moved: TilingLayoutNode = insertLeafAdjacent(withTarget, "cases", "target", "top", {
+      preserveParentSplitAxis: false,
+      splitRatio: 0.5,
+    });
+    // The reconciled leaf keeps the SAME object reference as the original —
+    // no needless re-collapse when the axis already matches.
+    expect(findLeafById(moved, "cases")).toBe(collapsedLeaf);
+  });
+
+  it("end-to-end via deriveCandidateTree (the ACTUAL drag-commit path): collapsed source dropped edge-insert on an axis-flipping target reconciles like a real drag", (): void => {
+    const collapsedLeaf: TilingLeafNode = {
+      ...leaf("cases"),
+      sizing: { height: "static", heightPx: COLLAPSE_PX },
+      collapsed: true,
+      collapsedDimension: "height",
+    };
+    const layout: TilingLayoutNode = vsplit(
+      0.5,
+      hsplit(0.5, collapsedLeaf, leaf("main")),
+      leaf("target"),
+    );
+    const target: DragResolvedTarget = {
+      leafId: "target",
+      zone: "left",
+      action: "edge-insert",
+      dominantEdge: "left",
+      finalEdge: "left",
+      fallbackReason: null,
+      blockedReason: null,
+      axisPath: ["vertical"],
+      edgeThresholdRatio: 0.25,
+      centerRectWidthPx: 100,
+      centerRectHeightPx: 100,
+      centerDistancePx: 0,
+      nearestEdgeDistancePx: 0,
+      paneLocalX: 5,
+      paneLocalY: 5,
+      targetSplitId: null,
+      targetSplitPlacement: null,
+      selectedSplitZone: "left",
+      selectedSplitDistancePx: null,
+      rejectedSplitReasons: [],
+      tuning: { centerRatio: 0.5, edgeThresholdRatio: 0.25, hysteresisPx: 6, devicePixelRatio: 1 },
+    };
+    const candidate: TilingLayoutNode = deriveCandidateTree(layout, "cases", target);
+    const cases: TilingLeafNode | null = findLeafById(candidate, "cases");
+    // "cases" collapsed under a HORIZONTAL parent (width pin) originally — the
+    // drop target's own split axis here is vertical/left→horizontal insert, so
+    // confirm the pin now matches whatever axis it actually landed under, with
+    // no dead-space divergence between pin and geometry.
+    expect(cases?.collapsed).toBe(true);
+    const map = byId(collectLeafFootprints(candidate, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    const casesFootprint: TilingLeafFootprint | undefined = map.get("cases");
+    expect(casesFootprint).toBeDefined();
+    // The along-axis pinned dimension's footprint extent equals the collapse
+    // extent EXACTLY (never a ratio-flexed value) — the "must work as normal
+    // drag" invariant: a collapsed pane's chrome extent survives every commit.
+    const pinnedExtent: number =
+      cases?.collapsedDimension === "width" ? (casesFootprint?.width ?? -1) : (casesFootprint?.height ?? -1);
+    expect(pinnedExtent).toBe(COLLAPSE_PX);
   });
 });
 

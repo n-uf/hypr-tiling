@@ -189,6 +189,53 @@ export function demoteAlongAxisStatic(
 }
 
 /**
+ * Re-pin a COLLAPSED leaf's along-axis dimension to the axis of its CURRENT
+ * immediate parent split (HT-PANE-COLLAPSE-DRAG). `collapseLeafNode` pins
+ * whichever dimension runs ALONG the parent split's axis AT COLLAPSE TIME
+ * (`collapsedDimension`) — but a drag re-parent (`insertLeafAdjacent`,
+ * `moveLeafToRoot`, `moveLeafToSplitContainer`, or an edge-insert that
+ * rewraps the TARGET) always builds its NEW split's axis from the drop
+ * placement, independent of the leaf's collapse axis. Left unreconciled, a
+ * collapsed leaf dropped into a split with a DIFFERENT axis keeps its STALE
+ * pin: `collectLeafFootprints` no longer treats it as along-axis static (the
+ * pin is now on the CROSS dimension), so the along axis flexes by ratio while
+ * the cross axis still content-sizes to the old chrome extent — a titlebar-
+ * sized box floating with dead space below/beside it, instead of a normal
+ * collapsed strip. This is the divergence that made collapsed drag behave
+ * differently from a flexible pane's drag (which never depends on which axis
+ * it lands under).
+ *
+ * The fix re-collapses the leaf under the new axis, reusing the SAME pinned
+ * px (whatever `collapsedExtentPx` was already baked into the stale pin) —
+ * expand-then-recollapse is exactly `demoteAlongAxisStatic`'s sibling
+ * operation, so collapse truth and geometry stay in sync through every
+ * rearrange, not just the initial collapse. A no-op (same reference) when the
+ * leaf is not collapsed, is already pinned to the axis-correct dimension, or
+ * carries no usable pin to carry over (defensive — unreachable for a leaf
+ * `collapseLeafNode` produced).
+ * @internal
+ */
+function reconcileCollapsedLeafAxis(
+  leaf: TilingLeafNode,
+  parentAxis: TilingSplitAxis,
+): TilingLeafNode {
+  if (leaf.collapsed !== true) {
+    return leaf;
+  }
+  const expectedDimension: TilingDimension = splitAxisDimension(parentAxis);
+  if (leaf.collapsedDimension === expectedDimension) {
+    return leaf;
+  }
+  const currentDimension: TilingDimension = leaf.collapsedDimension ?? expectedDimension;
+  const pinPx: number | undefined =
+    currentDimension === "width" ? leaf.sizing?.widthPx : leaf.sizing?.heightPx;
+  if (pinPx == null || !Number.isFinite(pinPx) || pinPx <= 0) {
+    return leaf;
+  }
+  return collapseLeafNode(expandLeafNode(leaf), pinPx, parentAxis);
+}
+
+/**
  * Enforce the per-split invariant **"at least one child flexes ALONG the split's
  * own axis"** across the whole tree, bottom-up. Two fixed extents along one axis
  * cannot continuously sum to a variable container, so a split whose BOTH children
@@ -213,8 +260,17 @@ export function normalizeStaticAxisFill(node: TilingLayoutNode): TilingLayoutNod
     return node;
   }
 
-  const normalizedFirst: TilingLayoutNode = normalizeStaticAxisFill(node.first);
-  let normalizedSecond: TilingLayoutNode = normalizeStaticAxisFill(node.second);
+  // HT-PANE-COLLAPSE-DRAG: re-pin a DIRECT-CHILD collapsed leaf to the axis it
+  // is ACTUALLY under before recursing. A drag re-parent (`insertLeafAdjacent`
+  // / `moveLeafTo*`) can land a collapsed leaf under a split whose axis
+  // differs from the axis it collapsed under — see `reconcileCollapsedLeafAxis`.
+  const reconciledFirst: TilingLayoutNode =
+    node.first.kind === "leaf" ? reconcileCollapsedLeafAxis(node.first, node.axis) : node.first;
+  const reconciledSecond: TilingLayoutNode =
+    node.second.kind === "leaf" ? reconcileCollapsedLeafAxis(node.second, node.axis) : node.second;
+
+  const normalizedFirst: TilingLayoutNode = normalizeStaticAxisFill(reconciledFirst);
+  let normalizedSecond: TilingLayoutNode = normalizeStaticAxisFill(reconciledSecond);
 
   if (
     isStaticAlongSplitAxis(normalizedFirst, node.axis) &&
