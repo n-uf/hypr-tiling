@@ -3,6 +3,7 @@ import {
   crossAxisDimension,
   isStaticAlongSplitAxis,
   isStaticOnCrossAxis,
+  resolveAlongAxisMinPaneSizePx,
   resolveStaticAlongExtents,
   splitAxisDimension,
   splitBoundaryGutterPx,
@@ -442,7 +443,22 @@ export function collectLeafFootprints(
       }
     }
   }
-  const resolvedMinPaneSizePx: number = node.minPaneSizePx ?? config.minPaneSizePx;
+  // Per-side along-axis floor (HT-MIN-BBOX-PX): a direct-child leaf's own
+  // `minBBoxPx` wins over this split's `minPaneSizePx`, which wins over the
+  // config default — resolved independently per side so an asymmetric leaf
+  // floor (one side only) does not force the other side up to match.
+  const firstMinPaneSizePx: number = resolveAlongAxisMinPaneSizePx(
+    node.first,
+    node.axis,
+    node.minPaneSizePx,
+    config.minPaneSizePx,
+  );
+  const secondMinPaneSizePx: number = resolveAlongAxisMinPaneSizePx(
+    node.second,
+    node.axis,
+    node.minPaneSizePx,
+    config.minPaneSizePx,
+  );
   // Min-pane clamp must reserve the SAME gutter the ratio flexBasis / divider
   // uses (gapPx + handleSizePx) — clamping against gap alone under-bounds the
   // floor by handleSizePx and can leave a visible shortfall between panes.
@@ -450,7 +466,8 @@ export function collectLeafFootprints(
     node.ratio,
     axisContainerSizePx,
     boundaryGutterPx,
-    resolvedMinPaneSizePx,
+    firstMinPaneSizePx,
+    secondMinPaneSizePx,
   );
   const splitGapOffsetPx: number = boundaryGutterPx / 2;
 

@@ -7,26 +7,59 @@ import {
   type TilingLeafFootprint,
   type LeafRect,
 } from "../engine/leaf-geometry";
+import { insertLeafAdjacent } from "../engine/state";
 import type {
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,
+  TilingMinBBoxPx,
   TilingSplitNode,
   TilingPaneSizing,
 } from "../engine/types";
 
-function leaf(id: string, sizing?: TilingPaneSizing): TilingLeafNode {
-  return sizing == null
-    ? { kind: "leaf", id, tileId: `tile-${id}` }
-    : { kind: "leaf", id, tileId: `tile-${id}`, sizing };
+function leaf(id: string, sizing?: TilingPaneSizing, minBBoxPx?: TilingMinBBoxPx): TilingLeafNode {
+  const node: TilingLeafNode = { kind: "leaf", id, tileId: `tile-${id}` };
+  if (sizing != null) {
+    node.sizing = sizing;
+  }
+  if (minBBoxPx != null) {
+    node.minBBoxPx = minBBoxPx;
+  }
+  return node;
 }
 
-function hsplit(ratio: number, first: TilingLayoutNode, second: TilingLayoutNode): TilingSplitNode {
-  return { kind: "split", id: `h-${first.id}-${second.id}`, axis: "horizontal", ratio, first, second };
+function hsplit(
+  ratio: number,
+  first: TilingLayoutNode,
+  second: TilingLayoutNode,
+  minPaneSizePx?: number,
+): TilingSplitNode {
+  return {
+    kind: "split",
+    id: `h-${first.id}-${second.id}`,
+    axis: "horizontal",
+    ratio,
+    first,
+    second,
+    minPaneSizePx,
+  };
 }
 
-function vsplit(ratio: number, first: TilingLayoutNode, second: TilingLayoutNode): TilingSplitNode {
-  return { kind: "split", id: `v-${first.id}-${second.id}`, axis: "vertical", ratio, first, second };
+function vsplit(
+  ratio: number,
+  first: TilingLayoutNode,
+  second: TilingLayoutNode,
+  minPaneSizePx?: number,
+): TilingSplitNode {
+  return {
+    kind: "split",
+    id: `v-${first.id}-${second.id}`,
+    axis: "vertical",
+    ratio,
+    first,
+    second,
+    minPaneSizePx,
+  };
 }
 
 const GAP_FREE_CONFIG: TilingLayoutConfig = { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 };
@@ -219,6 +252,63 @@ describe("collectLeafFootprints — multi-static composite (nested W• pins + g
     expect(
       map.get("A")!.width + map.get("B")!.width + map.get("C")!.width + 2 * gutter,
     ).toBe(1000);
+  });
+});
+
+describe("collectLeafFootprints — leaf-scoped minBBoxPx floor (HT-MIN-BBOX-PX)", (): void => {
+  const MIN_PANE_CONFIG: TilingLayoutConfig = { gapPx: 0, minPaneSizePx: 96, handleSizePx: 0 };
+
+  it("clamps the along-axis ratio to the leaf's own minBBoxPx floor, overriding a skewed ratio", (): void => {
+    const review = leaf("review", undefined, { widthPx: 300 });
+    // ratio 0.98 (first/document dominant) would otherwise push review (second)
+    // to ~20px — review's own floor wins the upper ratio bound instead.
+    const layout = hsplit(0.98, leaf("document"), review);
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, MIN_PANE_CONFIG));
+    expect(map.get("review")?.width).toBeCloseTo(300);
+    expect(map.get("document")?.width).toBeCloseTo(700);
+  });
+
+  it("reads heightPx (not widthPx) for a vertical split's along-axis floor", (): void => {
+    const review = leaf("review", undefined, { heightPx: 250 });
+    // ratio 0.02 (review is first/top) would otherwise push review to ~16px.
+    const layout = vsplit(0.02, review, leaf("bottom"));
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, MIN_PANE_CONFIG));
+    expect(map.get("review")?.height).toBeCloseTo(250);
+  });
+
+  it("the leaf floor TRAVELS WITH the pane across a rearrange (insertLeafAdjacent re-parent)", (): void => {
+    const review = leaf("review", undefined, { widthPx: 300 });
+    const before = hsplit(0.5, leaf("document"), review);
+    // Re-parent review next to a brand-new sibling under a brand-new split id —
+    // no split-level minPaneSizePx carries over, only the leaf's own minBBoxPx.
+    const after = insertLeafAdjacent(before, "review", "document", "left") as TilingSplitNode;
+    expect(after.first.kind === "leaf" ? after.first.id : null).toBe("review");
+    // Skew the stored ratio so only the leaf's own floor can save it.
+    const rearranged: TilingSplitNode = { ...after, ratio: 0.01 };
+    const map = byId(collectLeafFootprints(rearranged, 0, 0, 1000, 800, MIN_PANE_CONFIG));
+    expect(map.get("review")?.width).toBeCloseTo(300);
+  });
+
+  it("a direct-child split/group (no leaf floor) falls back to split.minPaneSizePx, which wins over config", (): void => {
+    const layout = hsplit(0.02, leaf("A"), leaf("B"), 150);
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, MIN_PANE_CONFIG));
+    expect(map.get("A")?.width).toBeCloseTo(150);
+  });
+
+  it("falls back to config.minPaneSizePx when neither the leaf nor the split declare a floor", (): void => {
+    const layout = hsplit(0.02, leaf("A"), leaf("B"));
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, MIN_PANE_CONFIG));
+    expect(map.get("A")?.width).toBeCloseTo(96);
+  });
+
+  it("resolves each side independently: a leafless side keeps the split floor while its sibling keeps its own minBBoxPx", (): void => {
+    const review = leaf("review", undefined, { widthPx: 300 });
+    const layout = hsplit(0.99, leaf("document"), review, 40);
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, MIN_PANE_CONFIG));
+    // boundedMax = 1 - 300/1000 = 0.7 → review's OWN floor wins the upper bound,
+    // not the split's weaker 40px (which would allow ratio up to 0.96).
+    expect(map.get("review")?.width).toBeCloseTo(300);
+    expect(map.get("document")?.width).toBeCloseTo(700);
   });
 });
 
