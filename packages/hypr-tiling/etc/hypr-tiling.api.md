@@ -246,6 +246,9 @@ export interface TilingAccentHue {
 export type TilingChromeFocusOutline = "suppress" | "native";
 
 // @public
+export type TilingCollapseBodyMode = "keep-mounted" | "unmount";
+
+// @public
 export type TilingCommand = {
     kind: "focus-pane";
     leafId: string;
@@ -522,6 +525,7 @@ export interface TilingKeymap {
 
 // @public
 export interface TilingLayoutConfig {
+    collapseBodyMode?: TilingCollapseBodyMode;
     collapsedExtentPx?: number;
     gapPx: number;
     handleSizePx: number;

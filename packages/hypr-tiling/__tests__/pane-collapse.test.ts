@@ -526,12 +526,46 @@ describe("collapse capability defaults", (): void => {
   });
 });
 
-describe("collapsed pane body render mode", (): void => {
-  it("a collapsed pane empties its body (titlebar-only) even when content is visible", (): void => {
-    expect(resolvePaneBodyRenderMode(false, true, true)).toBe("render-empty");
+describe("collapsed pane body render mode (HT-COLLAPSE-BODY-MODE)", (): void => {
+  it("defaults to keep-mounted: a collapsed pane resolves render-content even when the content toggle is off (visual hide is TilingPaneBody's job, not unmounting)", (): void => {
+    expect(resolvePaneBodyRenderMode(false, true, true)).toBe("render-content");
+    expect(resolvePaneBodyRenderMode(false, false, true)).toBe("render-content");
     expect(resolvePaneBodyRenderMode(false, true, false)).toBe("render-content");
     // A ghost-seat reservation still wins over collapse.
     expect(resolvePaneBodyRenderMode(true, true, true)).toBe("render-reservation");
+  });
+
+  it('collapseBodyMode: "keep-mounted" (explicit) matches the default', (): void => {
+    expect(resolvePaneBodyRenderMode(false, true, true, false, "keep-mounted")).toBe(
+      "render-content",
+    );
+  });
+
+  it('collapseBodyMode: "unmount" empties the body (titlebar-only) even when content is visible — the legacy behavior, opt-in', (): void => {
+    expect(resolvePaneBodyRenderMode(false, true, true, false, "unmount")).toBe("render-empty");
+    expect(resolvePaneBodyRenderMode(false, false, true, false, "unmount")).toBe("render-empty");
+    // A ghost-seat reservation still wins over collapse + unmount.
+    expect(resolvePaneBodyRenderMode(true, true, true, false, "unmount")).toBe(
+      "render-reservation",
+    );
+  });
+
+  it("collapseBodyMode is IGNORED once maximize suspends the collapse gate, in either mode", (): void => {
+    expect(resolvePaneBodyRenderMode(false, true, true, true, "keep-mounted")).toBe(
+      "render-content",
+    );
+    expect(resolvePaneBodyRenderMode(false, true, true, true, "unmount")).toBe("render-content");
+    // Falls through to the ordinary content toggle once maximized.
+    expect(resolvePaneBodyRenderMode(false, false, true, true, "unmount")).toBe("render-empty");
+  });
+
+  it("collapseBodyMode has no effect while NOT collapsed — ordinary content-toggle rules apply", (): void => {
+    expect(resolvePaneBodyRenderMode(false, true, false, false, "unmount")).toBe(
+      "render-content",
+    );
+    expect(resolvePaneBodyRenderMode(false, false, false, false, "keep-mounted")).toBe(
+      "render-empty",
+    );
   });
 });
 

@@ -7558,6 +7558,7 @@ const TilingRendererComponent = React.forwardRef<
             isPaneContentVisible,
             node.collapsed === true,
             isMaximizedLeaf,
+            config.collapseBodyMode,
           );
         const isDropTargetLeaf: boolean =
           dropState?.leafId === node.id && dropState.action !== "none";
