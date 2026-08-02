@@ -115,12 +115,36 @@ describe("collectLeafFootprints — static-aware (pinned along-axis child)", ():
     expect(map.get("main")?.width).toBeCloseTo(400);
   });
 
-  it("ignores a CROSS-axis static pin for along-axis distribution", (): void => {
-    // height static on a horizontal split is a CROSS-axis pin → width stays ratio.
+  it("ignores a CROSS-axis static pin for along-axis distribution, but shrinks its cross extent to the pin", (): void => {
+    // height static on a horizontal split is a CROSS-axis pin → width stays
+    // ratio, but height content-sizes to the pin (mirrors the renderer's
+    // `align-self: flex-start`) instead of stretching to the full container —
+    // no phantom full-height rect behind a content-sized DOM box.
     const layout: TilingLayoutNode = hsplit(0.5, leaf("A", { height: "static", heightPx: 100 }), leaf("B"));
     const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
     expect(map.get("A")?.width).toBe(500);
     expect(map.get("B")?.width).toBe(500);
+    expect(map.get("A")?.height).toBe(100);
+    expect(map.get("B")?.height).toBe(800);
+  });
+
+  it("ignores a non-fitting CROSS-axis pin (falls back to the full cross extent)", (): void => {
+    const layout: TilingLayoutNode = hsplit(0.5, leaf("A", { height: "static", heightPx: -5 }), leaf("B"));
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    expect(map.get("A")?.height).toBe(800);
+  });
+
+  it("shrinks the cross extent for a static-along-axis child that is ALSO cross-axis-static", (): void => {
+    // sidebar: width static (along-axis, horizontal split) AND height static
+    // (cross-axis) — both pins apply independently.
+    const layout: TilingLayoutNode = hsplit(
+      0.5,
+      leaf("sidebar", { width: "static", widthPx: 200, height: "static", heightPx: 150 }),
+      leaf("main"),
+    );
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    expect(map.get("sidebar")).toEqual({ leafId: "sidebar", left: 0, top: 0, width: 200, height: 150 });
+    expect(map.get("main")).toEqual({ leafId: "main", left: 200, top: 0, width: 800, height: 800 });
   });
 });
 

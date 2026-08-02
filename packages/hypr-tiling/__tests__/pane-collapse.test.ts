@@ -172,7 +172,7 @@ describe("collapse geometry — stacked (vertical) split reflow", (): void => {
     expect(map.get("B")?.height).toBe(400);
   });
 
-  it("both stacked siblings collapsed: normalize keeps one along-axis filler (no both-static edge)", (): void => {
+  it("both stacked siblings collapsed: normalize un-collapses the demoted second (collapse truth stays in sync with geometry)", (): void => {
     const base: TilingLayoutNode = vsplit(0.5, leaf("A"), leaf("B"));
     const both: TilingLayoutNode = setLeafCollapsed(
       setLeafCollapsed(base, "A", true, COLLAPSE_PX),
@@ -184,16 +184,136 @@ describe("collapse geometry — stacked (vertical) split reflow", (): void => {
     const firstStatic: boolean = isStaticAlongSplitAxis(split.first, "vertical");
     const secondStatic: boolean = isStaticAlongSplitAxis(split.second, "vertical");
     expect(firstStatic && secondStatic).toBe(false);
+
+    // "A" stays collapsed; "B" — demoted back to flexible by the both-static
+    // backstop — is fully un-collapsed rather than left `collapsed: true` while
+    // geometrically expanded (HT-PANE-COLLAPSE collapse/geometry coherence).
+    const a: TilingLeafNode | null = findLeafById(both, "A");
+    const b: TilingLeafNode | null = findLeafById(both, "B");
+    expect(a?.collapsed).toBe(true);
+    expect(b?.collapsed).toBeUndefined();
+    expect(b?.collapsedRestore).toBeUndefined();
+    expect(b?.sizing).toBeUndefined();
+
+    const map = byId(collectLeafFootprints(both, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    expect(map.get("A")?.height).toBe(COLLAPSE_PX);
+    expect(map.get("B")?.height).toBe(800 - COLLAPSE_PX);
   });
 });
 
-describe("collapse geometry — side-by-side (horizontal) split is cross-axis", (): void => {
-  it("collapse in a horizontal split is a cross-axis height pin (not static-along-axis)", (): void => {
+describe("collapse geometry — side-by-side (horizontal) split is along-axis (width)", (): void => {
+  it("collapse in a horizontal split pins WIDTH (the along-axis dimension), not height", (): void => {
     const base: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
     const collapsed: TilingLayoutNode = setLeafCollapsed(base, "A", true, COLLAPSE_PX);
     const a: TilingLeafNode | null = findLeafById(collapsed, "A");
+    expect(a?.sizing?.width).toBe("static");
+    expect(a?.sizing?.widthPx).toBe(COLLAPSE_PX);
+    expect(a?.sizing?.height).toBeUndefined();
+    expect(isStaticAlongSplitAxis(a as TilingLeafNode, "horizontal")).toBe(true);
+  });
+
+  it("collapsed FIRST leaf shrinks to the extent WIDTH; the sibling reclaims the freed width", (): void => {
+    const base: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
+    const collapsed: TilingLayoutNode = setLeafCollapsed(base, "A", true, COLLAPSE_PX);
+    const map = byId(collectLeafFootprints(collapsed, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    expect(map.get("A")).toEqual({ leafId: "A", left: 0, top: 0, width: COLLAPSE_PX, height: 800 });
+    expect(map.get("B")).toEqual({
+      leafId: "B",
+      left: COLLAPSE_PX,
+      top: 0,
+      width: 1000 - COLLAPSE_PX,
+      height: 800,
+    });
+  });
+
+  it("collapsed SECOND leaf pins to the extent at the right edge; the first fills the rest", (): void => {
+    const base: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
+    const collapsed: TilingLayoutNode = setLeafCollapsed(base, "B", true, COLLAPSE_PX);
+    const map = byId(collectLeafFootprints(collapsed, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    expect(map.get("A")?.width).toBe(1000 - COLLAPSE_PX);
+    expect(map.get("B")?.left).toBe(1000 - COLLAPSE_PX);
+    expect(map.get("B")?.width).toBe(COLLAPSE_PX);
+  });
+
+  it("expand restores the flexible ratio distribution (horizontal)", (): void => {
+    const base: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
+    const roundTrip: TilingLayoutNode = setLeafCollapsed(
+      setLeafCollapsed(base, "A", true, COLLAPSE_PX),
+      "A",
+      false,
+      COLLAPSE_PX,
+    );
+    const map = byId(collectLeafFootprints(roundTrip, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    expect(map.get("A")?.width).toBe(500);
+    expect(map.get("B")?.width).toBe(500);
+  });
+
+  it("preserves a pre-collapse cross-axis (height) static pin, shrinks the footprint to it, and restores on expand", (): void => {
+    const base: TilingLayoutNode = hsplit(
+      0.5,
+      leaf("A", { height: "static", heightPx: 120 }),
+      leaf("B"),
+    );
+    const collapsed: TilingLayoutNode = setLeafCollapsed(base, "A", true, COLLAPSE_PX);
+    const a: TilingLeafNode | null = findLeafById(collapsed, "A");
     expect(a?.sizing?.height).toBe("static");
-    expect(isStaticAlongSplitAxis(a as TilingLeafNode, "horizontal")).toBe(false);
+    expect(a?.sizing?.heightPx).toBe(120);
+    expect(a?.sizing?.width).toBe("static");
+    expect(a?.sizing?.widthPx).toBe(COLLAPSE_PX);
+    expect(a?.collapsedRestore).toEqual({ height: "static", heightPx: 120 });
+    // Footprint mirrors the DOM `align-self: flex-start` cross-axis content-size
+    // (HT-PANE-COLLAPSE footprint/DOM divergence fix): height shrinks to 120,
+    // not the full 800px container — no phantom full-column rect.
+    const map = byId(collectLeafFootprints(collapsed, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    expect(map.get("A")).toEqual({ leafId: "A", left: 0, top: 0, width: COLLAPSE_PX, height: 120 });
+
+    const expanded: TilingLayoutNode = setLeafCollapsed(collapsed, "A", false, COLLAPSE_PX);
+    const restored: TilingLeafNode | null = findLeafById(expanded, "A");
+    expect(restored?.collapsed).toBeUndefined();
+    expect(restored?.sizing).toEqual({ height: "static", heightPx: 120 });
+  });
+
+  it("both side-by-side siblings collapsed: normalize un-collapses the demoted second (collapse truth stays in sync with geometry)", (): void => {
+    const base: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
+    const both: TilingLayoutNode = setLeafCollapsed(
+      setLeafCollapsed(base, "A", true, COLLAPSE_PX),
+      "B",
+      true,
+      COLLAPSE_PX,
+    );
+    const split = both as TilingSplitNode;
+    const firstStatic: boolean = isStaticAlongSplitAxis(split.first, "horizontal");
+    const secondStatic: boolean = isStaticAlongSplitAxis(split.second, "horizontal");
+    expect(firstStatic && secondStatic).toBe(false);
+
+    // "A" stays collapsed (the pin that survives); "B" is fully un-collapsed —
+    // never a fully-expanded pane still flagged `collapsed: true` with an
+    // emptied body.
+    const a: TilingLeafNode | null = findLeafById(both, "A");
+    const b: TilingLeafNode | null = findLeafById(both, "B");
+    expect(a?.collapsed).toBe(true);
+    expect(b?.collapsed).toBeUndefined();
+    expect(b?.collapsedRestore).toBeUndefined();
+    expect(b?.sizing).toBeUndefined();
+
+    const map = byId(collectLeafFootprints(both, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    expect(map.get("A")?.width).toBe(COLLAPSE_PX);
+    expect(map.get("B")?.width).toBe(1000 - COLLAPSE_PX);
+  });
+});
+
+describe("collapse geometry — cross-axis static footprint (HT-PANE-COLLAPSE footprint/DOM divergence)", (): void => {
+  it("shrinks a cross-axis-static leaf's footprint to its pin instead of the full container extent", (): void => {
+    // Not collapse-specific: any leaf static on the CROSS axis (align-self:
+    // flex-start in the DOM) must not report a phantom full-cross-extent rect.
+    const layout: TilingLayoutNode = hsplit(
+      0.5,
+      leaf("A", { height: "static", heightPx: 100 }),
+      leaf("B"),
+    );
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    expect(map.get("A")).toEqual({ leafId: "A", left: 0, top: 0, width: 500, height: 100 });
+    expect(map.get("B")).toEqual({ leafId: "B", left: 500, top: 0, width: 500, height: 800 });
   });
 });
 

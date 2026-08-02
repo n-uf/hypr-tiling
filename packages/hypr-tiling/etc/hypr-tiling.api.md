@@ -607,7 +607,7 @@ export function TilingPaneBody(input: TilingPaneBodyProps): React_2.ReactElement
 
 // @public
 export interface TilingPaneBodyProps extends React_2.HTMLAttributes<HTMLDivElement> {
-    pane: Pick<TilingRenderTileProps, "paneBodyRenderMode">;
+    pane: Pick<TilingRenderTileProps, "paneBodyRenderMode" | "isCollapsed" | "isMaximized">;
 }
 
 // @public

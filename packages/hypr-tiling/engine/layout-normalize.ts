@@ -1,19 +1,17 @@
 import { collectLeafFootprints, type TilingLeafFootprint } from "./leaf-geometry";
 import {
   clampByMinSize,
-  crossAxisDimension,
   isStaticAlongSplitAxis,
   resolveStaticAlongExtents,
   splitAxisDimension,
   splitBoundaryGutterPx,
 } from "./pane-sizing";
-import { normalizeStaticAxisFill } from "./state";
+import { demoteAlongAxisStatic, normalizeStaticAxisFill } from "./state";
 import type {
   TilingDimension,
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,
-  TilingPaneSizing,
   TilingSplitAxis,
   TilingSplitNode,
   TilingTile,
@@ -125,31 +123,6 @@ export type AssertLayoutIntegrityOptions = AssessLayoutTileIntegrityOptions;
 
 /** Options for {@link repairLayout} (same as {@link NormalizeLayoutOptions}). */
 export type RepairLayoutOptions = NormalizeLayoutOptions;
-
-/**
- * Demote a node's ALONG-the-given-axis static dimension back to flexible while
- * PRESERVING its cross-axis static sizing + px. Local copy of the state-layer
- * helper so commit-time reconciliation can demote unfit pins without exporting
- * the private reducer primitive.
- */
-function demoteAlongAxisStatic(
-  node: TilingLayoutNode,
-  axis: TilingSplitAxis,
-): TilingLayoutNode {
-  if (node.sizing == null) {
-    return node;
-  }
-  const crossDimension: TilingDimension = crossAxisDimension(axis);
-  const crossIsStatic: boolean = node.sizing[crossDimension] === "static";
-  if (!crossIsStatic) {
-    return { ...node, sizing: undefined };
-  }
-  const nextSizing: TilingPaneSizing =
-    crossDimension === "width"
-      ? { width: "static", widthPx: node.sizing.widthPx }
-      : { height: "static", heightPx: node.sizing.heightPx };
-  return { ...node, sizing: nextSizing };
-}
 
 function alongAxisPinPx(node: TilingLayoutNode, axis: TilingSplitAxis): number | null {
   const dimension: TilingDimension = splitAxisDimension(axis);

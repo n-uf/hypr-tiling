@@ -1191,13 +1191,21 @@ export interface TilingLeafNode {
   /** Per-dimension static/flexible sizing. Undefined dimensions are flexible. */
   sizing?: TilingPaneSizing;
   /**
-   * Whether this leaf is COLLAPSED to titlebar-only (HT-PANE-COLLAPSE). A
-   * collapsed leaf is pinned STATIC in `height` to the chrome/titlebar extent
-   * (`collapsedExtentPx`, see {@link TilingLayoutConfig}): in a vertical
-   * (stacked) split it shrinks to just its header and its flexible sibling
-   * reclaims the freed height; in a horizontal split it content-sizes its
-   * height (cross-axis) to the header. Its body is not painted. Undefined →
-   * expanded (the default). Persisted in the layout tree alongside `sizing`, so
+   * Whether this leaf is COLLAPSED to titlebar-only (HT-PANE-COLLAPSE,
+   * axis-aware). A collapsed leaf is pinned STATIC, to the chrome/titlebar
+   * extent (`collapsedExtentPx`, see {@link TilingLayoutConfig}), in the
+   * dimension that runs ALONG its immediate PARENT split's axis:
+   *
+   * - parent `vertical` (stacked) → pins `height`; its flexible sibling
+   *   reclaims the freed height.
+   * - parent `horizontal` (side-by-side) → pins `width`; its flexible sibling
+   *   reclaims the freed width.
+   *
+   * This mirrors the split's own along-axis/cross-axis convention
+   * (`isStaticAlongSplitAxis`) rather than always pinning `height`, so a
+   * side-by-side collapse actually narrows the pane instead of leaving its full
+   * column width reserved. Its body is not painted. Undefined → expanded (the
+   * default). Persisted in the layout tree alongside `sizing`, so
    * `createPersistedTilingLayout` round-trips it and integrity stays sensible.
    */
   collapsed?: boolean;
@@ -1295,11 +1303,13 @@ export interface TilingLayoutConfig {
    */
   handleSizePx: number;
   /**
-   * Collapsed titlebar-only extent (CSS px) — the height a leaf is pinned to
-   * when COLLAPSED (HT-PANE-COLLAPSE). Sized to the pane's chrome/header height
-   * so a collapsed pane shows just its title bar. Undefined →
-   * {@link TILING_DEFAULT_COLLAPSED_EXTENT_PX}. Set it to match your custom
-   * header height when it differs from the default.
+   * Collapsed titlebar-only extent (CSS px) — the along-parent-split-axis
+   * extent a leaf is pinned to when COLLAPSED (HT-PANE-COLLAPSE): `height`
+   * under a stacked (vertical) parent, `width` under a side-by-side
+   * (horizontal) parent (see {@link TilingLeafNode.collapsed}). Sized to the
+   * pane's chrome/header extent so a collapsed pane shows just its title bar.
+   * Undefined → {@link TILING_DEFAULT_COLLAPSED_EXTENT_PX}. Set it to match
+   * your custom header extent when it differs from the default.
    */
   collapsedExtentPx?: number;
 }
