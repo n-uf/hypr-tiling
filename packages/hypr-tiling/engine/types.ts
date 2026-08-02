@@ -1,4 +1,5 @@
 import type * as React from "react";
+import type { RatioSafetyBounds } from "./pane-sizing";
 // Type-only edge (erased at build): `TilingTheme` is the react-layer theme
 // contract surfaced on `TilingRendererProps.theme`. No runtime engine→react
 // coupling (see check-guardrails.mjs rule 1).
@@ -1177,6 +1178,27 @@ export interface TilingTile {
 }
 
 /**
+ * Which floor an interactive resize (pointer drag / keyboard) bounds a pane
+ * to (HT-RESIZE-FLOOR):
+ *
+ * - `"body"` (default) — the ordinary content floor: the min-pane precedence
+ *   chain ({@link TilingLeafNode.minBBoxPx} → {@link TilingSplitNode.minPaneSizePx}
+ *   → {@link TilingLayoutConfig.minPaneSizePx}). A resize cannot shrink the
+ *   pane below its usable content size.
+ * - `"chrome"` — "size-out": the gutter may shrink all the way to the
+ *   collapsed titlebar-only extent ({@link TilingLayoutConfig.collapsedExtentPx}),
+ *   REPLACING the body floor for this leaf entirely (not layered on top of
+ *   it) — chrome mode is an explicit opt-in to a smaller floor, not a content
+ *   guarantee. This is purely a resize-time ratio bound: it never touches
+ *   `collapsed` / `collapsedRestore` (no auto-collapse, no state change from
+ *   resize — only the titlebar-collapse control owns `collapsed`), and the
+ *   pane stays flexible/ratio-based (re-grows with the window), never a
+ *   `sizing: "static"` pin. Settle-on-release (snapping to a fixed size when
+ *   released near the chrome floor) is intentionally NOT implemented.
+ */
+export type TilingResizeFloor = "body" | "chrome";
+
+/**
  * Leaf-scoped minimum bounding-box floor (CSS px), one optional component per
  * dimension. See {@link TilingLeafNode.minBBoxPx} for the precedence this
  * floor takes over {@link TilingSplitNode.minPaneSizePx} and
@@ -1223,6 +1245,13 @@ export interface TilingLeafNode {
    * `sizing` so `createPersistedTilingLayout` round-trips it.
    */
   minBBoxPx?: TilingMinBBoxPx;
+  /**
+   * Per-leaf override of which floor an interactive resize bounds this pane
+   * to (HT-RESIZE-FLOOR) — wins over {@link TilingLayoutConfig.resizeFloor}.
+   * Undefined falls through to the config default, itself defaulting to
+   * `"body"`. See {@link TilingResizeFloor} for the two modes.
+   */
+  resizeFloor?: TilingResizeFloor;
   /**
    * Whether this leaf is COLLAPSED to titlebar-only (HT-PANE-COLLAPSE,
    * axis-aware). A collapsed leaf is pinned STATIC, to the chrome/titlebar
@@ -1371,6 +1400,13 @@ export interface TilingLayoutConfig {
    * your custom header extent when it differs from the default.
    */
   collapsedExtentPx?: number;
+  /**
+   * Library-wide default for which floor an interactive resize bounds a pane
+   * to (HT-RESIZE-FLOOR) — a direct-child leaf's own
+   * {@link TilingLeafNode.resizeFloor} wins over this. Undefined → `"body"`.
+   * See {@link TilingResizeFloor} for the two modes.
+   */
+  resizeFloor?: TilingResizeFloor;
 }
 
 /**
@@ -2293,4 +2329,11 @@ export interface TilingSplitResizeState {
   firstMinPaneSizePx: number;
   /** Resolved along-axis floor (CSS px) for the split's SECOND child. */
   secondMinPaneSizePx: number;
+  /**
+   * Ratio-clamp safety bounds (HT-RESIZE-FLOOR) resolved at gesture start —
+   * neutralized when either side resolved a "chrome" resize floor, so a
+   * legitimately small chrome floor stays reachable for the gesture's
+   * duration.
+   */
+  ratioSafetyBounds: RatioSafetyBounds;
 }

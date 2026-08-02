@@ -1,12 +1,15 @@
 import type {
+  TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,
   TilingSplitAxis,
   TilingDimension,
   TilingPaneSizing,
   TilingPaneSizingMode,
+  TilingResizeFloor,
   TilingTitleBarSizingMode,
 } from "./types";
+import { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "./types";
 
 /**
  * Pure (DOM-free) layout helpers for the static-vs-flexible pane model.
@@ -182,6 +185,71 @@ export function resolveAlongAxisMinPaneSizePx(
   const leafFloorPx: number | undefined =
     child.kind === "leaf" ? leafMinBBoxFloorPx(child, splitAxisDimension(axis)) : undefined;
   return leafFloorPx ?? splitMinPaneSizePx ?? configMinPaneSizePx;
+}
+
+/**
+ * The resolved along-axis resize floor (CSS px) for a split's direct child,
+ * plus whether it came from "chrome" mode (HT-RESIZE-FLOOR) — the caller
+ * needs BOTH: the px value feeds `clampByMinSize`, and the chrome flag
+ * selects {@link RATIO_SAFETY_BOUNDS_UNBOUNDED} over the default 5%/95% net so
+ * a legitimately small chrome floor is reachable instead of being artificially
+ * raised.
+ */
+export interface AlongAxisFloorResolution {
+  floorPx: number;
+  isChromeFloor: boolean;
+}
+
+/**
+ * Resolve a split's direct child's along-axis resize floor by
+ * {@link TilingResizeFloor} mode, by precedence (most specific wins):
+ *
+ * 1. `child.resizeFloor` (a bare leaf only) — per-leaf override.
+ * 2. `config.resizeFloor` — library-wide default.
+ * 3. `"body"` — the mode default.
+ *
+ * `"chrome"` REPLACES the body floor with `config.collapsedExtentPx` (→
+ * {@link TILING_DEFAULT_COLLAPSED_EXTENT_PX}) — the size-out floor is an
+ * explicit opt-in, not layered on top of {@link resolveAlongAxisMinPaneSizePx}.
+ * `"body"` delegates to `resolveAlongAxisMinPaneSizePx` unchanged (the
+ * `minBBoxPx` → `split.minPaneSizePx` → `config.minPaneSizePx` chain).
+ */
+export function resolveAlongAxisFloor(
+  child: TilingLayoutNode,
+  axis: TilingSplitAxis,
+  splitMinPaneSizePx: number | undefined,
+  config: TilingLayoutConfig,
+): AlongAxisFloorResolution {
+  const resizeFloor: TilingResizeFloor =
+    (child.kind === "leaf" ? child.resizeFloor : undefined) ?? config.resizeFloor ?? "body";
+
+  if (resizeFloor === "chrome") {
+    return {
+      floorPx: config.collapsedExtentPx ?? TILING_DEFAULT_COLLAPSED_EXTENT_PX,
+      isChromeFloor: true,
+    };
+  }
+
+  return {
+    floorPx: resolveAlongAxisMinPaneSizePx(child, axis, splitMinPaneSizePx, config.minPaneSizePx),
+    isChromeFloor: false,
+  };
+}
+
+/**
+ * Pick the ratio-clamp safety bounds for a split boundary: the default
+ * 5%/95% net UNLESS either side resolved a `"chrome"` (size-out) floor, in
+ * which case the net is neutralized ({@link RATIO_SAFETY_BOUNDS_UNBOUNDED}) so
+ * a legitimately small chrome floor (e.g. a 40px titlebar in a 2000px
+ * viewport, well under 5%) is actually reachable.
+ */
+export function resolveRatioSafetyBounds(
+  first: AlongAxisFloorResolution,
+  second: AlongAxisFloorResolution,
+): RatioSafetyBounds {
+  return first.isChromeFloor || second.isChromeFloor
+    ? RATIO_SAFETY_BOUNDS_UNBOUNDED
+    : RATIO_SAFETY_BOUNDS_DEFAULT;
 }
 
 /**

@@ -3,7 +3,8 @@ import {
   crossAxisDimension,
   isStaticAlongSplitAxis,
   isStaticOnCrossAxis,
-  resolveAlongAxisMinPaneSizePx,
+  resolveAlongAxisFloor,
+  resolveRatioSafetyBounds,
   resolveStaticAlongExtents,
   splitAxisDimension,
   splitBoundaryGutterPx,
@@ -443,22 +444,15 @@ export function collectLeafFootprints(
       }
     }
   }
-  // Per-side along-axis floor (HT-MIN-BBOX-PX): a direct-child leaf's own
-  // `minBBoxPx` wins over this split's `minPaneSizePx`, which wins over the
-  // config default — resolved independently per side so an asymmetric leaf
-  // floor (one side only) does not force the other side up to match.
-  const firstMinPaneSizePx: number = resolveAlongAxisMinPaneSizePx(
-    node.first,
-    node.axis,
-    node.minPaneSizePx,
-    config.minPaneSizePx,
-  );
-  const secondMinPaneSizePx: number = resolveAlongAxisMinPaneSizePx(
-    node.second,
-    node.axis,
-    node.minPaneSizePx,
-    config.minPaneSizePx,
-  );
+  // Per-side along-axis floor (HT-MIN-BBOX-PX / HT-RESIZE-FLOOR): a
+  // direct-child leaf's own `minBBoxPx` wins over this split's
+  // `minPaneSizePx`, which wins over the config default — UNLESS that side
+  // resolves a "chrome" resize floor, which replaces the whole chain with the
+  // collapsed titlebar extent. Resolved independently per side so an
+  // asymmetric floor (one side only) does not force the other side up to
+  // match.
+  const firstFloor = resolveAlongAxisFloor(node.first, node.axis, node.minPaneSizePx, config);
+  const secondFloor = resolveAlongAxisFloor(node.second, node.axis, node.minPaneSizePx, config);
   // Min-pane clamp must reserve the SAME gutter the ratio flexBasis / divider
   // uses (gapPx + handleSizePx) — clamping against gap alone under-bounds the
   // floor by handleSizePx and can leave a visible shortfall between panes.
@@ -466,8 +460,9 @@ export function collectLeafFootprints(
     node.ratio,
     axisContainerSizePx,
     boundaryGutterPx,
-    firstMinPaneSizePx,
-    secondMinPaneSizePx,
+    firstFloor.floorPx,
+    secondFloor.floorPx,
+    resolveRatioSafetyBounds(firstFloor, secondFloor),
   );
   const splitGapOffsetPx: number = boundaryGutterPx / 2;
 

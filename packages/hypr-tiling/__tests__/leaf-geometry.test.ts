@@ -312,6 +312,66 @@ describe("collectLeafFootprints — leaf-scoped minBBoxPx floor (HT-MIN-BBOX-PX)
   });
 });
 
+describe("collectLeafFootprints — resizeFloor chrome size-out (HT-RESIZE-FLOOR)", (): void => {
+  const MIN_PANE_CONFIG: TilingLayoutConfig = { gapPx: 0, minPaneSizePx: 96, handleSizePx: 0 };
+
+  it("a chrome-floor leaf can shrink below the default 5% ratio safety net", (): void => {
+    const chromeLeaf = leaf("review", undefined);
+    chromeLeaf.resizeFloor = "chrome";
+    const layout = hsplit(0.99, leaf("document"), chromeLeaf);
+    const config: TilingLayoutConfig = { ...MIN_PANE_CONFIG, collapsedExtentPx: 35 };
+    // container 2000: a plain body floor (96px = 4.8%) would already be under
+    // the 5% net and get raised to 100px. Chrome mode replaces AND unbounds.
+    const map = byId(collectLeafFootprints(layout, 0, 0, 2000, 800, config));
+    expect(map.get("review")?.width).toBeCloseTo(35);
+    expect(map.get("document")?.width).toBeCloseTo(1965);
+  });
+
+  it("chrome mode never sets collapsed — geometry-only, state untouched", (): void => {
+    const chromeLeaf = leaf("review", undefined);
+    chromeLeaf.resizeFloor = "chrome";
+    const layout = hsplit(0.99, leaf("document"), chromeLeaf);
+    collectLeafFootprints(layout, 0, 0, 2000, 800, { ...MIN_PANE_CONFIG, collapsedExtentPx: 35 });
+    expect(chromeLeaf.collapsed).toBeUndefined();
+    expect(chromeLeaf.sizing).toBeUndefined();
+  });
+
+  it("chrome mode REPLACES (does not layer on top of) the leaf's own minBBoxPx", (): void => {
+    const chromeLeaf = leaf("review", undefined, { widthPx: 300 });
+    chromeLeaf.resizeFloor = "chrome";
+    const layout = hsplit(0.99, leaf("document"), chromeLeaf);
+    const map = byId(
+      collectLeafFootprints(layout, 0, 0, 2000, 800, { ...MIN_PANE_CONFIG, collapsedExtentPx: 35 }),
+    );
+    // Would be 300 in body mode — chrome mode overrides to 35.
+    expect(map.get("review")?.width).toBeCloseTo(35);
+  });
+
+  it("config.resizeFloor: \"chrome\" applies library-wide without a per-leaf override", (): void => {
+    const layout = hsplit(0.99, leaf("document"), leaf("review"));
+    const config: TilingLayoutConfig = {
+      ...MIN_PANE_CONFIG,
+      resizeFloor: "chrome",
+      collapsedExtentPx: 35,
+    };
+    const map = byId(collectLeafFootprints(layout, 0, 0, 2000, 800, config));
+    expect(map.get("review")?.width).toBeCloseTo(35);
+  });
+
+  it("stays flexible/ratio-based (re-grows with the container) rather than pinning static", (): void => {
+    const chromeLeaf = leaf("review", undefined);
+    chromeLeaf.resizeFloor = "chrome";
+    const narrow = hsplit(0.99, leaf("document"), chromeLeaf);
+    const config: TilingLayoutConfig = { ...MIN_PANE_CONFIG, collapsedExtentPx: 35 };
+    const atNarrowContainer = byId(collectLeafFootprints(narrow, 0, 0, 2000, 800, config));
+    expect(atNarrowContainer.get("review")?.width).toBeCloseTo(35);
+    // Grow the container while keeping the SAME stored ratio (0.99) — the
+    // review pane re-grows proportionally, unlike a static px pin.
+    const atWiderContainer = byId(collectLeafFootprints(narrow, 0, 0, 4000, 800, config));
+    expect(atWiderContainer.get("review")?.width).toBeCloseTo(40);
+  });
+});
+
 describe("collectNormalizedLeafRects — directional-neighbor wrapper", (): void => {
   it("returns unit 0..1 edge-rects matching pure ratio splits", (): void => {
     const layout: TilingLayoutNode = hsplit(0.5, vsplit(0.5, leaf("A"), leaf("B")), leaf("C"));

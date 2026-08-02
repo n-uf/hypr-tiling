@@ -526,6 +526,7 @@ export interface TilingLayoutConfig {
     gapPx: number;
     handleSizePx: number;
     minPaneSizePx: number;
+    resizeFloor?: TilingResizeFloor;
 }
 
 // @public
@@ -576,6 +577,7 @@ export interface TilingLeafNode {
     id: string;
     kind: "leaf";
     minBBoxPx?: TilingMinBBoxPx;
+    resizeFloor?: TilingResizeFloor;
     sizing?: TilingPaneSizing;
     tileId: string;
 }
@@ -766,6 +768,9 @@ export interface TilingRenderTileProps {
 
 // @public
 export type TilingResizeCapability = "both" | "horizontal" | "vertical" | "none";
+
+// @public
+export type TilingResizeFloor = "body" | "chrome";
 
 // @public
 export interface TilingSlotCommitmentCapability {
