@@ -179,7 +179,7 @@ describe("collapse geometry — stacked (vertical) split reflow", (): void => {
     expect(map.get("B")?.height).toBe(400);
   });
 
-  it("both stacked siblings collapsed: normalize un-collapses the demoted second (collapse truth stays in sync with geometry)", (): void => {
+  it("both stacked siblings collapsed: BOTH stay collapsed, leaving a split slack void (HT-PANE-COLLAPSE-VOID)", (): void => {
     const base: TilingLayoutNode = vsplit(0.5, leaf("A"), leaf("B"));
     const both: TilingLayoutNode = setLeafCollapsed(
       setLeafCollapsed(base, "A", true, COLLAPSE_PX),
@@ -190,23 +190,24 @@ describe("collapse geometry — stacked (vertical) split reflow", (): void => {
     const split = both as TilingSplitNode;
     const firstStatic: boolean = isStaticAlongSplitAxis(split.first, "vertical");
     const secondStatic: boolean = isStaticAlongSplitAxis(split.second, "vertical");
-    expect(firstStatic && secondStatic).toBe(false);
+    // Both-collapsed siblings are exempted from the both-static-along-axis
+    // demotion — the locked design prefers both stay collapsed over silently
+    // un-collapsing whichever one lost the coin flip.
+    expect(firstStatic && secondStatic).toBe(true);
 
-    // "A" stays collapsed; "B" — demoted back to flexible by the both-static
-    // backstop — is fully un-collapsed rather than left `collapsed: true` while
-    // geometrically expanded (HT-PANE-COLLAPSE collapse/geometry coherence).
     const a: TilingLeafNode | null = findLeafById(both, "A");
     const b: TilingLeafNode | null = findLeafById(both, "B");
     expect(a?.collapsed).toBe(true);
     expect(a?.collapsedDimension).toBe("height");
-    expect(b?.collapsed).toBeUndefined();
-    expect(b?.collapsedRestore).toBeUndefined();
-    expect(b?.collapsedDimension).toBeUndefined();
-    expect(b?.sizing).toBeUndefined();
+    expect(b?.collapsed).toBe(true);
+    expect(b?.collapsedDimension).toBe("height");
 
+    // Each keeps its OWN pin (not "whatever's left after the first's pin");
+    // the remaining 800 - 40 - 40 = 720px is an intentional split slack void,
+    // not reclaimed by either side.
     const map = byId(collectLeafFootprints(both, 0, 0, 1000, 800, GAP_FREE_CONFIG));
-    expect(map.get("A")?.height).toBe(COLLAPSE_PX);
-    expect(map.get("B")?.height).toBe(800 - COLLAPSE_PX);
+    expect(map.get("A")).toEqual({ leafId: "A", left: 0, top: 0, width: 1000, height: COLLAPSE_PX });
+    expect(map.get("B")).toEqual({ leafId: "B", left: 0, top: COLLAPSE_PX, width: 1000, height: COLLAPSE_PX });
   });
 });
 
@@ -283,7 +284,7 @@ describe("collapse geometry — side-by-side (horizontal) split is along-axis (w
     expect(restored?.sizing).toEqual({ height: "static", heightPx: 120 });
   });
 
-  it("both side-by-side siblings collapsed: normalize un-collapses the demoted second (collapse truth stays in sync with geometry)", (): void => {
+  it("both side-by-side siblings collapsed: BOTH stay collapsed, leaving a split slack void (HT-PANE-COLLAPSE-VOID)", (): void => {
     const base: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
     const both: TilingLayoutNode = setLeafCollapsed(
       setLeafCollapsed(base, "A", true, COLLAPSE_PX),
@@ -294,23 +295,21 @@ describe("collapse geometry — side-by-side (horizontal) split is along-axis (w
     const split = both as TilingSplitNode;
     const firstStatic: boolean = isStaticAlongSplitAxis(split.first, "horizontal");
     const secondStatic: boolean = isStaticAlongSplitAxis(split.second, "horizontal");
-    expect(firstStatic && secondStatic).toBe(false);
+    expect(firstStatic && secondStatic).toBe(true);
 
-    // "A" stays collapsed (the pin that survives); "B" is fully un-collapsed —
-    // never a fully-expanded pane still flagged `collapsed: true` with an
-    // emptied body.
+    // Both stay collapsed — neither is silently expanded to fill the axis.
     const a: TilingLeafNode | null = findLeafById(both, "A");
     const b: TilingLeafNode | null = findLeafById(both, "B");
     expect(a?.collapsed).toBe(true);
     expect(a?.collapsedDimension).toBe("width");
-    expect(b?.collapsed).toBeUndefined();
-    expect(b?.collapsedRestore).toBeUndefined();
-    expect(b?.collapsedDimension).toBeUndefined();
-    expect(b?.sizing).toBeUndefined();
+    expect(b?.collapsed).toBe(true);
+    expect(b?.collapsedDimension).toBe("width");
 
+    // Each keeps its OWN pin; the remaining 1000 - 40 - 40 = 920px is an
+    // intentional split slack void.
     const map = byId(collectLeafFootprints(both, 0, 0, 1000, 800, GAP_FREE_CONFIG));
-    expect(map.get("A")?.width).toBe(COLLAPSE_PX);
-    expect(map.get("B")?.width).toBe(1000 - COLLAPSE_PX);
+    expect(map.get("A")).toEqual({ leafId: "A", left: 0, top: 0, width: COLLAPSE_PX, height: 800 });
+    expect(map.get("B")).toEqual({ leafId: "B", left: COLLAPSE_PX, top: 0, width: COLLAPSE_PX, height: 800 });
   });
 });
 

@@ -486,6 +486,76 @@ describe("normalizeLayout", (): void => {
     expect(layoutCoversExpectedTiles(repaired, ["a", "b"])).toBe(true);
   });
 
+  it("both-collapsed siblings (HT-PANE-COLLAPSE-VOID): normalize preserves the pair, each own pin, no rebuild/void-heal", (): void => {
+    const bothCollapsed: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: {
+        kind: "leaf",
+        id: "A",
+        tileId: "a",
+        collapsed: true,
+        collapsedDimension: "width",
+        sizing: { width: "static", widthPx: 40 },
+      },
+      second: {
+        kind: "leaf",
+        id: "B",
+        tileId: "b",
+        collapsed: true,
+        collapsedDimension: "width",
+        sizing: { width: "static", widthPx: 40 },
+      },
+    };
+    const normalized: TilingLayoutNode = normalizeLayout(bothCollapsed, {
+      containerWidthPx: 1000,
+      containerHeightPx: 600,
+      config: { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 },
+      expectedTileIds: ["a", "b"],
+    }) as TilingSplitNode;
+    const a: TilingLeafNode | null = findLeaf(normalized, "A");
+    const b: TilingLeafNode | null = findLeaf(normalized, "B");
+    expect(a?.collapsed).toBe(true);
+    expect(b?.collapsed).toBe(true);
+    expect(a?.sizing?.widthPx).toBe(40);
+    expect(b?.sizing?.widthPx).toBe(40);
+  });
+
+  it("both-collapsed siblings' leftover axis space is NOT counted as fill slack (it is an intentional void)", (): void => {
+    const bothCollapsed: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: {
+        kind: "leaf",
+        id: "A",
+        tileId: "a",
+        collapsed: true,
+        collapsedDimension: "width",
+        sizing: { width: "static", widthPx: 40 },
+      },
+      second: {
+        kind: "leaf",
+        id: "B",
+        tileId: "b",
+        collapsed: true,
+        collapsedDimension: "width",
+        sizing: { width: "static", widthPx: 40 },
+      },
+    };
+    // 1000 - 40 - 40 = 920px of leftover space would read as fill slack under
+    // the general both-static rule; the both-collapsed exemption must report 0.
+    const slackPx: number = measureLayoutFillSlackPx(bothCollapsed, {
+      containerWidthPx: 1000,
+      containerHeightPx: 600,
+      config: { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 },
+    });
+    expect(slackPx).toBe(0);
+  });
+
   it("derives expected tile ids from a host tile registry", (): void => {
     const tiles: ReadonlyArray<TilingTile> = [
       { id: "cases", title: "Cases" },

@@ -236,24 +236,58 @@ function reconcileCollapsedLeafAxis(
 }
 
 /**
+ * Whether both children are LEAVES currently `collapsed: true` — the
+ * both-collapsed-siblings edge case (HT-PANE-COLLAPSE-VOID). Unlike an
+ * arbitrary both-static-along-axis pair, a collapsed leaf's pin has a defined
+ * un-collapse escape (`collapsedRestore`), so this combination is allowed to
+ * persist deliberately (see {@link normalizeStaticAxisFill}) instead of being
+ * demoted away.
+ * @internal
+ */
+function isBothCollapsedLeaves(
+  first: TilingLayoutNode,
+  second: TilingLayoutNode,
+): boolean {
+  return (
+    first.kind === "leaf" &&
+    first.collapsed === true &&
+    second.kind === "leaf" &&
+    second.collapsed === true
+  );
+}
+
+/**
  * Enforce the per-split invariant **"at least one child flexes ALONG the split's
  * own axis"** across the whole tree, bottom-up. Two fixed extents along one axis
  * cannot continuously sum to a variable container, so a split whose BOTH children
  * are static-along-its-axis (`{content, content}`) opens a trailing gap on any
  * later container-extent change (the Round-2 static-gap defect). This normalizer
- * forbids that state: when both children are static along the split axis it
- * demotes the SECOND child's along-axis static dimension to flexible (preserving
- * its cross-axis static sizing + px and the first child's pin) so the split
- * becomes `{content, fill}` and the axis re-absorbs any container delta.
+ * forbids that state for the general case: when both children are static along
+ * the split axis it demotes the SECOND child's along-axis static dimension to
+ * flexible (preserving its cross-axis static sizing + px and the first child's
+ * pin) so the split becomes `{content, fill}` and the axis re-absorbs any
+ * container delta.
+ *
+ * EXCEPTION — both-collapsed siblings (HT-PANE-COLLAPSE-VOID): when both
+ * children are LEAVES currently `collapsed: true`, the pair is exempted from
+ * demotion. Preferring "both stay collapsed" over silently un-collapsing
+ * whichever one lost the coin flip is the locked design for this edge case: the
+ * split becomes `{content, content}` and the leftover axis space is an
+ * intentional split slack void (see `resolveBinarySplitDistribution` /
+ * `collectLeafFootprints`) rather than a Round-2 gap — a collapsed leaf's pin
+ * never varies with the container the way an arbitrary static pin can, so there
+ * is no drift to re-absorb. The divider stays interactive so the void remains
+ * escapable (dragging or nudging it un-collapses both siblings — see
+ * `tiling-renderer.tsx`).
  *
  * Deterministic (always the `second` child — the "last edge to become static
- * yields the filler"), pure, and idempotent: a tree that already satisfies the
- * invariant is returned by the SAME reference (no allocation). Call at the tail
- * of every mutation that can create a both-static-along-axis edge — the
- * static-switch path (`setLeafSizing`) and the extraction/removal movers
- * (`removeLeafTile`, `insertLeafAdjacent`, `moveLeafToRoot`,
- * `moveLeafToSplitContainer`) — so both the reachable and the latent triggers are
- * covered.
+ * yields the filler" — outside the both-collapsed exception), pure, and
+ * idempotent: a tree that already satisfies the invariant is returned by the
+ * SAME reference (no allocation). Call at the tail of every mutation that can
+ * create a both-static-along-axis edge — the static-switch path
+ * (`setLeafSizing`) and the extraction/removal movers (`removeLeafTile`,
+ * `insertLeafAdjacent`, `moveLeafToRoot`, `moveLeafToSplitContainer`) — so both
+ * the reachable and the latent triggers are covered.
  */
 export function normalizeStaticAxisFill(node: TilingLayoutNode): TilingLayoutNode {
   if (node.kind === "leaf" || node.kind === "group") {
@@ -273,6 +307,7 @@ export function normalizeStaticAxisFill(node: TilingLayoutNode): TilingLayoutNod
   let normalizedSecond: TilingLayoutNode = normalizeStaticAxisFill(reconciledSecond);
 
   if (
+    !isBothCollapsedLeaves(normalizedFirst, normalizedSecond) &&
     isStaticAlongSplitAxis(normalizedFirst, node.axis) &&
     isStaticAlongSplitAxis(normalizedSecond, node.axis)
   ) {
@@ -424,10 +459,11 @@ const ROOT_LEAF_COLLAPSE_AXIS: TilingSplitAxis = "vertical";
  * that prior sizing. The result is passed through {@link normalizeStaticAxisFill}
  * so a collapse that creates a both-static-along-axis edge (e.g. two stacked —
  * or two side-by-side — siblings both collapsed) still satisfies the "one child
- * flexes along the split axis" invariant; in that degenerate case the SECOND
- * collapsed sibling is fully un-collapsed by {@link demoteAlongAxisStatic} (its
- * collapse pin no longer fits geometrically, so collapse truth and geometry
- * stay in sync) and lands as the along-axis filler.
+ * flexes along the split axis" invariant for every OTHER static combination —
+ * but the both-COLLAPSED-siblings edge is explicitly exempted (HT-PANE-COLLAPSE-
+ * VOID): both stay collapsed, and the leftover axis space is an intentional
+ * split slack void rather than either sibling silently losing its collapse
+ * state.
  */
 export function setLeafCollapsed(
   node: TilingLayoutNode,

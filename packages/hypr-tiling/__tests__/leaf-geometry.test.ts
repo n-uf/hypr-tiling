@@ -380,6 +380,80 @@ describe("collectLeafFootprints — resizeFloor chrome size-out (HT-RESIZE-FLOOR
   });
 });
 
+describe("collectLeafFootprints — both-collapsed siblings void (HT-PANE-COLLAPSE-VOID)", (): void => {
+  const GAP_FREE_CONFIG: TilingLayoutConfig = { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 };
+
+  function collapsedLeaf(id: string, pinPx: number, dimension: "width" | "height"): TilingLeafNode {
+    return {
+      kind: "leaf",
+      id,
+      tileId: `tile-${id}`,
+      collapsed: true,
+      collapsedDimension: dimension,
+      sizing:
+        dimension === "width"
+          ? { width: "static", widthPx: pinPx }
+          : { height: "static", heightPx: pinPx },
+    };
+  }
+
+  it("vertical split: both keep their OWN pin, stacked at the top — the remainder is an unaccounted void", (): void => {
+    const layout = vsplit(
+      0.5,
+      collapsedLeaf("A", 40, "height"),
+      collapsedLeaf("B", 40, "height"),
+    );
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    expect(map.get("A")).toEqual({ leafId: "A", left: 0, top: 0, width: 1000, height: 40 });
+    // "B" sits right after "A" — NOT at the bottom, and NOT stretched to fill
+    // the remaining 720px (that space is the intentional void).
+    expect(map.get("B")).toEqual({ leafId: "B", left: 0, top: 40, width: 1000, height: 40 });
+  });
+
+  it("horizontal split: both keep their OWN pin, side by side at the left — the remainder is an unaccounted void", (): void => {
+    const layout = hsplit(
+      0.5,
+      collapsedLeaf("A", 40, "width"),
+      collapsedLeaf("B", 40, "width"),
+    );
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    expect(map.get("A")).toEqual({ leafId: "A", left: 0, top: 0, width: 40, height: 800 });
+    expect(map.get("B")).toEqual({ leafId: "B", left: 40, top: 0, width: 40, height: 800 });
+  });
+
+  it("an extreme stored ratio does not perturb either side's own pin (both-collapsed bypasses ratio entirely)", (): void => {
+    const layout = vsplit(
+      0.99,
+      collapsedLeaf("A", 40, "height"),
+      collapsedLeaf("B", 40, "height"),
+    );
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    expect(map.get("A")?.height).toBe(40);
+    expect(map.get("B")?.height).toBe(40);
+  });
+
+  it("only ONE side collapsed (not both) still uses the ordinary single-static-fills-remainder arm", (): void => {
+    const layout = vsplit(0.5, collapsedLeaf("A", 40, "height"), leaf("B"));
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, GAP_FREE_CONFIG));
+    expect(map.get("A")?.height).toBe(40);
+    // "B" reclaims the FULL remainder — no void when only one side is collapsed.
+    expect(map.get("B")?.height).toBe(760);
+  });
+
+  it("respects the gutter between the two collapsed extents", (): void => {
+    const layout = hsplit(
+      0.5,
+      collapsedLeaf("A", 40, "width"),
+      collapsedLeaf("B", 40, "width"),
+    );
+    const config: TilingLayoutConfig = { gapPx: 8, minPaneSizePx: 0, handleSizePx: 4 };
+    const map = byId(collectLeafFootprints(layout, 0, 0, 1000, 800, config));
+    expect(map.get("A")?.width).toBe(40);
+    expect(map.get("B")?.left).toBe(40 + 12);
+    expect(map.get("B")?.width).toBe(40);
+  });
+});
+
 describe("collectNormalizedLeafRects — directional-neighbor wrapper", (): void => {
   it("returns unit 0..1 edge-rects matching pure ratio splits", (): void => {
     const layout: TilingLayoutNode = hsplit(0.5, vsplit(0.5, leaf("A"), leaf("B")), leaf("C"));

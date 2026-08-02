@@ -173,6 +173,32 @@ function reconcileBinarySplitAxis(
   const firstPin: number | null = firstStatic ? alongAxisPinPx(first, node.axis) : null;
   const secondPin: number | null = secondStatic ? alongAxisPinPx(second, node.axis) : null;
 
+  // Both-collapsed siblings (HT-PANE-COLLAPSE-VOID): each keeps its OWN pin —
+  // never the single-pin branches below, which would hand the second child
+  // "whatever's left after the first's pin" instead of its actual collapse
+  // extent. The leftover axis space is an intentional split slack void, not a
+  // fit failure to demote away (`normalizeStaticAxisFill` already exempts this
+  // exact pair from the both-static demotion, so both stay static here too).
+  if (
+    first.kind === "leaf" &&
+    first.collapsed === true &&
+    second.kind === "leaf" &&
+    second.collapsed === true &&
+    firstStatic &&
+    secondStatic &&
+    firstPin != null &&
+    secondPin != null
+  ) {
+    return {
+      firstPx: firstPin,
+      secondPx: secondPin,
+      gutterPx,
+      ratio: clampStoredRatio(node.ratio),
+      first,
+      second,
+    };
+  }
+
   if (firstStatic && firstPin != null) {
     const extents = resolveStaticAlongExtents(
       containerPx,
@@ -846,6 +872,43 @@ function walkFillSlack(
   let firstPx: number;
   let secondPx: number;
   let usedGutterPx: number = gutterPx;
+
+  // Both-collapsed siblings (HT-PANE-COLLAPSE-VOID): each keeps its OWN pin;
+  // the leftover axis space is an intentional split slack void, so it is
+  // deliberately excluded from the slack measurement below (recurse into
+  // children with their own pinned extents and return early).
+  if (
+    node.first.kind === "leaf" &&
+    node.first.collapsed === true &&
+    node.second.kind === "leaf" &&
+    node.second.collapsed === true &&
+    firstStatic &&
+    secondStatic &&
+    firstPin != null &&
+    secondPin != null
+  ) {
+    const voidFirstPx: number = firstPin;
+    const voidSecondPx: number = secondPin;
+    const voidFirstWidth: number = node.axis === "horizontal" ? voidFirstPx : widthPx;
+    const voidFirstHeight: number = node.axis === "horizontal" ? heightPx : voidFirstPx;
+    const voidSecondWidth: number = node.axis === "horizontal" ? voidSecondPx : widthPx;
+    const voidSecondHeight: number = node.axis === "horizontal" ? heightPx : voidSecondPx;
+    walkFillSlack(
+      node.first,
+      voidFirstWidth > 0 ? voidFirstWidth : widthPx,
+      voidFirstHeight > 0 ? voidFirstHeight : heightPx,
+      config,
+      acc,
+    );
+    walkFillSlack(
+      node.second,
+      voidSecondWidth > 0 ? voidSecondWidth : widthPx,
+      voidSecondHeight > 0 ? voidSecondHeight : heightPx,
+      config,
+      acc,
+    );
+    return;
+  }
 
   if (firstStatic && firstPin != null) {
     const extents = resolveStaticAlongExtents(
