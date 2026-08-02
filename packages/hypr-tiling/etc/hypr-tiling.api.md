@@ -575,6 +575,7 @@ export interface TilingLeafNode {
     collapsedRestore?: TilingPaneSizing;
     id: string;
     kind: "leaf";
+    minBBoxPx?: TilingMinBBoxPx;
     sizing?: TilingPaneSizing;
     tileId: string;
 }
@@ -592,6 +593,12 @@ export type TilingMasterOrientation = "left" | "right" | "top" | "bottom";
 export interface TilingMaximizeCapability {
     enable?: boolean;
     keymap?: Pick<TilingKeymap, "toggleMaximize" | "restore">;
+}
+
+// @public
+export interface TilingMinBBoxPx {
+    heightPx?: number;
+    widthPx?: number;
 }
 
 // @public

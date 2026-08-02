@@ -24,24 +24,58 @@ import type {
  */
 
 /**
- * Clamp a split ratio so neither side falls below `minPaneSizePx` (the min-pane
- * constraint), expressed as a ratio against the gap-adjusted container extent.
- * Returns `0.5` when the two minimums cannot both be satisfied. This is the
- * single min-constraint helper reused by the resize path, projected-layout
- * geometry, and the `growLeafToward` acquire-space reducer (so all three share
- * one constraint math, never reinventing it).
+ * Safety-net bounds applied to the min-pane ratio clamp on top of the real
+ * per-side px requirement (`clampByMinSize`'s `boundedMin` / `boundedMax`):
+ * raises a tiny real requirement up to `floor` and caps a huge one down to
+ * `ceil`, so a pane never becomes imperceptibly thin (or its sibling
+ * imperceptibly thick) purely from a mismatched `minPaneSizePx`/container
+ * ratio. This is the "hardcoded 5%" — kept as the DEFAULT for the ordinary
+ * body-floor path; a resize-floor "chrome" side (HT-RESIZE-FLOOR-CHROME, size-out
+ * to the titlebar chrome extent) passes {@link RATIO_SAFETY_BOUNDS_UNBOUNDED}
+ * instead so a legitimately small chrome floor is not artificially raised.
+ */
+export interface RatioSafetyBounds {
+  floor: number;
+  ceil: number;
+}
+
+/** Default min-pane ratio safety bounds — the historical hardcoded 5%/95%. */
+export const RATIO_SAFETY_BOUNDS_DEFAULT: RatioSafetyBounds = { floor: 0.05, ceil: 0.95 };
+
+/**
+ * No artificial safety raise/cap — the ratio clamp reflects ONLY the real
+ * per-side px requirement. Used when a "chrome" resize-floor side's true
+ * required fraction is legitimately below the default 5% floor.
+ */
+export const RATIO_SAFETY_BOUNDS_UNBOUNDED: RatioSafetyBounds = { floor: 0, ceil: 1 };
+
+/**
+ * Clamp a split ratio so the FIRST side stays at/above `firstMinPaneSizePx`
+ * and the SECOND side stays at/above `secondMinPaneSizePx` (each expressed in
+ * CSS px, converted to a ratio against the gap-adjusted container extent).
+ * `secondMinPaneSizePx` defaults to `firstMinPaneSizePx` for the common
+ * symmetric case (both sides share one floor). Returns `0.5` when the two
+ * minimums cannot both be satisfied. This is the single min-constraint helper
+ * reused by the resize path, projected-layout geometry, and the
+ * `growLeafToward` acquire-space reducer (so all three share one constraint
+ * math, never reinventing it) — generalized (HT-MIN-BBOX-PX) so a caller can
+ * resolve each side's floor independently (e.g. a leaf-owned
+ * {@link TilingLeafNode.minBBoxPx} on one side only) rather than a single
+ * split-wide value.
  */
 export function clampByMinSize(
   ratio: number,
   containerSizePx: number,
   gapPx: number,
-  minPaneSizePx: number,
+  firstMinPaneSizePx: number,
+  secondMinPaneSizePx: number = firstMinPaneSizePx,
+  safetyBounds: RatioSafetyBounds = RATIO_SAFETY_BOUNDS_DEFAULT,
 ): number {
   const availableSizePx: number = Math.max(containerSizePx - gapPx, 1);
-  const maxFromMin: number = 1 - minPaneSizePx / availableSizePx;
-  const minFromMin: number = minPaneSizePx / availableSizePx;
-  const boundedMin: number = Math.min(Math.max(minFromMin, 0.05), 0.95);
-  const boundedMax: number = Math.max(Math.min(maxFromMin, 0.95), 0.05);
+  const maxFromMin: number = 1 - secondMinPaneSizePx / availableSizePx;
+  const minFromMin: number = firstMinPaneSizePx / availableSizePx;
+  const boundedMin: number = Math.min(Math.max(minFromMin, safetyBounds.floor), safetyBounds.ceil);
+  const boundedMax: number = Math.max(Math.min(maxFromMin, safetyBounds.ceil), safetyBounds.floor);
 
   if (boundedMin > boundedMax) {
     return 0.5;
@@ -106,6 +140,48 @@ export function isStaticOnCrossAxis(
   axis: TilingSplitAxis,
 ): boolean {
   return isStaticInDimension(node, crossAxisDimension(axis));
+}
+
+/**
+ * A leaf's own `minBBoxPx` floor (CSS px) for `dimension`, or `undefined` when
+ * absent or non-positive (a non-positive floor is meaningless and falls
+ * through to the next precedence level). @internal
+ */
+function leafMinBBoxFloorPx(leaf: TilingLeafNode, dimension: TilingDimension): number | undefined {
+  const floorPx: number | undefined =
+    dimension === "width" ? leaf.minBBoxPx?.widthPx : leaf.minBBoxPx?.heightPx;
+  return floorPx != null && Number.isFinite(floorPx) && floorPx > 0 ? floorPx : undefined;
+}
+
+/**
+ * Resolve the ALONG-AXIS min-pane floor (CSS px) for a split's DIRECT child,
+ * by precedence (most specific wins):
+ *
+ * 1. `child.minBBoxPx[alongDimension]` — a leaf-owned floor that TRAVELS WITH
+ *    the pane across rearrange (it lives on the leaf node itself, not the
+ *    split boundary), so a leaf dragged into a different split still carries
+ *    its own floor.
+ * 2. `splitMinPaneSizePx` — the split boundary's own override
+ *    ({@link TilingSplitNode.minPaneSizePx}), pinned to THIS boundary only.
+ * 3. `configMinPaneSizePx` — the library-wide default
+ *    ({@link TilingLayoutConfig.minPaneSizePx}).
+ *
+ * Only a bare LEAF direct child carries `minBBoxPx` — a nested split/group
+ * child has no leaf floor at THIS boundary (its own descendant leaves apply
+ * their floor at their own immediate parent boundary instead). This mirrors
+ * how a `sizing` static pin is direct-child-only elsewhere in this module
+ * (`alongAxisPinPx` in `leaf-geometry.ts` / `layout-normalize.ts`) — no
+ * parallel geometry system, same direct-child convention.
+ */
+export function resolveAlongAxisMinPaneSizePx(
+  child: TilingLayoutNode,
+  axis: TilingSplitAxis,
+  splitMinPaneSizePx: number | undefined,
+  configMinPaneSizePx: number,
+): number {
+  const leafFloorPx: number | undefined =
+    child.kind === "leaf" ? leafMinBBoxFloorPx(child, splitAxisDimension(axis)) : undefined;
+  return leafFloorPx ?? splitMinPaneSizePx ?? configMinPaneSizePx;
 }
 
 /**

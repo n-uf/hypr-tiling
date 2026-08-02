@@ -1177,6 +1177,19 @@ export interface TilingTile {
 }
 
 /**
+ * Leaf-scoped minimum bounding-box floor (CSS px), one optional component per
+ * dimension. See {@link TilingLeafNode.minBBoxPx} for the precedence this
+ * floor takes over {@link TilingSplitNode.minPaneSizePx} and
+ * {@link TilingLayoutConfig.minPaneSizePx}.
+ */
+export interface TilingMinBBoxPx {
+  /** Minimum width (CSS px) this leaf's pane must retain during resize. */
+  widthPx?: number;
+  /** Minimum height (CSS px) this leaf's pane must retain during resize. */
+  heightPx?: number;
+}
+
+/**
  * A leaf slot: a single pane that renders one tile. The renderer's smallest
  * addressable layout unit — focus, drag, resize, and sizing all target a leaf
  * by its `id`.
@@ -1190,6 +1203,26 @@ export interface TilingLeafNode {
   tileId: string;
   /** Per-dimension static/flexible sizing. Undefined dimensions are flexible. */
   sizing?: TilingPaneSizing;
+  /**
+   * Leaf-scoped resize floor (CSS px) — a per-pane along-axis minimum that
+   * TRAVELS WITH the pane across rearrange, because it is stored on the leaf
+   * node itself rather than on a split boundary. When this leaf sits as a
+   * DIRECT child of a split, the component that runs ALONG that split's axis
+   * (`widthPx` for a `"horizontal"` split, `heightPx` for a `"vertical"`
+   * split) is the effective floor for that boundary — resolved with this
+   * precedence (most specific wins):
+   *
+   * 1. `leaf.minBBoxPx[alongDimension]` (this field) — travels with the pane.
+   * 2. {@link TilingSplitNode.minPaneSizePx} — pinned to that split boundary.
+   * 3. {@link TilingLayoutConfig.minPaneSizePx} — the library-wide default.
+   *
+   * An undefined or non-positive per-dimension value falls through to the
+   * next precedence level. The cross-axis component is reserved for a future
+   * cross-axis floor; today's clamp pipeline only bounds the split-axis ratio,
+   * so only the along-axis component is consulted. Persisted alongside
+   * `sizing` so `createPersistedTilingLayout` round-trips it.
+   */
+  minBBoxPx?: TilingMinBBoxPx;
   /**
    * Whether this leaf is COLLAPSED to titlebar-only (HT-PANE-COLLAPSE,
    * axis-aware). A collapsed leaf is pinned STATIC, to the chrome/titlebar
@@ -1252,7 +1285,14 @@ export interface TilingSplitNode {
   second: TilingLayoutNode;
   /** Optional per-split gap override (CSS px) between the two children. */
   gapPx?: number;
-  /** Optional per-split minimum pane extent (CSS px) enforced on resize. */
+  /**
+   * Optional per-split minimum pane extent (CSS px) enforced on resize. Sits
+   * in the MIDDLE of the min-pane precedence chain: a direct child leaf's own
+   * {@link TilingLeafNode.minBBoxPx} (along-axis component) wins over this;
+   * this wins over {@link TilingLayoutConfig.minPaneSizePx}. Unlike
+   * `minBBoxPx`, this floor is pinned to THIS split boundary and does not
+   * travel with either child across rearrange.
+   */
   minPaneSizePx?: number;
   /** Per-dimension static/flexible sizing. Undefined dimensions are flexible. */
   sizing?: TilingPaneSizing;
@@ -1307,7 +1347,13 @@ export type TilingLayoutNode = TilingLeafNode | TilingSplitNode | TilingGroupNod
 export interface TilingLayoutConfig {
   /** Gap (CSS px) painted in the gutters between panes. */
   gapPx: number;
-  /** Minimum pane extent (CSS px) a resize divider will not shrink a pane below. */
+  /**
+   * Library-wide default minimum pane extent (CSS px) a resize divider will
+   * not shrink a pane below — the LAST-resort fallback in the min-pane
+   * precedence chain, behind a direct child leaf's own
+   * {@link TilingLeafNode.minBBoxPx} (along-axis component) and behind
+   * {@link TilingSplitNode.minPaneSizePx}.
+   */
   minPaneSizePx: number;
   /**
    * Resize-handle chrome thickness (CSS px). The interactive hit-target spans
@@ -2230,6 +2276,12 @@ export interface TilingRendererObservabilityProps {
   onLiveHitLogChange?: (state: TilingLiveHitLogState | null) => void;
 }
 
+/**
+ * Live pointer/keyboard resize gesture state for one split divider. The two
+ * floors are resolved PER SIDE (HT-MIN-BBOX-PX) — `resolveAlongAxisMinPaneSizePx`
+ * — so a leaf-owned {@link TilingLeafNode.minBBoxPx} on only one side does not
+ * force the other side up to match.
+ */
 export interface TilingSplitResizeState {
   splitId: string;
   axis: TilingSplitAxis;
@@ -2237,5 +2289,8 @@ export interface TilingSplitResizeState {
   startPointerPx: number;
   startRatio: number;
   gapPx: number;
-  minPaneSizePx: number;
+  /** Resolved along-axis floor (CSS px) for the split's FIRST child. */
+  firstMinPaneSizePx: number;
+  /** Resolved along-axis floor (CSS px) for the split's SECOND child. */
+  secondMinPaneSizePx: number;
 }

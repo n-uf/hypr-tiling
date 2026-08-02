@@ -35,10 +35,16 @@ function leaf(
   id: string,
   tileId: string,
   sizing?: TilingLeafNode["sizing"],
+  minBBoxPx?: TilingLeafNode["minBBoxPx"],
 ): TilingLeafNode {
-  return sizing == null
-    ? { kind: "leaf", id, tileId }
-    : { kind: "leaf", id, tileId, sizing };
+  const node: TilingLeafNode = { kind: "leaf", id, tileId };
+  if (sizing != null) {
+    node.sizing = sizing;
+  }
+  if (minBBoxPx != null) {
+    node.minBBoxPx = minBBoxPx;
+  }
+  return node;
 }
 
 /**
@@ -186,6 +192,45 @@ describe("normalizeLayout", (): void => {
     // available = 1000 - 12 = 988; min ratio = 200/988 ≈ 0.202
     expect(normalized.ratio).toBeGreaterThanOrEqual(0.2);
     expect(normalized.ratio).toBeLessThan(0.99);
+  });
+
+  it("HT-MIN-BBOX-PX: reconciliation clamps against a leaf's own minBBoxPx floor, not just config.minPaneSizePx", (): void => {
+    const input: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.99,
+      first: leaf("A", "a"),
+      second: leaf("B", "b", undefined, { widthPx: 400 }),
+    };
+    const normalized = normalizeLayout(input, {
+      containerWidthPx: 1000,
+      containerHeightPx: 600,
+      config: CONFIG,
+    }) as TilingSplitNode;
+    // B's own 400px floor (stronger than CONFIG's 200) bounds the upper ratio:
+    // available = 1000 - 12 = 988; boundedMax = 1 - 400/988 ≈ 0.595.
+    expect(normalized.ratio).toBeLessThanOrEqual(0.596);
+    expect(normalized.ratio).toBeGreaterThan(0.5);
+  });
+
+  it("HT-MIN-BBOX-PX: falls back to split.minPaneSizePx (over config) when no leaf floor is declared", (): void => {
+    const input: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.99,
+      minPaneSizePx: 350,
+      first: leaf("A", "a"),
+      second: leaf("B", "b"),
+    };
+    const normalized = normalizeLayout(input, {
+      containerWidthPx: 1000,
+      containerHeightPx: 600,
+      config: CONFIG,
+    }) as TilingSplitNode;
+    // split override 350 (not config's 200): available 988, boundedMax = 1 - 350/988 ≈ 0.646.
+    expect(normalized.ratio).toBeLessThanOrEqual(0.647);
   });
 
   it("reports fill slack for an unfit declared pin (pre-normalize void)", (): void => {

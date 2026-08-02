@@ -1,12 +1,15 @@
 import { describe, expect, it } from "@jest/globals";
 import {
+  clampByMinSize,
   crossAxisDimension,
   isStaticAlongSplitAxis,
   isStaticInDimension,
   isStaticOnCrossAxis,
   layoutContainsStaticPane,
   measuredStaticSizing,
+  RATIO_SAFETY_BOUNDS_UNBOUNDED,
   renormalizeFlexibleRatios,
+  resolveAlongAxisMinPaneSizePx,
   resolveBinarySplitDistribution,
   resolveEffectiveStaticAlong,
   resolveStaticAlongExtents,
@@ -16,10 +19,21 @@ import {
   splitBoundaryGutterPx,
   titleBarSizingModeId,
 } from "../engine/pane-sizing";
-import type { TilingLeafNode, TilingLayoutNode, TilingPaneSizing } from "../engine/types";
+import type {
+  TilingLeafNode,
+  TilingLayoutNode,
+  TilingMinBBoxPx,
+  TilingPaneSizing,
+} from "../engine/types";
 
-function leaf(id: string, sizing?: TilingPaneSizing): TilingLeafNode {
-  return { kind: "leaf", id, tileId: id, sizing };
+function leaf(id: string, sizing?: TilingPaneSizing, minBBoxPx?: TilingMinBBoxPx): TilingLeafNode {
+  return minBBoxPx == null
+    ? { kind: "leaf", id, tileId: id, sizing }
+    : { kind: "leaf", id, tileId: id, sizing, minBBoxPx };
+}
+
+function split(axis: "horizontal" | "vertical", first: TilingLayoutNode, second: TilingLayoutNode, minPaneSizePx?: number): TilingLayoutNode {
+  return { kind: "split", id: `${axis}-${first.id}-${second.id}`, axis, ratio: 0.5, first, second, minPaneSizePx };
 }
 
 describe("split-axis → dimension mapping", () => {
@@ -455,5 +469,74 @@ describe("titleBarSizingModeId (active control state from resolved modes)", () =
 
   it("static-both when both dimensions are static", () => {
     expect(titleBarSizingModeId("static", "static")).toBe("static-both");
+  });
+});
+
+describe("resolveAlongAxisMinPaneSizePx (HT-MIN-BBOX-PX precedence)", () => {
+  it("falls through to config.minPaneSizePx when neither leaf.minBBoxPx nor split.minPaneSizePx are set", () => {
+    expect(resolveAlongAxisMinPaneSizePx(leaf("A"), "horizontal", undefined, 96)).toBe(96);
+  });
+
+  it("split.minPaneSizePx wins over config.minPaneSizePx", () => {
+    expect(resolveAlongAxisMinPaneSizePx(leaf("A"), "horizontal", 40, 96)).toBe(40);
+  });
+
+  it("leaf.minBBoxPx (along-axis component) wins over split.minPaneSizePx and config.minPaneSizePx", () => {
+    const withFloor = leaf("A", undefined, { widthPx: 300 });
+    expect(resolveAlongAxisMinPaneSizePx(withFloor, "horizontal", 40, 96)).toBe(300);
+  });
+
+  it("reads widthPx for a horizontal split and heightPx for a vertical split", () => {
+    const withBoth = leaf("A", undefined, { widthPx: 300, heightPx: 150 });
+    expect(resolveAlongAxisMinPaneSizePx(withBoth, "horizontal", undefined, 96)).toBe(300);
+    expect(resolveAlongAxisMinPaneSizePx(withBoth, "vertical", undefined, 96)).toBe(150);
+  });
+
+  it("the CROSS-axis component does not leak into the along-axis floor", () => {
+    // Only heightPx set — irrelevant to a horizontal split's along-axis (width).
+    const crossOnly = leaf("A", undefined, { heightPx: 300 });
+    expect(resolveAlongAxisMinPaneSizePx(crossOnly, "horizontal", 40, 96)).toBe(40);
+  });
+
+  it("ignores a non-positive or non-finite leaf floor (falls through)", () => {
+    expect(resolveAlongAxisMinPaneSizePx(leaf("A", undefined, { widthPx: 0 }), "horizontal", 40, 96)).toBe(40);
+    expect(resolveAlongAxisMinPaneSizePx(leaf("A", undefined, { widthPx: -10 }), "horizontal", 40, 96)).toBe(40);
+    expect(
+      resolveAlongAxisMinPaneSizePx(leaf("A", undefined, { widthPx: Number.NaN }), "horizontal", 40, 96),
+    ).toBe(40);
+  });
+
+  it("a nested split/group child has no leaf floor at this boundary (falls through)", () => {
+    const nested = split("vertical", leaf("X"), leaf("Y"));
+    expect(resolveAlongAxisMinPaneSizePx(nested, "horizontal", 40, 96)).toBe(40);
+  });
+});
+
+describe("clampByMinSize (generalized: independent per-side floors)", () => {
+  it("is backward-compatible: a single 4th arg clamps both sides symmetrically", () => {
+    // container 1000, gap 0, min 100 → boundedMin = 0.1, boundedMax = 0.9.
+    expect(clampByMinSize(0.5, 1000, 0, 100)).toBeCloseTo(0.5);
+    expect(clampByMinSize(0.02, 1000, 0, 100)).toBeCloseTo(0.1);
+    expect(clampByMinSize(0.98, 1000, 0, 100)).toBeCloseTo(0.9);
+  });
+
+  it("clamps each side independently when the two floors differ", () => {
+    // container 1000, gap 0: first floor 300 → boundedMin 0.3; second floor 100 → boundedMax 0.9.
+    expect(clampByMinSize(0.05, 1000, 0, 300, 100)).toBeCloseTo(0.3);
+    expect(clampByMinSize(0.95, 1000, 0, 300, 100)).toBeCloseTo(0.9);
+    expect(clampByMinSize(0.5, 1000, 0, 300, 100)).toBeCloseTo(0.5);
+  });
+
+  it("falls back to 0.5 when the two floors cannot both be satisfied", () => {
+    expect(clampByMinSize(0.5, 500, 0, 400, 400)).toBe(0.5);
+  });
+
+  it("the default 5% safety bound raises a tiny real requirement", () => {
+    // container 100000, min 40 → real fraction 0.0004, raised to the 5% floor.
+    expect(clampByMinSize(0, 100000, 0, 40)).toBeCloseTo(0.05);
+  });
+
+  it("RATIO_SAFETY_BOUNDS_UNBOUNDED reflects only the real per-side px requirement", () => {
+    expect(clampByMinSize(0, 100000, 0, 40, 40, RATIO_SAFETY_BOUNDS_UNBOUNDED)).toBeCloseTo(0.0004);
   });
 });

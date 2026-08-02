@@ -2,6 +2,7 @@ import { collectLeafFootprints, type TilingLeafFootprint } from "./leaf-geometry
 import {
   clampByMinSize,
   isStaticAlongSplitAxis,
+  resolveAlongAxisMinPaneSizePx,
   resolveStaticAlongExtents,
   splitAxisDimension,
   splitBoundaryGutterPx,
@@ -161,7 +162,6 @@ function reconcileBinarySplitAxis(
   config: TilingLayoutConfig,
 ): SplitAxisExtents {
   const resolvedGapPx: number = node.gapPx ?? config.gapPx;
-  const resolvedMinPaneSizePx: number = node.minPaneSizePx ?? config.minPaneSizePx;
   const gutterPx: number = splitBoundaryGutterPx(resolvedGapPx, config.handleSizePx);
 
   let first: TilingLayoutNode = node.first;
@@ -236,11 +236,24 @@ function reconcileBinarySplitAxis(
     };
   }
 
+  const firstMinPaneSizePx: number = resolveAlongAxisMinPaneSizePx(
+    first,
+    node.axis,
+    node.minPaneSizePx,
+    config.minPaneSizePx,
+  );
+  const secondMinPaneSizePx: number = resolveAlongAxisMinPaneSizePx(
+    second,
+    node.axis,
+    node.minPaneSizePx,
+    config.minPaneSizePx,
+  );
   const ratio: number = clampByMinSize(
     node.ratio,
     containerPx,
     gutterPx,
-    resolvedMinPaneSizePx,
+    firstMinPaneSizePx,
+    secondMinPaneSizePx,
   );
   const halfGutter: number = gutterPx / 2;
   const firstPx: number = Math.max(0, containerPx * ratio - halfGutter);
@@ -876,12 +889,24 @@ function walkFillSlack(
       firstPx = Math.max(0, axisContainerPx - secondPin - gutterPx);
     }
   } else {
-    const resolvedMinPaneSizePx: number = node.minPaneSizePx ?? config.minPaneSizePx;
+    const firstMinPaneSizePx: number = resolveAlongAxisMinPaneSizePx(
+      node.first,
+      node.axis,
+      node.minPaneSizePx,
+      config.minPaneSizePx,
+    );
+    const secondMinPaneSizePx: number = resolveAlongAxisMinPaneSizePx(
+      node.second,
+      node.axis,
+      node.minPaneSizePx,
+      config.minPaneSizePx,
+    );
     const ratio: number = clampByMinSize(
       node.ratio,
       axisContainerPx,
       gutterPx,
-      resolvedMinPaneSizePx,
+      firstMinPaneSizePx,
+      secondMinPaneSizePx,
     );
     const halfGutter: number = gutterPx / 2;
     firstPx = Math.max(0, axisContainerPx * ratio - halfGutter);
