@@ -228,8 +228,16 @@ export function collectStaticGatedLeafIds(layout: TilingLayoutNode): ReadonlySet
 
   function walk(node: TilingLayoutNode, inUnresolvableRegion: boolean): void {
     if (node.kind === "leaf") {
-      const selfStatic: boolean =
-        isStaticInDimension(node, "width") || isStaticInDimension(node, "height");
+      // HT-PANE-COLLAPSE: collapse pins `height` static to the KNOWN,
+      // geometry-resolvable `collapsedExtentPx` chrome extent — it is not the
+      // "content-sized, unknowable footprint" this gate exists for (rule 1's
+      // doc comment above). Left ungated, a collapsed leaf stayed a drag
+      // source/target exactly like an expanded one; only counting its WIDTH
+      // dimension here still gates a leaf the user separately pinned static
+      // WIDTH (the title-bar `W•` lock) even while collapsed.
+      const selfStatic: boolean = node.collapsed === true
+        ? isStaticInDimension(node, "width")
+        : isStaticInDimension(node, "width") || isStaticInDimension(node, "height");
       if (inUnresolvableRegion || selfStatic) {
         gated.add(node.id);
       }

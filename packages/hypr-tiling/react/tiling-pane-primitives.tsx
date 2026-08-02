@@ -187,10 +187,10 @@ export function TilingPaneTitleBarContent({
 /** Props for {@link TilingPaneBody}. */
 export interface TilingPaneBodyProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
-   * The `renderTile` args for this pane (only `paneBodyRenderMode` is read).
-   * Pass the whole args object.
+   * The `renderTile` args for this pane (`paneBodyRenderMode` and `isCollapsed`
+   * are read). Pass the whole args object.
    */
-  pane: Pick<TilingRenderTileProps, "paneBodyRenderMode">;
+  pane: Pick<TilingRenderTileProps, "paneBodyRenderMode" | "isCollapsed">;
 }
 
 /**
@@ -201,15 +201,27 @@ export interface TilingPaneBodyProps extends React.HTMLAttributes<HTMLDivElement
  * same render path, so an empty body never rides along. Bring your own
  * `className` / `style`.
  *
+ * HT-PANE-COLLAPSE: while `pane.isCollapsed` is true the wrapper is forced to
+ * `display: none` (merged into any consumer `style`) rather than merely
+ * emptying its children. A collapsed leaf is pinned to the chrome extent
+ * (titlebar height only), but a bare empty body still keeps its `flex-1` /
+ * `min-h-0` box in the layout — the leftover slack between that box and the
+ * pinned extent rendered as a dead strip below the titlebar. Hiding the box
+ * entirely removes that strip so the collapsed pane is exactly titlebar-tall.
+ *
  * @param props - {@link TilingPaneBodyProps}
  */
 export function TilingPaneBody({
   pane,
   children,
+  style,
   ...rest
 }: TilingPaneBodyProps): React.ReactElement {
   return (
-    <div {...rest}>
+    <div
+      {...rest}
+      style={pane.isCollapsed === true ? { ...style, display: "none" } : style}
+    >
       {pane.paneBodyRenderMode === "render-content" ? children : null}
     </div>
   );
