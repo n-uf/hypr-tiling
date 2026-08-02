@@ -256,7 +256,15 @@ describe("collectLeafFootprints — multi-static composite (nested W• pins + g
 });
 
 describe("collectLeafFootprints — leaf-scoped minBBoxPx floor (HT-MIN-BBOX-PX)", (): void => {
-  const MIN_PANE_CONFIG: TilingLayoutConfig = { gapPx: 0, minPaneSizePx: 96, handleSizePx: 0 };
+  // Opts into "body" explicitly: HT-MIN-BBOX-PX is the body-floor precedence
+  // chain specifically, so these assertions need the pre-HT-RESIZE-FLOOR-DEFAULT
+  // floor rather than the library's chrome default.
+  const MIN_PANE_CONFIG: TilingLayoutConfig = {
+    gapPx: 0,
+    minPaneSizePx: 96,
+    handleSizePx: 0,
+    resizeFloor: "body",
+  };
 
   it("clamps the along-axis ratio to the leaf's own minBBoxPx floor, overriding a skewed ratio", (): void => {
     const review = leaf("review", undefined, { widthPx: 300 });

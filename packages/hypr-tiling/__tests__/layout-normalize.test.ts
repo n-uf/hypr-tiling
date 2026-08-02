@@ -25,10 +25,15 @@ const EXPECTED_ANNOTATE_TILES: ReadonlyArray<string> = [
   "review",
 ];
 
+// This file exercises the body-floor precedence chain (minBBoxPx →
+// split.minPaneSizePx → config.minPaneSizePx); it predates and is unrelated
+// to HT-RESIZE-FLOOR-DEFAULT, so it opts into "body" explicitly rather than
+// picking up the library's chrome default.
 const CONFIG: TilingLayoutConfig = {
   gapPx: 8,
   minPaneSizePx: 200,
   handleSizePx: 4,
+  resizeFloor: "body",
 };
 
 function leaf(

@@ -206,11 +206,13 @@ export interface AlongAxisFloorResolution {
  *
  * 1. `child.resizeFloor` (a bare leaf only) — per-leaf override.
  * 2. `config.resizeFloor` — library-wide default.
- * 3. `"body"` — the mode default.
+ * 3. `"chrome"` — the LIBRARY default (HT-RESIZE-FLOOR-DEFAULT). `"body"`
+ *    remains available as an explicit opt-in via either precedence level
+ *    above, for consumers that want the old content-floor behavior.
  *
  * `"chrome"` REPLACES the body floor with `config.collapsedExtentPx` (→
- * {@link TILING_DEFAULT_COLLAPSED_EXTENT_PX}) — the size-out floor is an
- * explicit opt-in, not layered on top of {@link resolveAlongAxisMinPaneSizePx}.
+ * {@link TILING_DEFAULT_COLLAPSED_EXTENT_PX}) — the size-out floor is the
+ * library default, not layered on top of {@link resolveAlongAxisMinPaneSizePx}.
  * `"body"` delegates to `resolveAlongAxisMinPaneSizePx` unchanged (the
  * `minBBoxPx` → `split.minPaneSizePx` → `config.minPaneSizePx` chain).
  */
@@ -221,7 +223,7 @@ export function resolveAlongAxisFloor(
   config: TilingLayoutConfig,
 ): AlongAxisFloorResolution {
   const resizeFloor: TilingResizeFloor =
-    (child.kind === "leaf" ? child.resizeFloor : undefined) ?? config.resizeFloor ?? "body";
+    (child.kind === "leaf" ? child.resizeFloor : undefined) ?? config.resizeFloor ?? "chrome";
 
   if (resizeFloor === "chrome") {
     return {
