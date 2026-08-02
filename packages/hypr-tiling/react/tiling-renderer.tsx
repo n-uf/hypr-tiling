@@ -123,6 +123,7 @@ import {
   resolveMasterStackFootprints,
   slotRepresentativeLeafId,
 } from "../engine/leaf-geometry";
+import { isInteractiveControlTarget } from "../engine/interactive-controls";
 import type { MeasurementPort } from "../engine/measurement-port";
 import {
   canGroupMultiSelection,
@@ -7649,13 +7650,7 @@ const TilingRendererComponent = React.forwardRef<
               isMultiSelectGroupingEnabled &&
               isMultiSelectModifierActive(event)
             ) {
-              const modifierPressTarget: EventTarget | null = event.target;
-              const isModifierInteractiveControl: boolean =
-                modifierPressTarget instanceof Element &&
-                modifierPressTarget.closest(
-                  'button, a, input, textarea, select, [role="button"]',
-                ) != null;
-              if (!isModifierInteractiveControl) {
+              if (!isInteractiveControlTarget(event.target)) {
                 event.preventDefault();
               }
               return;
@@ -7689,13 +7684,7 @@ const TilingRendererComponent = React.forwardRef<
             // through the drag. Skipped for interactive title-bar controls so
             // their native focus/click behavior is untouched. Safe before
             // capture: `setPointerCapture` runs later on threshold crossing.
-            const pressTarget: EventTarget | null = event.target;
-            const isInteractiveControl: boolean =
-              pressTarget instanceof Element &&
-              pressTarget.closest(
-                'button, a, input, textarea, select, [role="button"]',
-              ) != null;
-            if (!isInteractiveControl) {
+            if (!isInteractiveControlTarget(event.target)) {
               event.preventDefault();
               if (typeof window !== "undefined") {
                 window.getSelection()?.removeAllRanges();

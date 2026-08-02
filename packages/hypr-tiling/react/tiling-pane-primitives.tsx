@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { isInteractiveControlTarget } from "../engine/interactive-controls";
 import { isMultiSelectModifierActive } from "../engine/multi-selection";
 import type { TilingRenderTileProps } from "../engine/types";
 
@@ -160,12 +161,21 @@ export interface TilingPaneTitleBarContentProps extends React.HTMLAttributes<HTM
 
 /**
  * Middle slot of a custom pane titlebar — between the title (left) and native
- * window controls (right). Stops pointer-down propagation so toolbar clicks /
- * find inputs do not start a rearrange drag from the surrounding
- * {@link TilingDragHandle}. Unstyled: bring `className` (typically
- * `min-w-0 flex-1` so the slot fills remaining header width and truncates).
- * Prefer reading `tile.titleBarContent` from {@link TilingRenderTileProps} and
- * wrapping it here.
+ * window controls (right). Stops pointer-down propagation ONLY when the press
+ * lands on a genuine interactive control inside the slot (button, link,
+ * input/textarea/select, `role="button"`, or a `contenteditable` node — see
+ * {@link isInteractiveControlTarget}), so a real toolbar click / find input
+ * does not start a rearrange drag from the surrounding {@link TilingDragHandle}.
+ * A press anywhere ELSE in the slot — decorative labels, badges, a selected-
+ * case id, any non-interactive content — falls through untouched, so the
+ * titlebar stays draggable from the whole slot minus its actual controls
+ * (HT-TITLEBAR-DRAG-THRU: a blanket stop here previously turned any non-empty
+ * `titleBarContent` into a dead zone that swallowed drag pickup entirely, even
+ * where nothing inside it was interactive).
+ *
+ * Unstyled: bring `className` (typically `min-w-0 flex-1` so the slot fills
+ * remaining header width and truncates). Prefer reading `tile.titleBarContent`
+ * from {@link TilingRenderTileProps} and wrapping it here.
  *
  * @param props - {@link TilingPaneTitleBarContentProps}
  */
@@ -177,7 +187,9 @@ export function TilingPaneTitleBarContent({
     <div
       {...rest}
       onPointerDown={(event: React.PointerEvent<HTMLDivElement>): void => {
-        event.stopPropagation();
+        if (isInteractiveControlTarget(event.target)) {
+          event.stopPropagation();
+        }
         onPointerDown?.(event);
       }}
     />
