@@ -1373,6 +1373,7 @@ export function buildGhostTileArgs(
     onSetSizingMode: GHOST_TILE_NOOP,
     onAcquireSpace: GHOST_TILE_NOOP,
     isCollapsed: false,
+    collapsedDimension: null,
     isCollapseEnabled: capabilityFlags.isCollapseEnabled,
     onToggleCollapse: GHOST_TILE_NOOP,
     dropZone: null,
@@ -7583,6 +7584,8 @@ const TilingRendererComponent = React.forwardRef<
             acquireLeafSpace(node.id, direction);
           },
           isCollapsed: node.collapsed === true,
+          collapsedDimension:
+            node.collapsed === true ? (node.collapsedDimension ?? null) : null,
           isCollapseEnabled,
           onToggleCollapse: (): void => {
             toggleCollapseLeaf(node.id);

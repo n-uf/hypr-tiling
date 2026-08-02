@@ -120,6 +120,7 @@ export type {
   TilingPaneSizing,
   TilingPaneSizingMode,
   TilingSplitAxis,
+  TilingDimension,
   TilingLayoutMode,
   TilingMasterOrientation,
   TilingTitleBarSizingMode,
