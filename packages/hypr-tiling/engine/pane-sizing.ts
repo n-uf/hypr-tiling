@@ -410,6 +410,17 @@ export function resolveStaticAlongExtents(
  * `collectLeafFootprints` ratio fallback — so the renderer never keeps a
  * non-shrinking pin inside a too-small container (overflow / dead-space void).
  * When a pin fits, `staticExtents` carries the resolved along-axis px.
+ *
+ * `bothCollapsedVoid` (HT-PANE-COLLAPSE-VOID) opts into the both-collapsed-
+ * siblings arm: when true AND both sides are static-along with a fitting,
+ * positive pin, EACH keeps its OWN pin — `staticExtents.secondPx` is the
+ * second child's real pin, not "whatever container space the first side left
+ * behind." Any leftover container space beyond both pins + the gutter is an
+ * intentional split slack void (neither side reclaims it) and is never treated
+ * as an unfit failure. Omit (default `false`) for every other caller —
+ * `normalizeStaticAxisFill` never lets a non-collapsed both-static-along-axis
+ * pair reach this function, so the flag should only ever be set from the
+ * renderer's own both-collapsed-leaves check.
  * @internal
  */
 export function resolveEffectiveStaticAlong(
@@ -420,6 +431,7 @@ export function resolveEffectiveStaticAlong(
   containerPx: number,
   gapPx: number,
   handleSizePx: number,
+  bothCollapsedVoid: boolean = false,
 ): {
   firstStaticAlongAxis: boolean;
   secondStaticAlongAxis: boolean;
@@ -430,7 +442,21 @@ export function resolveEffectiveStaticAlong(
   let staticExtents: { firstPx: number; secondPx: number; gutterPx: number } | null =
     null;
 
-  if (firstStaticAlongAxis && firstPinPx != null) {
+  if (
+    bothCollapsedVoid &&
+    firstStaticAlongAxis &&
+    secondStaticAlongAxis &&
+    firstPinPx != null &&
+    secondPinPx != null &&
+    firstPinPx > 0 &&
+    secondPinPx > 0
+  ) {
+    staticExtents = {
+      firstPx: firstPinPx,
+      secondPx: secondPinPx,
+      gutterPx: splitBoundaryGutterPx(gapPx, handleSizePx),
+    };
+  } else if (firstStaticAlongAxis && firstPinPx != null) {
     staticExtents = resolveStaticAlongExtents(
       containerPx,
       firstPinPx,
@@ -465,28 +491,44 @@ export function resolveEffectiveStaticAlong(
  * Resolve how the two children of a binary split are sized ALONG the split axis,
  * given each child's static-along-axis flag and the split ratio:
  *
- * - both static → first content-sized, second FILLS (backstop, see below);
+ * - both static, both-collapsed-siblings (`bothCollapsedVoid`) → BOTH
+ *   content-sized, leftover axis space is an intentional split slack void;
+ * - both static, otherwise → first content-sized, second FILLS (backstop, see
+ *   below);
  * - one static → static child content-sized, flexible sibling fills the rest;
  * - both flexible → distribute the axis by the (renormalized) ratio.
  *
- * BACKSTOP (both-static arm): two fixed extents along one axis cannot
- * continuously sum to a variable container — `{content, content}` has no
+ * BOTH-COLLAPSED-SIBLINGS ARM (HT-PANE-COLLAPSE-VOID): a collapsed leaf's pin is
+ * the fixed chrome/titlebar extent, not an arbitrary static size that drifts
+ * with the container — two of them side by side (or stacked) simply do not
+ * fill the split, and forcing the second to FILL would silently re-expand it
+ * into a stretched, emptied body (collapse truth diverging from geometry). The
+ * locked design prefers both stay collapsed with a void; `bothCollapsedVoid` is
+ * true only when the renderer's own leaf-collapse check confirms this is that
+ * exact case (never inferred from the static flags alone).
+ *
+ * BACKSTOP (both-static, non-collapsed arm): two fixed extents along one axis
+ * cannot continuously sum to a variable container — `{content, content}` has no
  * flexing child, so any later container-extent change opens a trailing gap
  * (the Round-2 static-gap defect). The reducer-level `normalizeStaticAxisFill`
- * invariant (`state.ts`) prevents a both-static-along-axis split from ever being
- * stored, but this arm is the defense-in-depth view backstop: even if a
- * both-static tree reaches the renderer by an unnormalized path (hand-authored
- * `INITIAL_LAYOUT`, persistence, a future mutation that forgets to normalize),
- * the `second` child FILLS so the axis still re-absorbs the delta and cannot gap.
+ * invariant (`state.ts`) prevents a non-collapsed both-static-along-axis split
+ * from ever being stored, but this arm is the defense-in-depth view backstop:
+ * even if such a tree reaches the renderer by an unnormalized path
+ * (hand-authored `INITIAL_LAYOUT`, persistence, a future mutation that forgets
+ * to normalize), the `second` child FILLS so the axis still re-absorbs the
+ * delta and cannot gap.
  * @internal
  */
 export function resolveBinarySplitDistribution(
   firstStaticAlongAxis: boolean,
   secondStaticAlongAxis: boolean,
   ratio: number,
+  bothCollapsedVoid: boolean = false,
 ): BinarySplitDistribution {
   if (firstStaticAlongAxis && secondStaticAlongAxis) {
-    return { first: { kind: "content" }, second: { kind: "fill" } };
+    return bothCollapsedVoid
+      ? { first: { kind: "content" }, second: { kind: "content" } }
+      : { first: { kind: "content" }, second: { kind: "fill" } };
   }
   if (firstStaticAlongAxis) {
     return { first: { kind: "content" }, second: { kind: "fill" } };

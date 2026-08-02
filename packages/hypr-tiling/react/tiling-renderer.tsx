@@ -5414,6 +5414,44 @@ const TilingRendererComponent = React.forwardRef<
     };
   }, [cancelLayoutIdleSettle]);
 
+  // Both-collapsed-siblings void escape (HT-PANE-COLLAPSE-VOID): the divider
+  // between two collapsed siblings stays interactive (see `isBoundaryResizable`
+  // below) specifically so pressing/nudging it can un-collapse BOTH — a ratio
+  // drag has no live geometry effect while both sides are pinned to their
+  // collapse extent, so the escape action IS the expand, not a resize. Both
+  // expands are composed against the SAME base `layout` and committed with
+  // ONE `onLayoutChange` (two sequential single-leaf collapse calls would each
+  // read the same pre-update `layout` from this render's closure and the
+  // second call would clobber the first).
+  const expandBothCollapsedVoidSiblings = React.useCallback(
+    (firstLeafId: string, secondLeafId: string): void => {
+      if (!isCollapseEnabled) {
+        return;
+      }
+      const collapsedExtentPx: number =
+        config.collapsedExtentPx ?? TILING_DEFAULT_COLLAPSED_EXTENT_PX;
+      const next: TilingLayoutNode = setLeafCollapsed(
+        setLeafCollapsed(layout, firstLeafId, false, collapsedExtentPx),
+        secondLeafId,
+        false,
+        collapsedExtentPx,
+      );
+      if (next === layout) {
+        return;
+      }
+      onLayoutChange(next);
+      onPaneCollapsedChange?.({ leafId: firstLeafId, collapsed: false });
+      onPaneCollapsedChange?.({ leafId: secondLeafId, collapsed: false });
+    },
+    [
+      config.collapsedExtentPx,
+      isCollapseEnabled,
+      layout,
+      onLayoutChange,
+      onPaneCollapsedChange,
+    ],
+  );
+
   const beginResize = React.useCallback(
     (
       event: React.PointerEvent<HTMLDivElement>,
@@ -5423,11 +5461,22 @@ const TilingRendererComponent = React.forwardRef<
       secondMinPaneSizePx: number,
       ratioSafetyBounds: RatioSafetyBounds,
       handleSizePx: number,
+      bothCollapsedVoidLeafIds: readonly [string, string] | null,
     ): void => {
       if (!isResizeAxisEnabled(interactionCapabilities.resize, node.axis)) {
         return;
       }
       event.preventDefault();
+      // Both-collapsed-siblings void (HT-PANE-COLLAPSE-VOID): pressing the
+      // divider un-collapses both instead of starting a ratio drag — see
+      // `expandBothCollapsedVoidSiblings`.
+      if (bothCollapsedVoidLeafIds != null) {
+        expandBothCollapsedVoidSiblings(
+          bothCollapsedVoidLeafIds[0],
+          bothCollapsedVoidLeafIds[1],
+        );
+        return;
+      }
       const splitContainer: HTMLDivElement | undefined =
         splitContainerRefs.current.get(node.id);
       if (splitContainer == null) {
@@ -5477,7 +5526,7 @@ const TilingRendererComponent = React.forwardRef<
         event.currentTarget.setPointerCapture(event.nativeEvent.pointerId);
       }
     },
-    [interactionCapabilities.resize],
+    [expandBothCollapsedVoidSiblings, interactionCapabilities.resize],
   );
 
   // Keyboard resize on a focused separator — the `layoutmsg splitratio` / `mfact`
@@ -5496,6 +5545,7 @@ const TilingRendererComponent = React.forwardRef<
       firstMinPaneSizePx: number,
       secondMinPaneSizePx: number,
       ratioSafetyBounds: RatioSafetyBounds,
+      bothCollapsedVoidLeafIds: readonly [string, string] | null,
     ): void => {
       if (!isResizeAxisEnabled(interactionCapabilities.resize, node.axis)) {
         return;
@@ -5526,6 +5576,16 @@ const TilingRendererComponent = React.forwardRef<
       }
       event.preventDefault();
       event.stopPropagation();
+      // Both-collapsed-siblings void (HT-PANE-COLLAPSE-VOID): nudging the
+      // divider un-collapses both instead of stepping a ratio with no live
+      // geometry effect while both sides are pinned to their collapse extent.
+      if (bothCollapsedVoidLeafIds != null) {
+        expandBothCollapsedVoidSiblings(
+          bothCollapsedVoidLeafIds[0],
+          bothCollapsedVoidLeafIds[1],
+        );
+        return;
+      }
       const boundedSizePx: number = containerSizePx > 1 ? containerSizePx : 1;
       const boundaryGutterPx: number = splitBoundaryGutterPx(
         resolvedGapPx,
@@ -5543,6 +5603,7 @@ const TilingRendererComponent = React.forwardRef<
     },
     [
       config.handleSizePx,
+      expandBothCollapsedVoidSiblings,
       interactionCapabilities.resize,
       layout,
       onLayoutChange,
@@ -8136,6 +8197,20 @@ const TilingRendererComponent = React.forwardRef<
       };
       const firstPinPx: number | null = alongPinPx(node.first);
       const secondPinPx: number | null = alongPinPx(node.second);
+      // Both-collapsed siblings (HT-PANE-COLLAPSE-VOID): both children are
+      // LEAVES currently collapsed. Locked design prefers both stay collapsed
+      // with a split slack void over silently un-collapsing one — see
+      // `resolveEffectiveStaticAlong` / `resolveBinarySplitDistribution` /
+      // `normalizeStaticAxisFill`. The divider stays interactive so the void
+      // remains escapable (see `expandBothCollapsedVoidSiblings`).
+      const bothCollapsedVoidLeafIds: readonly [string, string] | null =
+        node.first.kind === "leaf" &&
+        node.first.collapsed === true &&
+        node.second.kind === "leaf" &&
+        node.second.collapsed === true
+          ? [node.first.id, node.second.id]
+          : null;
+      const isBothCollapsedVoid: boolean = bothCollapsedVoidLeafIds != null;
       // Static-along boundaries omit the resize handle but still reserve the
       // FULL boundary gutter (`gapPx + handleSizePx`) via a transparent spacer
       // so W•/H• locks keep gutter parity with flexible splits (and host chrome
@@ -8155,6 +8230,7 @@ const TilingRendererComponent = React.forwardRef<
         axisContainerSizePx,
         resolvedGapPx,
         config.handleSizePx,
+        isBothCollapsedVoid,
       );
       const firstStaticAlongAxis: boolean =
         effectiveStatic.firstStaticAlongAxis;
@@ -8174,8 +8250,13 @@ const TilingRendererComponent = React.forwardRef<
         interactionCapabilities.resize,
         node.axis,
       );
+      // Both-collapsed-siblings void stays resizable (drag/keyboard nudge
+      // un-collapses both — HT-PANE-COLLAPSE-VOID) even though both sides are
+      // static-along: every OTHER static combination still hides the divider
+      // (a lone collapsed pane's escape is its expand control, not a drag that
+      // has no live geometry effect while pinned).
       const isBoundaryResizable: boolean =
-        !firstStaticAlongAxis && !secondStaticAlongAxis;
+        isBothCollapsedVoid || (!firstStaticAlongAxis && !secondStaticAlongAxis);
       const dividerRenderMode: TilingSplitDividerRenderMode =
         resolveSplitDividerRenderMode({
           isBoundaryResizable,
@@ -8197,6 +8278,7 @@ const TilingRendererComponent = React.forwardRef<
         firstStaticAlongAxis,
         secondStaticAlongAxis,
         safeRatio,
+        isBothCollapsedVoid,
       );
 
       const mainFlexStyle = (
@@ -8348,6 +8430,7 @@ const TilingRendererComponent = React.forwardRef<
                         secondMinPaneSizePx,
                         ratioSafetyBounds,
                         config.handleSizePx,
+                        bothCollapsedVoidLeafIds,
                       )
                   : undefined
               }
@@ -8362,6 +8445,7 @@ const TilingRendererComponent = React.forwardRef<
                         firstMinPaneSizePx,
                         secondMinPaneSizePx,
                         ratioSafetyBounds,
+                        bothCollapsedVoidLeafIds,
                       )
                   : undefined
               }

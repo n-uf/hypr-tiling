@@ -278,13 +278,29 @@ describe("resolveBinarySplitDistribution", () => {
     });
   });
 
-  it("both static → first content-sized, second FILLS (backstop: axis must keep a filler)", () => {
+  it("both static, non-collapsed (bothCollapsedVoid omitted/false) → first content-sized, second FILLS (backstop: axis must keep a filler)", () => {
     // Round-2 static-gap backstop: two fixed extents cannot sum to a variable
     // container, so even a both-static-along-axis split must keep one filling
-    // child or it opens a trailing gap on container resize.
+    // child or it opens a trailing gap on container resize. This arm only
+    // reaches the renderer via an unnormalized tree — `normalizeStaticAxisFill`
+    // forbids storing it for any OTHER both-static-along-axis pair.
     expect(resolveBinarySplitDistribution(true, true, 0.5)).toEqual({
       first: { kind: "content" },
       second: { kind: "fill" },
+    });
+    expect(resolveBinarySplitDistribution(true, true, 0.5, false)).toEqual({
+      first: { kind: "content" },
+      second: { kind: "fill" },
+    });
+  });
+
+  it("both static, bothCollapsedVoid=true (HT-PANE-COLLAPSE-VOID) → BOTH content-sized, no filler", () => {
+    // Both-collapsed siblings never drift with the container the way an
+    // arbitrary static pin can, so there is no Round-2 gap to guard against —
+    // the locked design prefers both stay collapsed with a split slack void.
+    expect(resolveBinarySplitDistribution(true, true, 0.5, true)).toEqual({
+      first: { kind: "content" },
+      second: { kind: "content" },
     });
   });
 
@@ -359,6 +375,40 @@ describe("resolveEffectiveStaticAlong (pin fit-guard demotes to flexible)", () =
     expect(resolved.firstStaticAlongAxis).toBe(false);
     expect(resolved.secondStaticAlongAxis).toBe(false);
     expect(resolved.staticExtents).toBeNull();
+  });
+
+  it("bothCollapsedVoid omitted (default false): both static + both pinned still falls to the single-pin (first-wins) branch", () => {
+    const resolved = resolveEffectiveStaticAlong(true, true, 40, 40, 1000, 0, 0);
+    expect(resolved.firstStaticAlongAxis).toBe(true);
+    expect(resolved.secondStaticAlongAxis).toBe(true);
+    // Without the flag, the second child's "pin" is really the leftover
+    // container space, not its own 40px extent — the pre-HT-PANE-COLLAPSE-VOID
+    // behavior this function must NOT apply outside the both-collapsed case.
+    expect(resolved.staticExtents).toEqual({ firstPx: 40, secondPx: 960, gutterPx: 0 });
+  });
+
+  it("bothCollapsedVoid=true (HT-PANE-COLLAPSE-VOID): both static + both fitting pins keep their OWN extents, leftover space unaccounted", () => {
+    const resolved = resolveEffectiveStaticAlong(true, true, 40, 40, 1000, 0, 0, true);
+    expect(resolved.firstStaticAlongAxis).toBe(true);
+    expect(resolved.secondStaticAlongAxis).toBe(true);
+    expect(resolved.staticExtents).toEqual({ firstPx: 40, secondPx: 40, gutterPx: 0 });
+  });
+
+  it("bothCollapsedVoid=true still fit-guards: a non-positive pin falls through to the single-pin branch", () => {
+    const resolved = resolveEffectiveStaticAlong(true, true, 40, 0, 1000, 0, 0, true);
+    // secondPinPx is not a usable pin (<=0) → the dual-pin arm does not apply;
+    // falls back to the first-wins single-pin branch (still fits).
+    expect(resolved.staticExtents).toEqual({ firstPx: 40, secondPx: 960, gutterPx: 0 });
+  });
+
+  it("bothCollapsedVoid=true with the void larger than the container: both pins still honored (no refuse, no demote)", () => {
+    // Two 40px collapse extents in a 50px container is a pathological edge
+    // case, but the locked design is "not refuse" — both keep their own pin
+    // rather than being demoted back to flexible.
+    const resolved = resolveEffectiveStaticAlong(true, true, 40, 40, 50, 0, 0, true);
+    expect(resolved.firstStaticAlongAxis).toBe(true);
+    expect(resolved.secondStaticAlongAxis).toBe(true);
+    expect(resolved.staticExtents).toEqual({ firstPx: 40, secondPx: 40, gutterPx: 0 });
   });
 });
 

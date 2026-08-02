@@ -387,14 +387,39 @@ export function collectLeafFootprints(
   // rest. The fit-guard also makes the normalized unit-space wrapper
   // (axisSize ~= 1) fall through to ratio — a CSS px pin is undefined against a
   // 1-unit container. `normalizeStaticAxisFill` forbids a stored
-  // both-static-along-axis split, so at most one child is static-along here; the
-  // first-static arm wins (matches the renderer `resolveBinarySplitDistribution`
-  // `{content, fill}` precedence) if both ever reach this point on an
-  // unnormalized tree.
+  // both-static-along-axis split EXCEPT for both-collapsed siblings
+  // (HT-PANE-COLLAPSE-VOID), so at most one child is static-along here UNLESS
+  // both are collapsed leaves — that case is handled first, each keeping its
+  // OWN pin with the leftover axis space left as an intentional split slack
+  // void (mirrors the renderer). On an unnormalized tree with two arbitrary
+  // (non-collapsed) static children, the first-static arm wins (matches
+  // `resolveBinarySplitDistribution`'s `{content, fill}` backstop).
   const resolvedGapPx: number = node.gapPx ?? config.gapPx;
   const boundaryGutterPx: number = splitBoundaryGutterPx(resolvedGapPx, config.handleSizePx);
   const firstStaticAlong: boolean = isStaticAlongSplitAxis(node.first, node.axis);
   const secondStaticAlong: boolean = isStaticAlongSplitAxis(node.second, node.axis);
+  const isBothCollapsedLeaves: boolean =
+    node.first.kind === "leaf" &&
+    node.first.collapsed === true &&
+    node.second.kind === "leaf" &&
+    node.second.collapsed === true;
+  if (isBothCollapsedLeaves && firstStaticAlong && secondStaticAlong) {
+    const firstPinPx: number | null = alongAxisPinPx(node.first, node.axis);
+    const secondPinPx: number | null = alongAxisPinPx(node.second, node.axis);
+    if (firstPinPx != null && secondPinPx != null) {
+      return collectStaticAlongFootprints(
+        node,
+        left,
+        top,
+        config,
+        firstPinPx,
+        secondPinPx,
+        boundaryGutterPx,
+        firstCrossPx,
+        secondCrossPx,
+      );
+    }
+  }
   if (firstStaticAlong) {
     const firstPinPx: number | null = alongAxisPinPx(node.first, node.axis);
     if (firstPinPx != null) {
