@@ -139,12 +139,14 @@ import {
   isStaticInDimension,
   isStaticOnCrossAxis,
   measuredStaticSizing,
-  resolveAlongAxisMinPaneSizePx,
+  resolveAlongAxisFloor,
   resolveBinarySplitDistribution,
   resolveEffectiveStaticAlong,
+  resolveRatioSafetyBounds,
   resolveSizingMode,
   splitBoundaryGutterPx,
   titleBarSizingModeId,
+  type RatioSafetyBounds,
   type SplitChildMainSizing,
 } from "../engine/pane-sizing";
 import {
@@ -5658,6 +5660,7 @@ const TilingRendererComponent = React.forwardRef<
         resizeState.gapPx,
         resizeState.firstMinPaneSizePx,
         resizeState.secondMinPaneSizePx,
+        resizeState.ratioSafetyBounds,
       );
       scheduleResizeRatio(nextRatio);
     };
@@ -5715,6 +5718,7 @@ const TilingRendererComponent = React.forwardRef<
       resolvedGapPx: number,
       firstMinPaneSizePx: number,
       secondMinPaneSizePx: number,
+      ratioSafetyBounds: RatioSafetyBounds,
       handleSizePx: number,
     ): void => {
       if (!isResizeAxisEnabled(interactionCapabilities.resize, node.axis)) {
@@ -5748,6 +5752,7 @@ const TilingRendererComponent = React.forwardRef<
         boundaryGutterPx,
         firstMinPaneSizePx,
         secondMinPaneSizePx,
+        ratioSafetyBounds,
       );
 
       setResizeState({
@@ -5759,6 +5764,7 @@ const TilingRendererComponent = React.forwardRef<
         gapPx: boundaryGutterPx,
         firstMinPaneSizePx,
         secondMinPaneSizePx,
+        ratioSafetyBounds,
       });
 
       if (
@@ -5786,6 +5792,7 @@ const TilingRendererComponent = React.forwardRef<
       resolvedGapPx: number,
       firstMinPaneSizePx: number,
       secondMinPaneSizePx: number,
+      ratioSafetyBounds: RatioSafetyBounds,
     ): void => {
       if (!isResizeAxisEnabled(interactionCapabilities.resize, node.axis)) {
         return;
@@ -5827,6 +5834,7 @@ const TilingRendererComponent = React.forwardRef<
         boundaryGutterPx,
         firstMinPaneSizePx,
         secondMinPaneSizePx,
+        ratioSafetyBounds,
       );
       onLayoutChange(updateSplitRatio(layout, node.id, clampedRatio));
     },
@@ -8398,23 +8406,19 @@ const TilingRendererComponent = React.forwardRef<
       }
 
       const resolvedGapPx: number = node.gapPx ?? config.gapPx;
-      // Per-side along-axis floor (HT-MIN-BBOX-PX): a direct-child leaf's own
-      // `minBBoxPx` wins over this split's `minPaneSizePx`, which wins over
-      // the config default. Resolved per side so an asymmetric leaf floor (one
-      // side only) does not force the other side up to match. The divider drag
-      // (`beginResize`/`handleSeparatorKeyDown`) reuses these SAME two values.
-      const firstMinPaneSizePx: number = resolveAlongAxisMinPaneSizePx(
-        node.first,
-        node.axis,
-        node.minPaneSizePx,
-        config.minPaneSizePx,
-      );
-      const secondMinPaneSizePx: number = resolveAlongAxisMinPaneSizePx(
-        node.second,
-        node.axis,
-        node.minPaneSizePx,
-        config.minPaneSizePx,
-      );
+      // Per-side along-axis floor (HT-MIN-BBOX-PX / HT-RESIZE-FLOOR): a
+      // direct-child leaf's own `minBBoxPx` wins over this split's
+      // `minPaneSizePx`, which wins over the config default — UNLESS that
+      // side opts into a "chrome" resize floor (size-out to the collapsed
+      // titlebar extent), which replaces the chain entirely. Resolved per
+      // side so an asymmetric floor (one side only) does not force the other
+      // side up to match. The divider drag (`beginResize`/
+      // `handleSeparatorKeyDown`) reuses these SAME two resolutions.
+      const firstFloor = resolveAlongAxisFloor(node.first, node.axis, node.minPaneSizePx, config);
+      const secondFloor = resolveAlongAxisFloor(node.second, node.axis, node.minPaneSizePx, config);
+      const firstMinPaneSizePx: number = firstFloor.floorPx;
+      const secondMinPaneSizePx: number = secondFloor.floorPx;
+      const ratioSafetyBounds = resolveRatioSafetyBounds(firstFloor, secondFloor);
       const isHorizontal: boolean = node.axis === "horizontal";
       const axisContainerSizePx: number = isHorizontal
         ? containerWidthPx
@@ -8491,6 +8495,7 @@ const TilingRendererComponent = React.forwardRef<
         boundaryGutterPx,
         firstMinPaneSizePx,
         secondMinPaneSizePx,
+        ratioSafetyBounds,
       );
       const isDividerResizeEnabled: boolean = isResizeAxisEnabled(
         interactionCapabilities.resize,
@@ -8668,6 +8673,7 @@ const TilingRendererComponent = React.forwardRef<
                         resolvedGapPx,
                         firstMinPaneSizePx,
                         secondMinPaneSizePx,
+                        ratioSafetyBounds,
                         config.handleSizePx,
                       )
                   : undefined
@@ -8682,6 +8688,7 @@ const TilingRendererComponent = React.forwardRef<
                         resolvedGapPx,
                         firstMinPaneSizePx,
                         secondMinPaneSizePx,
+                        ratioSafetyBounds,
                       )
                   : undefined
               }

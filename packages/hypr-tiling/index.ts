@@ -118,6 +118,7 @@ export type {
   TilingLayoutNode,
   TilingLeafNode,
   TilingMinBBoxPx,
+  TilingResizeFloor,
   TilingSplitNode,
   TilingGroupNode,
   TilingPaneSizing,

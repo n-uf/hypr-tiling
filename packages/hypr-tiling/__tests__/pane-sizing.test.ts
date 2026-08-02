@@ -7,11 +7,14 @@ import {
   isStaticOnCrossAxis,
   layoutContainsStaticPane,
   measuredStaticSizing,
+  RATIO_SAFETY_BOUNDS_DEFAULT,
   RATIO_SAFETY_BOUNDS_UNBOUNDED,
   renormalizeFlexibleRatios,
+  resolveAlongAxisFloor,
   resolveAlongAxisMinPaneSizePx,
   resolveBinarySplitDistribution,
   resolveEffectiveStaticAlong,
+  resolveRatioSafetyBounds,
   resolveStaticAlongExtents,
   resolveSizingMode,
   shouldRenderSplitDivider,
@@ -20,21 +23,34 @@ import {
   titleBarSizingModeId,
 } from "../engine/pane-sizing";
 import type {
+  TilingLayoutConfig,
   TilingLeafNode,
   TilingLayoutNode,
   TilingMinBBoxPx,
   TilingPaneSizing,
 } from "../engine/types";
 
-function leaf(id: string, sizing?: TilingPaneSizing, minBBoxPx?: TilingMinBBoxPx): TilingLeafNode {
-  return minBBoxPx == null
-    ? { kind: "leaf", id, tileId: id, sizing }
-    : { kind: "leaf", id, tileId: id, sizing, minBBoxPx };
+function leaf(
+  id: string,
+  sizing?: TilingPaneSizing,
+  minBBoxPx?: TilingMinBBoxPx,
+  resizeFloor?: "body" | "chrome",
+): TilingLeafNode {
+  const node: TilingLeafNode = { kind: "leaf", id, tileId: id, sizing };
+  if (minBBoxPx != null) {
+    node.minBBoxPx = minBBoxPx;
+  }
+  if (resizeFloor != null) {
+    node.resizeFloor = resizeFloor;
+  }
+  return node;
 }
 
 function split(axis: "horizontal" | "vertical", first: TilingLayoutNode, second: TilingLayoutNode, minPaneSizePx?: number): TilingLayoutNode {
   return { kind: "split", id: `${axis}-${first.id}-${second.id}`, axis, ratio: 0.5, first, second, minPaneSizePx };
 }
+
+const CONFIG: TilingLayoutConfig = { gapPx: 8, minPaneSizePx: 96, handleSizePx: 4 };
 
 describe("split-axis → dimension mapping", () => {
   it("maps horizontal split (flex-row, side-by-side) to width main axis", () => {
@@ -538,5 +554,99 @@ describe("clampByMinSize (generalized: independent per-side floors)", () => {
 
   it("RATIO_SAFETY_BOUNDS_UNBOUNDED reflects only the real per-side px requirement", () => {
     expect(clampByMinSize(0, 100000, 0, 40, 40, RATIO_SAFETY_BOUNDS_UNBOUNDED)).toBeCloseTo(0.0004);
+  });
+});
+
+describe("resolveAlongAxisFloor (HT-RESIZE-FLOOR: body vs chrome size-out)", () => {
+  it("defaults to body mode: identical to resolveAlongAxisMinPaneSizePx, isChromeFloor false", () => {
+    const withMin = leaf("A", undefined, { widthPx: 300 });
+    const resolved = resolveAlongAxisFloor(withMin, "horizontal", 40, CONFIG);
+    expect(resolved).toEqual({ floorPx: 300, isChromeFloor: false });
+  });
+
+  it("a leaf's own resizeFloor: \"chrome\" replaces the body floor chain with the config chrome extent", () => {
+    const chromeLeaf = leaf("A", undefined, { widthPx: 300 }, "chrome");
+    const resolved = resolveAlongAxisFloor(chromeLeaf, "horizontal", 40, {
+      ...CONFIG,
+      collapsedExtentPx: 35,
+    });
+    // minBBoxPx (300) is IGNORED — chrome mode is an explicit opt-in, not layered.
+    expect(resolved).toEqual({ floorPx: 35, isChromeFloor: true });
+  });
+
+  it("falls back to TILING_DEFAULT_COLLAPSED_EXTENT_PX (40) when config.collapsedExtentPx is unset", () => {
+    const chromeLeaf = leaf("A", undefined, undefined, "chrome");
+    const resolved = resolveAlongAxisFloor(chromeLeaf, "horizontal", 40, CONFIG);
+    expect(resolved).toEqual({ floorPx: 40, isChromeFloor: true });
+  });
+
+  it("config.resizeFloor: \"chrome\" applies to a leaf with no per-leaf override", () => {
+    const plainLeaf = leaf("A");
+    const resolved = resolveAlongAxisFloor(plainLeaf, "horizontal", undefined, {
+      ...CONFIG,
+      resizeFloor: "chrome",
+      collapsedExtentPx: 35,
+    });
+    expect(resolved).toEqual({ floorPx: 35, isChromeFloor: true });
+  });
+
+  it("a leaf's own resizeFloor: \"body\" wins over config.resizeFloor: \"chrome\"", () => {
+    const bodyLeaf = leaf("A", undefined, undefined, "body");
+    const resolved = resolveAlongAxisFloor(bodyLeaf, "horizontal", 40, {
+      ...CONFIG,
+      resizeFloor: "chrome",
+    });
+    expect(resolved).toEqual({ floorPx: 40, isChromeFloor: false });
+  });
+
+  it("a nested split/group child is never in chrome mode (no leaf to carry the override)", () => {
+    const nested = split("vertical", leaf("X"), leaf("Y"));
+    const resolved = resolveAlongAxisFloor(nested, "horizontal", 40, {
+      ...CONFIG,
+      resizeFloor: "chrome",
+    });
+    // config.resizeFloor still applies (it is not leaf-scoped) — only a
+    // per-leaf OVERRIDE requires a bare leaf.
+    expect(resolved.isChromeFloor).toBe(true);
+  });
+});
+
+describe("resolveRatioSafetyBounds (neutralizes the 5%/95% net when either side is chrome)", () => {
+  it("keeps the default safety net when neither side is chrome", () => {
+    const first = resolveAlongAxisFloor(leaf("A"), "horizontal", undefined, CONFIG);
+    const second = resolveAlongAxisFloor(leaf("B"), "horizontal", undefined, CONFIG);
+    expect(resolveRatioSafetyBounds(first, second)).toBe(RATIO_SAFETY_BOUNDS_DEFAULT);
+  });
+
+  it("neutralizes the safety net when the FIRST side is chrome", () => {
+    const first = resolveAlongAxisFloor(leaf("A", undefined, undefined, "chrome"), "horizontal", undefined, CONFIG);
+    const second = resolveAlongAxisFloor(leaf("B"), "horizontal", undefined, CONFIG);
+    expect(resolveRatioSafetyBounds(first, second)).toBe(RATIO_SAFETY_BOUNDS_UNBOUNDED);
+  });
+
+  it("neutralizes the safety net when the SECOND side is chrome", () => {
+    const first = resolveAlongAxisFloor(leaf("A"), "horizontal", undefined, CONFIG);
+    const second = resolveAlongAxisFloor(leaf("B", undefined, undefined, "chrome"), "horizontal", undefined, CONFIG);
+    expect(resolveRatioSafetyBounds(first, second)).toBe(RATIO_SAFETY_BOUNDS_UNBOUNDED);
+  });
+
+  it("end-to-end: a chrome-floor side can shrink well below the default 5% ratio floor", () => {
+    // container 2000, gap 0: a 35px chrome floor is 1.75% — under the default
+    // 5% net (which would raise it to 100px). Unbounded lets it stay at 35.
+    const chromeLeaf = leaf("review", undefined, undefined, "chrome");
+    const config: TilingLayoutConfig = { ...CONFIG, collapsedExtentPx: 35 };
+    const first = resolveAlongAxisFloor(leaf("document"), "horizontal", undefined, config);
+    const second = resolveAlongAxisFloor(chromeLeaf, "horizontal", undefined, config);
+    const bounds = resolveRatioSafetyBounds(first, second);
+    const ratio = clampByMinSize(0.99, 2000, 0, first.floorPx, second.floorPx, bounds);
+    expect(ratio).toBeCloseTo(1 - 35 / 2000);
+    expect(2000 * (1 - ratio)).toBeCloseTo(35);
+  });
+
+  it("a chrome-floor pane NEVER auto-sets collapsed — resolveAlongAxisFloor touches no collapse fields", () => {
+    const chromeLeaf = leaf("review", undefined, undefined, "chrome");
+    resolveAlongAxisFloor(chromeLeaf, "horizontal", undefined, CONFIG);
+    expect(chromeLeaf.collapsed).toBeUndefined();
+    expect(chromeLeaf.sizing).toBeUndefined();
   });
 });
