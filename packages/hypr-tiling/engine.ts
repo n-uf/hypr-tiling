@@ -39,6 +39,8 @@ export {
   toggleLeafCollapsed,
   isLeafCollapsed,
   normalizeStaticAxisFill,
+  diffCollapsedLeaves,
+  reassertCollapsedExtentPins,
   type GroupLeavesOptions,
 } from "./engine/state";
 export {

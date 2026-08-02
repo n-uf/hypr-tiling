@@ -1,11 +1,15 @@
 import { describe, expect, it } from "@jest/globals";
 import {
+  diffCollapsedLeaves,
   findLeafById,
   insertLeafAdjacent,
   isLeafCollapsed,
+  normalizeStaticAxisFill,
+  reassertCollapsedExtentPins,
   setLeafCollapsed,
   toggleLeafCollapsed,
 } from "../engine/state";
+import { normalizeLayout } from "../engine/layout-normalize";
 import { collectLeafFootprints, type TilingLeafFootprint } from "../engine/leaf-geometry";
 import { isStaticAlongSplitAxis } from "../engine/pane-sizing";
 import { collectStaticGatedLeafIds } from "../engine/drop-validity";
@@ -571,5 +575,92 @@ describe("collapsed pane body render mode (HT-COLLAPSE-BODY-MODE)", (): void => 
 describe("default collapsed extent", (): void => {
   it("exposes a positive default titlebar extent", (): void => {
     expect(TILING_DEFAULT_COLLAPSED_EXTENT_PX).toBeGreaterThan(0);
+  });
+});
+
+describe("diffCollapsedLeaves (HT-PANE-COLLAPSE-EVENTS)", (): void => {
+  it("reports every leaf whose collapsed flag flipped, including normalize side effects", (): void => {
+    // Collapsing first of a vertical pair is fine; force a both-static demotion
+    // on a NON-collapsed sibling by pinning both static along the axis without
+    // the both-collapsed exemption — demoteAlongAxisStatic un-collapses the
+    // second when it is collapsed and unfit. Here: collapse A, then collapse B
+    // (both-collapsed void preserves both — no event on demote). Separately:
+    // expand A via setLeafCollapsed while B stays collapsed → only A flips.
+    const base: TilingLayoutNode = vsplit(0.5, leaf("A"), leaf("B"));
+    const aCollapsed: TilingLayoutNode = setLeafCollapsed(base, "A", true, COLLAPSE_PX);
+    const bothCollapsed: TilingLayoutNode = setLeafCollapsed(
+      aCollapsed,
+      "B",
+      true,
+      COLLAPSE_PX,
+    );
+    expect(diffCollapsedLeaves(base, aCollapsed)).toEqual([
+      { leafId: "A", collapsed: true },
+    ]);
+    expect(diffCollapsedLeaves(aCollapsed, bothCollapsed)).toEqual([
+      { leafId: "B", collapsed: true },
+    ]);
+    const aExpanded: TilingLayoutNode = setLeafCollapsed(
+      bothCollapsed,
+      "A",
+      false,
+      COLLAPSE_PX,
+    );
+    expect(diffCollapsedLeaves(bothCollapsed, aExpanded)).toEqual([
+      { leafId: "A", collapsed: false },
+    ]);
+  });
+
+  it("skips leaf ids present in only one tree and returns [] for identical refs", (): void => {
+    const base: TilingLayoutNode = vsplit(0.5, leaf("A"), leaf("B"));
+    expect(diffCollapsedLeaves(base, base)).toEqual([]);
+    // Tree that adds a third leaf id — C is not a collapse CHANGE.
+    const withC: TilingLayoutNode = {
+      kind: "split",
+      id: "root",
+      axis: "vertical",
+      ratio: 0.5,
+      first: leaf("A"),
+      second: vsplit(0.5, leaf("B"), leaf("C")),
+    };
+    expect(diffCollapsedLeaves(base, withC)).toEqual([]);
+  });
+});
+
+describe("reassertCollapsedExtentPins (HT-PANE-COLLAPSE-PIN-REASSERT)", (): void => {
+  it("rewrites a stale collapse pin to the live chrome extent without clearing restore", (): void => {
+    const base: TilingLayoutNode = vsplit(
+      0.5,
+      leaf("A", { height: "static", heightPx: 200 }),
+      leaf("B"),
+    );
+    const collapsed: TilingLayoutNode = setLeafCollapsed(base, "A", true, 40);
+    const stale: TilingLayoutNode = collapsed;
+    const aBefore: TilingLeafNode = findLeafById(stale, "A")!;
+    expect(aBefore.sizing?.heightPx).toBe(40);
+    expect(aBefore.collapsedRestore).toEqual({ height: "static", heightPx: 200 });
+
+    const reasserted: TilingLayoutNode = reassertCollapsedExtentPins(stale, 35);
+    const aAfter: TilingLeafNode = findLeafById(reasserted, "A")!;
+    expect(aAfter.collapsed).toBe(true);
+    expect(aAfter.sizing?.heightPx).toBe(35);
+    expect(aAfter.collapsedRestore).toEqual({ height: "static", heightPx: 200 });
+    expect(reassertCollapsedExtentPins(reasserted, 35)).toBe(reasserted);
+  });
+
+  it("normalizeLayout reasserts pins against config.collapsedExtentPx", (): void => {
+    const base: TilingLayoutNode = hsplit(0.5, leaf("L"), leaf("R"));
+    const collapsed: TilingLayoutNode = setLeafCollapsed(base, "R", true, 40);
+    expect(findLeafById(collapsed, "R")?.sizing?.widthPx).toBe(40);
+
+    const normalized: TilingLayoutNode = normalizeLayout(collapsed, {
+      containerWidthPx: 1000,
+      containerHeightPx: 800,
+      config: { ...GAP_FREE_CONFIG, collapsedExtentPx: 35 },
+    });
+    expect(findLeafById(normalized, "R")?.collapsed).toBe(true);
+    expect(findLeafById(normalized, "R")?.sizing?.widthPx).toBe(35);
+    // Structural fill invariant still holds (normalizeStaticAxisFill ran).
+    expect(normalizeStaticAxisFill(normalized)).toBe(normalized);
   });
 });
