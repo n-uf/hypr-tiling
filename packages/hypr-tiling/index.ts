@@ -46,6 +46,7 @@ export {
   DRAG_ANIMATION_SPEED_MIN_PERCENT,
   DEFAULT_TILING_LAYOUT_CONFIG,
 } from "./react/tiling-renderer";
+export { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "./engine/types";
 export {
   DEFAULT_DRAG_HOP_EASING,
   DEFAULT_DRAG_REFLOW_EASING,
@@ -165,6 +166,7 @@ export type {
   TilingCommandHandle,
   // Renderer props / render-tile contract
   TilingRendererProps,
+  TilingPaneCollapsedChangeEvent,
   TilingChromeFocusOutline,
   TilingRenderSurface,
   TilingRenderTileProps,

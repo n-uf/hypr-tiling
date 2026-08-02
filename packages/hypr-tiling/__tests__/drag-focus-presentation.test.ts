@@ -210,6 +210,7 @@ describe("floating drag ghost routes through consumer renderTile (custom skin tr
     isMaximizeEnabled: true,
     isTitleBarSizingEnabled: false,
     isTitleBarAcquireSpaceEnabled: true,
+    isCollapseEnabled: false,
     isMultiSelectGroupingEnabled: false,
   };
 
@@ -306,6 +307,7 @@ describe("floating drag ghost routes through consumer renderTile (custom skin tr
         isMaximizeEnabled: false,
         isTitleBarSizingEnabled: true,
         isTitleBarAcquireSpaceEnabled: false,
+        isCollapseEnabled: false,
         isMultiSelectGroupingEnabled: true,
       },
     );
@@ -418,6 +420,7 @@ describe("cancel fly-back routes through consumer renderTile (custom skin glides
     isMaximizeEnabled: false,
     isTitleBarSizingEnabled: true,
     isTitleBarAcquireSpaceEnabled: false,
+    isCollapseEnabled: false,
     isMultiSelectGroupingEnabled: true,
   };
 

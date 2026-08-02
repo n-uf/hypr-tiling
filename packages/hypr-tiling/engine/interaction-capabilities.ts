@@ -71,7 +71,11 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
     tabDoubleClickMaximize: true,
     multiSelectGrouping: true,
   },
-  paneTitleBarControls: { sizing: true, acquireSpace: true },
+  // `collapse` is the lone opt-IN title-bar control (see the `showContentToggle`
+  // note above): titlebar-only collapse is a newer, behavior-changing affordance,
+  // so it defaults OFF for backward compatibility — a consumer turns it on with
+  // `paneTitleBarControls: { collapse: true }`.
+  paneTitleBarControls: { sizing: true, acquireSpace: true, collapse: false },
   dropHitZoneGeometry: {
     centerRatio: TILING_DROP_INTENT_CONFIG.centerRatio,
     centerRatioX: TILING_DROP_INTENT_CONFIG.centerRatio,
@@ -105,7 +109,7 @@ export const TILING_DASHBOARD_PRESET: TilingInteractionCapabilities = {
   focus: false,
   maximize: { enable: false },
   paneSwitching: { enable: false },
-  paneTitleBarControls: { sizing: false, acquireSpace: false },
+  paneTitleBarControls: { sizing: false, acquireSpace: false, collapse: false },
 };
 
 /**
@@ -237,6 +241,9 @@ export function resolveInteractionCapabilities(
       acquireSpace:
         capabilities?.paneTitleBarControls?.acquireSpace
         ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.paneTitleBarControls.acquireSpace,
+      collapse:
+        capabilities?.paneTitleBarControls?.collapse
+        ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.paneTitleBarControls.collapse,
     },
     dropHitZoneGeometry: resolveDropHitZoneGeometry(capabilities?.dropHitZoneGeometry),
     keymap: resolveKeymap(

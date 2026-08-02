@@ -523,6 +523,11 @@ export type TilingCommand =
   | { kind: "insert-adjacent"; sourceLeafId: string; targetLeafId: string; placement: TilingMovePlacement }
   | { kind: "acquire-space"; leafId?: string; direction: TilingFocusDirection }
   | { kind: "set-sizing"; leafId?: string; mode: TilingTitleBarSizingMode }
+  // collapse-to-titlebar (HT-PANE-COLLAPSE). `leafId` omitted → the focused leaf
+  // (the "act on the focused pane" ergonomic). `toggle-collapse` flips the
+  // leaf's collapsed state; `set-collapsed` sets it explicitly (idempotent).
+  | { kind: "toggle-collapse"; leafId?: string }
+  | { kind: "set-collapsed"; leafId?: string; collapsed: boolean }
   | { kind: "set-split-ratio"; splitId: string; ratio: number }
   | { kind: "toggle-split-axis"; splitId: string }
   // layout-mode (master/stack). `splitId` omitted → the ROOT split (the
@@ -695,6 +700,14 @@ export interface TilingPaneTitleBarControlsCapability {
   sizing?: boolean;
   /** Render the per-pane directional (→ ← ↑ ↓) acquire-space controls. Default `true`. */
   acquireSpace?: boolean;
+  /**
+   * Render the per-pane COLLAPSE-to-titlebar control + enable the
+   * `toggle-collapse` / `set-collapsed` commands (HT-PANE-COLLAPSE). Default
+   * `false` — collapse is OPT-IN for backward compatibility (an existing
+   * consumer's title-bars keep exactly today's control set until it turns this
+   * on), mirroring the `paneSwitching.showContentToggle` opt-in exception.
+   */
+  collapse?: boolean;
 }
 
 /** Resolved per-pane title-bar control capability (no optional fields). */
@@ -703,6 +716,8 @@ export interface ResolvedTilingPaneTitleBarControlsCapability {
   sizing: boolean;
   /** Whether the per-pane directional acquire-space controls render. */
   acquireSpace: boolean;
+  /** Whether the per-pane collapse-to-titlebar control + collapse commands are live. */
+  collapse: boolean;
 }
 
 /** Resolved maximize capability (no optional fields). */
@@ -1175,6 +1190,25 @@ export interface TilingLeafNode {
   tileId: string;
   /** Per-dimension static/flexible sizing. Undefined dimensions are flexible. */
   sizing?: TilingPaneSizing;
+  /**
+   * Whether this leaf is COLLAPSED to titlebar-only (HT-PANE-COLLAPSE). A
+   * collapsed leaf is pinned STATIC in `height` to the chrome/titlebar extent
+   * (`collapsedExtentPx`, see {@link TilingLayoutConfig}): in a vertical
+   * (stacked) split it shrinks to just its header and its flexible sibling
+   * reclaims the freed height; in a horizontal split it content-sizes its
+   * height (cross-axis) to the header. Its body is not painted. Undefined →
+   * expanded (the default). Persisted in the layout tree alongside `sizing`, so
+   * `createPersistedTilingLayout` round-trips it and integrity stays sensible.
+   */
+  collapsed?: boolean;
+  /**
+   * The pre-collapse {@link TilingPaneSizing} snapshot, captured when the leaf
+   * is collapsed and restored verbatim on expand (so the leaf returns to its
+   * exact prior flexible/static contribution). Undefined when the leaf was
+   * flexible before collapse (expand then clears the pin → flexible) or when the
+   * leaf is not collapsed. Only meaningful while `collapsed === true`.
+   */
+  collapsedRestore?: TilingPaneSizing;
 }
 
 /**
@@ -1260,7 +1294,22 @@ export interface TilingLayoutConfig {
    * center strip when `resizeHandlesVisible` is on.
    */
   handleSizePx: number;
+  /**
+   * Collapsed titlebar-only extent (CSS px) — the height a leaf is pinned to
+   * when COLLAPSED (HT-PANE-COLLAPSE). Sized to the pane's chrome/header height
+   * so a collapsed pane shows just its title bar. Undefined →
+   * {@link TILING_DEFAULT_COLLAPSED_EXTENT_PX}. Set it to match your custom
+   * header height when it differs from the default.
+   */
+  collapsedExtentPx?: number;
 }
+
+/**
+ * Default collapsed titlebar-only extent (CSS px) when
+ * {@link TilingLayoutConfig.collapsedExtentPx} is undefined — sized to the
+ * built-in pane header height so a collapsed pane shows just its title bar.
+ */
+export const TILING_DEFAULT_COLLAPSED_EXTENT_PX: number = 40;
 
 /**
  * The renderer surface a `renderTile` invocation paints:
@@ -1436,6 +1485,18 @@ export interface TilingRenderTileProps {
    * to their minimum). Emits via `onLayoutChange` (controlled).
    */
   onAcquireSpace: (direction: TilingFocusDirection) => void;
+  /** Whether THIS pane is currently collapsed to titlebar-only (HT-PANE-COLLAPSE). */
+  isCollapsed: boolean;
+  /** Whether the per-pane collapse control is enabled (`paneTitleBarControls.collapse`). */
+  isCollapseEnabled: boolean;
+  /**
+   * Toggle THIS pane's collapse (titlebar-only) state. Collapse pins the pane's
+   * height to the chrome extent (its body is hidden) so a stacked sibling
+   * reclaims the freed space; expand restores the pre-collapse sizing. Emits via
+   * `onLayoutChange` (controlled) and fires
+   * {@link TilingRendererProps.onPaneCollapsedChange}.
+   */
+  onToggleCollapse: () => void;
   /** The resolved drop zone under the cursor for this pane, or `null`. */
   dropZone: TilingLeafDropZone | null;
   /** The projected landing/result preview for this pane, or `null`. */
@@ -1912,6 +1973,19 @@ export interface TilingObservabilityColorEnableConfig {
 export type TilingChromeFocusOutline = "suppress" | "native";
 
 /**
+ * The payload of {@link TilingRendererProps.onPaneCollapsedChange}: which leaf
+ * changed collapse state and its NEW state. Emitted after the collapse edit is
+ * reported via `onLayoutChange`, so a host reacting here (e.g. retitling the
+ * pane) reads a consistent post-edit world.
+ */
+export interface TilingPaneCollapsedChangeEvent {
+  /** The leaf node id whose collapse state changed. */
+  readonly leafId: string;
+  /** The leaf's new collapse state — `true` collapsed to titlebar-only, `false` expanded. */
+  readonly collapsed: boolean;
+}
+
+/**
  * Props for the {@link TilingRenderer} component — the full controlled-component
  * surface. `layout` + `tiles` + `config` + `onLayoutChange` are the four
  * required props; everything else is optional and resolves to a documented
@@ -2015,6 +2089,17 @@ export interface TilingRendererProps {
   maximizedLeafId?: string | null;
   /** Notified whenever the maximized pane changes (`null` on restore). */
   onMaximizedLeafChange?: (leafId: string | null) => void;
+  /**
+   * Notified whenever a pane's COLLAPSE state changes (HT-PANE-COLLAPSE) —
+   * fired on every `toggle-collapse` / `set-collapsed` that actually flips a
+   * leaf, from the title-bar control, a keyboard binding, or an imperative
+   * `dispatch`. The event-driven hook a host uses to react to collapse/expand
+   * (e.g. to swap a pane's title between a short collapsed label and its full
+   * expanded label by updating its own tiles state). The layout edit itself
+   * still flows through `onLayoutChange`; this callback is the semantic
+   * notification alongside it.
+   */
+  onPaneCollapsedChange?: (event: TilingPaneCollapsedChangeEvent) => void;
   /** Whether translucent projected landing overlays are shown during a drag. */
   showDropPreviewOverlays?: boolean;
   /** Background opacity `[0, 1]` for the projected landing overlays. */
