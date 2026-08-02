@@ -22,6 +22,7 @@ import {
   splitBoundaryGutterPx,
   titleBarSizingModeId,
 } from "../engine/pane-sizing";
+import { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "../engine/types";
 import type {
   TilingLayoutConfig,
   TilingLeafNode,
@@ -558,8 +559,28 @@ describe("clampByMinSize (generalized: independent per-side floors)", () => {
 });
 
 describe("resolveAlongAxisFloor (HT-RESIZE-FLOOR: body vs chrome size-out)", () => {
-  it("defaults to body mode: identical to resolveAlongAxisMinPaneSizePx, isChromeFloor false", () => {
+  it("defaults to chrome mode (HT-RESIZE-FLOOR-DEFAULT) when neither the leaf nor config declare a floor", () => {
+    // A leaf's own minBBoxPx is IGNORED under the chrome default — it only
+    // matters once a consumer opts back into "body" (see below).
     const withMin = leaf("A", undefined, { widthPx: 300 });
+    const resolved = resolveAlongAxisFloor(withMin, "horizontal", 40, CONFIG);
+    expect(resolved).toEqual({
+      floorPx: TILING_DEFAULT_COLLAPSED_EXTENT_PX,
+      isChromeFloor: true,
+    });
+  });
+
+  it("body opt-in via config.resizeFloor: \"body\" restores resolveAlongAxisMinPaneSizePx behavior library-wide", () => {
+    const withMin = leaf("A", undefined, { widthPx: 300 });
+    const resolved = resolveAlongAxisFloor(withMin, "horizontal", 40, {
+      ...CONFIG,
+      resizeFloor: "body",
+    });
+    expect(resolved).toEqual({ floorPx: 300, isChromeFloor: false });
+  });
+
+  it("body opt-in via a leaf's own resizeFloor: \"body\" restores resolveAlongAxisMinPaneSizePx for just that leaf", () => {
+    const withMin = leaf("A", undefined, { widthPx: 300 }, "body");
     const resolved = resolveAlongAxisFloor(withMin, "horizontal", 40, CONFIG);
     expect(resolved).toEqual({ floorPx: 300, isChromeFloor: false });
   });
@@ -612,20 +633,22 @@ describe("resolveAlongAxisFloor (HT-RESIZE-FLOOR: body vs chrome size-out)", () 
 });
 
 describe("resolveRatioSafetyBounds (neutralizes the 5%/95% net when either side is chrome)", () => {
+  // Both sides opt into "body" explicitly — the chrome LIBRARY DEFAULT
+  // (HT-RESIZE-FLOOR-DEFAULT) would otherwise make every bare leaf chrome.
   it("keeps the default safety net when neither side is chrome", () => {
-    const first = resolveAlongAxisFloor(leaf("A"), "horizontal", undefined, CONFIG);
-    const second = resolveAlongAxisFloor(leaf("B"), "horizontal", undefined, CONFIG);
+    const first = resolveAlongAxisFloor(leaf("A", undefined, undefined, "body"), "horizontal", undefined, CONFIG);
+    const second = resolveAlongAxisFloor(leaf("B", undefined, undefined, "body"), "horizontal", undefined, CONFIG);
     expect(resolveRatioSafetyBounds(first, second)).toBe(RATIO_SAFETY_BOUNDS_DEFAULT);
   });
 
   it("neutralizes the safety net when the FIRST side is chrome", () => {
     const first = resolveAlongAxisFloor(leaf("A", undefined, undefined, "chrome"), "horizontal", undefined, CONFIG);
-    const second = resolveAlongAxisFloor(leaf("B"), "horizontal", undefined, CONFIG);
+    const second = resolveAlongAxisFloor(leaf("B", undefined, undefined, "body"), "horizontal", undefined, CONFIG);
     expect(resolveRatioSafetyBounds(first, second)).toBe(RATIO_SAFETY_BOUNDS_UNBOUNDED);
   });
 
   it("neutralizes the safety net when the SECOND side is chrome", () => {
-    const first = resolveAlongAxisFloor(leaf("A"), "horizontal", undefined, CONFIG);
+    const first = resolveAlongAxisFloor(leaf("A", undefined, undefined, "body"), "horizontal", undefined, CONFIG);
     const second = resolveAlongAxisFloor(leaf("B", undefined, undefined, "chrome"), "horizontal", undefined, CONFIG);
     expect(resolveRatioSafetyBounds(first, second)).toBe(RATIO_SAFETY_BOUNDS_UNBOUNDED);
   });
@@ -633,9 +656,11 @@ describe("resolveRatioSafetyBounds (neutralizes the 5%/95% net when either side 
   it("end-to-end: a chrome-floor side can shrink well below the default 5% ratio floor", () => {
     // container 2000, gap 0: a 35px chrome floor is 1.75% — under the default
     // 5% net (which would raise it to 100px). Unbounded lets it stay at 35.
+    // "document" opts into "body" so this stays a mixed chrome/body boundary
+    // rather than both sides picking up the chrome default.
     const chromeLeaf = leaf("review", undefined, undefined, "chrome");
     const config: TilingLayoutConfig = { ...CONFIG, collapsedExtentPx: 35 };
-    const first = resolveAlongAxisFloor(leaf("document"), "horizontal", undefined, config);
+    const first = resolveAlongAxisFloor(leaf("document", undefined, undefined, "body"), "horizontal", undefined, config);
     const second = resolveAlongAxisFloor(chromeLeaf, "horizontal", undefined, config);
     const bounds = resolveRatioSafetyBounds(first, second);
     const ratio = clampByMinSize(0.99, 2000, 0, first.floorPx, second.floorPx, bounds);

@@ -1181,20 +1181,23 @@ export interface TilingTile {
  * Which floor an interactive resize (pointer drag / keyboard) bounds a pane
  * to (HT-RESIZE-FLOOR):
  *
- * - `"body"` (default) — the ordinary content floor: the min-pane precedence
- *   chain ({@link TilingLeafNode.minBBoxPx} → {@link TilingSplitNode.minPaneSizePx}
- *   → {@link TilingLayoutConfig.minPaneSizePx}). A resize cannot shrink the
- *   pane below its usable content size.
- * - `"chrome"` — "size-out": the gutter may shrink all the way to the
- *   collapsed titlebar-only extent ({@link TilingLayoutConfig.collapsedExtentPx}),
- *   REPLACING the body floor for this leaf entirely (not layered on top of
- *   it) — chrome mode is an explicit opt-in to a smaller floor, not a content
- *   guarantee. This is purely a resize-time ratio bound: it never touches
- *   `collapsed` / `collapsedRestore` (no auto-collapse, no state change from
- *   resize — only the titlebar-collapse control owns `collapsed`), and the
- *   pane stays flexible/ratio-based (re-grows with the window), never a
+ * - `"chrome"` (LIBRARY DEFAULT, HT-RESIZE-FLOOR-DEFAULT) — "size-out": the
+ *   gutter may shrink all the way to the collapsed titlebar-only extent
+ *   ({@link TilingLayoutConfig.collapsedExtentPx}), REPLACING the body floor
+ *   for this leaf entirely (not layered on top of it). This is purely a
+ *   resize-time ratio bound: it never touches `collapsed` / `collapsedRestore`
+ *   (no auto-collapse, no state change from resize — only the
+ *   titlebar-collapse control owns `collapsed`), and the pane stays
+ *   flexible/ratio-based (re-grows with the window), never a
  *   `sizing: "static"` pin. Settle-on-release (snapping to a fixed size when
  *   released near the chrome floor) is intentionally NOT implemented.
+ * - `"body"` — the ordinary content floor: the min-pane precedence chain
+ *   ({@link TilingLeafNode.minBBoxPx} → {@link TilingSplitNode.minPaneSizePx}
+ *   → {@link TilingLayoutConfig.minPaneSizePx}). A resize cannot shrink the
+ *   pane below its usable content size. Opt in per-leaf via
+ *   {@link TilingLeafNode.resizeFloor} or library-wide via
+ *   {@link TilingLayoutConfig.resizeFloor} for consumers that want the old
+ *   content-floor behavior back.
  */
 export type TilingResizeFloor = "body" | "chrome";
 
@@ -1264,7 +1267,9 @@ export interface TilingLeafNode {
    * Per-leaf override of which floor an interactive resize bounds this pane
    * to (HT-RESIZE-FLOOR) — wins over {@link TilingLayoutConfig.resizeFloor}.
    * Undefined falls through to the config default, itself defaulting to
-   * `"body"`. See {@link TilingResizeFloor} for the two modes.
+   * `"chrome"` (HT-RESIZE-FLOOR-DEFAULT). Set `"body"` here to opt this leaf
+   * back into the content floor. See {@link TilingResizeFloor} for the two
+   * modes.
    */
   resizeFloor?: TilingResizeFloor;
   /**
@@ -1418,8 +1423,10 @@ export interface TilingLayoutConfig {
   /**
    * Library-wide default for which floor an interactive resize bounds a pane
    * to (HT-RESIZE-FLOOR) — a direct-child leaf's own
-   * {@link TilingLeafNode.resizeFloor} wins over this. Undefined → `"body"`.
-   * See {@link TilingResizeFloor} for the two modes.
+   * {@link TilingLeafNode.resizeFloor} wins over this. Undefined →
+   * `"chrome"` (HT-RESIZE-FLOOR-DEFAULT, size-out to the collapsed titlebar
+   * extent). Set `"body"` here to restore the old content-floor behavior
+   * library-wide. See {@link TilingResizeFloor} for the two modes.
    */
   resizeFloor?: TilingResizeFloor;
   /**
