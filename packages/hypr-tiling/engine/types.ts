@@ -1199,6 +1199,21 @@ export interface TilingTile {
 export type TilingResizeFloor = "body" | "chrome";
 
 /**
+ * Collapsed pane body MOUNT policy (HT-COLLAPSE-BODY-MODE) — lib-controlled,
+ * not a per-consumer `renderTile` decision (see {@link TilingPaneBody}, which
+ * is the ONE place this policy takes effect):
+ *
+ * - `"keep-mounted"` (default) — a collapsed pane's body stays mounted (its
+ *   React subtree is preserved, only hidden via `display: none`), so
+ *   scroll position, focus, form state, iframes, etc. inside the pane survive
+ *   collapse/expand.
+ * - `"unmount"` — a collapsed pane's body is removed from the tree entirely
+ *   (like the content-visibility toggle turned off), trading state
+ *   preservation for a lighter DOM / fewer live subtrees while collapsed.
+ */
+export type TilingCollapseBodyMode = "keep-mounted" | "unmount";
+
+/**
  * Leaf-scoped minimum bounding-box floor (CSS px), one optional component per
  * dimension. See {@link TilingLeafNode.minBBoxPx} for the precedence this
  * floor takes over {@link TilingSplitNode.minPaneSizePx} and
@@ -1407,6 +1422,11 @@ export interface TilingLayoutConfig {
    * See {@link TilingResizeFloor} for the two modes.
    */
   resizeFloor?: TilingResizeFloor;
+  /**
+   * Collapsed pane body mount policy (HT-COLLAPSE-BODY-MODE) — see
+   * {@link TilingCollapseBodyMode}. Undefined → `"keep-mounted"`.
+   */
+  collapseBodyMode?: TilingCollapseBodyMode;
 }
 
 /**
@@ -1729,8 +1749,12 @@ export interface TilingDefaultTileProps extends TilingRenderTileProps {
 export type TilingLeafDropZone = "center" | "left" | "right" | "top" | "bottom";
 /**
  * Resolved pane-body render decision:
- * - `"render-content"` — paint the tile body,
- * - `"render-empty"` — hidden body (content toggle off),
+ * - `"render-content"` — paint the tile body. Also resolved for a COLLAPSED
+ *   pane under the default `collapseBodyMode: "keep-mounted"` (HT-COLLAPSE-BODY-MODE)
+ *   — {@link TilingPaneBody} still visually hides it via its own independent
+ *   `display: none` gate.
+ * - `"render-empty"` — body removed from the tree (content toggle off, OR a
+ *   collapsed pane under `collapseBodyMode: "unmount"`).
  * - `"render-reservation"` — empty ghost-seat reservation slot during a drag.
  */
 export type TilingPaneBodyRenderMode =

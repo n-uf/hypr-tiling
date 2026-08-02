@@ -222,6 +222,13 @@ export interface TilingPaneBodyProps extends React.HTMLAttributes<HTMLDivElement
  * as a dead strip beside/below the titlebar. Hiding the box entirely removes
  * that strip so the collapsed pane is exactly titlebar-sized.
  *
+ * HT-COLLAPSE-BODY-MODE: this `display: none` hide is INDEPENDENT of whether
+ * children are mounted. With the default `collapseBodyMode: "keep-mounted"`,
+ * `resolvePaneBodyRenderMode` resolves `"render-content"` while collapsed, so
+ * children stay mounted (state/scroll/focus survive collapse/expand) behind
+ * the `display: none` wrapper; `"unmount"` resolves `"render-empty"` instead,
+ * removing children from the tree exactly like the legacy behavior.
+ *
  * HT-PANE-COLLAPSE + maximize: `pane.isMaximized` SUSPENDS the `display: none`
  * gate for exactly this leaf, matching `resolvePaneBodyRenderMode`'s own
  * maximize override — otherwise a maximized collapsed pane would render

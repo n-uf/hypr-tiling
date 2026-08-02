@@ -114,6 +114,7 @@ export {
 // reachable through a public signature is missing here.
 export type {
   // Layout tree
+  TilingCollapseBodyMode,
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,

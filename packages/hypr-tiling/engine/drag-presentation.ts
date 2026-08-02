@@ -1,5 +1,6 @@
 import type { DragMachineState } from "./drag-machine";
 import type {
+  TilingCollapseBodyMode,
   TilingDropAction,
   TilingLeafDropZone,
   TilingPaneBodyRenderMode,
@@ -156,9 +157,13 @@ export function resolveDragPresentation(
  *
  * - ghost-seat reservation → `render-reservation` (a content-less seat; a drag
  *   mechanic, never carries content regardless of the CONTENT toggle).
- * - a COLLAPSED pane that is NOT maximized → `render-empty` (titlebar-only; the
- *   pane frame + header chrome stay, only the body is emptied — no placeholder
- *   text).
+ * - a COLLAPSED pane that is NOT maximized → decided by `collapseBodyMode`
+ *   (HT-COLLAPSE-BODY-MODE), overriding the CONTENT toggle either way:
+ *   `"keep-mounted"` (default) → `render-content` (body stays mounted;
+ *   {@link TilingPaneBody}'s independent `display: none` gate is what
+ *   actually hides it — see there), `"unmount"` → `render-empty`
+ *   (titlebar-only; the pane frame + header chrome stay, only the body is
+ *   removed from the tree).
  * - otherwise the body honors the CONTENT toggle: `render-content` when content
  *   is visible, `render-empty` when hidden.
  *
@@ -166,7 +171,7 @@ export function resolveDragPresentation(
  * painted instance, never a seat), so the ghost simply paints content iff
  * `isPaneContentVisible` — exactly like a resting in-tree pane.
  *
- * HT-PANE-COLLAPSE + maximize: `isMaximized` SUSPENDS the collapse-empty gate
+ * HT-PANE-COLLAPSE + maximize: `isMaximized` SUSPENDS the collapse gate
  * for exactly this leaf. Collapse is an in-tree, titlebar-only affordance;
  * maximizing a leaf is the user explicitly asking to see its content full-screen
  * — without this, a maximized collapsed pane rendered a titlebar strip floating
@@ -179,12 +184,13 @@ export function resolvePaneBodyRenderMode(
   isPaneContentVisible: boolean,
   isCollapsed: boolean = false,
   isMaximized: boolean = false,
+  collapseBodyMode: TilingCollapseBodyMode = "keep-mounted",
 ): TilingPaneBodyRenderMode {
   if (isGhostSeatReservation) {
     return "render-reservation";
   }
   if (isCollapsed && !isMaximized) {
-    return "render-empty";
+    return collapseBodyMode === "unmount" ? "render-empty" : "render-content";
   }
   return isPaneContentVisible ? "render-content" : "render-empty";
 }

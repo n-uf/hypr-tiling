@@ -81,6 +81,23 @@ describe("TilingPaneBody — collapsed body hiding (HT-PANE-COLLAPSE)", (): void
     expect(queryByText("content")).toBeNull();
   });
 
+  it("HT-COLLAPSE-BODY-MODE keep-mounted: renders (mounts) children while the wrapper is display:none", (): void => {
+    const { getByTestId, getByText } = render(
+      React.createElement(
+        TilingPaneBody,
+        {
+          pane: paneArgs({ paneBodyRenderMode: "render-content", isCollapsed: true }),
+          "data-testid": "body",
+        } as never,
+        "content",
+      ),
+    );
+    const body = getByTestId("body");
+    expect(body.style.display).toBe("none");
+    // Mounted — unlike the "unmount" mode above, the text node is present.
+    expect(getByText("content")).toBeTruthy();
+  });
+
   it("merges display:none into a consumer-provided style object rather than clobbering it", (): void => {
     const { getByTestId } = render(
       React.createElement(
