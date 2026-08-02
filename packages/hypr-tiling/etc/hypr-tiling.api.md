@@ -386,6 +386,9 @@ export interface TilingCommandHandle {
 }
 
 // @public
+export type TilingDimension = "width" | "height";
+
+// @public
 export function TilingDragHandle(input: TilingDragHandleProps): React_2.ReactElement;
 
 // @public
@@ -571,6 +574,7 @@ export type TilingLeafDropZone = "center" | "left" | "right" | "top" | "bottom";
 // @public
 export interface TilingLeafNode {
     collapsed?: boolean;
+    collapsedDimension?: TilingDimension;
     collapsedRestore?: TilingPaneSizing;
     id: string;
     kind: "leaf";
@@ -718,6 +722,7 @@ export interface TilingRenderTileGroupContext {
 // @public
 export interface TilingRenderTileProps {
     canGroupMultiSelection: boolean;
+    collapsedDimension: TilingDimension | null;
     dropZone: TilingLeafDropZone | null;
     readonly group: TilingRenderTileGroupContext | null;
     heightSizingMode: TilingPaneSizingMode;

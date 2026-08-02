@@ -1217,6 +1217,19 @@ export interface TilingLeafNode {
    * leaf is not collapsed. Only meaningful while `collapsed === true`.
    */
   collapsedRestore?: TilingPaneSizing;
+  /**
+   * Which dimension `collapsed` pinned — the along-axis dimension of the
+   * immediate parent split AT THE MOMENT this leaf collapsed. Recorded
+   * explicitly (rather than re-derived from `sizing` at read time) so a
+   * consumer can render axis-appropriate chrome
+   * (e.g. a narrow vertical titlebar for a `"width"` collapse vs. a short
+   * horizontal one for `"height"`) without guessing from pixel values, which
+   * would be ambiguous if an unrelated cross-axis static pin happens to equal
+   * `collapsedExtentPx`. Cleared on expand. Only meaningful while
+   * `collapsed === true`; exposed to custom `renderTile` panes as
+   * {@link TilingRenderTileProps.collapsedDimension}.
+   */
+  collapsedDimension?: TilingDimension;
 }
 
 /**
@@ -1497,13 +1510,24 @@ export interface TilingRenderTileProps {
   onAcquireSpace: (direction: TilingFocusDirection) => void;
   /** Whether THIS pane is currently collapsed to titlebar-only (HT-PANE-COLLAPSE). */
   isCollapsed: boolean;
+  /**
+   * Which dimension collapse pinned (`"width"` under a `horizontal`/
+   * side-by-side parent, `"height"` under a `vertical`/stacked parent) — see
+   * {@link TilingLeafNode.collapsedDimension}. `null` while `isCollapsed` is
+   * `false`. A custom `renderTile` pane uses this (not a pixel-size guess) to
+   * pick axis-appropriate collapsed chrome, e.g. a narrow vertical titlebar
+   * for a `"width"` collapse vs. the short horizontal strip for `"height"`.
+   */
+  collapsedDimension: TilingDimension | null;
   /** Whether the per-pane collapse control is enabled (`paneTitleBarControls.collapse`). */
   isCollapseEnabled: boolean;
   /**
-   * Toggle THIS pane's collapse (titlebar-only) state. Collapse pins the pane's
-   * height to the chrome extent (its body is hidden) so a stacked sibling
-   * reclaims the freed space; expand restores the pre-collapse sizing. Emits via
-   * `onLayoutChange` (controlled) and fires
+   * Toggle THIS pane's collapse (titlebar-only) state. Collapse pins the
+   * leaf's along-parent-axis dimension (see
+   * {@link TilingLeafNode.collapsed}: `height` under a stacked parent, `width`
+   * under a side-by-side parent) to the chrome extent (its body is hidden) so
+   * its sibling reclaims the freed space; expand restores the pre-collapse
+   * sizing. Emits via `onLayoutChange` (controlled) and fires
    * {@link TilingRendererProps.onPaneCollapsedChange}.
    */
   onToggleCollapse: () => void;

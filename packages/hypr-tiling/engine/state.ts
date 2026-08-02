@@ -165,7 +165,12 @@ export function demoteAlongAxisStatic(
   axis: TilingSplitAxis,
 ): TilingLayoutNode {
   if (node.kind === "leaf" && node.collapsed === true) {
-    const { collapsed: _collapsed, collapsedRestore, ...rest } = node;
+    const {
+      collapsed: _collapsed,
+      collapsedRestore,
+      collapsedDimension: _collapsedDimension,
+      ...rest
+    } = node;
     return { ...rest, sizing: collapsedRestore };
   }
   if (node.sizing == null) {
@@ -270,7 +275,12 @@ function collapseLeafNode(
     alongDimension === "width"
       ? { ...leaf.sizing, width: "static", widthPx: collapsedExtentPx }
       : { ...leaf.sizing, height: "static", heightPx: collapsedExtentPx };
-  const next: TilingLeafNode = { ...leaf, sizing: collapsedSizing, collapsed: true };
+  const next: TilingLeafNode = {
+    ...leaf,
+    sizing: collapsedSizing,
+    collapsed: true,
+    collapsedDimension: alongDimension,
+  };
   if (leaf.sizing != null) {
     next.collapsedRestore = leaf.sizing;
   }
@@ -288,7 +298,12 @@ function expandLeafNode(leaf: TilingLeafNode): TilingLeafNode {
     return leaf;
   }
   // Omit the collapse markers via rest-destructure (no `delete` on a typed node).
-  const { collapsed: _collapsed, collapsedRestore, ...rest } = leaf;
+  const {
+    collapsed: _collapsed,
+    collapsedRestore,
+    collapsedDimension: _collapsedDimension,
+    ...rest
+  } = leaf;
   return { ...rest, sizing: collapsedRestore };
 }
 

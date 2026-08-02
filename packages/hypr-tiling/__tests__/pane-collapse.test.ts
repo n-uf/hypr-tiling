@@ -75,6 +75,9 @@ describe("setLeafCollapsed — leaf state", (): void => {
     expect(a?.collapsed).toBe(true);
     expect(a?.sizing?.height).toBe("static");
     expect(a?.sizing?.heightPx).toBe(COLLAPSE_PX);
+    // The pinned dimension is recorded explicitly, not just re-derivable from
+    // `sizing` — a consumer's chrome branches on this (HT-PANE-COLLAPSE-AXIS).
+    expect(a?.collapsedDimension).toBe("height");
     // Prior sizing was flexible (undefined) → no restore snapshot recorded.
     expect(a?.collapsedRestore).toBeUndefined();
     expect(isLeafCollapsed(next, "A")).toBe(true);
@@ -96,6 +99,7 @@ describe("setLeafCollapsed — leaf state", (): void => {
     const restored: TilingLeafNode | null = findLeafById(expanded, "A");
     expect(restored?.collapsed).toBeUndefined();
     expect(restored?.collapsedRestore).toBeUndefined();
+    expect(restored?.collapsedDimension).toBeUndefined();
     expect(restored?.sizing).toEqual({ width: "static", widthPx: 120 });
   });
 
@@ -191,8 +195,10 @@ describe("collapse geometry — stacked (vertical) split reflow", (): void => {
     const a: TilingLeafNode | null = findLeafById(both, "A");
     const b: TilingLeafNode | null = findLeafById(both, "B");
     expect(a?.collapsed).toBe(true);
+    expect(a?.collapsedDimension).toBe("height");
     expect(b?.collapsed).toBeUndefined();
     expect(b?.collapsedRestore).toBeUndefined();
+    expect(b?.collapsedDimension).toBeUndefined();
     expect(b?.sizing).toBeUndefined();
 
     const map = byId(collectLeafFootprints(both, 0, 0, 1000, 800, GAP_FREE_CONFIG));
@@ -209,6 +215,7 @@ describe("collapse geometry — side-by-side (horizontal) split is along-axis (w
     expect(a?.sizing?.width).toBe("static");
     expect(a?.sizing?.widthPx).toBe(COLLAPSE_PX);
     expect(a?.sizing?.height).toBeUndefined();
+    expect(a?.collapsedDimension).toBe("width");
     expect(isStaticAlongSplitAxis(a as TilingLeafNode, "horizontal")).toBe(true);
   });
 
@@ -292,8 +299,10 @@ describe("collapse geometry — side-by-side (horizontal) split is along-axis (w
     const a: TilingLeafNode | null = findLeafById(both, "A");
     const b: TilingLeafNode | null = findLeafById(both, "B");
     expect(a?.collapsed).toBe(true);
+    expect(a?.collapsedDimension).toBe("width");
     expect(b?.collapsed).toBeUndefined();
     expect(b?.collapsedRestore).toBeUndefined();
+    expect(b?.collapsedDimension).toBeUndefined();
     expect(b?.sizing).toBeUndefined();
 
     const map = byId(collectLeafFootprints(both, 0, 0, 1000, 800, GAP_FREE_CONFIG));
