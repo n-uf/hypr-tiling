@@ -5590,7 +5590,9 @@ const TilingRendererComponent = React.forwardRef<
     [activeMaximizedLeafId, setMaximizedLeaf],
   );
 
-  // Collapse-to-titlebar (HT-PANE-COLLAPSE). Collapse pins the leaf's height to
+  // Collapse-to-titlebar (HT-PANE-COLLAPSE, axis-aware). Collapse pins the
+  // leaf's dimension ALONG its immediate parent split's axis (height under a
+  // stacked/vertical parent, width under a side-by-side/horizontal parent) to
   // the resolved chrome extent (`config.collapsedExtentPx` →
   // `TILING_DEFAULT_COLLAPSED_EXTENT_PX`) and remembers its prior sizing; expand
   // restores it. The layout edit flows through `onLayoutChange` (controlled) and,
@@ -7527,14 +7529,18 @@ const TilingRendererComponent = React.forwardRef<
           ? leafPresentation.isGhostSeatLeaf
           : leafPresentation.isPickupOriginLeaf &&
             dragState.phase === "dragging";
+        const isMaximizedLeaf: boolean = activeMaximizedLeafId === node.id;
         // The uniform pane-body rule: a ghost-seat reservation is a content-less
         // seat (drag mechanic); every other slot honors the CONTENT toggle
-        // identically to a resting pane.
+        // identically to a resting pane. Maximizing a collapsed leaf suspends
+        // the collapse-empty gate (HT-PANE-COLLAPSE + maximize) so it shows full
+        // content instead of a titlebar strip in a full-screen void.
         const paneBodyRenderMode: TilingPaneBodyRenderMode =
           resolvePaneBodyRenderMode(
             leafPresentation.isGhostSeatReservation,
             isPaneContentVisible,
             node.collapsed === true,
+            isMaximizedLeaf,
           );
         const isDropTargetLeaf: boolean =
           dropState?.leafId === node.id && dropState.action !== "none";
@@ -7561,7 +7567,7 @@ const TilingRendererComponent = React.forwardRef<
           isRearrangeEnabled: isLeafRearrangeEligible(node.id),
           isMoveSource,
           moveTargetPlacement,
-          isMaximized: activeMaximizedLeafId === node.id,
+          isMaximized: isMaximizedLeaf,
           isMaximizeEnabled,
           onToggleMaximize: (): void => {
             toggleMaximizeLeaf(node.id);

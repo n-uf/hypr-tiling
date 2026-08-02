@@ -1,5 +1,10 @@
 import { collectLeafFootprints, footprintsByLeafId } from "./leaf-geometry";
-import { isStaticAlongSplitAxis, isStaticInDimension, splitAxisDimension } from "./pane-sizing";
+import {
+  crossAxisDimension,
+  isStaticAlongSplitAxis,
+  isStaticInDimension,
+  splitAxisDimension,
+} from "./pane-sizing";
 import { PLACEMENT_BY_DROP_ZONE } from "./projected-layout";
 import { insertLeafAdjacent } from "./state";
 import type { TilingEdgeZone } from "./drop-intent-resolver";
@@ -226,18 +231,30 @@ function childMakesSplitUnresolvable(node: TilingLayoutNode, axis: TilingSplitAx
 export function collectStaticGatedLeafIds(layout: TilingLayoutNode): ReadonlySet<string> {
   const gated = new Set<string>();
 
-  function walk(node: TilingLayoutNode, inUnresolvableRegion: boolean): void {
+  // `parentAxis` is the nearest ancestor split's axis, threaded down exactly
+  // like `state.ts`'s `writeLeafCollapsed` — it is what a COLLAPSED leaf's pin
+  // runs ALONG (HT-PANE-COLLAPSE, axis-aware: height under a vertical parent,
+  // width under a horizontal parent). `undefined` only for a rootless leaf
+  // (the sole node in the tree), which has no split to gate against anyway.
+  function walk(
+    node: TilingLayoutNode,
+    inUnresolvableRegion: boolean,
+    parentAxis: TilingSplitAxis | undefined,
+  ): void {
     if (node.kind === "leaf") {
-      // HT-PANE-COLLAPSE: collapse pins `height` static to the KNOWN,
-      // geometry-resolvable `collapsedExtentPx` chrome extent — it is not the
-      // "content-sized, unknowable footprint" this gate exists for (rule 1's
-      // doc comment above). Left ungated, a collapsed leaf stayed a drag
-      // source/target exactly like an expanded one; only counting its WIDTH
-      // dimension here still gates a leaf the user separately pinned static
-      // WIDTH (the title-bar `W•` lock) even while collapsed.
-      const selfStatic: boolean = node.collapsed === true
-        ? isStaticInDimension(node, "width")
-        : isStaticInDimension(node, "width") || isStaticInDimension(node, "height");
+      // HT-PANE-COLLAPSE: collapse pins the dimension ALONG the leaf's
+      // immediate parent split's axis static to the KNOWN, geometry-resolvable
+      // `collapsedExtentPx` chrome extent — it is not the "content-sized,
+      // unknowable footprint" this gate exists for (rule 1's doc comment
+      // above). Left ungated, a collapsed leaf stayed a drag source/target
+      // exactly like an expanded one; exempting ONLY the collapse-forced
+      // along-axis dimension still gates a leaf the user separately pinned
+      // static on the CROSS dimension (the title-bar W•/H• toggle) even while
+      // collapsed.
+      const selfStatic: boolean =
+        node.collapsed === true && parentAxis != null
+          ? isStaticInDimension(node, crossAxisDimension(parentAxis))
+          : isStaticInDimension(node, "width") || isStaticInDimension(node, "height");
       if (inUnresolvableRegion || selfStatic) {
         gated.add(node.id);
       }
@@ -248,6 +265,8 @@ export function collectStaticGatedLeafIds(layout: TilingLayoutNode): ReadonlySet
       // A group is one slot keyed by its active member — only the active member
       // is outer-visible / draggable. Gate it when the group itself is static
       // (or in an unresolvable region); inactive members have no footprint.
+      // Groups are not independently collapsible (HT-PANE-COLLAPSE targets loose
+      // leaves only), so no collapse exemption applies here.
       const groupStatic: boolean =
         isStaticInDimension(node, "width") || isStaticInDimension(node, "height");
       if (inUnresolvableRegion || groupStatic) {
@@ -260,10 +279,10 @@ export function collectStaticGatedLeafIds(layout: TilingLayoutNode): ReadonlySet
       childMakesSplitUnresolvable(node.first, node.axis) ||
       childMakesSplitUnresolvable(node.second, node.axis);
     const childRegionGated: boolean = inUnresolvableRegion || splitUnresolvable;
-    walk(node.first, childRegionGated);
-    walk(node.second, childRegionGated);
+    walk(node.first, childRegionGated, node.axis);
+    walk(node.second, childRegionGated, node.axis);
   }
 
-  walk(layout, false);
+  walk(layout, false, undefined);
   return gated;
 }

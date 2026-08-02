@@ -187,10 +187,10 @@ export function TilingPaneTitleBarContent({
 /** Props for {@link TilingPaneBody}. */
 export interface TilingPaneBodyProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
-   * The `renderTile` args for this pane (`paneBodyRenderMode` and `isCollapsed`
-   * are read). Pass the whole args object.
+   * The `renderTile` args for this pane (`paneBodyRenderMode`, `isCollapsed`,
+   * and `isMaximized` are read). Pass the whole args object.
    */
-  pane: Pick<TilingRenderTileProps, "paneBodyRenderMode" | "isCollapsed">;
+  pane: Pick<TilingRenderTileProps, "paneBodyRenderMode" | "isCollapsed" | "isMaximized">;
 }
 
 /**
@@ -201,13 +201,20 @@ export interface TilingPaneBodyProps extends React.HTMLAttributes<HTMLDivElement
  * same render path, so an empty body never rides along. Bring your own
  * `className` / `style`.
  *
- * HT-PANE-COLLAPSE: while `pane.isCollapsed` is true the wrapper is forced to
- * `display: none` (merged into any consumer `style`) rather than merely
- * emptying its children. A collapsed leaf is pinned to the chrome extent
- * (titlebar height only), but a bare empty body still keeps its `flex-1` /
- * `min-h-0` box in the layout — the leftover slack between that box and the
- * pinned extent rendered as a dead strip below the titlebar. Hiding the box
- * entirely removes that strip so the collapsed pane is exactly titlebar-tall.
+ * HT-PANE-COLLAPSE: while `pane.isCollapsed` is true (and the pane is NOT
+ * maximized — see below) the wrapper is forced to `display: none` (merged into
+ * any consumer `style`) rather than merely emptying its children. A collapsed
+ * leaf is pinned to the chrome extent (titlebar-only, along its parent split's
+ * axis), but a bare empty body still keeps its `flex-1` / `min-h-0` box in the
+ * layout — the leftover slack between that box and the pinned extent rendered
+ * as a dead strip beside/below the titlebar. Hiding the box entirely removes
+ * that strip so the collapsed pane is exactly titlebar-sized.
+ *
+ * HT-PANE-COLLAPSE + maximize: `pane.isMaximized` SUSPENDS the `display: none`
+ * gate for exactly this leaf, matching `resolvePaneBodyRenderMode`'s own
+ * maximize override — otherwise a maximized collapsed pane would render
+ * `render-content` children into a wrapper still forced invisible, i.e. a
+ * titlebar strip in an empty full-screen frame.
  *
  * @param props - {@link TilingPaneBodyProps}
  */
@@ -217,11 +224,9 @@ export function TilingPaneBody({
   style,
   ...rest
 }: TilingPaneBodyProps): React.ReactElement {
+  const forceHidden: boolean = pane.isCollapsed === true && pane.isMaximized !== true;
   return (
-    <div
-      {...rest}
-      style={pane.isCollapsed === true ? { ...style, display: "none" } : style}
-    >
+    <div {...rest} style={forceHidden ? { ...style, display: "none" } : style}>
       {pane.paneBodyRenderMode === "render-content" ? children : null}
     </div>
   );

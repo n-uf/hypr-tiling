@@ -156,27 +156,34 @@ export function resolveDragPresentation(
  *
  * - ghost-seat reservation → `render-reservation` (a content-less seat; a drag
  *   mechanic, never carries content regardless of the CONTENT toggle).
+ * - a COLLAPSED pane that is NOT maximized → `render-empty` (titlebar-only; the
+ *   pane frame + header chrome stay, only the body is emptied — no placeholder
+ *   text).
  * - otherwise the body honors the CONTENT toggle: `render-content` when content
- *   is visible, `render-empty` when hidden (the pane frame + header chrome stay;
- *   only the body is emptied — no placeholder text).
+ *   is visible, `render-empty` when hidden.
  *
  * `isGhostSeatReservation` is always `false` for the ghost (it is the single
  * painted instance, never a seat), so the ghost simply paints content iff
  * `isPaneContentVisible` — exactly like a resting in-tree pane.
+ *
+ * HT-PANE-COLLAPSE + maximize: `isMaximized` SUSPENDS the collapse-empty gate
+ * for exactly this leaf. Collapse is an in-tree, titlebar-only affordance;
+ * maximizing a leaf is the user explicitly asking to see its content full-screen
+ * — without this, a maximized collapsed pane rendered a titlebar strip floating
+ * in an otherwise-full-screen void. The leaf's `collapsed` flag / pinned sizing
+ * are untouched (restoring from maximize returns to the same collapsed
+ * footprint); only the render-mode decision for the maximized frame changes.
  */
 export function resolvePaneBodyRenderMode(
   isGhostSeatReservation: boolean,
   isPaneContentVisible: boolean,
   isCollapsed: boolean = false,
+  isMaximized: boolean = false,
 ): TilingPaneBodyRenderMode {
   if (isGhostSeatReservation) {
     return "render-reservation";
   }
-  // A collapsed pane (HT-PANE-COLLAPSE) shows only its title bar — the body is
-  // emptied exactly like the content toggle off, so both the built-in tile and
-  // the `TilingPaneBody` primitive hide content through the SAME render-mode
-  // gate (no parallel collapse branch in every custom pane).
-  if (isCollapsed) {
+  if (isCollapsed && !isMaximized) {
     return "render-empty";
   }
   return isPaneContentVisible ? "render-content" : "render-empty";

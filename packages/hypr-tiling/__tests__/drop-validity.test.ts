@@ -87,13 +87,31 @@ describe("collectStaticGatedLeafIds — per-subtree drag gate", (): void => {
     expect([...gated]).toEqual(["sidebar"]);
   });
 
-  it("does NOT gate a COLLAPSED leaf despite its collapse-pinned static height (HT-PANE-COLLAPSE drag fix)", (): void => {
-    // A collapsed leaf's height is pinned to a KNOWN chrome extent
-    // (collapsedExtentPx), not a content-sized/unknowable footprint — it must
-    // stay a drag source/target exactly like an expanded flexible leaf.
+  it("does NOT gate a COLLAPSED leaf despite its collapse-pinned static height (HT-PANE-COLLAPSE drag fix, vertical parent)", (): void => {
+    // A collapsed leaf under a STACKED (vertical) parent pins HEIGHT — the
+    // along-axis dimension — to a KNOWN chrome extent (collapsedExtentPx), not
+    // a content-sized/unknowable footprint. It must stay a drag source/target
+    // exactly like an expanded flexible leaf.
     const collapsedLeaf: TilingLeafNode = {
       ...leaf("cases"),
       sizing: { height: "static", heightPx: 40 },
+      collapsed: true,
+    };
+    const layout: TilingLayoutNode = vsplit(0.5, collapsedLeaf, leaf("main"));
+    const gated: ReadonlySet<string> = collectStaticGatedLeafIds(layout);
+    expect(gated.has("cases")).toBe(false);
+    expect(gated.has("main")).toBe(false);
+    expect(gated.size).toBe(0);
+  });
+
+  it("does NOT gate a COLLAPSED leaf despite its collapse-pinned static width (HT-PANE-COLLAPSE drag fix, horizontal parent)", (): void => {
+    // Axis-aware collapse (HT-PANE-COLLAPSE-AXIS): under a SIDE-BY-SIDE
+    // (horizontal) parent, collapse pins WIDTH — its along-axis dimension —
+    // instead of height. The gate must exempt whichever dimension the parent
+    // axis pinned, not hard-code one.
+    const collapsedLeaf: TilingLeafNode = {
+      ...leaf("cases"),
+      sizing: { width: "static", widthPx: 40 },
       collapsed: true,
     };
     const layout: TilingLayoutNode = hsplit(0.5, collapsedLeaf, leaf("main"));
@@ -103,12 +121,27 @@ describe("collectStaticGatedLeafIds — per-subtree drag gate", (): void => {
     expect(gated.size).toBe(0);
   });
 
-  it("still gates a collapsed leaf that ALSO carries a user-pinned static WIDTH lock", (): void => {
-    // Collapse only exempts the collapse-forced HEIGHT pin — a separate,
-    // user-initiated static-width lock (the title-bar W• toggle) still gates.
+  it("still gates a collapsed leaf that ALSO carries a user-pinned static CROSS-axis lock (vertical parent → width lock)", (): void => {
+    // Collapse only exempts the collapse-forced along-axis (HEIGHT) pin — a
+    // separate, user-initiated static-width lock (the title-bar W• toggle) on
+    // the CROSS axis still gates.
     const collapsedLockedLeaf: TilingLeafNode = {
       ...leaf("sidebar"),
       sizing: { width: "static", widthPx: 256, height: "static", heightPx: 40 },
+      collapsed: true,
+    };
+    const layout: TilingLayoutNode = vsplit(0.5, collapsedLockedLeaf, leaf("main"));
+    const gated: ReadonlySet<string> = collectStaticGatedLeafIds(layout);
+    expect(gated.has("sidebar")).toBe(true);
+  });
+
+  it("still gates a collapsed leaf that ALSO carries a user-pinned static CROSS-axis lock (horizontal parent → height lock)", (): void => {
+    // Mirror case: under a horizontal parent, collapse exempts the
+    // collapse-forced along-axis (WIDTH) pin, but a separate static-height
+    // lock (H• toggle) on the CROSS axis still gates.
+    const collapsedLockedLeaf: TilingLeafNode = {
+      ...leaf("sidebar"),
+      sizing: { width: "static", widthPx: 40, height: "static", heightPx: 256 },
       collapsed: true,
     };
     const layout: TilingLayoutNode = hsplit(0.5, collapsedLockedLeaf, leaf("main"));
