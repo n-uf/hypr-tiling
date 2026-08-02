@@ -127,9 +127,15 @@ describe("updateSplitRatio", (): void => {
     expect(findSplit(next, "root")?.ratio).toBe(0.5);
   });
 
-  it("clamps ratios above and below the [0.05, 0.95] bounds", (): void => {
-    expect(findSplit(updateSplitRatio(baseLayout(), "root", 5), "root")?.ratio).toBe(0.95);
-    expect(findSplit(updateSplitRatio(baseLayout(), "root", -3), "root")?.ratio).toBe(0.05);
+  it("clamps ratios to the unit interval (HT-RATIO-UNIT-CLAMP — no soft 5%/95%)", (): void => {
+    // Soft 5%/95% must NOT live here: chrome-floor size-outs (e.g. 35px in a
+    // 2000px viewport ≈ 1.75%) have to round-trip through updateSplitRatio
+    // without being re-raised. Out-of-range values still clamp to [0, 1].
+    expect(findSplit(updateSplitRatio(baseLayout(), "root", 5), "root")?.ratio).toBe(1);
+    expect(findSplit(updateSplitRatio(baseLayout(), "root", -3), "root")?.ratio).toBe(0);
+    expect(
+      findSplit(updateSplitRatio(baseLayout(), "root", 35 / 2000), "root")?.ratio,
+    ).toBeCloseTo(0.0175, 5);
   });
 
   it("falls back to 0.5 for a non-finite ratio", (): void => {

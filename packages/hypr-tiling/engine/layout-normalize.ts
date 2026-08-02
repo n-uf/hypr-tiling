@@ -8,7 +8,11 @@ import {
   splitAxisDimension,
   splitBoundaryGutterPx,
 } from "./pane-sizing";
-import { demoteAlongAxisStatic, normalizeStaticAxisFill } from "./state";
+import {
+  demoteAlongAxisStatic,
+  normalizeStaticAxisFill,
+  reassertCollapsedExtentPins,
+} from "./state";
 import type {
   TilingDimension,
   TilingLayoutConfig,
@@ -18,6 +22,7 @@ import type {
   TilingSplitNode,
   TilingTile,
 } from "./types";
+import { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "./types";
 
 /**
  * Idle-period safety-net delay after the last resize/rearrange move before a
@@ -136,11 +141,17 @@ function alongAxisPinPx(node: TilingLayoutNode, axis: TilingSplitAxis): number |
   return pinPx;
 }
 
+/**
+ * Unit-interval clamp for ratios normalize keeps on the tree (HT-RATIO-UNIT-CLAMP).
+ * Soft 5%/95% used to live here and silently undid chrome-floor size-outs after
+ * {@link clampByMinSize} had already neutralized the safety net — keep only the
+ * unit interval; per-side floors remain {@link clampByMinSize}'s job.
+ */
 function clampStoredRatio(value: number): number {
   if (!Number.isFinite(value)) {
     return 0.5;
   }
-  return Math.min(Math.max(value, 0.05), 0.95);
+  return Math.min(Math.max(value, 0), 1);
 }
 
 interface SplitAxisExtents {
@@ -664,7 +675,17 @@ function geometryNormalizeLayout(
   heightPx: number,
   config: TilingLayoutConfig,
 ): TilingLayoutNode {
-  const structurallyNormalized: TilingLayoutNode = normalizeStaticAxisFill(node);
+  const collapsedExtentPx: number =
+    config.collapsedExtentPx ?? TILING_DEFAULT_COLLAPSED_EXTENT_PX;
+  // HT-PANE-COLLAPSE-PIN-REASSERT: rewrite stale collapse pins to the live
+  // chrome extent before axis-fill / ratio reconcile so hydrate and settle
+  // keep collapse geometry ≡ current config (see `reassertCollapsedExtentPins`).
+  const pinReasserted: TilingLayoutNode = reassertCollapsedExtentPins(
+    node,
+    collapsedExtentPx,
+  );
+  const structurallyNormalized: TilingLayoutNode =
+    normalizeStaticAxisFill(pinReasserted);
   if (widthPx <= 1 || heightPx <= 1) {
     return structurallyNormalized;
   }

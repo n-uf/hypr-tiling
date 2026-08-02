@@ -17,12 +17,23 @@ import type {
   TilingSplitAxis,
   TilingSplitNode,
   TilingDimension,
+  TilingPaneCollapsedChangeEvent,
   TilingPaneCycleDirection,
   TilingPaneSizing,
 } from "./types";
 
+/** Soft structural bounds for master-ratio nudges / insertion defaults. */
 const MIN_RATIO: number = 0.05;
 const MAX_RATIO: number = 0.95;
+/**
+ * Unit-interval clamp for ratios a caller already floor-constrained (via
+ * {@link clampByMinSize} + {@link RatioSafetyBounds}). The historical
+ * hardcoded 5%/95% soft net must NOT live here — it re-raised chrome-floor
+ * size-outs (HT-RESIZE-FLOOR) above the titlebar extent after the interactive
+ * path had correctly neutralized the safety net (HT-RATIO-UNIT-CLAMP).
+ */
+const MIN_STORED_RATIO: number = 0;
+const MAX_STORED_RATIO: number = 1;
 const DEFAULT_INSERTION_OPTIONS: TilingInsertionOptions = {
   preserveParentSplitAxis: true,
   splitRatio: 0.5,
@@ -36,9 +47,21 @@ function clampRatio(value: number): number {
   return Math.min(Math.max(value, MIN_RATIO), MAX_RATIO);
 }
 
+/** Persist a split ratio on the unit interval; NaN/∞ → 0.5. */
+function clampStoredSplitRatio(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0.5;
+  }
+
+  return Math.min(Math.max(value, MIN_STORED_RATIO), MAX_STORED_RATIO);
+}
+
 /**
  * Return a copy of the tree with split node `splitId`'s divider `ratio` set
- * (clamped to the legal range). Unchanged when no split with that id exists.
+ * (clamped to the unit interval). Per-side body/chrome floors are the
+ * caller's job via {@link clampByMinSize} — this reducer must not re-impose
+ * the soft 5%/95% net (HT-RATIO-UNIT-CLAMP / HT-RESIZE-FLOOR). Unchanged when
+ * no split with that id exists.
  */
 export function updateSplitRatio(
   node: TilingLayoutNode,
@@ -56,7 +79,7 @@ export function updateSplitRatio(
   if (node.id === splitId) {
     return {
       ...node,
-      ratio: clampRatio(ratio),
+      ratio: clampStoredSplitRatio(ratio),
     };
   }
 
@@ -502,6 +525,133 @@ export function toggleLeafCollapsed(
     return node;
   }
   return setLeafCollapsed(node, leafId, leaf.collapsed !== true, collapsedExtentPx);
+}
+
+function collectCollapsedFlags(
+  node: TilingLayoutNode,
+  out: Map<string, boolean>,
+): void {
+  if (node.kind === "leaf") {
+    out.set(node.id, node.collapsed === true);
+    return;
+  }
+  if (node.kind === "group") {
+    for (const member of node.members) {
+      collectCollapsedFlags(member, out);
+    }
+    return;
+  }
+  collectCollapsedFlags(node.first, out);
+  collectCollapsedFlags(node.second, out);
+}
+
+function collectCollapsedDiffs(
+  node: TilingLayoutNode,
+  beforeCollapsed: ReadonlyMap<string, boolean>,
+  out: TilingPaneCollapsedChangeEvent[],
+): void {
+  if (node.kind === "leaf") {
+    const priorCollapsed: boolean | undefined = beforeCollapsed.get(node.id);
+    const currentCollapsed: boolean = node.collapsed === true;
+    if (priorCollapsed != null && priorCollapsed !== currentCollapsed) {
+      out.push({ leafId: node.id, collapsed: currentCollapsed });
+    }
+    return;
+  }
+  if (node.kind === "group") {
+    for (const member of node.members) {
+      collectCollapsedDiffs(member, beforeCollapsed, out);
+    }
+    return;
+  }
+  collectCollapsedDiffs(node.first, beforeCollapsed, out);
+  collectCollapsedDiffs(node.second, beforeCollapsed, out);
+}
+
+/**
+ * Diff every leaf's `collapsed` boolean between two trees, by leaf id — the
+ * source of truth for `TilingPaneCollapsedChangeEvent`s a host consumes via
+ * `TilingRendererProps.onPaneCollapsedChange`.
+ *
+ * An EXPLICIT collapse toggle is not the only way `collapsed` changes: a
+ * normalize/reconcile side effect can flip it on a leaf the caller never
+ * targeted — `demoteAlongAxisStatic` fully un-collapsing a both-static-along-
+ * axis (or unfit-pin) sibling, or a rearrange commit's `normalizeLayout` pass
+ * doing the same deeper in the tree. Diffing the WHOLE tree (not just the leaf
+ * the caller meant to touch) is what keeps every reachable AND latent
+ * collapse-truth change observable — the renderer calls this against EVERY
+ * `onLayoutChange` edit (see `tiling-renderer.tsx`'s `commitLayoutChange`)
+ * rather than hand-rolling a per-call-site event.
+ *
+ * A leaf id present in only one tree (created or removed by the same edit) is
+ * not a collapse-state CHANGE and is skipped; result order is unspecified.
+ * @internal
+ */
+export function diffCollapsedLeaves(
+  before: TilingLayoutNode,
+  after: TilingLayoutNode,
+): ReadonlyArray<TilingPaneCollapsedChangeEvent> {
+  if (before === after) {
+    return [];
+  }
+  const beforeCollapsed = new Map<string, boolean>();
+  collectCollapsedFlags(before, beforeCollapsed);
+  const events: TilingPaneCollapsedChangeEvent[] = [];
+  collectCollapsedDiffs(after, beforeCollapsed, events);
+  return events;
+}
+
+/**
+ * Re-assert every COLLAPSED leaf's along-axis pin to `collapsedExtentPx`
+ * (HT-PANE-COLLAPSE-PIN-REASSERT). Collapse pins bake the chrome extent that
+ * was current at collapse / axis-reconcile time; a later config change (or a
+ * persisted tree hydrated under a different `collapsedExtentPx`) leaves a
+ * stale pin that diverges from the live chrome. Walk the tree and rewrite
+ * only the along-axis static px — `collapsed` / `collapsedRestore` /
+ * `collapsedDimension` stay untouched so expand restore is preserved.
+ *
+ * Idempotent (same reference when every pin already matches). Called from
+ * `normalizeLayout` so hydrate, idle settle, and resize/rearrange commit all
+ * keep collapse geometry ≡ current chrome extent.
+ */
+export function reassertCollapsedExtentPins(
+  node: TilingLayoutNode,
+  collapsedExtentPx: number,
+): TilingLayoutNode {
+  if (!(collapsedExtentPx > 0) || !Number.isFinite(collapsedExtentPx)) {
+    return node;
+  }
+  if (node.kind === "leaf") {
+    if (node.collapsed !== true || node.collapsedDimension == null) {
+      return node;
+    }
+    const dimension: TilingDimension = node.collapsedDimension;
+    const currentPx: number | undefined =
+      dimension === "width" ? node.sizing?.widthPx : node.sizing?.heightPx;
+    if (currentPx === collapsedExtentPx) {
+      return node;
+    }
+    const nextSizing: TilingPaneSizing =
+      dimension === "width"
+        ? { ...node.sizing, width: "static", widthPx: collapsedExtentPx }
+        : { ...node.sizing, height: "static", heightPx: collapsedExtentPx };
+    return { ...node, sizing: nextSizing };
+  }
+  if (node.kind === "group") {
+    return node;
+  }
+  const nextFirst: TilingLayoutNode = reassertCollapsedExtentPins(
+    node.first,
+    collapsedExtentPx,
+  );
+  const nextSecond: TilingLayoutNode = reassertCollapsedExtentPins(
+    node.second,
+    collapsedExtentPx,
+  );
+  if (nextFirst === node.first && nextSecond === node.second) {
+    return node;
+  }
+  return { ...node, first: nextFirst, second: nextSecond };
 }
 
 /** Find the leaf with id `leafId` anywhere in the tree (including inside a group), or `null`. */

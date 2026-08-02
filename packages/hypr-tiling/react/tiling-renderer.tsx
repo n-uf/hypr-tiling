@@ -183,6 +183,7 @@ import {
   cycleActiveGroupMember,
   cycleSplitLayoutMode,
   cycleSplitMasterOrientation,
+  diffCollapsedLeaves,
   findGroupById,
   findGroupContainingLeaf,
   findLeafByDirection,
@@ -238,6 +239,7 @@ import type {
   TilingObservabilityColorConfig,
   TilingObservabilityColorEnableConfig,
   TilingPaneBodyRenderMode,
+  TilingPaneCollapsedChangeEvent,
   TilingPaneFootprint,
   TilingPaneHitZoneCandidateDebugState,
   TilingPaneHitZoneOverlayDebugState,
@@ -4037,6 +4039,42 @@ const TilingRendererComponent = React.forwardRef<
   }: TilingRendererProps & TilingRendererObservabilityProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
 ): React.ReactElement {
+  // Refs for the layout-edit choke point — declared before any handler so
+  // idle settle / resize rAF / sync reducers all share one emit path
+  // (HT-PANE-COLLAPSE-EVENTS). `layoutRef` is advanced eagerly on emit so
+  // chained commits in the same tick (rAF flush → normalize) diff against the
+  // tree just reported, not a stale pre-setState snapshot.
+  const layoutRef = React.useRef(layout);
+  layoutRef.current = layout;
+  const onLayoutChangeRef = React.useRef(onLayoutChange);
+  onLayoutChangeRef.current = onLayoutChange;
+  const onPaneCollapsedChangeRef = React.useRef(onPaneCollapsedChange);
+  onPaneCollapsedChangeRef.current = onPaneCollapsedChange;
+
+  // Single choke point for every layout edit (HT-PANE-COLLAPSE-EVENTS): reports
+  // the edit via `onLayoutChange`, THEN diffs the whole tree's collapse truth
+  // against the last-emitted tree and fires `onPaneCollapsedChange` for every
+  // leaf whose `collapsed` flipped. A normalize/reconcile side effect (a
+  // demoted both-static-along-axis sibling, a rearrange commit's
+  // `normalizeLayout` pass, a persisted-pin reassert) can flip `collapsed` on a
+  // leaf the caller never targeted directly — diffing catches those the SAME
+  // way as an explicit toggle instead of only the call site the developer
+  // remembered to instrument. Every internal layout emit below routes through
+  // here so no edit path is silently exempt; see `diffCollapsedLeaves`.
+  const commitLayoutChange = React.useCallback(
+    (next: TilingLayoutNode): void => {
+      const before: TilingLayoutNode = layoutRef.current;
+      const collapsedHandler = onPaneCollapsedChangeRef.current;
+      const collapsedChanges: ReadonlyArray<TilingPaneCollapsedChangeEvent> =
+        collapsedHandler != null ? diffCollapsedLeaves(before, next) : [];
+      onLayoutChangeRef.current(next);
+      layoutRef.current = next;
+      for (const changeEvent of collapsedChanges) {
+        collapsedHandler?.(changeEvent);
+      }
+    },
+    [],
+  );
   // Active theme: a full consumer-authored `theme` object takes precedence
   // over the built-in `themeId` selection. The registry returns a stable
   // object reference per id (and a consumer is expected to pass a stable
@@ -4262,11 +4300,8 @@ const TilingRendererComponent = React.forwardRef<
   // Resize pointer handlers must NOT rebind when `layout` changes — every move
   // commits a new ratio, and rebinding tore down the `{ once: true }` pointerup
   // listener (race: release between cleanup and re-subscribe → stuck resize,
-  // persisted mid-drag ratios, no self-heal on pointerup).
-  const layoutRef = React.useRef(layout);
-  layoutRef.current = layout;
-  const onLayoutChangeRef = React.useRef(onLayoutChange);
-  onLayoutChangeRef.current = onLayoutChange;
+  // persisted mid-drag ratios, no self-heal on pointerup). `layoutRef` /
+  // `onLayoutChangeRef` are owned by the commit choke point above.
   const configRef = React.useRef(config);
   configRef.current = config;
   // Host tile map is the source of truth for coverage: every commit/idle
@@ -4462,7 +4497,7 @@ const TilingRendererComponent = React.forwardRef<
   const setLeafSizingFromBbox = React.useCallback(
     (targetLeafId: string, mode: TilingTitleBarSizingMode): void => {
       if (mode === "flexible") {
-        onLayoutChange(setLeafSizing(layout, targetLeafId, undefined));
+        commitLayoutChange(setLeafSizing(layout, targetLeafId, undefined));
         return;
       }
       // `measureLeafRect` resolves the `[data-leaf-id]` element root-scoped (via
@@ -4491,9 +4526,9 @@ const TilingRendererComponent = React.forwardRef<
       if (sizing == null) {
         return;
       }
-      onLayoutChange(setLeafSizing(layout, targetLeafId, sizing));
+      commitLayoutChange(setLeafSizing(layout, targetLeafId, sizing));
     },
-    [layout, onLayoutChange, measurementPort],
+    [layout, commitLayoutChange, measurementPort],
   );
 
   // PART 3 — directional annex + re-seed (aggressive eviction). The arrows claim
@@ -4528,7 +4563,7 @@ const TilingRendererComponent = React.forwardRef<
         minPaneSizePx: config.minPaneSizePx,
         crossSizePx: crossContainerSizePx > 0 ? crossContainerSizePx : 1,
       };
-      onLayoutChange(
+      commitLayoutChange(
         annexDirection(layout, targetLeafId, direction, constraints),
       );
     },
@@ -4536,7 +4571,7 @@ const TilingRendererComponent = React.forwardRef<
       config.gapPx,
       config.minPaneSizePx,
       layout,
-      onLayoutChange,
+      commitLayoutChange,
       viewportSize.height,
       viewportSize.width,
       measurementPort,
@@ -5212,8 +5247,9 @@ const TilingRendererComponent = React.forwardRef<
 
   /**
    * Commit-time layout reconciliation — demote unfit pins, clamp ratios, ensure
-   * panes+gutters fill the viewport. Emits through `onLayoutChange` only when
-   * the tree actually changes (idempotent when already reconciled).
+   * panes+gutters fill the viewport. Emits through `commitLayoutChange` only
+   * when the tree actually changes (idempotent when already reconciled) so a
+   * normalize-time collapse flip still surfaces via `onPaneCollapsedChange`.
    */
   const commitNormalizedLayout = React.useCallback(
     (tree: TilingLayoutNode): TilingLayoutNode => {
@@ -5224,11 +5260,11 @@ const TilingRendererComponent = React.forwardRef<
         expectedTileIds: expectedTileIdsRef.current,
       });
       if (normalized !== tree) {
-        onLayoutChangeRef.current(normalized);
+        commitLayoutChange(normalized);
       }
       return normalized;
     },
-    [],
+    [commitLayoutChange],
   );
 
   const armLayoutIdleSettle = React.useCallback((): void => {
@@ -5340,7 +5376,7 @@ const TilingRendererComponent = React.forwardRef<
           if (pendingRatio == null) {
             return;
           }
-          onLayoutChangeRef.current(
+          commitLayoutChange(
             updateSplitRatio(
               layoutRef.current,
               resizeState.splitId,
@@ -5378,8 +5414,7 @@ const TilingRendererComponent = React.forwardRef<
         config: configRef.current,
         expectedTileIds: expectedTileIdsRef.current,
       });
-      onLayoutChangeRef.current(normalized);
-      layoutRef.current = normalized;
+      commitLayoutChange(normalized);
       armLayoutIdleSettle();
       setResizeState(null);
     };
@@ -5402,7 +5437,7 @@ const TilingRendererComponent = React.forwardRef<
         resizeRafHandleRef.current = null;
       }
     };
-  }, [armLayoutIdleSettle, resizeState]);
+  }, [armLayoutIdleSettle, commitLayoutChange, resizeState]);
 
   React.useEffect((): (() => void) => {
     return (): void => {
@@ -5419,10 +5454,11 @@ const TilingRendererComponent = React.forwardRef<
   // below) specifically so pressing/nudging it can un-collapse BOTH — a ratio
   // drag has no live geometry effect while both sides are pinned to their
   // collapse extent, so the escape action IS the expand, not a resize. Both
-  // expands are composed against the SAME base `layout` and committed with
-  // ONE `onLayoutChange` (two sequential single-leaf collapse calls would each
+  // expands are composed against the SAME base `layout` and committed with ONE
+  // `commitLayoutChange` (two sequential single-leaf collapse calls would each
   // read the same pre-update `layout` from this render's closure and the
-  // second call would clobber the first).
+  // second call would clobber the first) — `commitLayoutChange`'s diff reports
+  // both leaves' collapse flips, no explicit event needed here.
   const expandBothCollapsedVoidSiblings = React.useCallback(
     (firstLeafId: string, secondLeafId: string): void => {
       if (!isCollapseEnabled) {
@@ -5439,17 +5475,9 @@ const TilingRendererComponent = React.forwardRef<
       if (next === layout) {
         return;
       }
-      onLayoutChange(next);
-      onPaneCollapsedChange?.({ leafId: firstLeafId, collapsed: false });
-      onPaneCollapsedChange?.({ leafId: secondLeafId, collapsed: false });
+      commitLayoutChange(next);
     },
-    [
-      config.collapsedExtentPx,
-      isCollapseEnabled,
-      layout,
-      onLayoutChange,
-      onPaneCollapsedChange,
-    ],
+    [config.collapsedExtentPx, isCollapseEnabled, layout, commitLayoutChange],
   );
 
   const beginResize = React.useCallback(
@@ -5599,14 +5627,14 @@ const TilingRendererComponent = React.forwardRef<
         secondMinPaneSizePx,
         ratioSafetyBounds,
       );
-      onLayoutChange(updateSplitRatio(layout, node.id, clampedRatio));
+      commitLayoutChange(updateSplitRatio(layout, node.id, clampedRatio));
     },
     [
       config.handleSizePx,
       expandBothCollapsedVoidSiblings,
       interactionCapabilities.resize,
       layout,
-      onLayoutChange,
+      commitLayoutChange,
     ],
   );
 
@@ -5673,9 +5701,11 @@ const TilingRendererComponent = React.forwardRef<
   // stacked/vertical parent, width under a side-by-side/horizontal parent) to
   // the resolved chrome extent (`config.collapsedExtentPx` →
   // `TILING_DEFAULT_COLLAPSED_EXTENT_PX`) and remembers its prior sizing; expand
-  // restores it. The layout edit flows through `onLayoutChange` (controlled) and,
-  // when the state actually flips, `onPaneCollapsedChange` fires so a host can
-  // react (e.g. retitle the pane). Gated by `paneTitleBarControls.collapse`.
+  // restores it. The layout edit flows through `commitLayoutChange` (controlled
+  // `onLayoutChange` + collapse-diff `onPaneCollapsedChange`, see above) so a
+  // host can react (e.g. retitle the pane) — including for any OTHER leaf the
+  // normalize pass silently flips alongside the one explicitly targeted here.
+  // Gated by `paneTitleBarControls.collapse`.
   const resolvedCollapsedExtentPx: number =
     config.collapsedExtentPx ?? TILING_DEFAULT_COLLAPSED_EXTENT_PX;
   const setLeafCollapsedState = React.useCallback(
@@ -5692,16 +5722,9 @@ const TilingRendererComponent = React.forwardRef<
       if (next === layout) {
         return;
       }
-      onLayoutChange(next);
-      onPaneCollapsedChange?.({ leafId: targetLeafId, collapsed });
+      commitLayoutChange(next);
     },
-    [
-      isCollapseEnabled,
-      layout,
-      onLayoutChange,
-      onPaneCollapsedChange,
-      resolvedCollapsedExtentPx,
-    ],
+    [isCollapseEnabled, layout, commitLayoutChange, resolvedCollapsedExtentPx],
   );
   const toggleCollapseLeaf = React.useCallback(
     (targetLeafId: string): void => {
@@ -5716,19 +5739,9 @@ const TilingRendererComponent = React.forwardRef<
       if (next === layout) {
         return;
       }
-      onLayoutChange(next);
-      onPaneCollapsedChange?.({
-        leafId: targetLeafId,
-        collapsed: findLeafById(layout, targetLeafId)?.collapsed !== true,
-      });
+      commitLayoutChange(next);
     },
-    [
-      isCollapseEnabled,
-      layout,
-      onLayoutChange,
-      onPaneCollapsedChange,
-      resolvedCollapsedExtentPx,
-    ],
+    [isCollapseEnabled, layout, commitLayoutChange, resolvedCollapsedExtentPx],
   );
 
   // Focus a pane and, when in maximize render-mode, switch which pane is
@@ -5840,7 +5853,7 @@ const TilingRendererComponent = React.forwardRef<
       current.targetLeafId,
       current.placement,
     );
-    onLayoutChange(
+    commitLayoutChange(
       normalizeLayout(nextLayout, {
         containerWidthPx: viewportSizeRef.current.width,
         containerHeightPx: viewportSizeRef.current.height,
@@ -5850,7 +5863,7 @@ const TilingRendererComponent = React.forwardRef<
     );
     armLayoutIdleSettle();
     setFocusedLeaf(current.sourceLeafId);
-  }, [armLayoutIdleSettle, controller, layout, onLayoutChange, setFocusedLeaf]);
+  }, [armLayoutIdleSettle, controller, layout, commitLayoutChange, setFocusedLeaf]);
 
   // The ONE effectful command router (HT-API-COMMAND-KEYBOARD-SURFACE §7). Both
   // the keyboard layer and the imperative `dispatch` handle funnel a
@@ -5987,7 +6000,7 @@ const TilingRendererComponent = React.forwardRef<
           ) {
             return false;
           }
-          onLayoutChange(
+          commitLayoutChange(
             swapLeafTiles(layout, command.sourceLeafId, command.targetLeafId),
           );
           return true;
@@ -5999,7 +6012,7 @@ const TilingRendererComponent = React.forwardRef<
           ) {
             return false;
           }
-          onLayoutChange(
+          commitLayoutChange(
             insertLeafAdjacent(
               layout,
               command.sourceLeafId,
@@ -6043,13 +6056,13 @@ const TilingRendererComponent = React.forwardRef<
           return true;
         }
         case "set-split-ratio": {
-          onLayoutChange(
+          commitLayoutChange(
             updateSplitRatio(layout, command.splitId, command.ratio),
           );
           return true;
         }
         case "toggle-split-axis": {
-          onLayoutChange(toggleSplitAxis(layout, command.splitId));
+          commitLayoutChange(toggleSplitAxis(layout, command.splitId));
           return true;
         }
         case "set-layout-mode":
@@ -6119,7 +6132,7 @@ const TilingRendererComponent = React.forwardRef<
           if (next === layout) {
             return false;
           }
-          onLayoutChange(next);
+          commitLayoutChange(next);
           return true;
         }
         case "group-leaves": {
@@ -6129,7 +6142,7 @@ const TilingRendererComponent = React.forwardRef<
           if (next === layout) {
             return false;
           }
-          onLayoutChange(next);
+          commitLayoutChange(next);
           return true;
         }
         case "toggle-group": {
@@ -6149,7 +6162,7 @@ const TilingRendererComponent = React.forwardRef<
             if (next === layout) {
               return false;
             }
-            onLayoutChange(next);
+            commitLayoutChange(next);
             return true;
           }
           const outerIds: ReadonlyArray<string> = readLeafNodeIds(layout);
@@ -6168,7 +6181,7 @@ const TilingRendererComponent = React.forwardRef<
           if (next === layout) {
             return false;
           }
-          onLayoutChange(next);
+          commitLayoutChange(next);
           return true;
         }
         case "ungroup": {
@@ -6185,7 +6198,7 @@ const TilingRendererComponent = React.forwardRef<
           if (next === layout) {
             return false;
           }
-          onLayoutChange(next);
+          commitLayoutChange(next);
           return true;
         }
         case "add-to-group": {
@@ -6197,7 +6210,7 @@ const TilingRendererComponent = React.forwardRef<
           if (next === layout) {
             return false;
           }
-          onLayoutChange(next);
+          commitLayoutChange(next);
           return true;
         }
         case "remove-from-group": {
@@ -6209,7 +6222,7 @@ const TilingRendererComponent = React.forwardRef<
           if (next === layout) {
             return false;
           }
-          onLayoutChange(next);
+          commitLayoutChange(next);
           activateLeaf(command.memberId);
           return true;
         }
@@ -6231,7 +6244,7 @@ const TilingRendererComponent = React.forwardRef<
           if (next === layout) {
             return false;
           }
-          onLayoutChange(next);
+          commitLayoutChange(next);
           const cycledGroup = findGroupById(next, groupId);
           if (cycledGroup != null) {
             activateLeaf(cycledGroup.activeMemberId);
@@ -6265,7 +6278,7 @@ const TilingRendererComponent = React.forwardRef<
           if (next === layout) {
             return false;
           }
-          onLayoutChange(next);
+          commitLayoutChange(next);
           activateLeaf(memberId);
           return true;
         }
@@ -6287,7 +6300,7 @@ const TilingRendererComponent = React.forwardRef<
       focusLeafElement,
       isLeafRearrangeEligible,
       layout,
-      onLayoutChange,
+      commitLayoutChange,
       setFocusedLeaf,
       setLeafSizingFromBbox,
       setLeafCollapsedState,
@@ -7232,7 +7245,7 @@ const TilingRendererComponent = React.forwardRef<
         config: configRef.current,
         expectedTileIds,
       });
-      onLayoutChange(reconciledTree);
+      commitLayoutChange(reconciledTree);
       armLayoutIdleSettle();
       // Focus follows the dragged pane through the drop: focus the leaf the
       // dragged content now occupies (the resolved target for a swap, the source
@@ -7270,7 +7283,7 @@ const TilingRendererComponent = React.forwardRef<
     beginCancelFlyBackAnimation,
     dragState,
     layout,
-    onLayoutChange,
+    commitLayoutChange,
     onLiveHitLogChange,
     setFocusedLeaf,
     stripSurvivorTransientStyles,
