@@ -86,6 +86,35 @@ describe("collectStaticGatedLeafIds — per-subtree drag gate", (): void => {
     const gated: ReadonlySet<string> = collectStaticGatedLeafIds(layout);
     expect([...gated]).toEqual(["sidebar"]);
   });
+
+  it("does NOT gate a COLLAPSED leaf despite its collapse-pinned static height (HT-PANE-COLLAPSE drag fix)", (): void => {
+    // A collapsed leaf's height is pinned to a KNOWN chrome extent
+    // (collapsedExtentPx), not a content-sized/unknowable footprint — it must
+    // stay a drag source/target exactly like an expanded flexible leaf.
+    const collapsedLeaf: TilingLeafNode = {
+      ...leaf("cases"),
+      sizing: { height: "static", heightPx: 40 },
+      collapsed: true,
+    };
+    const layout: TilingLayoutNode = hsplit(0.5, collapsedLeaf, leaf("main"));
+    const gated: ReadonlySet<string> = collectStaticGatedLeafIds(layout);
+    expect(gated.has("cases")).toBe(false);
+    expect(gated.has("main")).toBe(false);
+    expect(gated.size).toBe(0);
+  });
+
+  it("still gates a collapsed leaf that ALSO carries a user-pinned static WIDTH lock", (): void => {
+    // Collapse only exempts the collapse-forced HEIGHT pin — a separate,
+    // user-initiated static-width lock (the title-bar W• toggle) still gates.
+    const collapsedLockedLeaf: TilingLeafNode = {
+      ...leaf("sidebar"),
+      sizing: { width: "static", widthPx: 256, height: "static", heightPx: 40 },
+      collapsed: true,
+    };
+    const layout: TilingLayoutNode = hsplit(0.5, collapsedLockedLeaf, leaf("main"));
+    const gated: ReadonlySet<string> = collectStaticGatedLeafIds(layout);
+    expect(gated.has("sidebar")).toBe(true);
+  });
 });
 
 describe("evaluateEdgeInsertCandidate — span + min-pane validity", (): void => {
