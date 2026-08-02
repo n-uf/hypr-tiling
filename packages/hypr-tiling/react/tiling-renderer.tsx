@@ -190,7 +190,9 @@ import {
   removeLeafTile,
   removeMemberFromGroup,
   setActiveGroupMember,
+  setLeafCollapsed,
   setLeafSizing,
+  toggleLeafCollapsed,
   setSplitLayoutMode,
   setSplitMasterCount,
   setSplitMasterOrientation,
@@ -251,6 +253,7 @@ import type {
   TilingTileAccentSwatch,
   TilingTitleBarSizingMode,
 } from "../engine/types";
+import { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "../engine/types";
 import { cn } from "./cn";
 import { createDomMeasurementPort } from "./dom-measurement-port";
 import { createDomPointerCapturePort } from "./dom-pointer-capture-port";
@@ -1515,6 +1518,8 @@ export interface GhostTileCapabilityFlags {
   readonly isTitleBarSizingEnabled: boolean;
   /** Whether the per-pane acquire-space controls are enabled. */
   readonly isTitleBarAcquireSpaceEnabled: boolean;
+  /** Whether the per-pane collapse-to-titlebar control is enabled. */
+  readonly isCollapseEnabled: boolean;
   /** Whether Alt/Opt+click header multi-selection grouping is live. */
   readonly isMultiSelectGroupingEnabled: boolean;
 }
@@ -1594,6 +1599,9 @@ export function buildGhostTileArgs(
     heightSizingMode: "flexible",
     onSetSizingMode: GHOST_TILE_NOOP,
     onAcquireSpace: GHOST_TILE_NOOP,
+    isCollapsed: false,
+    isCollapseEnabled: capabilityFlags.isCollapseEnabled,
+    onToggleCollapse: GHOST_TILE_NOOP,
     dropZone: null,
     preview: null,
     // Drag surfaces never carry group context: the traveling ghost is a
@@ -2655,6 +2663,9 @@ function DefaultTilingTile({
   heightSizingMode,
   onSetSizingMode,
   onAcquireSpace,
+  isCollapsed,
+  isCollapseEnabled,
+  onToggleCollapse,
   dropZone,
   preview,
   showDropBorderHints,
@@ -2987,6 +2998,41 @@ function DefaultTilingTile({
               )}
             >
               {isNarrowHeader ? "GRP" : "GROUP"}
+            </button>
+          ) : null}
+          {isCollapseEnabled ? (
+            <button
+              type="button"
+              draggable={false}
+              aria-pressed={isCollapsed}
+              title={
+                isCollapsed
+                  ? "expand pane (restore from titlebar-only)"
+                  : "collapse pane to titlebar-only"
+              }
+              aria-label={
+                isCollapsed
+                  ? `expand pane ${leafId}`
+                  : `collapse pane ${leafId} to titlebar`
+              }
+              onPointerDown={(
+                event: React.PointerEvent<HTMLButtonElement>,
+              ): void => {
+                event.stopPropagation();
+              }}
+              onClick={(event: React.MouseEvent<HTMLButtonElement>): void => {
+                event.stopPropagation();
+                onToggleCollapse();
+              }}
+              className={cn(
+                "flex shrink-0 items-center justify-center rounded-md border font-mono leading-none transition-colors",
+                isNarrowHeader ? "h-4 w-4 text-[10px]" : "h-5 w-5 text-[11px]",
+                isCollapsed
+                  ? theme.paneHeader.controlActive
+                  : theme.paneHeader.controlIdle,
+              )}
+            >
+              <span aria-hidden>{isCollapsed ? "\u25B8" : "\u25BE"}</span>
             </button>
           ) : null}
           {isMaximizeEnabled ? (
@@ -4209,6 +4255,7 @@ const TilingRendererComponent = React.forwardRef<
     onThemeChange,
     maximizedLeafId,
     onMaximizedLeafChange,
+    onPaneCollapsedChange,
     onProjectedOverlayCountChange,
     showDropPreviewOverlays = true,
     observabilityColors = TILING_OBSERVABILITY_COLOR_DEFAULTS,
@@ -4377,6 +4424,8 @@ const TilingRendererComponent = React.forwardRef<
     interactionCapabilities.paneTitleBarControls.sizing;
   const isTitleBarAcquireSpaceEnabled: boolean =
     interactionCapabilities.paneTitleBarControls.acquireSpace;
+  const isCollapseEnabled: boolean =
+    interactionCapabilities.paneTitleBarControls.collapse;
   const isPaneSwitchingEnabled: boolean =
     interactionCapabilities.paneSwitching.enable;
   const showTabStrip: boolean =
@@ -4430,6 +4479,7 @@ const TilingRendererComponent = React.forwardRef<
       isMaximizeEnabled,
       isTitleBarSizingEnabled,
       isTitleBarAcquireSpaceEnabled,
+      isCollapseEnabled,
       isMultiSelectGroupingEnabled,
     }),
     [
@@ -4437,6 +4487,7 @@ const TilingRendererComponent = React.forwardRef<
       isMaximizeEnabled,
       isTitleBarSizingEnabled,
       isTitleBarAcquireSpaceEnabled,
+      isCollapseEnabled,
       isMultiSelectGroupingEnabled,
     ],
   );
@@ -4455,6 +4506,7 @@ const TilingRendererComponent = React.forwardRef<
       rearrangeEnabled: isRearrangeEnabled,
       sizingEnabled: isTitleBarSizingEnabled,
       acquireSpaceEnabled: isTitleBarAcquireSpaceEnabled,
+      collapseEnabled: isCollapseEnabled,
       resizeEnabled: isResizeEnabled,
       layoutEnabled: interactionCapabilities.masterLayout,
       groupingEnabled: isGroupingEnabled,
@@ -4466,6 +4518,7 @@ const TilingRendererComponent = React.forwardRef<
       isRearrangeEnabled,
       isTitleBarSizingEnabled,
       isTitleBarAcquireSpaceEnabled,
+      isCollapseEnabled,
       isResizeEnabled,
       interactionCapabilities.masterLayout,
       isGroupingEnabled,
@@ -5834,6 +5887,67 @@ const TilingRendererComponent = React.forwardRef<
     [activeMaximizedLeafId, setMaximizedLeaf],
   );
 
+  // Collapse-to-titlebar (HT-PANE-COLLAPSE). Collapse pins the leaf's height to
+  // the resolved chrome extent (`config.collapsedExtentPx` →
+  // `TILING_DEFAULT_COLLAPSED_EXTENT_PX`) and remembers its prior sizing; expand
+  // restores it. The layout edit flows through `onLayoutChange` (controlled) and,
+  // when the state actually flips, `onPaneCollapsedChange` fires so a host can
+  // react (e.g. retitle the pane). Gated by `paneTitleBarControls.collapse`.
+  const resolvedCollapsedExtentPx: number =
+    config.collapsedExtentPx ?? TILING_DEFAULT_COLLAPSED_EXTENT_PX;
+  const setLeafCollapsedState = React.useCallback(
+    (targetLeafId: string, collapsed: boolean): void => {
+      if (!isCollapseEnabled) {
+        return;
+      }
+      const next: TilingLayoutNode = setLeafCollapsed(
+        layout,
+        targetLeafId,
+        collapsed,
+        resolvedCollapsedExtentPx,
+      );
+      if (next === layout) {
+        return;
+      }
+      onLayoutChange(next);
+      onPaneCollapsedChange?.({ leafId: targetLeafId, collapsed });
+    },
+    [
+      isCollapseEnabled,
+      layout,
+      onLayoutChange,
+      onPaneCollapsedChange,
+      resolvedCollapsedExtentPx,
+    ],
+  );
+  const toggleCollapseLeaf = React.useCallback(
+    (targetLeafId: string): void => {
+      if (!isCollapseEnabled) {
+        return;
+      }
+      const next: TilingLayoutNode = toggleLeafCollapsed(
+        layout,
+        targetLeafId,
+        resolvedCollapsedExtentPx,
+      );
+      if (next === layout) {
+        return;
+      }
+      onLayoutChange(next);
+      onPaneCollapsedChange?.({
+        leafId: targetLeafId,
+        collapsed: findLeafById(layout, targetLeafId)?.collapsed !== true,
+      });
+    },
+    [
+      isCollapseEnabled,
+      layout,
+      onLayoutChange,
+      onPaneCollapsedChange,
+      resolvedCollapsedExtentPx,
+    ],
+  );
+
   // Focus a pane and, when in maximize render-mode, switch which pane is
   // maximized — this is how tabs + cycle/jump compose with maximize.
   const activateLeaf = React.useCallback(
@@ -6129,6 +6243,22 @@ const TilingRendererComponent = React.forwardRef<
           setLeafSizingFromBbox(id, command.mode);
           return true;
         }
+        case "toggle-collapse": {
+          const id: string | null = command.leafId ?? activeFocusedLeafId;
+          if (id == null || findLeafById(layout, id) == null) {
+            return false;
+          }
+          toggleCollapseLeaf(id);
+          return true;
+        }
+        case "set-collapsed": {
+          const id: string | null = command.leafId ?? activeFocusedLeafId;
+          if (id == null || findLeafById(layout, id) == null) {
+            return false;
+          }
+          setLeafCollapsedState(id, command.collapsed);
+          return true;
+        }
         case "set-split-ratio": {
           onLayoutChange(
             updateSplitRatio(layout, command.splitId, command.ratio),
@@ -6377,6 +6507,8 @@ const TilingRendererComponent = React.forwardRef<
       onLayoutChange,
       setFocusedLeaf,
       setLeafSizingFromBbox,
+      setLeafCollapsedState,
+      toggleCollapseLeaf,
       setMaximizedLeaf,
       toggleMaximizeLeaf,
       leafIds,
@@ -7699,6 +7831,7 @@ const TilingRendererComponent = React.forwardRef<
           resolvePaneBodyRenderMode(
             leafPresentation.isGhostSeatReservation,
             isPaneContentVisible,
+            node.collapsed === true,
           );
         const isDropTargetLeaf: boolean =
           dropState?.leafId === node.id && dropState.action !== "none";
@@ -7739,6 +7872,11 @@ const TilingRendererComponent = React.forwardRef<
           },
           onAcquireSpace: (direction: TilingFocusDirection): void => {
             acquireLeafSpace(node.id, direction);
+          },
+          isCollapsed: node.collapsed === true,
+          isCollapseEnabled,
+          onToggleCollapse: (): void => {
+            toggleCollapseLeaf(node.id);
           },
           dropZone: effectiveDropZone,
           preview: resolveLeafDropPreviewForMode(

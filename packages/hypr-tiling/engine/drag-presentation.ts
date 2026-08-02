@@ -167,9 +167,17 @@ export function resolveDragPresentation(
 export function resolvePaneBodyRenderMode(
   isGhostSeatReservation: boolean,
   isPaneContentVisible: boolean,
+  isCollapsed: boolean = false,
 ): TilingPaneBodyRenderMode {
   if (isGhostSeatReservation) {
     return "render-reservation";
+  }
+  // A collapsed pane (HT-PANE-COLLAPSE) shows only its title bar — the body is
+  // emptied exactly like the content toggle off, so both the built-in tile and
+  // the `TilingPaneBody` primitive hide content through the SAME render-mode
+  // gate (no parallel collapse branch in every custom pane).
+  if (isCollapsed) {
+    return "render-empty";
   }
   return isPaneContentVisible ? "render-content" : "render-empty";
 }

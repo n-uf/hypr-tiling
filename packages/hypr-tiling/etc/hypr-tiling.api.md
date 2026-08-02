@@ -179,6 +179,7 @@ export interface ResolvedTilingPaneSwitchingCapability {
 // @public
 export interface ResolvedTilingPaneTitleBarControlsCapability {
     acquireSpace: boolean;
+    collapse: boolean;
     sizing: boolean;
 }
 
@@ -208,6 +209,9 @@ export const TILING_ACCENT_HUES: Record<TilingTileAccent, TilingAccentHue>;
 
 // @public
 export const TILING_DASHBOARD_PRESET: TilingInteractionCapabilities;
+
+// @public
+export const TILING_DEFAULT_COLLAPSED_EXTENT_PX: number;
 
 // @public
 export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCapabilities;
@@ -295,6 +299,13 @@ export type TilingCommand = {
     leafId?: string;
     mode: TilingTitleBarSizingMode;
 } | {
+    kind: "toggle-collapse";
+    leafId?: string;
+} | {
+    kind: "set-collapsed";
+    leafId?: string;
+    collapsed: boolean;
+} | {
     kind: "set-split-ratio";
     splitId: string;
     ratio: number;
@@ -358,6 +369,7 @@ export type TilingCommand = {
 // @public
 export interface TilingCommandGates {
     acquireSpaceEnabled: boolean;
+    collapseEnabled: boolean;
     focusEnabled: boolean;
     groupingEnabled: boolean;
     layoutEnabled: boolean;
@@ -510,6 +522,7 @@ export interface TilingKeymap {
 
 // @public
 export interface TilingLayoutConfig {
+    collapsedExtentPx?: number;
     gapPx: number;
     handleSizePx: number;
     minPaneSizePx: number;
@@ -557,6 +570,8 @@ export type TilingLeafDropZone = "center" | "left" | "right" | "top" | "bottom";
 
 // @public
 export interface TilingLeafNode {
+    collapsed?: boolean;
+    collapsedRestore?: TilingPaneSizing;
     id: string;
     kind: "leaf";
     sizing?: TilingPaneSizing;
@@ -597,6 +612,12 @@ export interface TilingPaneBodyProps extends React_2.HTMLAttributes<HTMLDivEleme
 
 // @public
 export type TilingPaneBodyRenderMode = "render-content" | "render-empty" | "render-reservation";
+
+// @public
+export interface TilingPaneCollapsedChangeEvent {
+    readonly collapsed: boolean;
+    readonly leafId: string;
+}
 
 // @public
 export type TilingPaneCycleDirection = "next" | "previous";
@@ -644,6 +665,7 @@ export interface TilingPaneTitleBarContentProps extends React_2.HTMLAttributes<H
 // @public
 export interface TilingPaneTitleBarControlsCapability {
     acquireSpace?: boolean;
+    collapse?: boolean;
     sizing?: boolean;
 }
 
@@ -666,6 +688,7 @@ export interface TilingRendererProps {
     onFocusedLeafChange?: (leafId: string) => void;
     onLayoutChange: (layout: TilingLayoutNode) => void;
     onMaximizedLeafChange?: (leafId: string | null) => void;
+    onPaneCollapsedChange?: (event: TilingPaneCollapsedChangeEvent) => void;
     onThemeChange?: (themeId: TilingThemeId) => void;
     onTileAccentChange?: (tileId: string, accent: TilingTileAccent) => void;
     paneIdentity?: TilingPaneIdentityMode;
@@ -698,6 +721,8 @@ export interface TilingRenderTileProps {
     dropZone: TilingLeafDropZone | null;
     readonly group: TilingRenderTileGroupContext | null;
     heightSizingMode: TilingPaneSizingMode;
+    isCollapsed: boolean;
+    isCollapseEnabled: boolean;
     isDragSource: boolean;
     isDropEligible: boolean;
     isDropTarget: boolean;
@@ -722,6 +747,7 @@ export interface TilingRenderTileProps {
     onPointerLeave: (event: React_2.PointerEvent<HTMLElement>) => void;
     onPointerMove: (event: React_2.PointerEvent<HTMLElement>) => void;
     onSetSizingMode: (mode: TilingTitleBarSizingMode) => void;
+    onToggleCollapse: () => void;
     onToggleMaximize: () => void;
     onToggleMultiSelect: () => void;
     paneBodyRenderMode: TilingPaneBodyRenderMode;

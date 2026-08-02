@@ -223,6 +223,125 @@ export function setLeafSizing(
   return normalizeStaticAxisFill(writeLeafSizing(node, leafId, sizing));
 }
 
+/**
+ * Collapse a leaf to titlebar-only (HT-PANE-COLLAPSE): pin its `height` STATIC
+ * to `collapsedExtentPx` (the chrome/header height), snapshot the pre-collapse
+ * `sizing` into `collapsedRestore`, and flag `collapsed`. Any pre-existing WIDTH
+ * sizing is preserved (only the height dimension is overwritten). Idempotent: a
+ * leaf already collapsed is returned unchanged, so re-collapsing never clobbers
+ * the restore snapshot with the collapsed pin.
+ */
+function collapseLeafNode(leaf: TilingLeafNode, collapsedExtentPx: number): TilingLeafNode {
+  if (leaf.collapsed === true) {
+    return leaf;
+  }
+  const collapsedSizing: TilingPaneSizing = {
+    ...leaf.sizing,
+    height: "static",
+    heightPx: collapsedExtentPx,
+  };
+  const next: TilingLeafNode = { ...leaf, sizing: collapsedSizing, collapsed: true };
+  if (leaf.sizing != null) {
+    next.collapsedRestore = leaf.sizing;
+  }
+  return next;
+}
+
+/**
+ * Expand a collapsed leaf: restore the `collapsedRestore` sizing snapshot
+ * verbatim (undefined → the leaf returns to fully flexible) and drop the
+ * `collapsed` / `collapsedRestore` markers. Idempotent: an already-expanded leaf
+ * is returned unchanged.
+ */
+function expandLeafNode(leaf: TilingLeafNode): TilingLeafNode {
+  if (leaf.collapsed !== true) {
+    return leaf;
+  }
+  // Omit the collapse markers via rest-destructure (no `delete` on a typed node).
+  const { collapsed: _collapsed, collapsedRestore, ...rest } = leaf;
+  return { ...rest, sizing: collapsedRestore };
+}
+
+function writeLeafCollapsed(
+  node: TilingLayoutNode,
+  leafId: string,
+  collapsed: boolean,
+  collapsedExtentPx: number,
+): TilingLayoutNode {
+  if (node.kind === "leaf") {
+    if (node.id !== leafId) {
+      return node;
+    }
+    return collapsed ? collapseLeafNode(node, collapsedExtentPx) : expandLeafNode(node);
+  }
+  // A group is a single slot; collapse targets a loose LEAF slot (a group member
+  // is not independently collapsible). Recurse splits only.
+  if (node.kind === "group") {
+    return node;
+  }
+  const nextFirst: TilingLayoutNode = writeLeafCollapsed(
+    node.first,
+    leafId,
+    collapsed,
+    collapsedExtentPx,
+  );
+  const nextSecond: TilingLayoutNode = writeLeafCollapsed(
+    node.second,
+    leafId,
+    collapsed,
+    collapsedExtentPx,
+  );
+  // Preserve the reference on a no-op so callers can `next === node` short-circuit
+  // (and skip spurious `onLayoutChange` / collapse events on an idempotent set).
+  if (nextFirst === node.first && nextSecond === node.second) {
+    return node;
+  }
+  return { ...node, first: nextFirst, second: nextSecond };
+}
+
+/**
+ * Immutably set a single leaf's COLLAPSED (titlebar-only) state
+ * (HT-PANE-COLLAPSE). Collapsing pins the leaf's height to `collapsedExtentPx`
+ * and remembers its prior sizing; expanding restores that prior sizing. The
+ * result is passed through {@link normalizeStaticAxisFill} so a collapse that
+ * creates a both-static-along-axis edge (e.g. two stacked siblings both
+ * collapsed) still satisfies the "one child flexes along the split axis"
+ * invariant — in that degenerate case the second collapsed sibling lands as the
+ * along-axis filler.
+ */
+export function setLeafCollapsed(
+  node: TilingLayoutNode,
+  leafId: string,
+  collapsed: boolean,
+  collapsedExtentPx: number,
+): TilingLayoutNode {
+  return normalizeStaticAxisFill(
+    writeLeafCollapsed(node, leafId, collapsed, collapsedExtentPx),
+  );
+}
+
+/** Whether the leaf `leafId` is currently collapsed to titlebar-only. */
+export function isLeafCollapsed(node: TilingLayoutNode, leafId: string): boolean {
+  return findLeafById(node, leafId)?.collapsed === true;
+}
+
+/**
+ * Toggle a single leaf's collapsed state (HT-PANE-COLLAPSE) — collapse it when
+ * expanded, expand it when collapsed. A missing leaf id is a no-op (returns the
+ * same tree reference).
+ */
+export function toggleLeafCollapsed(
+  node: TilingLayoutNode,
+  leafId: string,
+  collapsedExtentPx: number,
+): TilingLayoutNode {
+  const leaf: TilingLeafNode | null = findLeafById(node, leafId);
+  if (leaf == null) {
+    return node;
+  }
+  return setLeafCollapsed(node, leafId, leaf.collapsed !== true, collapsedExtentPx);
+}
+
 /** Find the leaf with id `leafId` anywhere in the tree (including inside a group), or `null`. */
 export function findLeafById(
   node: TilingLayoutNode,

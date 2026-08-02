@@ -146,6 +146,9 @@ export const INSTANT_DRAG_DURATION_MS: number;
 export function isCssEasing(value: string): boolean;
 
 // @public
+export function isLeafCollapsed(node: TilingLayoutNode, leafId: string): boolean;
+
+// @public
 export function isResizeAxisEnabled(capability: TilingResizeCapability, splitAxis: TilingSplitAxis): boolean;
 
 // @public
@@ -282,6 +285,9 @@ export function resolveMultiSelectGroupHost(selection: ReadonlySet<string>, clic
 
 // @public
 export function resolveSizingMode(sizing: TilingPaneSizing | undefined, dimension: TilingDimension): TilingPaneSizingMode;
+
+// @public
+export function setLeafCollapsed(node: TilingLayoutNode, leafId: string, collapsed: boolean, collapsedExtentPx: number): TilingLayoutNode;
 
 // @public
 export function setLeafSizing(node: TilingLayoutNode, leafId: string, sizing: TilingPaneSizing | undefined): TilingLayoutNode;
@@ -455,6 +461,9 @@ export interface TilingPaneSwitcherState {
     holdModifiers: ResolvedTilingKeyChordModifiers;
     selectedLeafId: string;
 }
+
+// @public
+export function toggleLeafCollapsed(node: TilingLayoutNode, leafId: string, collapsedExtentPx: number): TilingLayoutNode;
 
 // @public
 export function toggleLeafMultiSelection(selection: ReadonlySet<string>, leafId: string): Set<string>;

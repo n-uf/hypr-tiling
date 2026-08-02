@@ -35,6 +35,9 @@ export {
   moveLeafToRoot,
   moveLeafToSplitContainer,
   setLeafSizing,
+  setLeafCollapsed,
+  toggleLeafCollapsed,
+  isLeafCollapsed,
   normalizeStaticAxisFill,
   type GroupLeavesOptions,
 } from "./engine/state";
