@@ -152,7 +152,8 @@ export function resolveDragPresentation(
 /**
  * The ONE pane-body content rule, applied identically to every representation of
  * a pane (in-tree pane at rest, drag source slot, hop-in / new slot, and the
- * portaled drag ghost):
+ * portaled drag ghost — the overlay portal container, default `document.body`,
+ * see `overlayPortalContainer`):
  *
  * - ghost-seat reservation → `render-reservation` (a content-less seat; a drag
  *   mechanic, never carries content regardless of the CONTENT toggle).

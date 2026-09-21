@@ -24,7 +24,14 @@ but a host can now redirect that portal:
   those. The overlays still use window-relative client coordinates; a
   containing-block ancestor reintroduces ghost↔seat drift.
 - Use this when host theme tokens (CSS variables on a scoped root) must
-  inherit into the ghost. Do not add a second scoping mechanism.
+  inherit into the ghost. Do not add a second scoping mechanism. Overlay
+  z-indexes (ghost 220, cursor 230, cancel 219) are relative to the
+  container's stacking context, not the document.
+- The body default exists for two independent reasons: containing-block
+  immunity (`position: fixed` stays window-relative) AND the ghost staying
+  outside the React root's event-delegation scope. Redirecting the DOM
+  mount does not change the delegation invariant — React still walks
+  fibers, and measurement selectors stay root/viewport-scoped.
 
 ## 26.9.0 — themeable drag chrome + stable pane identity
 
@@ -84,8 +91,10 @@ bullet.
   `data-hpt-pane-slot="<tileId>"`, the pane sits in a `display: contents`
   wrapper `[data-hpt-pane]`, and a `[data-hpt-pane-pool]` (`display: none`)
   sits after the viewport inside the root. The drag ghost is still a transient
-  second render of the tile through `renderTile` (a body-level portal outside
-  the React root's delegation scope) — see `_agent/drag-subsystem-audit.md`
+  second render of the tile through `renderTile` (the overlay portal
+  container, default `document.body`, see `overlayPortalContainer` / 26.9.1)
+  so `position: fixed` stays window-relative AND the ghost stays outside the
+  React root's event-delegation scope — see `_agent/drag-subsystem-audit.md`
   §11.
 - **Leaf wrapper drag attributes.** `data-drag-source-pane` (preview-mode
   dimmed source) and `data-drop-target-pane` (resolved drop target) on the leaf
