@@ -1938,6 +1938,19 @@ export type TilingChromeFocusOutline = "suppress" | "native";
 export type TilingPaneIdentityMode = "auto" | "stable" | "slot";
 
 /**
+ * Host node for the renderer's `position: fixed` drag overlays (ghost, custom
+ * cursor, cancel fly-back). An element, `null` (fall back to `document.body`),
+ * or a thunk evaluated every render so a late-mounted container (ref /
+ * callback) is picked up without remounting the renderer.
+ *
+ * @public
+ */
+export type TilingOverlayPortalContainer =
+  | HTMLElement
+  | null
+  | (() => HTMLElement | null);
+
+/**
  * Props for the {@link TilingRenderer} component — the full controlled-component
  * surface. `layout` + `tiles` + `config` + `onLayoutChange` are the four
  * required props; everything else is optional and resolves to a documented
@@ -2109,6 +2122,21 @@ export interface TilingRendererProps {
    * {@link TilingChromeFocusOutline}.
    */
   chromeFocusOutline?: TilingChromeFocusOutline;
+  /**
+   * DOM node that hosts the `position: fixed` drag overlays (ghost, custom
+   * cursor, cancel fly-back). Default `document.body`. Accepts an element,
+   * `null` (fall back to `document.body`), or a thunk evaluated every render
+   * so a late-mounted container (ref / callback) is picked up without
+   * remounting the renderer.
+   *
+   * Containing-block caveat: the container MUST NOT sit under an ancestor
+   * with `transform`, `filter`, `backdrop-filter`, `perspective`,
+   * `contain: paint` (or `layout` / `strict` / `content`), or `will-change`
+   * of those. The overlays place themselves with window-relative client
+   * coordinates; any ancestor that establishes a containing block for
+   * `position: fixed` reintroduces ghost↔seat drift.
+   */
+  overlayPortalContainer?: TilingOverlayPortalContainer;
 }
 
 /**

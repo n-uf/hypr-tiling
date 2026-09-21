@@ -245,6 +245,33 @@ host in (server HTML then carries empty pane slots).
 <TilingRenderer paneIdentity="stable" /* "auto" (default) | "stable" | "slot" */ />
 ```
 
+### Overlay portal container (theme scoping)
+
+Drag overlays (ghost, custom cursor, cancel fly-back) portal to
+`document.body` by default so their `position: fixed` coordinates stay
+window-relative — immune to ancestor `transform` / `filter` /
+`backdrop-filter` / `contain: paint` containing blocks. A host whose theme
+tokens live on a scoped root (CSS variables that the ghost must inherit) can
+redirect the portal:
+
+```tsx
+<TilingRenderer
+  overlayPortalContainer={overlayHost}          // HTMLElement
+  // overlayPortalContainer={() => overlayRef.current}  // thunk, re-read each render
+  /* … */
+/>
+```
+
+The thunk form is evaluated every render so a late-mounted container is
+picked up without remounting the renderer. `null` / omitted falls back to
+`document.body`.
+
+**Containing-block caveat.** The container must not sit under an ancestor
+with `transform`, `filter`, `backdrop-filter`, `perspective`,
+`contain: paint` (or `layout` / `strict` / `content`), or `will-change` of
+those. The overlays still use window-relative client coordinates; a
+containing-block ancestor reintroduces ghost↔seat drift.
+
 ## Features
 
 - **Drag/drop rearrange** — Hyprland-style live drag; the move commits on

@@ -6,6 +6,26 @@ This package uses calendar-aligned versioning (`YY.M.R`), which cannot signal a
 SemVer "major" bump. **Read the per-release notes below for breaking changes** —
 the version number alone does not flag them.
 
+## 26.9.1 — overlay portal container (theme scoping)
+
+Patch release. The drag overlays (ghost, custom cursor, cancel fly-back) still
+default to a `document.body` portal so `position: fixed` stays window-relative,
+but a host can now redirect that portal:
+
+- **`TilingRendererProps.overlayPortalContainer`** — `HTMLElement | null |
+  (() => HTMLElement | null)`. The thunk is evaluated every render so a
+  late-mounted container (ref / callback) is picked up without remounting the
+  renderer. `null` / omitted falls back to `document.body`. Both
+  `DragPaneOverlay` and `DragCursorOverlay` (and the cancel fly-back) use the
+  same resolved container.
+- **Containing-block caveat:** the container must not sit under an ancestor
+  with `transform` / `filter` / `backdrop-filter` / `perspective` /
+  `contain: paint` (or `layout` / `strict` / `content`) / `will-change` of
+  those. The overlays still use window-relative client coordinates; a
+  containing-block ancestor reintroduces ghost↔seat drift.
+- Use this when host theme tokens (CSS variables on a scoped root) must
+  inherit into the ghost. Do not add a second scoping mechanism.
+
 ## 26.9.0 — themeable drag chrome + stable pane identity
 
 Feature release (calendar-aligned `YY.M.R`; `26.9` = September, `.0` = first

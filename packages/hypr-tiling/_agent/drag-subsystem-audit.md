@@ -314,11 +314,12 @@ tree is byte-identical to the commit because both run the same pure reducers.
 | Seat measurement | seat-rect layout effect (renderer 3865–3924) | `querySelector([data-drag-source-reservation])` → `getBoundingClientRect` → `seatFootprint`; off-viewport/degenerate clears it | Works, but DOM-query-by-selector coupling (see §6.4). |
 | Ghost hop FLIP | `DragPaneOverlay` + `ghost-transit.ts` | fixed-position node, FLIP invert→identity, First retarget for interrupt | Solid, well-factored (pure math in `ghost-transit.ts`). |
 | Survivor reflow FLIP | survivor-reflow effect + `survivor-reflow.ts` | per-leaf FLIP on candidate change; interruptible First; off-viewport clamp; coherent dip | Solid, well-factored. |
-| Ghost portal | `OverlayPortal` → `document.body` | fixed coords immune to ancestor containing-block (transform/filter/contain) | Solid — eliminates ghost↔seat drift by construction. |
+| Ghost portal | `OverlayPortal` → `overlayPortalContainer` (default `document.body`) | fixed coords immune to ancestor containing-block (transform/filter/contain) when the host itself has none | Solid — default body portal eliminates ghost↔seat drift; a redirected container must not sit under a containing-block ancestor. |
 
 All five geometry seams are principled and individually well-tested. The drift
 risk that historically plagued the ghost (ancestor `backdrop-filter` creating a
-containing block) is closed structurally by the body portal.
+containing block) is closed structurally by the overlay portal (default
+`document.body`; redirect via `TilingRendererProps.overlayPortalContainer`).
 
 ---
 
@@ -386,7 +387,7 @@ hygiene gap, not a live bug.
 |---|---|---|---|
 | I1 | Live mode: exactly ONE painted instance of the dragged pane (the ghost); its in-tree ghost-seat slot is a content-less reservation | `isGhostSeatReservation` → `render-reservation` overrides any `renderTile`; ghost is the only painted instance. Content-agnostic. | yes (`drag-presentation.test.ts`: exactly one reservation across surfaces, for `CONTENT` on AND off; `live-render-invariant.test.ts`) |
 | I1c | The CONTENT rule is uniform across all surfaces (in-tree, source slot, hop-in slot, ghost) and is the ONLY content delta | single pure `resolvePaneBodyRenderMode`; renderer + ghost shell both call it | yes (`drag-presentation.test.ts` (a)/(b)/(c)) |
-| I3 | Ghost seated rect == target seat rect (no drift) | seat-rect effect measures the reservation rect; body portal removes ancestor-frame drift | NOT directly tested (DOM measurement) |
+| I3 | Ghost seated rect == target seat rect (no drift) | seat-rect effect measures the reservation rect; overlay portal (default body) removes ancestor-frame drift | NOT directly tested (DOM measurement) |
 | I4 | Seated release on a committable target commits there (incl. pointer-over-gap, AND incl. a deliberate multi-frame dwell-then-release) | `committableSeatRef` SSOT (renderer) written each sample via `deriveCommittableSeat`; release path commits it verbatim, never re-resolves | yes (`drag-machine.test.ts` — "committable-seat SSOT + atomic seated-release commit" describe) |
 | I5 | Fast flick with no painted dragging frame → instant commit, no origin→target glide | `shouldSnapSurvivorReflowOnSettleCommit` + same-task release resolve in input layer | yes (`fast-flick-survivor-reflow.test.ts`) |
 | I6 | Candidate tree == committed tree (no release-time jump) | both run `deriveCandidateTree` with identical args | yes (`live-render-invariant.test.ts`) |
@@ -971,11 +972,12 @@ ghost paints the pane via `renderTile(ghostTileArgs)` exactly as before (I1
 holds: one painted instance in the tree — the seat — plus the ghost). On drop
 the new slot registers under the tile id and the SAME node reseats. The ghost
 remains a transient second render of the tile rather than the relocated node
-because it is a `document.body` portal OUTSIDE the React root container's
-event-delegation scope and outside every measurement scope; moving the real
-node there would also make the pane's `[data-leaf-id]` disappear from the
-tree while the seat needs it (`cc23956`). Cost: a host whose content is
-expensive renders it twice during a drag (unchanged from slot mode).
+because it is an overlay portal (default `document.body`; redirect via
+`overlayPortalContainer`) OUTSIDE the React root container's event-delegation
+scope and outside every measurement scope; moving the real node there would
+also make the pane's `[data-leaf-id]` disappear from the tree while the seat
+needs it (`cc23956`). Cost: a host whose content is expensive renders it
+twice during a drag (unchanged from slot mode).
 
 Mode resolution: `"auto"` (default) locks on the FIRST render via
 `useSyncExternalStore(noop, () => true, () => false)` — a hydration render

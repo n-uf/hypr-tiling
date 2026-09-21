@@ -241,6 +241,7 @@ import type {
   TilingRenderSurface,
   TilingRenderTileGroupContext,
   TilingRenderTileProps,
+  TilingOverlayPortalContainer,
   TilingRendererObservabilityProps,
   TilingRendererProps,
   TilingSplitAxis,
@@ -1432,45 +1433,64 @@ export function resolvePaneIdentityMode(
 }
 
 /**
- * Resolves the stacking-context-free anchor (`document.body`) for the
- * `position: fixed` drag overlays. ALL of the drag overlays (ghost, custom
- * cursor, cancel fly-back) place themselves with WINDOW-relative client
- * coordinates derived from `getBoundingClientRect()` (the seat is measured the
- * same way). `position: fixed` only resolves against the window when NO ancestor
+ * Overlay portal host: an element, `null` (body fallback), a thunk, or
+ * `undefined` (unset prop → body). Held in context so `OverlayPortal` (used by
+ * `DragPaneOverlay`, `DragCursorOverlay`, and `DragCancelOverlay`) resolves
+ * the same container without threading the prop through every overlay.
+ */
+const OverlayPortalContainerContext: React.Context<
+  TilingOverlayPortalContainer | undefined
+> = React.createContext<TilingOverlayPortalContainer | undefined>(undefined);
+
+/**
+ * Resolves the stacking-context-free anchor for the `position: fixed` drag
+ * overlays. ALL of the drag overlays (ghost, custom cursor, cancel fly-back)
+ * place themselves with WINDOW-relative client coordinates derived from
+ * `getBoundingClientRect()` (the seat is measured the same way).
+ * `position: fixed` only resolves against the window when NO ancestor
  * establishes a containing block for fixed descendants — and `transform` /
  * `filter` / `backdrop-filter` / `perspective` / `will-change` of those /
- * `contain: paint|layout|strict|content` all silently do. Because this renderer
- * is a published library mounted inside arbitrary host chrome (and the showcase
- * shell + pane shells + tab strip already use `backdrop-blur`), pinning the
- * overlays' fixed coordinates to the document root via a portal makes them
- * immune to ANY ancestor reference frame: a future chrome rework that adds a
- * containing-block property to any ancestor can never reintroduce the
- * ghost↔seat constant-offset drift.
+ * `contain: paint|layout|strict|content` all silently do. Default is
+ * `document.body`. A consumer may redirect via
+ * `TilingRendererProps.overlayPortalContainer` (element or thunk) so host
+ * theme tokens (CSS variables on a scoped root) still inherit — the
+ * redirected container must itself not sit under a containing-block
+ * ancestor, or ghost↔seat drift returns.
  *
- * SSR-safe: the lazy `useState` initializer reads `document.body` only on the
- * client (guarded by `typeof document`), so server render yields `null` and
- * mounts nothing. The overlays only ever render during an active (user-driven,
- * post-hydration) drag, by which point the container is `document.body` on the
- * first render — no extra commit, no pickup-frame flicker.
+ * SSR-safe: `document` is read only on the client, so server render yields
+ * `null` and mounts nothing. The function form is evaluated every render so
+ * a late-mounted container (ref / callback) is picked up without remounting
+ * the renderer. The overlays only ever render during an active (user-driven,
+ * post-hydration) drag.
  */
+function resolveOverlayPortalContainer(
+  spec: TilingOverlayPortalContainer | undefined,
+): HTMLElement | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const resolved: HTMLElement | null | undefined =
+    typeof spec === "function" ? spec() : spec;
+  return resolved ?? document.body;
+}
+
 function useOverlayPortalContainer(): HTMLElement | null {
-  const [container] = React.useState<HTMLElement | null>(
-    (): HTMLElement | null =>
-      typeof document === "undefined" ? null : document.body,
+  const spec: TilingOverlayPortalContainer | undefined = React.useContext(
+    OverlayPortalContainerContext,
   );
-  return container;
+  return resolveOverlayPortalContainer(spec);
 }
 
 /**
- * Renders the fixed-coordinate drag overlays through a portal to
- * `document.body` so their `position: fixed` placement is always window-relative
- * (see `useOverlayPortalContainer`). The portal preserves the React subtree
- * (state, refs, layout effects, context) of the overlay component — only the
- * DOM node is relocated — so the ghost's FLIP refs / `getBoundingClientRect`
- * reads and the reactive `dragVisualState` updates are unchanged; they now just
- * resolve against the document root instead of the (potentially transformed)
- * viewport ancestor. Returns `null` when there is no container (SSR only), at
- * which point the overlays are inactive anyway.
+ * Renders the fixed-coordinate drag overlays through a portal to the
+ * resolved overlay container (default `document.body`; see
+ * `useOverlayPortalContainer`) so their `position: fixed` placement is
+ * window-relative unless a containing-block ancestor is introduced. The
+ * portal preserves the React subtree (state, refs, layout effects, context)
+ * of the overlay component — only the DOM node is relocated — so the
+ * ghost's FLIP refs / `getBoundingClientRect` reads and the reactive
+ * `dragVisualState` updates are unchanged. Returns `null` when there is no
+ * container (SSR only), at which point the overlays are inactive anyway.
  */
 function OverlayPortal({
   children,
@@ -1909,16 +1929,18 @@ function DragPaneOverlay({
   // `data-leaf-id` / measurement invariant: a consumer `renderTile` root carries
   // `data-leaf-id={leafId}`, and here that id is the dragged SOURCE leaf id — the
   // same id the in-tree reservation slot emits. But the ghost renders through the
-  // `document.body` `OverlayPortal` (`position: fixed`), OUTSIDE both `rootRef`
+  // overlay `OverlayPortal` (`position: fixed`), OUTSIDE both `rootRef`
   // (which scopes `measureReservationRect` via `dragSourceReservationSelector`
   // and `measureLeafRect`) and `viewportRef` (which scopes the survivor-reflow
   // `querySelectorAll('[data-leaf-id]')`). Every measurement selector is
-  // root/viewport-scoped, so the body-portal ghost's `data-leaf-id` is never
+  // root/viewport-scoped, so the portaled ghost's `data-leaf-id` is never
   // collected — no duplicate-id collision, no `cc23956`-class seat-measurement
   // regression. Theme context: this component calls `useTilingTheme()` and is
   // rendered from within the renderer's `TilingThemeProvider` subtree; React
   // context propagates through `createPortal`, so the consumer `renderTile`'s own
-  // `useTilingTheme()` resolves the active theme inside the body portal too.
+  // `useTilingTheme()` resolves the active theme inside the portal too. Host
+  // CSS variables inherit only when the portal container sits under the host
+  // theme root (see `overlayPortalContainer`).
   const snapshot: TilingDragPaneSnapshot = dragVisualState.snapshot;
   const ghostTileArgs: TilingRenderTileProps = buildGhostTileArgs(
     snapshot,
@@ -2258,15 +2280,15 @@ function DragCancelOverlay({
     return null;
   }
 
-  // Same body-portal invariant as the pickup ghost (`DragPaneOverlay`): the
-  // overlay renders through the `document.body` `OverlayPortal`
-  // (`position: fixed`), OUTSIDE both `rootRef` (which scopes
-  // `measureReservationRect` / `measureLeafRect`) and `viewportRef` (which
-  // scopes the survivor-reflow `querySelectorAll('[data-leaf-id]')`) — so a
-  // consumer `renderTile` root carrying `data-leaf-id` here is never collected
-  // by a measurement selector (no `cc23956`-class regression). Theme context
-  // propagates through `createPortal`, so the consumer's `useTilingTheme()`
-  // resolves the active theme inside the portal too.
+  // Same overlay-portal invariant as the pickup ghost (`DragPaneOverlay`): the
+  // overlay renders through the `OverlayPortal` (`position: fixed`), OUTSIDE
+  // both `rootRef` (which scopes `measureReservationRect` / `measureLeafRect`)
+  // and `viewportRef` (which scopes the survivor-reflow
+  // `querySelectorAll('[data-leaf-id]')`) — so a consumer `renderTile` root
+  // carrying `data-leaf-id` here is never collected by a measurement selector
+  // (no `cc23956`-class regression). Theme context propagates through
+  // `createPortal`, so the consumer's `useTilingTheme()` resolves the active
+  // theme inside the portal too.
   const cancelTileArgs: TilingRenderTileProps = buildGhostTileArgs(
     cancelVisualState.snapshot,
     cancelVisualState.sourceLeafId,
@@ -4229,6 +4251,7 @@ const TilingRendererComponent = React.forwardRef<
     paneHitZoneSourceLeafId = null,
     onDropIntentChange,
     onLiveHitLogChange,
+    overlayPortalContainer,
   }: TilingRendererProps & TilingRendererObservabilityProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
 ): React.ReactElement {
@@ -8694,6 +8717,7 @@ const TilingRendererComponent = React.forwardRef<
   stablePanePoolOrderRef.current = stablePanePoolOrder;
 
   return (
+    <OverlayPortalContainerContext.Provider value={overlayPortalContainer}>
     <TilingThemeProvider theme={theme}>
       <div
         ref={rootRef}
@@ -8845,6 +8869,7 @@ const TilingRendererComponent = React.forwardRef<
         ) : null}
       </div>
     </TilingThemeProvider>
+    </OverlayPortalContainerContext.Provider>
   );
 });
 

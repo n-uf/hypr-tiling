@@ -262,3 +262,19 @@ export const SQUARE_THEME: TilingTheme = {
 The renderer applies `sourcePane` to the WHOLE leaf wrapper (title + content,
 one opacity) for the default tile and a custom `renderTile` alike — a custom
 pane must NOT add its own `isDragSource` fade (it would double-dim).
+
+## Overlay portal container (theme scoping)
+
+The drag overlays (ghost, custom cursor, cancel fly-back) portal out of the
+`.hpt-root` tree so `position: fixed` stays window-relative. Default host is
+`document.body`. A consumer whose theme tokens (or host CSS variables) live
+on a scoped ancestor can redirect the portal with
+`TilingRendererProps.overlayPortalContainer` (`HTMLElement | null |
+(() => HTMLElement | null)`). The thunk is evaluated every render so a
+late-mounted container is picked up.
+
+The container must not sit under an ancestor with `transform` / `filter` /
+`backdrop-filter` / `perspective` / `contain: paint` (or `layout` / `strict`
+/ `content`) / `will-change` of those — those properties create a containing
+block for `position: fixed` and reintroduce ghost↔seat drift. There is no
+second scoping mechanism (no overlay attribute bag): one container, or body.

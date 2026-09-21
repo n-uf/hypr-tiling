@@ -168,6 +168,7 @@ export type {
   // Renderer props / render-tile contract
   TilingRendererProps,
   TilingChromeFocusOutline,
+  TilingOverlayPortalContainer,
   TilingPaneIdentityMode,
   TilingRenderSurface,
   TilingRenderTileProps,
