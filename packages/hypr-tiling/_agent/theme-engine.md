@@ -40,8 +40,8 @@ TilingTheme
 │   ├── surface                    # pane article: bg/gradient, radius, shadow/rim, backdrop-filter
 │   ├── bodyText                   # pane body scroll region typography + color
 │   ├── subtitleText               # pane subtitle color
-│   ├── invalidDropRing            # invalid drop-target ring (rose error color)
-│   └── dragSourceOpacity          # picked-up source pane opacity
+│   └── invalidDropRing            # invalid drop-target ring (rose error color)
+│   # (the former `dragSourceOpacity` moved to `dragChrome.sourcePane`)
 │   # NOTE: hover-target / resolved-target rings AND the faint dashed
 │   # drop-eligibility hint were ALL removed — during a drag the sole affordance
 │   # is the dragged pane (its ghost + the seat it hops into wear
@@ -59,6 +59,25 @@ TilingTheme
 │   ├── header                     # ghost header bar
 │   ├── bodyText                   # ghost body color
 │   └── subtitleText               # ghost subtitle color
+├── dragChrome?                    Partial<TilingThemeDragChromeTokens>  (OPTIONAL + PARTIAL)
+│   ├── ghostLifted                # ghost WRAPPER while free-following: elevation/scale/opacity/tint delta
+│   ├── ghostSeated                # ghost wrapper once seated in the hop-in slot (+ reduced-motion)
+│   ├── ghostTransition            # wrapper transition lifted ⇄ seated (dropped under reduced motion)
+│   ├── cancelFlyBack              # cancel fly-back wrapper (pane gliding home)
+│   ├── sourceReservation          # the content-less SEAT: full surface (radius/border/bg/shadow)
+│   ├── sourcePane                 # picked-up source pane, WHOLE-pane opacity (leaf wrapper; preview mode)
+│   ├── dropTarget                 # resolved drop-target leaf wrapper highlight (default "")
+│   ├── dropIntentLayer            # default tile's edge/center hint frame: radius + border width
+│   ├── cursorBadge                # pointer-pinned drop-validity badge: shape + base (radius, border, backdrop)
+│   ├── cursorBadgeValid           # badge surface/border/glyph over a committable target
+│   ├── cursorBadgeInvalid         # badge over a blocked target
+│   ├── cursorBadgeNeutral         # badge while free-following (grip)
+│   └── resolveSeatFrame(accent)   # seat frame during hop-in (default = resolveFocusFrame)
+│   # `resolveDragChrome(theme)` fills every omitted token from a PANE-SHELL-
+│   # INHERITING default: seat = paneShell.surface, frame = resolveFocusFrame,
+│   # ghost wrapper = small neutral elevation + opacity-95, dropTarget = "".
+│   # A theme that passes nothing drags with its own resting chrome. The
+│   # neon-terminal built-in carries its lifted-glass look ENTIRELY here.
 ├── divider                        TilingThemeDividerTokens
 │   ├── base                       # structural + focus-visible ring color
 │   ├── visibleInteractive         # visible + resizable handle (resting + hover)
@@ -126,7 +145,13 @@ through the `renderBranch` `useCallback` deps.
 | Surface (former inline class string)            | Now reads                          |
 |---|---|
 | Pane article shell                              | `theme.paneShell.surface` + `resolvePaneAccentSurface` |
-| Pane invalid-drop ring + drag-source opacity    | `theme.paneShell.invalidDropRing` / `dragSourceOpacity` |
+| Pane invalid-drop ring                          | `theme.paneShell.invalidDropRing`  |
+| Drag-source whole-pane dim (leaf wrapper)       | `resolveDragChrome(theme).sourcePane` |
+| Drag ghost WRAPPER (scale / shadow / opacity)   | `resolveDragChrome(theme).ghostLifted` / `ghostSeated` / `ghostTransition` |
+| Seat (`DragSourceSlotReservation`) surface + frame | `resolveDragChrome(theme).sourceReservation` + `resolveSeatFrame(accent)` |
+| Drag-cursor badge shape + tones                 | `resolveDragChrome(theme).cursorBadge*` |
+| Default-tile drop-intent hint frame             | `resolveDragChrome(theme).dropIntentLayer` |
+| Cancel fly-back wrapper shadow                  | `resolveDragChrome(theme).cancelFlyBack` |
 | Pane focus frame (`border-2 ring-2` + glow)     | `theme.resolveFocusFrame(accent)`  |
 | Pane header (resting + focused) + controls      | `theme.paneHeader.{base,focused,controlIdle,controlActive}` |
 | Pane title / subtitle / body text               | `resolveAccentText` / `paneShell.subtitleText` / `paneShell.bodyText` |
@@ -198,3 +223,42 @@ function MyTile() {
   return <article className={theme.paneShell.surface}>…</article>;
 }
 ```
+
+Make the drag state read like the at-rest pane (a square, flat, hairline host
+theme — pass a PARTIAL `dragChrome`; omitted tokens inherit the pane shell):
+
+```tsx
+import { TILING_THEME_REGISTRY, type TilingTheme } from "@n-uf/hypr-tiling";
+
+const BASE: TilingTheme = TILING_THEME_REGISTRY["clean-flat"];
+
+export const SQUARE_THEME: TilingTheme = {
+  ...BASE,
+  id: "square-host",
+  label: "square host",
+  paneShell: {
+    ...BASE.paneShell,
+    surface:
+      "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-none border border-slate-700 bg-slate-900",
+  },
+  dragChrome: {
+    // Ghost wrapper: no scale, a hairline-scale elevation, barely translucent.
+    ghostLifted: "opacity-95 shadow-[0_8px_20px_-12px_rgba(0,0,0,0.5)]",
+    ghostSeated: "opacity-100",
+    // Seat = the resting pane shell, dashed to read as "lands here".
+    sourceReservation:
+      "rounded-none border border-dashed border-slate-600 bg-slate-900/60",
+    sourcePane: "opacity-50",
+    dropIntentLayer: "rounded-none border",
+    cursorBadge: "rounded-none border",
+    cursorBadgeValid: "border-slate-300 bg-slate-800 text-slate-100",
+    cursorBadgeInvalid: "border-rose-400 bg-slate-800 text-rose-200",
+    cursorBadgeNeutral: "border-slate-500 bg-slate-800 text-slate-300",
+    resolveSeatFrame: (): string => "", // frameless seat
+  },
+};
+```
+
+The renderer applies `sourcePane` to the WHOLE leaf wrapper (title + content,
+one opacity) for the default tile and a custom `renderTile` alike — a custom
+pane must NOT add its own `isDragSource` fade (it would double-dim).

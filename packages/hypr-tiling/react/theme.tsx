@@ -97,8 +97,6 @@ export interface TilingThemePaneShellTokens {
   readonly subtitleText: string;
   /** Ring on an invalid drop target. */
   readonly invalidDropRing: string;
-  /** Opacity applied to the drag-source pane while it is picked up. */
-  readonly dragSourceOpacity: string;
 }
 
 /** Pane header chrome — resting + focused + the per-pane control buttons. */
@@ -137,6 +135,86 @@ export interface TilingThemeGhostTokens {
   readonly bodyText: string;
   /** Ghost subtitle text color. */
   readonly subtitleText: string;
+}
+
+/**
+ * Drag-state chrome — how the rearrange drag LOOKS around the pane shell: the
+ * ghost wrapper's elevation delta, the content-less seat the ghost hops into,
+ * the picked-up source pane's dimming, the drop-target highlight, and the
+ * pointer-pinned drag-cursor badge. Every renderer-painted drag surface reads
+ * these tokens (never an inline class string), so a host can make the drag
+ * state read exactly like its at-rest pane — square, flat, hairline — without
+ * CSS overrides against `[data-drag-ghost]` / `[data-drag-source-reservation]`.
+ *
+ * `TilingTheme.dragChrome` is OPTIONAL and PARTIAL: `resolveDragChrome(theme)`
+ * fills every omitted token from a pane-shell-inheriting default derived from
+ * the theme itself (the seat wears `paneShell.surface`, the seat frame reuses
+ * `resolveFocusFrame`, the ghost carries a small neutral elevation/opacity
+ * delta). A theme that passes nothing therefore drags with its own resting
+ * chrome; the built-in neon-terminal look is expressed purely through this slot.
+ */
+export interface TilingThemeDragChromeTokens {
+  /**
+   * Ghost WRAPPER while the ghost free-follows the pointer (lifted): the
+   * elevation / scale / opacity / tint delta layered OUTSIDE the pane shell
+   * (`theme.ghost.surface` for the default tile, the host's own chrome for a
+   * custom `renderTile`). Keep it a small delta from the at-rest pane.
+   */
+  readonly ghostLifted: string;
+  /**
+   * Ghost wrapper while the ghost is SEATED in the hop-in slot (and under
+   * `prefers-reduced-motion`, where the lifted look is dropped).
+   */
+  readonly ghostSeated: string;
+  /**
+   * Ghost wrapper transition between the lifted and seated looks. Omitted
+   * entirely under `prefers-reduced-motion`.
+   */
+  readonly ghostTransition: string;
+  /** Cancel fly-back wrapper (the pane gliding back to its origin). */
+  readonly cancelFlyBack: string;
+  /**
+   * The content-less SEAT the single ghost hops into (`DragSourceSlotReservation`):
+   * the FULL surface class set — background, border, radius, shadow. Fully
+   * covered once the ghost seats, visible only during the hop-in flight. The
+   * default inherits `paneShell.surface` so the seat reads as the at-rest pane.
+   */
+  readonly sourceReservation: string;
+  /**
+   * The picked-up SOURCE pane as a whole (applied by the renderer to the leaf
+   * wrapper, so it dims a custom `renderTile` and the default tile alike): a
+   * single opacity, never a per-part (title-only) dim. Preview drag mode only —
+   * in live mode the source slot is the reservation.
+   */
+  readonly sourcePane: string;
+  /**
+   * The resolved DROP-TARGET leaf wrapper. Default `""`: per the
+   * focus-follows-dragged-pane rule the destination is conveyed by the ghost
+   * hop-in, so no other pane is highlighted. A host may opt into a highlight.
+   */
+  readonly dropTarget: string;
+  /**
+   * The default tile's drop-intent overlay FRAME (edge/center zone hints): its
+   * radius + border width. Colors come from the observability layer.
+   */
+  readonly dropIntentLayer: string;
+  /**
+   * Drag-cursor badge (the pointer-pinned drop-validity affordance — insert /
+   * swap / invalid / grab glyph) shape + base: radius, border width, backdrop.
+   */
+  readonly cursorBadge: string;
+  /** Cursor badge surface / border / glyph color over a committable target. */
+  readonly cursorBadgeValid: string;
+  /** Cursor badge surface / border / glyph color over a blocked target. */
+  readonly cursorBadgeInvalid: string;
+  /** Cursor badge surface / border / glyph color while free-following (grip). */
+  readonly cursorBadgeNeutral: string;
+  /**
+   * The frame the seat wears during the hop-in flight, composed from the
+   * DRAGGED pane's accent (focus follows the dragged pane). Default: the
+   * theme's `resolveFocusFrame`. Return `""` for a frameless seat.
+   */
+  readonly resolveSeatFrame: (accent: TilingTileAccent | undefined) => string;
 }
 
 /** Split-divider / gap handle chrome across visible + hidden states. */
@@ -200,6 +278,12 @@ export interface TilingTheme {
   readonly paneHeader: TilingThemePaneHeaderTokens;
   /** Drag-ghost shell tokens. */
   readonly ghost: TilingThemeGhostTokens;
+  /**
+   * Drag-state chrome tokens (ghost wrapper delta, seat, source dim, drop
+   * target, cursor badge). Optional + partial — omitted tokens resolve through
+   * `resolveDragChrome(theme)` to a pane-shell-inheriting default.
+   */
+  readonly dragChrome?: Partial<TilingThemeDragChromeTokens>;
   /** Split-divider / gap handle tokens. */
   readonly divider: TilingThemeDividerTokens;
   /** Top-bar / tab-strip chrome tokens. */
@@ -455,7 +539,6 @@ const NEON_TERMINAL_THEME: TilingTheme = {
       "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-1.5 font-mono text-[11px] leading-5 text-slate-200",
     subtitleText: "text-slate-400",
     invalidDropRing: "ring-2 ring-rose-300/60",
-    dragSourceOpacity: "opacity-70",
   },
   paneHeader: {
     base: "flex min-h-[42px] shrink-0 items-center justify-between border-b border-white/[0.07] bg-white/[0.04] px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
@@ -477,6 +560,29 @@ const NEON_TERMINAL_THEME: TilingTheme = {
       "flex shrink-0 items-center justify-between border-b border-white/[0.07] bg-white/[0.05] px-3 py-2",
     bodyText: "text-slate-300",
     subtitleText: "text-slate-500",
+  },
+  // The neon-terminal drag look — lifted glass ghost with a deep slate drop
+  // shadow, a `rounded-xl` seat, cyan/rose/slate cursor badge — is expressed
+  // ENTIRELY through this slot (the renderer paints no drag chrome of its own),
+  // so the showcase is pixel-identical to the pre-`dragChrome` renderer.
+  dragChrome: {
+    ghostLifted:
+      "scale-[1.01] opacity-90 shadow-[0_30px_60px_rgba(2,6,23,0.72)]",
+    ghostSeated:
+      "scale-[1.01] opacity-95 shadow-[0_22px_44px_rgba(2,6,23,0.62)]",
+    ghostTransition: "transition-[opacity,box-shadow] duration-150",
+    cancelFlyBack: "shadow-[0_18px_34px_rgba(2,6,23,0.5)]",
+    sourceReservation: "rounded-xl",
+    sourcePane: "opacity-70",
+    dropTarget: "",
+    dropIntentLayer: "rounded-lg border",
+    cursorBadge: "rounded-full border backdrop-blur-[1px]",
+    cursorBadgeValid:
+      "border-cyan-300/80 bg-cyan-500/20 text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.55)]",
+    cursorBadgeInvalid:
+      "border-rose-400/80 bg-rose-500/20 text-rose-100 shadow-[0_0_14px_rgba(244,63,94,0.5)]",
+    cursorBadgeNeutral:
+      "border-slate-300/70 bg-slate-900/70 text-slate-100 shadow-[0_4px_12px_rgba(2,6,23,0.55)]",
   },
   divider: {
     base: "box-border shrink-0 rounded bg-clip-content outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60",
@@ -546,7 +652,6 @@ const CLEAN_FLAT_THEME: TilingTheme = {
       "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-1.5 font-mono text-[11px] leading-5 text-slate-300",
     subtitleText: "text-slate-500",
     invalidDropRing: "ring-2 ring-rose-400/60",
-    dragSourceOpacity: "opacity-60",
   },
   paneHeader: {
     base: "flex min-h-[42px] shrink-0 items-center justify-between border-b border-slate-700/50 bg-slate-800/30 px-3 py-1.5",
@@ -631,7 +736,6 @@ const MOSAIC_THEME: TilingTheme = {
       "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 text-[13px] leading-6 text-stone-300",
     subtitleText: "text-stone-500",
     invalidDropRing: "ring-2 ring-rose-300/55",
-    dragSourceOpacity: "opacity-60",
   },
   paneHeader: {
     base: "flex min-h-[40px] shrink-0 items-center justify-between border-b border-white/[0.06] bg-white/[0.015] px-3.5 py-2",
@@ -715,6 +819,50 @@ export function resolveTilingTheme(
   themeId: TilingThemeId | undefined,
 ): TilingTheme {
   return TILING_THEME_REGISTRY[themeId ?? DEFAULT_TILING_THEME_ID];
+}
+
+/**
+ * Resolve a theme's drag-state chrome: every `theme.dragChrome` token a theme
+ * omits is filled from the PANE-SHELL-INHERITING default. The default drags
+ * with the theme's own resting chrome — the seat wears `paneShell.surface`
+ * (same radius / border / background / shadow as the at-rest pane), the seat
+ * frame reuses `resolveFocusFrame`, the ghost wrapper carries only a small
+ * neutral elevation + opacity delta, and no drop-target highlight is painted
+ * (focus follows the dragged pane). A theme that passes no `dragChrome` at all
+ * therefore never shows a look it did not author. Pure + referentially cheap
+ * (no memo needed; callers may still `useMemo` on `theme`).
+ */
+export function resolveDragChrome(
+  theme: TilingTheme,
+): TilingThemeDragChromeTokens {
+  const overrides: Partial<TilingThemeDragChromeTokens> =
+    theme.dragChrome ?? {};
+  return {
+    ghostLifted:
+      overrides.ghostLifted ??
+      "opacity-95 shadow-[0_14px_32px_-14px_rgba(0,0,0,0.5)]",
+    ghostSeated: overrides.ghostSeated ?? "opacity-100",
+    ghostTransition:
+      overrides.ghostTransition ??
+      "transition-[opacity,box-shadow] duration-150",
+    cancelFlyBack: overrides.cancelFlyBack ?? "",
+    sourceReservation: overrides.sourceReservation ?? theme.paneShell.surface,
+    sourcePane: overrides.sourcePane ?? "opacity-60",
+    dropTarget: overrides.dropTarget ?? "",
+    dropIntentLayer: overrides.dropIntentLayer ?? "rounded-lg border",
+    cursorBadge:
+      overrides.cursorBadge ?? "rounded-full border backdrop-blur-[1px]",
+    cursorBadgeValid:
+      overrides.cursorBadgeValid ??
+      "border-cyan-300/80 bg-cyan-500/20 text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.55)]",
+    cursorBadgeInvalid:
+      overrides.cursorBadgeInvalid ??
+      "border-rose-400/80 bg-rose-500/20 text-rose-100 shadow-[0_0_14px_rgba(244,63,94,0.5)]",
+    cursorBadgeNeutral:
+      overrides.cursorBadgeNeutral ??
+      "border-slate-300/70 bg-slate-900/70 text-slate-100 shadow-[0_4px_12px_rgba(2,6,23,0.55)]",
+    resolveSeatFrame: overrides.resolveSeatFrame ?? theme.resolveFocusFrame,
+  };
 }
 
 const TilingThemeContext: React.Context<TilingTheme> =

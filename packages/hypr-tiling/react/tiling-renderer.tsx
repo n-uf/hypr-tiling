@@ -232,6 +232,7 @@ import type {
   TilingObservabilityColorConfig,
   TilingObservabilityColorEnableConfig,
   TilingPaneBodyRenderMode,
+  TilingPaneIdentityMode,
   TilingPaneFootprint,
   TilingPaneHitZoneCandidateDebugState,
   TilingPaneHitZoneOverlayDebugState,
@@ -258,10 +259,12 @@ import {
   TILING_THEMES,
   TILING_TILE_ACCENT_SWATCHES,
   TilingThemeProvider,
+  resolveDragChrome,
   resolvePaneDropAffordanceClasses,
   resolveTilingTheme,
   useTilingTheme,
   type TilingTheme,
+  type TilingThemeDragChromeTokens,
   type TilingThemeId,
 } from "./theme";
 import { TilingPaneTitleBarContent } from "./tiling-pane-primitives";
@@ -323,10 +326,20 @@ export const TILING_OBSERVABILITY_COLOR_DEFAULTS: TilingObservabilityColorConfig
     hitZoneBlockedColorHex: "#fb7185",
   };
 
+/**
+ * Observability color-layer enables. The two LIVE-drag layers (source border
+ * + seat tint, drop-target border / fill / inset shadow) default OFF: they are
+ * inline-style debug overlays that would otherwise paint over the theme's
+ * `dragChrome` on every consumer drag (a pink seat tint and a cyan target ring
+ * no host theme authored). Toggle them on from the observability panel (or pass
+ * `observabilityColorEnables`) when diagnosing drop resolution. The
+ * PREVIEW-mode projected-landing layers stay on — they only render when
+ * `showDropPreviewOverlays` is set and live drag mode is off.
+ */
 export const TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS: TilingObservabilityColorEnableConfig =
   {
-    dragSourceBorderEnabled: true,
-    dragTargetBorderEnabled: true,
+    dragSourceBorderEnabled: false,
+    dragTargetBorderEnabled: false,
     projectedSourceBorderEnabled: true,
     projectedTargetBorderEnabled: true,
     projectedSourceFillEnabled: true,
@@ -1169,21 +1182,23 @@ export function DragSourceSlotReservation({
   observabilityColors: TilingObservabilityColorConfig;
   observabilityColorEnables: TilingObservabilityColorEnableConfig;
 }): React.ReactElement | null {
-  // The seat the single ghost hops into is the dragged pane's landing slot, so
-  // it wears the SAME focus frame the ghost carries (accent = the DRAGGED pane's
-  // accent). Focus thus reads as already living at the destination during the
-  // brief hop-in flight, before the ghost fully covers the seat.
-  const seatFocusFrame: string = theme.resolveFocusFrame(accent);
+  // The seat's surface (radius / border / background / shadow) and the frame it
+  // wears both come from the theme's drag chrome: by default the seat is the
+  // pane shell itself (`paneShell.surface`), so it reads as the at-rest pane,
+  // and the frame is the theme focus frame composed from the DRAGGED pane's
+  // accent (focus follows the dragged pane) — focus thus reads as already
+  // living at the destination during the brief hop-in flight, before the ghost
+  // fully covers the seat. NO renderer-owned radius / ring / shadow here.
+  const dragChrome: TilingThemeDragChromeTokens = resolveDragChrome(theme);
+  const seatFrame: string = dragChrome.resolveSeatFrame(accent);
+  const seatClassName: string = cn(
+    "h-full min-h-0 w-full min-w-0 overflow-hidden",
+    dragChrome.sourceReservation,
+    seatFrame,
+  );
   if (!observabilityColorEnables.dragSourceBorderEnabled) {
     return (
-      <div
-        className={cn(
-          "h-full min-h-0 w-full min-w-0 overflow-hidden rounded-xl",
-          seatFocusFrame,
-        )}
-        data-drag-source-reservation
-        aria-hidden
-      />
+      <div className={seatClassName} data-drag-source-reservation aria-hidden />
     );
   }
   const slotFillColor: string = rgbaFromHex(
@@ -1193,15 +1208,227 @@ export function DragSourceSlotReservation({
   );
   return (
     <div
-      className={cn(
-        "h-full min-h-0 w-full min-w-0 overflow-hidden rounded-xl",
-        seatFocusFrame,
-      )}
+      className={seatClassName}
       style={{ backgroundColor: slotFillColor }}
       data-drag-source-reservation
       aria-hidden
     />
   );
+}
+
+// ── Stable pane identity (`paneIdentity: "stable"`) ────────────────────────
+//
+// The split tree is rendered RECURSIVELY and reconciled POSITIONALLY: a leaf
+// has no key of its own, so React binds a pane's instance to its tree
+// position, not to its tile. Any edit that moves a leaf to another branch (an
+// insert drop, a group fold, a master-stack reorder) unmounts the pane and
+// mounts a fresh one; a swap keeps both instances but hands each the OTHER
+// tile's props. Either way the host's content re-initializes after a drop.
+//
+// Stable mode decouples instance from position with a POOL + RELOCATION seam:
+// every pane is rendered exactly once, keyed by TILE id, inside a hidden pool
+// that sits OUTSIDE the tree; each leaf slot in the tree renders an empty
+// registered target; and a layout effect physically moves the pane's DOM node
+// (`appendChild`) into whichever slot currently shows its tile. React never
+// re-parents anything — the fiber stays under the pool, so hooks / state / refs
+// / subscriptions / scroll positions are the same objects through drag → drop →
+// settle. React only ever sees its own pool children being APPENDED (new tiles
+// go to the end of the pool order) or REMOVED (the host returns its node to the
+// pool in its layout cleanup, before React's `removeChild`), so the reconciler's
+// DOM ops never target a node that has been moved away.
+//
+// Event delegation is fiber-based (React walks `return` pointers, not the DOM),
+// so handlers on a relocated pane fire normally; the pool lives INSIDE the root
+// element so root-level `onPointerEnter/Leave` (which React computes across the
+// fiber tree) still see relocated panes as descendants. DOM-scoped concerns —
+// `[data-leaf-id]` measurement, survivor-reflow FLIP, `pointer-events` /
+// `select-none` inheritance, CSS — all follow the node's DOM position (inside
+// the slot), which is exactly where a slot-mode pane would be.
+//
+// Live drag: the picked-up pane's slot renders the content-less seat and does
+// NOT register a target, so the pane PARKS in the (display:none) pool — still
+// mounted — while the single ghost paints the dragged pane; on drop the new
+// slot registers and the same node reseats. The ghost itself still paints
+// through `renderTile(ghostTileArgs)` (a transient second render of the same
+// tile, unchanged from slot mode) because the ghost is a body-level portal
+// outside the React root's event-delegation scope.
+
+/** The relocation registry a stable-mode leaf slot writes to and a pane host reads. */
+type StablePaneSlotRegistry = Map<string, HTMLElement>;
+
+/** One tile's pane render inputs, collected during the tree render pass. */
+interface StablePaneEntry {
+  readonly tileId: string;
+  readonly tileArgs: TilingRenderTileProps;
+  readonly defaultTileArgs: TilingDefaultTileProps;
+}
+
+const NOOP_SUBSCRIBE = (): (() => void) => (): void => {};
+const GET_CLIENT_SNAPSHOT = (): boolean => true;
+const GET_SERVER_SNAPSHOT = (): boolean => false;
+
+/**
+ * `true` on a client-only render, `false` on the server AND during the
+ * hydration render of server markup (React uses the server snapshot there).
+ * The renderer locks its `"auto"` pane-identity mode on the FIRST value.
+ */
+function useIsClientOnlyRender(): boolean {
+  return React.useSyncExternalStore(
+    NOOP_SUBSCRIBE,
+    GET_CLIENT_SNAPSHOT,
+    GET_SERVER_SNAPSHOT,
+  );
+}
+
+/**
+ * One pooled pane. Owns a `display: contents` wrapper (no box of its own — the
+ * pane article lays out as if it were the slot's direct child) and relocates it
+ * into its registered slot after every commit; with no registered slot the
+ * wrapper returns to the pool (parked). Children mount only once the wrapper
+ * has been placed in a REAL slot, so a host's first layout-effect measurement
+ * never sees the display:none pool.
+ */
+function StablePaneHost({
+  tileId,
+  slotRegistry,
+  poolRef,
+  children,
+}: {
+  tileId: string;
+  slotRegistry: React.RefObject<StablePaneSlotRegistry>;
+  poolRef: React.RefObject<HTMLDivElement | null>;
+  children: React.ReactNode;
+}): React.ReactElement {
+  const wrapperRef = React.useRef<HTMLDivElement | null>(null);
+  const [placed, setPlaced] = React.useState<boolean>(false);
+
+  // Every commit: seat the wrapper in its slot (or park it). Runs AFTER the
+  // slots' callback refs registered (the pool is a later sibling of the
+  // viewport, and React runs layout work in tree order).
+  React.useLayoutEffect((): void => {
+    const wrapper: HTMLDivElement | null = wrapperRef.current;
+    const pool: HTMLDivElement | null = poolRef.current;
+    if (wrapper == null) {
+      return;
+    }
+    const slot: HTMLElement | undefined = slotRegistry.current.get(tileId);
+    const target: HTMLElement | null = slot ?? pool;
+    if (target != null && wrapper.parentNode !== target) {
+      target.insertBefore(wrapper, target.firstChild);
+    }
+    if (!placed && slot != null) {
+      setPlaced(true);
+    }
+  });
+
+  // Unmount: return the node to the pool FIRST so React's own `removeChild`
+  // (which targets the pool, the fiber's host parent) finds it there.
+  React.useLayoutEffect((): (() => void) => {
+    const wrapper: HTMLDivElement | null = wrapperRef.current;
+    return (): void => {
+      const pool: HTMLDivElement | null = poolRef.current;
+      if (wrapper != null && pool != null && wrapper.parentNode !== pool) {
+        pool.appendChild(wrapper);
+      }
+    };
+  }, [poolRef]);
+
+  return (
+    <div
+      ref={wrapperRef}
+      style={{ display: "contents" }}
+      data-hpt-pane={tileId}
+    >
+      {placed ? children : null}
+    </div>
+  );
+}
+
+/**
+ * The hidden, tile-keyed pane pool (stable mode). Children are ordered by
+ * FIRST APPEARANCE and only ever appended / removed — never reordered — so
+ * React's reconciler never issues an `insertBefore` against a sibling node that
+ * has been relocated out of the pool.
+ */
+function StablePanePool({
+  entries,
+  order,
+  poolRef,
+  slotRegistry,
+  renderTile,
+}: {
+  entries: ReadonlyMap<string, StablePaneEntry>;
+  order: ReadonlyArray<string>;
+  poolRef: React.RefObject<HTMLDivElement | null>;
+  slotRegistry: React.RefObject<StablePaneSlotRegistry>;
+  renderTile: ((args: TilingRenderTileProps) => React.ReactNode) | undefined;
+}): React.ReactElement {
+  return (
+    <div
+      ref={poolRef}
+      style={{ display: "none" }}
+      data-hpt-pane-pool
+      aria-hidden
+    >
+      {order.map((tileId: string): React.ReactElement | null => {
+        const entry: StablePaneEntry | undefined = entries.get(tileId);
+        if (entry == null) {
+          return null;
+        }
+        return (
+          <StablePaneHost
+            key={tileId}
+            tileId={tileId}
+            slotRegistry={slotRegistry}
+            poolRef={poolRef}
+          >
+            {renderTile == null ? (
+              <DefaultTilingTile {...entry.defaultTileArgs} />
+            ) : (
+              renderTile(entry.tileArgs)
+            )}
+          </StablePaneHost>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Append-only pool order: keep the previous order minus departed tiles, then
+ * append tiles seen for the first time. Pure; the renderer threads the previous
+ * order through a ref.
+ */
+export function resolveStablePanePoolOrder(
+  previousOrder: ReadonlyArray<string>,
+  presentTileIds: ReadonlySet<string>,
+): ReadonlyArray<string> {
+  const order: string[] = previousOrder.filter((tileId: string): boolean =>
+    presentTileIds.has(tileId),
+  );
+  const seen: Set<string> = new Set<string>(order);
+  for (const tileId of presentTileIds) {
+    if (!seen.has(tileId)) {
+      seen.add(tileId);
+      order.push(tileId);
+    }
+  }
+  return order;
+}
+
+/**
+ * Resolves a pane's DOM host element for the stable-mode relocation seam.
+ * `"auto"` locks on the FIRST render: `"stable"` for a client-only mount,
+ * `"slot"` when hydrating server markup (see {@link TilingPaneIdentityMode}).
+ */
+export function resolvePaneIdentityMode(
+  requested: TilingPaneIdentityMode,
+  isClientOnlyRender: boolean,
+): "stable" | "slot" {
+  if (requested === "auto") {
+    return isClientOnlyRender ? "stable" : "slot";
+  }
+  return requested;
 }
 
 /**
@@ -1671,6 +1898,7 @@ function DragPaneOverlay({
   // drop-shadow + slightly lower opacity than the seated/at-rest look. Dropped
   // under reduced motion (no transition, settled look).
   const lifted: boolean = !seated && !prefersReducedMotion;
+  const dragChrome: TilingThemeDragChromeTokens = resolveDragChrome(theme);
 
   // Consumer-first ghost body: when a custom `renderTile` is supplied, the
   // floating ghost paints the dragged pane THROUGH it (`buildGhostTileArgs`) so a
@@ -1717,15 +1945,17 @@ function DragPaneOverlay({
         aria-hidden
       >
         <div
+          // The ghost WRAPPER's elevation / scale / opacity delta is theme drag
+          // chrome (`dragChrome.ghostLifted` while free-following,
+          // `ghostSeated` once seated in the hop-in slot); the pane shell
+          // inside is `theme.ghost.surface` (default tile) or the host's own
+          // chrome (custom `renderTile`). No renderer-owned scale / shadow.
           className={cn(
-            "h-full w-full scale-[1.01]",
-            lifted
-              ? "opacity-90 shadow-[0_30px_60px_rgba(2,6,23,0.72)]"
-              : "opacity-95 shadow-[0_22px_44px_rgba(2,6,23,0.62)]",
-            prefersReducedMotion
-              ? ""
-              : "transition-[opacity,box-shadow] duration-150",
+            "h-full w-full",
+            lifted ? dragChrome.ghostLifted : dragChrome.ghostSeated,
+            prefersReducedMotion ? "" : dragChrome.ghostTransition,
           )}
+          data-drag-ghost-wrapper
         >
           {renderTile == null
             ? renderDragPaneShell(snapshot, theme, isPaneContentVisible)
@@ -1767,15 +1997,22 @@ export function usePrefersReducedMotion(): boolean {
   return prefersReducedMotion;
 }
 
-/** Tailwind tone classes for the cursor badge, keyed on drop validity. */
-function dragCursorToneClassName(tone: DragCursorPresentation["tone"]): string {
+/**
+ * Cursor-badge tone classes (surface / border / glyph color), keyed on drop
+ * validity and read from the theme's drag chrome — the badge shape + base
+ * (`dragChrome.cursorBadge`) is composed by the caller.
+ */
+export function dragCursorToneClassName(
+  dragChrome: TilingThemeDragChromeTokens,
+  tone: DragCursorPresentation["tone"],
+): string {
   if (tone === "valid") {
-    return "border-cyan-300/80 bg-cyan-500/20 text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.55)]";
+    return dragChrome.cursorBadgeValid;
   }
   if (tone === "invalid") {
-    return "border-rose-400/80 bg-rose-500/20 text-rose-100 shadow-[0_0_14px_rgba(244,63,94,0.5)]";
+    return dragChrome.cursorBadgeInvalid;
   }
-  return "border-slate-300/70 bg-slate-900/70 text-slate-100 shadow-[0_4px_12px_rgba(2,6,23,0.55)]";
+  return dragChrome.cursorBadgeNeutral;
 }
 
 /**
@@ -1888,6 +2125,8 @@ function DragCursorOverlay({
   hopEasing: string;
   prefersReducedMotion: boolean;
 }): React.ReactElement | null {
+  const theme: TilingTheme = useTilingTheme();
+  const dragChrome: TilingThemeDragChromeTokens = resolveDragChrome(theme);
   const [entered, setEntered] = React.useState<boolean>(false);
 
   // The pickup scale/opacity entrance plays ONCE when the cursor appears. It is
@@ -1953,8 +2192,9 @@ function DragCursorOverlay({
       >
         <div
           className={cn(
-            "flex items-center justify-center rounded-full border backdrop-blur-[1px]",
-            dragCursorToneClassName(presentation.tone),
+            "flex items-center justify-center",
+            dragChrome.cursorBadge,
+            dragCursorToneClassName(dragChrome, presentation.tone),
           )}
           style={{
             width: DRAG_CURSOR_BADGE_SIZE_PX,
@@ -2062,7 +2302,9 @@ function DragCancelOverlay({
         }}
         aria-hidden
       >
-        <div className="h-full w-full shadow-[0_18px_34px_rgba(2,6,23,0.5)]">
+        <div
+          className={cn("h-full w-full", resolveDragChrome(theme).cancelFlyBack)}
+        >
           {renderTile == null
             ? renderDragPaneShell(
                 cancelVisualState.snapshot,
@@ -2440,6 +2682,7 @@ function DefaultTilingTile({
   onPointerLeave,
 }: TilingDefaultTileProps): React.ReactElement {
   const theme: TilingTheme = useTilingTheme();
+  const dragChrome: TilingThemeDragChromeTokens = resolveDragChrome(theme);
   const isNarrowHeader: boolean = paneWidthPx < 430;
   // A selected pane offers the Group control once the selection is groupable
   // (≥2 selected AND `group-leaves` would change the layout).
@@ -2517,7 +2760,9 @@ function DefaultTilingTile({
           isDropTarget,
           isInvalidDrop,
         }),
-        isDragSource ? theme.paneShell.dragSourceOpacity : "",
+        // Source-pane dimming is NOT applied here: the renderer dims the whole
+        // leaf wrapper (`dragChrome.sourcePane`) so a custom `renderTile` and
+        // this default tile dim identically — one opacity over the entire pane.
         isDragSource && observabilityColorEnables.dragSourceBorderEnabled
           ? "border"
           : "",
@@ -2546,7 +2791,8 @@ function DefaultTilingTile({
         <div className="pointer-events-none absolute inset-0 z-10 p-1">
           <div
             className={cn(
-              "relative h-full w-full rounded-lg border",
+              "relative h-full w-full",
+              dragChrome.dropIntentLayer,
               isInvalidDrop ? "border-rose-300/80" : "",
             )}
             style={
@@ -3954,6 +4200,7 @@ const TilingRendererComponent = React.forwardRef<
     className,
     interaction,
     renderTile,
+    paneIdentity = "auto",
     focusedLeafId,
     onFocusedLeafChange,
     onTileAccentChange,
@@ -3992,6 +4239,56 @@ const TilingRendererComponent = React.forwardRef<
   // the props change — safe to thread through the `renderBranch` memo deps.
   // Provided to every subcomponent via context.
   const theme: TilingTheme = themeProp ?? resolveTilingTheme(themeId);
+  // Drag-state chrome resolved once per theme identity (the leaf wrapper reads
+  // `sourcePane` / `dropTarget` for every leaf on every render).
+  const dragChrome: TilingThemeDragChromeTokens = React.useMemo(
+    (): TilingThemeDragChromeTokens => resolveDragChrome(theme),
+    [theme],
+  );
+  // Pane identity binding (see `TilingPaneIdentityMode`). `"auto"` locks on the
+  // first render — a hydration render sees the server snapshot (`false`) and
+  // stays in slot mode for the life of the mount (switching later would remount
+  // every pane once); a client-only mount takes the stable pool + relocation
+  // seam. The registry / entries / pool-order refs are the seam's plumbing.
+  const isClientOnlyRender: boolean = useIsClientOnlyRender();
+  const lockedPaneIdentityRef = React.useRef<"stable" | "slot" | null>(null);
+  if (lockedPaneIdentityRef.current == null) {
+    lockedPaneIdentityRef.current = resolvePaneIdentityMode(
+      paneIdentity,
+      isClientOnlyRender,
+    );
+  }
+  const paneIdentityMode: "stable" | "slot" =
+    paneIdentity === "auto"
+      ? lockedPaneIdentityRef.current
+      : resolvePaneIdentityMode(paneIdentity, isClientOnlyRender);
+  const stablePaneSlotRegistryRef = React.useRef<StablePaneSlotRegistry>(
+    new Map<string, HTMLElement>(),
+  );
+  const stablePanePoolRef = React.useRef<HTMLDivElement | null>(null);
+  const stablePaneEntriesRef = React.useRef<Map<string, StablePaneEntry>>(
+    new Map<string, StablePaneEntry>(),
+  );
+  const stablePanePoolOrderRef = React.useRef<ReadonlyArray<string>>([]);
+  // A stable-mode leaf slot registers its wrapper element under the TILE id it
+  // currently shows. React 19 callback-ref cleanup: the returned function runs
+  // on detach (and whenever the closure identity changes, i.e. every commit),
+  // guarded so a stale cleanup never evicts a newer registration.
+  const registerStablePaneSlot = React.useCallback(
+    (tileId: string) =>
+      (element: HTMLDivElement | null): (() => void) | undefined => {
+        if (element == null) {
+          return undefined;
+        }
+        stablePaneSlotRegistryRef.current.set(tileId, element);
+        return (): void => {
+          if (stablePaneSlotRegistryRef.current.get(tileId) === element) {
+            stablePaneSlotRegistryRef.current.delete(tileId);
+          }
+        };
+      },
+    [],
+  );
   const projectedOverlayBackgroundAlphaSafe: number = Math.min(
     Math.max(projectedOverlayBackgroundAlpha, 0),
     1,
@@ -7692,8 +7989,35 @@ const TilingRendererComponent = React.forwardRef<
         // re-introduces the in-slot source copy.
         const renderReservedDragSlot: boolean =
           tileArgs.paneBodyRenderMode === "render-reservation";
+        // Whole-pane drag dimming (preview drag mode: the picked-up source stays
+        // in its slot) + the optional drop-target highlight are applied HERE, on
+        // the leaf wrapper, so they cover a custom `renderTile` and the default
+        // tile identically — one opacity over title AND content, never a
+        // per-part dim. A reservation slot is content-less and never dimmed.
+        const isDimmedDragSource: boolean =
+          isDragSourceSlot && !renderReservedDragSlot;
+        // Stable pane identity: the pane is rendered ONCE in the tile-keyed pool
+        // (see `StablePanePool`) and its DOM node relocates into this wrapper,
+        // which registers itself as the tile's slot. A reserved (seat) slot
+        // registers nothing, so the picked-up pane parks in the pool while the
+        // ghost paints it. The entry is collected for the pool render pass that
+        // follows the tree pass.
+        const isStablePaneSlot: boolean = paneIdentityMode === "stable";
+        if (isStablePaneSlot && !stablePaneEntriesRef.current.has(node.tileId)) {
+          stablePaneEntriesRef.current.set(node.tileId, {
+            tileId: node.tileId,
+            tileArgs,
+            defaultTileArgs,
+          });
+        }
+        const registerSlot: React.RefCallback<HTMLDivElement> | undefined =
+          isStablePaneSlot && !renderReservedDragSlot
+            ? registerStablePaneSlot(node.tileId)
+            : undefined;
         return (
           <div
+            ref={registerSlot}
+            {...(isStablePaneSlot ? { "data-hpt-pane-slot": node.tileId } : {})}
             className={cn(
               isSurvivorReflowOverflowWindow
                 ? "overflow-visible"
@@ -7701,8 +8025,12 @@ const TilingRendererComponent = React.forwardRef<
               leafHeightClass,
               leafWidthClass,
               showMoveAffordance ? "relative" : "",
+              isDimmedDragSource ? dragChrome.sourcePane : "",
+              isDropTargetLeaf ? dragChrome.dropTarget : "",
             )}
             style={leafWrapperStyle}
+            {...(isDimmedDragSource ? { "data-drag-source-pane": "" } : {})}
+            {...(isDropTargetLeaf ? { "data-drop-target-pane": "" } : {})}
             // A reserved slot renders `DragSourceSlotReservation` (which carries
             // `data-drag-source-reservation` but no `data-leaf-id`) INSTEAD of
             // `DefaultTilingTile` (the sole `data-leaf-id` emitter), so the seat
@@ -7723,7 +8051,7 @@ const TilingRendererComponent = React.forwardRef<
                 observabilityColors={observabilityColors}
                 observabilityColorEnables={observabilityColorEnables}
               />
-            ) : renderTile == null ? (
+            ) : isStablePaneSlot ? null : renderTile == null ? (
               <DefaultTilingTile {...defaultTileArgs} />
             ) : (
               renderTile(tileArgs)
@@ -8326,6 +8654,9 @@ const TilingRendererComponent = React.forwardRef<
       setGroupTabStripRef,
       isPaneContentVisible,
       theme,
+      dragChrome,
+      paneIdentityMode,
+      registerStablePaneSlot,
     ],
   );
 
@@ -8342,6 +8673,25 @@ const TilingRendererComponent = React.forwardRef<
   // zero projection/landing-shadow in live mode.
   const showProjectedLandingOverlays: boolean =
     showDropPreviewOverlays && !liveDragModeEnabled;
+
+  // Tree pass FIRST (it collects the stable-mode pane entries), pool pass
+  // second. The entries map is reset per render so a StrictMode double render
+  // or a bailed-out render never leaks stale tiles into the pool.
+  stablePaneEntriesRef.current = new Map<string, StablePaneEntry>();
+  const treeElement: React.ReactElement =
+    maximizedLeaf != null
+      ? renderBranch(maximizedLeaf, viewportSize.width, viewportSize.height)
+      : renderBranch(displayLayout, viewportSize.width, viewportSize.height);
+  const stablePaneEntries: ReadonlyMap<string, StablePaneEntry> =
+    stablePaneEntriesRef.current;
+  const stablePanePoolOrder: ReadonlyArray<string> =
+    paneIdentityMode === "stable"
+      ? resolveStablePanePoolOrder(
+          stablePanePoolOrderRef.current,
+          new Set<string>(stablePaneEntries.keys()),
+        )
+      : [];
+  stablePanePoolOrderRef.current = stablePanePoolOrder;
 
   return (
     <TilingThemeProvider theme={theme}>
@@ -8407,17 +8757,7 @@ const TilingRendererComponent = React.forwardRef<
               : undefined
           }
         >
-          {maximizedLeaf != null
-            ? renderBranch(
-                maximizedLeaf,
-                viewportSize.width,
-                viewportSize.height,
-              )
-            : renderBranch(
-                displayLayout,
-                viewportSize.width,
-                viewportSize.height,
-              )}
+          {treeElement}
           {showProjectedLandingOverlays ? (
             <ProjectedLandingOverlays
               overlays={projectedLandingOverlays}
@@ -8490,6 +8830,19 @@ const TilingRendererComponent = React.forwardRef<
             />
           ) : null}
         </div>
+        {paneIdentityMode === "stable" ? (
+          // AFTER the viewport (a later sibling): React runs layout work in tree
+          // order, so every slot's callback ref has registered before a pane
+          // host's relocation effect runs; and INSIDE the root so root-level
+          // pointer enter/leave (fiber-tree based) still sees relocated panes.
+          <StablePanePool
+            entries={stablePaneEntries}
+            order={stablePanePoolOrder}
+            poolRef={stablePanePoolRef}
+            slotRegistry={stablePaneSlotRegistryRef}
+            renderTile={renderTile}
+          />
+        ) : null}
       </div>
     </TilingThemeProvider>
   );

@@ -61,7 +61,6 @@ export const CANVAS_THEME: TilingTheme = {
       "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 py-5 text-[13px] leading-[1.7] text-slate-600",
     subtitleText: "text-slate-400",
     invalidDropRing: "ring-2 ring-rose-300/70",
-    dragSourceOpacity: "opacity-60",
   },
   paneHeader: {
     base: "flex min-h-[40px] shrink-0 items-center justify-between border-b border-slate-100 bg-slate-50/60 px-4 py-2.5",

@@ -70,7 +70,6 @@ function PrimitivesPane(args: TilingRenderTileProps): ReactElement {
         borderRadius: 10,
         background: "#101114",
         overflow: "hidden",
-        opacity: args.isDragSource ? 0.6 : 1,
         boxShadow: "0 18px 40px -30px rgba(0,0,0,0.9)",
       }}
     >
@@ -133,7 +132,6 @@ function RawPane(args: TilingRenderTileProps): ReactElement {
     background: "#101114",
     overflow: "hidden",
     outline: "none",
-    opacity: args.isDragSource ? 0.6 : 1,
     boxShadow: "0 18px 40px -30px rgba(0,0,0,0.9)",
   };
   return (

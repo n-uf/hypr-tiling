@@ -122,7 +122,6 @@ export function DocTile(args: TilingRenderTileProps): React.ReactElement {
     : args.isFocused
       ? "border-amber-300/45"
       : "border-white/[0.07]";
-  const sourceFade: string = args.isDragSource ? "opacity-60" : "";
   const ordinal: string = String(args.paneOrdinal).padStart(2, "0");
   const metrics: PaneContentMetrics | null = paneContentMetrics(args.tile.id);
 
@@ -133,7 +132,7 @@ export function DocTile(args: TilingRenderTileProps): React.ReactElement {
       onFocus={args.onFocus}
       onPointerMove={args.onPointerMove}
       onPointerLeave={args.onPointerLeave}
-      className={`flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border bg-[#121316] outline-none shadow-[0_18px_40px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] ring-offset-0 transition-[border-color,box-shadow,opacity] duration-200 ${border} ${ring} ${sourceFade}`}
+      className={`flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border bg-[#121316] outline-none shadow-[0_18px_40px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] ring-offset-0 transition-[border-color,box-shadow,opacity] duration-200 ${border} ${ring}`}
     >
       <header
         onPointerDown={args.onHandlePointerDown}

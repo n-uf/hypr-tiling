@@ -28,7 +28,7 @@ export interface AnimationControlDefaults {
 // @public (undocumented)
 export const TILING_OBSERVABILITY_COLOR_DEFAULTS: TilingObservabilityColorConfig;
 
-// @public (undocumented)
+// @public
 export const TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS: TilingObservabilityColorEnableConfig;
 
 // @public
