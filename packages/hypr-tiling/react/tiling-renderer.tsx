@@ -258,10 +258,12 @@ import {
   TILING_THEMES,
   TILING_TILE_ACCENT_SWATCHES,
   TilingThemeProvider,
+  resolveDragChrome,
   resolvePaneDropAffordanceClasses,
   resolveTilingTheme,
   useTilingTheme,
   type TilingTheme,
+  type TilingThemeDragChromeTokens,
   type TilingThemeId,
 } from "./theme";
 import { TilingPaneTitleBarContent } from "./tiling-pane-primitives";
@@ -1169,21 +1171,23 @@ export function DragSourceSlotReservation({
   observabilityColors: TilingObservabilityColorConfig;
   observabilityColorEnables: TilingObservabilityColorEnableConfig;
 }): React.ReactElement | null {
-  // The seat the single ghost hops into is the dragged pane's landing slot, so
-  // it wears the SAME focus frame the ghost carries (accent = the DRAGGED pane's
-  // accent). Focus thus reads as already living at the destination during the
-  // brief hop-in flight, before the ghost fully covers the seat.
-  const seatFocusFrame: string = theme.resolveFocusFrame(accent);
+  // The seat's surface (radius / border / background / shadow) and the frame it
+  // wears both come from the theme's drag chrome: by default the seat is the
+  // pane shell itself (`paneShell.surface`), so it reads as the at-rest pane,
+  // and the frame is the theme focus frame composed from the DRAGGED pane's
+  // accent (focus follows the dragged pane) — focus thus reads as already
+  // living at the destination during the brief hop-in flight, before the ghost
+  // fully covers the seat. NO renderer-owned radius / ring / shadow here.
+  const dragChrome: TilingThemeDragChromeTokens = resolveDragChrome(theme);
+  const seatFrame: string = dragChrome.resolveSeatFrame(accent);
+  const seatClassName: string = cn(
+    "h-full min-h-0 w-full min-w-0 overflow-hidden",
+    dragChrome.sourceReservation,
+    seatFrame,
+  );
   if (!observabilityColorEnables.dragSourceBorderEnabled) {
     return (
-      <div
-        className={cn(
-          "h-full min-h-0 w-full min-w-0 overflow-hidden rounded-xl",
-          seatFocusFrame,
-        )}
-        data-drag-source-reservation
-        aria-hidden
-      />
+      <div className={seatClassName} data-drag-source-reservation aria-hidden />
     );
   }
   const slotFillColor: string = rgbaFromHex(
@@ -1193,10 +1197,7 @@ export function DragSourceSlotReservation({
   );
   return (
     <div
-      className={cn(
-        "h-full min-h-0 w-full min-w-0 overflow-hidden rounded-xl",
-        seatFocusFrame,
-      )}
+      className={seatClassName}
       style={{ backgroundColor: slotFillColor }}
       data-drag-source-reservation
       aria-hidden
@@ -1671,6 +1672,7 @@ function DragPaneOverlay({
   // drop-shadow + slightly lower opacity than the seated/at-rest look. Dropped
   // under reduced motion (no transition, settled look).
   const lifted: boolean = !seated && !prefersReducedMotion;
+  const dragChrome: TilingThemeDragChromeTokens = resolveDragChrome(theme);
 
   // Consumer-first ghost body: when a custom `renderTile` is supplied, the
   // floating ghost paints the dragged pane THROUGH it (`buildGhostTileArgs`) so a
@@ -1717,15 +1719,17 @@ function DragPaneOverlay({
         aria-hidden
       >
         <div
+          // The ghost WRAPPER's elevation / scale / opacity delta is theme drag
+          // chrome (`dragChrome.ghostLifted` while free-following,
+          // `ghostSeated` once seated in the hop-in slot); the pane shell
+          // inside is `theme.ghost.surface` (default tile) or the host's own
+          // chrome (custom `renderTile`). No renderer-owned scale / shadow.
           className={cn(
-            "h-full w-full scale-[1.01]",
-            lifted
-              ? "opacity-90 shadow-[0_30px_60px_rgba(2,6,23,0.72)]"
-              : "opacity-95 shadow-[0_22px_44px_rgba(2,6,23,0.62)]",
-            prefersReducedMotion
-              ? ""
-              : "transition-[opacity,box-shadow] duration-150",
+            "h-full w-full",
+            lifted ? dragChrome.ghostLifted : dragChrome.ghostSeated,
+            prefersReducedMotion ? "" : dragChrome.ghostTransition,
           )}
+          data-drag-ghost-wrapper
         >
           {renderTile == null
             ? renderDragPaneShell(snapshot, theme, isPaneContentVisible)
@@ -1767,15 +1771,22 @@ export function usePrefersReducedMotion(): boolean {
   return prefersReducedMotion;
 }
 
-/** Tailwind tone classes for the cursor badge, keyed on drop validity. */
-function dragCursorToneClassName(tone: DragCursorPresentation["tone"]): string {
+/**
+ * Cursor-badge tone classes (surface / border / glyph color), keyed on drop
+ * validity and read from the theme's drag chrome — the badge shape + base
+ * (`dragChrome.cursorBadge`) is composed by the caller.
+ */
+export function dragCursorToneClassName(
+  dragChrome: TilingThemeDragChromeTokens,
+  tone: DragCursorPresentation["tone"],
+): string {
   if (tone === "valid") {
-    return "border-cyan-300/80 bg-cyan-500/20 text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.55)]";
+    return dragChrome.cursorBadgeValid;
   }
   if (tone === "invalid") {
-    return "border-rose-400/80 bg-rose-500/20 text-rose-100 shadow-[0_0_14px_rgba(244,63,94,0.5)]";
+    return dragChrome.cursorBadgeInvalid;
   }
-  return "border-slate-300/70 bg-slate-900/70 text-slate-100 shadow-[0_4px_12px_rgba(2,6,23,0.55)]";
+  return dragChrome.cursorBadgeNeutral;
 }
 
 /**
@@ -1888,6 +1899,8 @@ function DragCursorOverlay({
   hopEasing: string;
   prefersReducedMotion: boolean;
 }): React.ReactElement | null {
+  const theme: TilingTheme = useTilingTheme();
+  const dragChrome: TilingThemeDragChromeTokens = resolveDragChrome(theme);
   const [entered, setEntered] = React.useState<boolean>(false);
 
   // The pickup scale/opacity entrance plays ONCE when the cursor appears. It is
@@ -1953,8 +1966,9 @@ function DragCursorOverlay({
       >
         <div
           className={cn(
-            "flex items-center justify-center rounded-full border backdrop-blur-[1px]",
-            dragCursorToneClassName(presentation.tone),
+            "flex items-center justify-center",
+            dragChrome.cursorBadge,
+            dragCursorToneClassName(dragChrome, presentation.tone),
           )}
           style={{
             width: DRAG_CURSOR_BADGE_SIZE_PX,
@@ -2062,7 +2076,9 @@ function DragCancelOverlay({
         }}
         aria-hidden
       >
-        <div className="h-full w-full shadow-[0_18px_34px_rgba(2,6,23,0.5)]">
+        <div
+          className={cn("h-full w-full", resolveDragChrome(theme).cancelFlyBack)}
+        >
           {renderTile == null
             ? renderDragPaneShell(
                 cancelVisualState.snapshot,
@@ -2440,6 +2456,7 @@ function DefaultTilingTile({
   onPointerLeave,
 }: TilingDefaultTileProps): React.ReactElement {
   const theme: TilingTheme = useTilingTheme();
+  const dragChrome: TilingThemeDragChromeTokens = resolveDragChrome(theme);
   const isNarrowHeader: boolean = paneWidthPx < 430;
   // A selected pane offers the Group control once the selection is groupable
   // (≥2 selected AND `group-leaves` would change the layout).
@@ -2517,7 +2534,9 @@ function DefaultTilingTile({
           isDropTarget,
           isInvalidDrop,
         }),
-        isDragSource ? theme.paneShell.dragSourceOpacity : "",
+        // Source-pane dimming is NOT applied here: the renderer dims the whole
+        // leaf wrapper (`dragChrome.sourcePane`) so a custom `renderTile` and
+        // this default tile dim identically — one opacity over the entire pane.
         isDragSource && observabilityColorEnables.dragSourceBorderEnabled
           ? "border"
           : "",
@@ -2546,7 +2565,8 @@ function DefaultTilingTile({
         <div className="pointer-events-none absolute inset-0 z-10 p-1">
           <div
             className={cn(
-              "relative h-full w-full rounded-lg border",
+              "relative h-full w-full",
+              dragChrome.dropIntentLayer,
               isInvalidDrop ? "border-rose-300/80" : "",
             )}
             style={
@@ -3992,6 +4012,12 @@ const TilingRendererComponent = React.forwardRef<
   // the props change — safe to thread through the `renderBranch` memo deps.
   // Provided to every subcomponent via context.
   const theme: TilingTheme = themeProp ?? resolveTilingTheme(themeId);
+  // Drag-state chrome resolved once per theme identity (the leaf wrapper reads
+  // `sourcePane` / `dropTarget` for every leaf on every render).
+  const dragChrome: TilingThemeDragChromeTokens = React.useMemo(
+    (): TilingThemeDragChromeTokens => resolveDragChrome(theme),
+    [theme],
+  );
   const projectedOverlayBackgroundAlphaSafe: number = Math.min(
     Math.max(projectedOverlayBackgroundAlpha, 0),
     1,
@@ -7692,6 +7718,13 @@ const TilingRendererComponent = React.forwardRef<
         // re-introduces the in-slot source copy.
         const renderReservedDragSlot: boolean =
           tileArgs.paneBodyRenderMode === "render-reservation";
+        // Whole-pane drag dimming (preview drag mode: the picked-up source stays
+        // in its slot) + the optional drop-target highlight are applied HERE, on
+        // the leaf wrapper, so they cover a custom `renderTile` and the default
+        // tile identically — one opacity over title AND content, never a
+        // per-part dim. A reservation slot is content-less and never dimmed.
+        const isDimmedDragSource: boolean =
+          isDragSourceSlot && !renderReservedDragSlot;
         return (
           <div
             className={cn(
@@ -7701,8 +7734,12 @@ const TilingRendererComponent = React.forwardRef<
               leafHeightClass,
               leafWidthClass,
               showMoveAffordance ? "relative" : "",
+              isDimmedDragSource ? dragChrome.sourcePane : "",
+              isDropTargetLeaf ? dragChrome.dropTarget : "",
             )}
             style={leafWrapperStyle}
+            {...(isDimmedDragSource ? { "data-drag-source-pane": "" } : {})}
+            {...(isDropTargetLeaf ? { "data-drop-target-pane": "" } : {})}
             // A reserved slot renders `DragSourceSlotReservation` (which carries
             // `data-drag-source-reservation` but no `data-leaf-id`) INSTEAD of
             // `DefaultTilingTile` (the sole `data-leaf-id` emitter), so the seat
@@ -8326,6 +8363,7 @@ const TilingRendererComponent = React.forwardRef<
       setGroupTabStripRef,
       isPaneContentVisible,
       theme,
+      dragChrome,
     ],
   );
 
