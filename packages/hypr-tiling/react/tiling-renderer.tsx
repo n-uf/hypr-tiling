@@ -232,6 +232,7 @@ import type {
   TilingObservabilityColorConfig,
   TilingObservabilityColorEnableConfig,
   TilingPaneBodyRenderMode,
+  TilingPaneIdentityMode,
   TilingPaneFootprint,
   TilingPaneHitZoneCandidateDebugState,
   TilingPaneHitZoneOverlayDebugState,
@@ -1203,6 +1204,221 @@ export function DragSourceSlotReservation({
       aria-hidden
     />
   );
+}
+
+// ── Stable pane identity (`paneIdentity: "stable"`) ────────────────────────
+//
+// The split tree is rendered RECURSIVELY and reconciled POSITIONALLY: a leaf
+// has no key of its own, so React binds a pane's instance to its tree
+// position, not to its tile. Any edit that moves a leaf to another branch (an
+// insert drop, a group fold, a master-stack reorder) unmounts the pane and
+// mounts a fresh one; a swap keeps both instances but hands each the OTHER
+// tile's props. Either way the host's content re-initializes after a drop.
+//
+// Stable mode decouples instance from position with a POOL + RELOCATION seam:
+// every pane is rendered exactly once, keyed by TILE id, inside a hidden pool
+// that sits OUTSIDE the tree; each leaf slot in the tree renders an empty
+// registered target; and a layout effect physically moves the pane's DOM node
+// (`appendChild`) into whichever slot currently shows its tile. React never
+// re-parents anything — the fiber stays under the pool, so hooks / state / refs
+// / subscriptions / scroll positions are the same objects through drag → drop →
+// settle. React only ever sees its own pool children being APPENDED (new tiles
+// go to the end of the pool order) or REMOVED (the host returns its node to the
+// pool in its layout cleanup, before React's `removeChild`), so the reconciler's
+// DOM ops never target a node that has been moved away.
+//
+// Event delegation is fiber-based (React walks `return` pointers, not the DOM),
+// so handlers on a relocated pane fire normally; the pool lives INSIDE the root
+// element so root-level `onPointerEnter/Leave` (which React computes across the
+// fiber tree) still see relocated panes as descendants. DOM-scoped concerns —
+// `[data-leaf-id]` measurement, survivor-reflow FLIP, `pointer-events` /
+// `select-none` inheritance, CSS — all follow the node's DOM position (inside
+// the slot), which is exactly where a slot-mode pane would be.
+//
+// Live drag: the picked-up pane's slot renders the content-less seat and does
+// NOT register a target, so the pane PARKS in the (display:none) pool — still
+// mounted — while the single ghost paints the dragged pane; on drop the new
+// slot registers and the same node reseats. The ghost itself still paints
+// through `renderTile(ghostTileArgs)` (a transient second render of the same
+// tile, unchanged from slot mode) because the ghost is a body-level portal
+// outside the React root's event-delegation scope.
+
+/** The relocation registry a stable-mode leaf slot writes to and a pane host reads. */
+type StablePaneSlotRegistry = Map<string, HTMLElement>;
+
+/** One tile's pane render inputs, collected during the tree render pass. */
+interface StablePaneEntry {
+  readonly tileId: string;
+  readonly tileArgs: TilingRenderTileProps;
+  readonly defaultTileArgs: TilingDefaultTileProps;
+}
+
+const NOOP_SUBSCRIBE = (): (() => void) => (): void => {};
+const GET_CLIENT_SNAPSHOT = (): boolean => true;
+const GET_SERVER_SNAPSHOT = (): boolean => false;
+
+/**
+ * `true` on a client-only render, `false` on the server AND during the
+ * hydration render of server markup (React uses the server snapshot there).
+ * The renderer locks its `"auto"` pane-identity mode on the FIRST value.
+ */
+function useIsClientOnlyRender(): boolean {
+  return React.useSyncExternalStore(
+    NOOP_SUBSCRIBE,
+    GET_CLIENT_SNAPSHOT,
+    GET_SERVER_SNAPSHOT,
+  );
+}
+
+/**
+ * One pooled pane. Owns a `display: contents` wrapper (no box of its own — the
+ * pane article lays out as if it were the slot's direct child) and relocates it
+ * into its registered slot after every commit; with no registered slot the
+ * wrapper returns to the pool (parked). Children mount only once the wrapper
+ * has been placed in a REAL slot, so a host's first layout-effect measurement
+ * never sees the display:none pool.
+ */
+function StablePaneHost({
+  tileId,
+  slotRegistry,
+  poolRef,
+  children,
+}: {
+  tileId: string;
+  slotRegistry: React.RefObject<StablePaneSlotRegistry>;
+  poolRef: React.RefObject<HTMLDivElement | null>;
+  children: React.ReactNode;
+}): React.ReactElement {
+  const wrapperRef = React.useRef<HTMLDivElement | null>(null);
+  const [placed, setPlaced] = React.useState<boolean>(false);
+
+  // Every commit: seat the wrapper in its slot (or park it). Runs AFTER the
+  // slots' callback refs registered (the pool is a later sibling of the
+  // viewport, and React runs layout work in tree order).
+  React.useLayoutEffect((): void => {
+    const wrapper: HTMLDivElement | null = wrapperRef.current;
+    const pool: HTMLDivElement | null = poolRef.current;
+    if (wrapper == null) {
+      return;
+    }
+    const slot: HTMLElement | undefined = slotRegistry.current.get(tileId);
+    const target: HTMLElement | null = slot ?? pool;
+    if (target != null && wrapper.parentNode !== target) {
+      target.insertBefore(wrapper, target.firstChild);
+    }
+    if (!placed && slot != null) {
+      setPlaced(true);
+    }
+  });
+
+  // Unmount: return the node to the pool FIRST so React's own `removeChild`
+  // (which targets the pool, the fiber's host parent) finds it there.
+  React.useLayoutEffect((): (() => void) => {
+    const wrapper: HTMLDivElement | null = wrapperRef.current;
+    return (): void => {
+      const pool: HTMLDivElement | null = poolRef.current;
+      if (wrapper != null && pool != null && wrapper.parentNode !== pool) {
+        pool.appendChild(wrapper);
+      }
+    };
+  }, [poolRef]);
+
+  return (
+    <div
+      ref={wrapperRef}
+      style={{ display: "contents" }}
+      data-hpt-pane={tileId}
+    >
+      {placed ? children : null}
+    </div>
+  );
+}
+
+/**
+ * The hidden, tile-keyed pane pool (stable mode). Children are ordered by
+ * FIRST APPEARANCE and only ever appended / removed — never reordered — so
+ * React's reconciler never issues an `insertBefore` against a sibling node that
+ * has been relocated out of the pool.
+ */
+function StablePanePool({
+  entries,
+  order,
+  poolRef,
+  slotRegistry,
+  renderTile,
+}: {
+  entries: ReadonlyMap<string, StablePaneEntry>;
+  order: ReadonlyArray<string>;
+  poolRef: React.RefObject<HTMLDivElement | null>;
+  slotRegistry: React.RefObject<StablePaneSlotRegistry>;
+  renderTile: ((args: TilingRenderTileProps) => React.ReactNode) | undefined;
+}): React.ReactElement {
+  return (
+    <div
+      ref={poolRef}
+      style={{ display: "none" }}
+      data-hpt-pane-pool
+      aria-hidden
+    >
+      {order.map((tileId: string): React.ReactElement | null => {
+        const entry: StablePaneEntry | undefined = entries.get(tileId);
+        if (entry == null) {
+          return null;
+        }
+        return (
+          <StablePaneHost
+            key={tileId}
+            tileId={tileId}
+            slotRegistry={slotRegistry}
+            poolRef={poolRef}
+          >
+            {renderTile == null ? (
+              <DefaultTilingTile {...entry.defaultTileArgs} />
+            ) : (
+              renderTile(entry.tileArgs)
+            )}
+          </StablePaneHost>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Append-only pool order: keep the previous order minus departed tiles, then
+ * append tiles seen for the first time. Pure; the renderer threads the previous
+ * order through a ref.
+ */
+export function resolveStablePanePoolOrder(
+  previousOrder: ReadonlyArray<string>,
+  presentTileIds: ReadonlySet<string>,
+): ReadonlyArray<string> {
+  const order: string[] = previousOrder.filter((tileId: string): boolean =>
+    presentTileIds.has(tileId),
+  );
+  const seen: Set<string> = new Set<string>(order);
+  for (const tileId of presentTileIds) {
+    if (!seen.has(tileId)) {
+      seen.add(tileId);
+      order.push(tileId);
+    }
+  }
+  return order;
+}
+
+/**
+ * Resolves a pane's DOM host element for the stable-mode relocation seam.
+ * `"auto"` locks on the FIRST render: `"stable"` for a client-only mount,
+ * `"slot"` when hydrating server markup (see {@link TilingPaneIdentityMode}).
+ */
+export function resolvePaneIdentityMode(
+  requested: TilingPaneIdentityMode,
+  isClientOnlyRender: boolean,
+): "stable" | "slot" {
+  if (requested === "auto") {
+    return isClientOnlyRender ? "stable" : "slot";
+  }
+  return requested;
 }
 
 /**
@@ -3974,6 +4190,7 @@ const TilingRendererComponent = React.forwardRef<
     className,
     interaction,
     renderTile,
+    paneIdentity = "auto",
     focusedLeafId,
     onFocusedLeafChange,
     onTileAccentChange,
@@ -4017,6 +4234,50 @@ const TilingRendererComponent = React.forwardRef<
   const dragChrome: TilingThemeDragChromeTokens = React.useMemo(
     (): TilingThemeDragChromeTokens => resolveDragChrome(theme),
     [theme],
+  );
+  // Pane identity binding (see `TilingPaneIdentityMode`). `"auto"` locks on the
+  // first render — a hydration render sees the server snapshot (`false`) and
+  // stays in slot mode for the life of the mount (switching later would remount
+  // every pane once); a client-only mount takes the stable pool + relocation
+  // seam. The registry / entries / pool-order refs are the seam's plumbing.
+  const isClientOnlyRender: boolean = useIsClientOnlyRender();
+  const lockedPaneIdentityRef = React.useRef<"stable" | "slot" | null>(null);
+  if (lockedPaneIdentityRef.current == null) {
+    lockedPaneIdentityRef.current = resolvePaneIdentityMode(
+      paneIdentity,
+      isClientOnlyRender,
+    );
+  }
+  const paneIdentityMode: "stable" | "slot" =
+    paneIdentity === "auto"
+      ? lockedPaneIdentityRef.current
+      : resolvePaneIdentityMode(paneIdentity, isClientOnlyRender);
+  const stablePaneSlotRegistryRef = React.useRef<StablePaneSlotRegistry>(
+    new Map<string, HTMLElement>(),
+  );
+  const stablePanePoolRef = React.useRef<HTMLDivElement | null>(null);
+  const stablePaneEntriesRef = React.useRef<Map<string, StablePaneEntry>>(
+    new Map<string, StablePaneEntry>(),
+  );
+  const stablePanePoolOrderRef = React.useRef<ReadonlyArray<string>>([]);
+  // A stable-mode leaf slot registers its wrapper element under the TILE id it
+  // currently shows. React 19 callback-ref cleanup: the returned function runs
+  // on detach (and whenever the closure identity changes, i.e. every commit),
+  // guarded so a stale cleanup never evicts a newer registration.
+  const registerStablePaneSlot = React.useCallback(
+    (tileId: string) =>
+      (element: HTMLDivElement | null): (() => void) | undefined => {
+        if (element == null) {
+          return undefined;
+        }
+        stablePaneSlotRegistryRef.current.set(tileId, element);
+        return (): void => {
+          if (stablePaneSlotRegistryRef.current.get(tileId) === element) {
+            stablePaneSlotRegistryRef.current.delete(tileId);
+          }
+        };
+      },
+    [],
   );
   const projectedOverlayBackgroundAlphaSafe: number = Math.min(
     Math.max(projectedOverlayBackgroundAlpha, 0),
@@ -7725,8 +7986,28 @@ const TilingRendererComponent = React.forwardRef<
         // per-part dim. A reservation slot is content-less and never dimmed.
         const isDimmedDragSource: boolean =
           isDragSourceSlot && !renderReservedDragSlot;
+        // Stable pane identity: the pane is rendered ONCE in the tile-keyed pool
+        // (see `StablePanePool`) and its DOM node relocates into this wrapper,
+        // which registers itself as the tile's slot. A reserved (seat) slot
+        // registers nothing, so the picked-up pane parks in the pool while the
+        // ghost paints it. The entry is collected for the pool render pass that
+        // follows the tree pass.
+        const isStablePaneSlot: boolean = paneIdentityMode === "stable";
+        if (isStablePaneSlot && !stablePaneEntriesRef.current.has(node.tileId)) {
+          stablePaneEntriesRef.current.set(node.tileId, {
+            tileId: node.tileId,
+            tileArgs,
+            defaultTileArgs,
+          });
+        }
+        const registerSlot: React.RefCallback<HTMLDivElement> | undefined =
+          isStablePaneSlot && !renderReservedDragSlot
+            ? registerStablePaneSlot(node.tileId)
+            : undefined;
         return (
           <div
+            ref={registerSlot}
+            {...(isStablePaneSlot ? { "data-hpt-pane-slot": node.tileId } : {})}
             className={cn(
               isSurvivorReflowOverflowWindow
                 ? "overflow-visible"
@@ -7760,7 +8041,7 @@ const TilingRendererComponent = React.forwardRef<
                 observabilityColors={observabilityColors}
                 observabilityColorEnables={observabilityColorEnables}
               />
-            ) : renderTile == null ? (
+            ) : isStablePaneSlot ? null : renderTile == null ? (
               <DefaultTilingTile {...defaultTileArgs} />
             ) : (
               renderTile(tileArgs)
@@ -8364,6 +8645,8 @@ const TilingRendererComponent = React.forwardRef<
       isPaneContentVisible,
       theme,
       dragChrome,
+      paneIdentityMode,
+      registerStablePaneSlot,
     ],
   );
 
@@ -8380,6 +8663,25 @@ const TilingRendererComponent = React.forwardRef<
   // zero projection/landing-shadow in live mode.
   const showProjectedLandingOverlays: boolean =
     showDropPreviewOverlays && !liveDragModeEnabled;
+
+  // Tree pass FIRST (it collects the stable-mode pane entries), pool pass
+  // second. The entries map is reset per render so a StrictMode double render
+  // or a bailed-out render never leaks stale tiles into the pool.
+  stablePaneEntriesRef.current = new Map<string, StablePaneEntry>();
+  const treeElement: React.ReactElement =
+    maximizedLeaf != null
+      ? renderBranch(maximizedLeaf, viewportSize.width, viewportSize.height)
+      : renderBranch(displayLayout, viewportSize.width, viewportSize.height);
+  const stablePaneEntries: ReadonlyMap<string, StablePaneEntry> =
+    stablePaneEntriesRef.current;
+  const stablePanePoolOrder: ReadonlyArray<string> =
+    paneIdentityMode === "stable"
+      ? resolveStablePanePoolOrder(
+          stablePanePoolOrderRef.current,
+          new Set<string>(stablePaneEntries.keys()),
+        )
+      : [];
+  stablePanePoolOrderRef.current = stablePanePoolOrder;
 
   return (
     <TilingThemeProvider theme={theme}>
@@ -8445,17 +8747,7 @@ const TilingRendererComponent = React.forwardRef<
               : undefined
           }
         >
-          {maximizedLeaf != null
-            ? renderBranch(
-                maximizedLeaf,
-                viewportSize.width,
-                viewportSize.height,
-              )
-            : renderBranch(
-                displayLayout,
-                viewportSize.width,
-                viewportSize.height,
-              )}
+          {treeElement}
           {showProjectedLandingOverlays ? (
             <ProjectedLandingOverlays
               overlays={projectedLandingOverlays}
@@ -8528,6 +8820,19 @@ const TilingRendererComponent = React.forwardRef<
             />
           ) : null}
         </div>
+        {paneIdentityMode === "stable" ? (
+          // AFTER the viewport (a later sibling): React runs layout work in tree
+          // order, so every slot's callback ref has registered before a pane
+          // host's relocation effect runs; and INSIDE the root so root-level
+          // pointer enter/leave (fiber-tree based) still sees relocated panes.
+          <StablePanePool
+            entries={stablePaneEntries}
+            order={stablePanePoolOrder}
+            poolRef={stablePanePoolRef}
+            slotRegistry={stablePaneSlotRegistryRef}
+            renderTile={renderTile}
+          />
+        ) : null}
       </div>
     </TilingThemeProvider>
   );

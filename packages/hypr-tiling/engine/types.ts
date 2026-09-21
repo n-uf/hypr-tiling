@@ -1944,6 +1944,32 @@ export type TilingChromeFocusOutline = "suppress" | "native";
  * @see {@link TilingRenderer}
  * @see {@link TilingInteractionCapabilities}
  */
+/**
+ * Pane identity binding — WHICH React instance renders a tile, and whether it
+ * survives the tile's slot moving in the split tree.
+ *
+ * - `"slot"` — a pane is rendered in place at its leaf's tree position. React
+ *   reconciles the recursive split tree POSITIONALLY, so any edit that moves a
+ *   leaf to a different branch (an insert drop, a group fold, a master-stack
+ *   reorder) unmounts the pane at the old position and mounts a fresh instance
+ *   at the new one; a swap keeps both instances but hands each the OTHER tile's
+ *   props. Host content re-initializes (the "loading flash" after a drop). This
+ *   is the legacy behavior and the only SSR-faithful one (server HTML carries
+ *   the pane content in-slot).
+ * - `"stable"` — panes are rendered ONCE each in a hidden, tile-keyed pool and
+ *   their DOM node is RELOCATED into whichever slot currently shows their tile
+ *   (a layout-effect `appendChild`, never a React re-parent). The React instance
+ *   — hooks, state, refs, subscriptions, iframes, scroll positions — is the
+ *   same object through drag → drop → settle and every other tree edit; only
+ *   the DOM parent changes. During a live drag the picked-up pane is parked in
+ *   the pool (its slot shows the content-less seat; the single ghost paints
+ *   the pane) and reseats on drop. Server render emits EMPTY slots (content is
+ *   placed on the client), so hydration-time flash is the cost.
+ * - `"auto"` (default) — `"stable"` on a client-only mount, `"slot"` when the
+ *   first render is a hydration of server markup.
+ */
+export type TilingPaneIdentityMode = "auto" | "stable" | "slot";
+
 export interface TilingRendererProps {
   /** The controlled layout tree to render. Apply every reported edit back here. */
   layout: TilingLayoutNode;
@@ -1993,6 +2019,14 @@ export interface TilingRendererProps {
   interaction?: TilingInteractionCapabilities;
   /** Custom pane renderer. Receives {@link TilingRenderTileProps}; omit to use the default tile. */
   renderTile?: (args: TilingRenderTileProps) => React.ReactNode;
+  /**
+   * How a pane's React instance is bound to its slot in the split tree — see
+   * {@link TilingPaneIdentityMode}. Default `"auto"`: `"stable"` on a
+   * client-only mount (host content survives drag → drop → settle and every
+   * other tree edit without remounting), `"slot"` when the renderer hydrates
+   * server-rendered markup (the SSR-faithful legacy behavior).
+   */
+  paneIdentity?: TilingPaneIdentityMode;
   /** Controlled focused-leaf id. `undefined` → uncontrolled; `null` → nothing focused. */
   focusedLeafId?: string | null;
   /** Notified whenever the focused leaf changes. */
