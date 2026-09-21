@@ -850,3 +850,152 @@ parked-recovery state, M1 is a pure backstop that cannot perturb the happy path,
 and M4 is idempotent so it is safe on every (possibly overlapping) exit path. The
 defaults are derived from the renderer's motion budget (hop-duration multiples,
 frame counts) rather than magic numbers, so they track the animation constants.
+
+---
+
+## 11. Themeable drag chrome (`dragChrome`) + stable pane identity (26.9.0)
+
+Trigger: a square-cornered, flat, slate-bordered host (DashAI) observed that
+the drag state looked "neon" regardless of its theme, and that its pane
+content re-initialized after every drop. Both were audited against the code;
+the findings and the fix are recorded here.
+
+### 11.1 Findings — five consumer claims vs the renderer
+
+| # | Claim | Verdict | Where it actually lived |
+|---|---|---|---|
+| C1 | Ghost wrapper hardcodes `scale-[1.01]`, `opacity-95`, a slate-950 shadow, a `bg-slate-800/40` tint; the `ghost` slot only styles the inner surface | **Confirmed** for scale / opacity / shadow (`DragPaneOverlay` wrapper `<div>` — `opacity-90 shadow-[0_30px_60px_rgba(2,6,23,0.72)]` lifted, `opacity-95 shadow-[0_22px_44px_rgba(2,6,23,0.62)]` seated, `scale-[1.01]` both). **Refuted** for the tint: `bg-slate-800/40` is `clean-flat`'s own `paneShell.surface`, painted by the host's `renderTile` / default tile, not by the wrapper | ghost wrapper, inline |
+| C2 | `DragSourceSlotReservation` hardcodes `rounded-xl` + a `border-cyan-200` ring from `resolveFocusFrame` | **Confirmed** for `rounded-xl` (inline). **Partly refuted** for the ring: the frame IS `theme.resolveFocusFrame(accent)` — a theme token, not a hardcode — so under `clean-flat` it is `border-cyan-200` (a recolor of the resting hairline, only visible because the seat had no border width of its own), under `neon-terminal` a box-shadow glow. What was NOT themeable was the seat's SURFACE (radius / border / bg / shadow) and the choice of frame | seat `<div>`, inline radius |
+| C3 | Hop / cursor badge hardcodes colours + shape | **Confirmed** — `DragCursorOverlay`: `rounded-full border backdrop-blur-[1px]` + `dragCursorToneClassName` (cyan / rose / slate tones with glows). Note the "circular cyan affordance over the drop target" the host saw was also fed by the LIVE-drag observability layer (`dragTargetBorderEnabled: true` by default → cyan inline border / fill / inset shadow on the drop target; `dragSourceBorderEnabled: true` → pink seat tint + source border) | badge, inline; observability defaults |
+| C4 | Source pane: title dimmed, content full opacity | **Refuted as stated, confirmed in effect.** The default tile applied `paneShell.dragSourceOpacity` to the WHOLE article (title + body). A custom `renderTile` received only `isDragSource` and dimmed whatever it chose (DashAI dims its header via CSS) — so for custom panes the dim was per-part by construction, because the library dimmed nothing and offered no whole-pane hook | `DefaultTilingTile` article class; `renderTile` contract |
+| C5 | On drop / settle the pane remounts (key change) so host content re-initializes | **Confirmed, cause refined.** There is no key change — leaves have NO keys; the recursive split tree is reconciled POSITIONALLY, so an insert drop (leaf moves to another branch / depth) unmounts the pane and mounts a new instance; `swapLeafTiles` keeps both leaf nodes in place and swaps `tileId`, so the two slot-bound instances each receive the OTHER tile's props (content re-initializes for both). During the drag the source slot renders `DragSourceSlotReservation` (a different component type) so the in-slot instance is already gone by the time the drop lands | `renderBranch` (no leaf keys), `swapLeafTiles`, reservation type switch |
+
+### 11.2 Fix A — `theme.dragChrome` (`TilingThemeDragChromeTokens`)
+
+Every renderer-painted drag surface now reads a resolved token; the renderer
+owns NO drag chrome literal. `resolveDragChrome(theme)` (in `theme.tsx`) fills
+omitted tokens from a pane-shell-inheriting default. Token → surface map:
+
+| Token | Surface (symbol) |
+|---|---|
+| `ghostLifted` / `ghostSeated` / `ghostTransition` | `DragPaneOverlay` wrapper `<div data-drag-ghost-wrapper>` (lifted = `!seated && !prefersReducedMotion`) |
+| `cancelFlyBack` | `DragCancelOverlay` inner wrapper |
+| `sourceReservation` + `resolveSeatFrame(accent)` | `DragSourceSlotReservation` (`[data-drag-source-reservation]`) |
+| `sourcePane` | leaf wrapper in `renderBranch` when `isDragSourceSlot && !renderReservedDragSlot` (preview drag mode; live mode's source slot is the seat) — emits `data-drag-source-pane` |
+| `dropTarget` | leaf wrapper when `isDropTargetLeaf` — emits `data-drop-target-pane` |
+| `dropIntentLayer` | `DefaultTilingTile` drop-layer frame `<div>` |
+| `cursorBadge` + `cursorBadgeValid/Invalid/Neutral` | `DragCursorOverlay` badge via `dragCursorToneClassName(dragChrome, tone)` |
+
+Defaults (`resolveDragChrome` with no overrides): `sourceReservation =
+paneShell.surface`; `resolveSeatFrame = resolveFocusFrame`; `ghostLifted =
+"opacity-95 shadow-[0_14px_32px_-14px_rgba(0,0,0,0.5)]"`; `ghostSeated =
+"opacity-100"`; `ghostTransition = "transition-[opacity,box-shadow]
+duration-150"`; `cancelFlyBack = ""`; `sourcePane = "opacity-60"`;
+`dropTarget = ""`; `dropIntentLayer = "rounded-lg border"`; `cursorBadge =
+"rounded-full border backdrop-blur-[1px]"`; badge tones = the former inline
+cyan / rose / slate strings. `neon-terminal` declares the former inline look
+verbatim in its own `dragChrome` (showcase pixel-identical); `clean-flat` /
+`mosaic` pass nothing and therefore drag with their own pane shell.
+
+`paneShell.dragSourceOpacity` was REMOVED (moved to `dragChrome.sourcePane`,
+applied by the renderer to the leaf wrapper). The two live-drag observability
+enables (`dragSourceBorderEnabled`, `dragTargetBorderEnabled`) now default
+`false` so the debug overlays no longer paint over `dragChrome`.
+
+Invariant additions:
+
+| # | Invariant | Enforced by | Tested |
+|---|---|---|---|
+| I8 | The renderer paints no drag-chrome literal; every drag surface reads `resolveDragChrome(theme)` | symbol map above | yes (`drag-focus-presentation.test.ts` "dragChrome slot" describe: square-host seat markup has no `rounded-xl` / neon glow; partial override leaves defaults; neon look lives in the slot) |
+| I9 | A theme with no `dragChrome` drags with its own pane shell (seat = `paneShell.surface`, frame = `resolveFocusFrame`) | `resolveDragChrome` defaults | yes (same describe, all built-ins) |
+
+### 11.3 Fix B — stable pane identity (`paneIdentity` prop)
+
+Design space considered:
+
+1. **Keying leaves by tile id** — insufficient: React keys only reconcile among
+   SIBLINGS; a leaf moving to another branch / depth still remounts.
+2. **Flat absolutely-positioned rendering** (every pane a keyed child of one
+   container) — correct identity but a rewrite of the ~8.5k-line recursive
+   renderer + all geometry seams (flex spine, static pins, groups, master
+   stack). Rejected for blast radius.
+3. **`createPortal` per pane into its slot** — React remounts the portal's
+   children when the portal CONTAINER node changes (the slot element is a new
+   node after a tree edit), so identity is lost exactly when needed. Rejected.
+4. **Hidden tile-keyed pool + DOM relocation** (chosen) — panes render once
+   under a hidden pool; a layout effect moves the pane's DOM node into the
+   registered slot. React never re-parents; the fiber stays put.
+
+Mechanics (`StablePanePool` / `StablePaneHost` / `resolveStablePanePoolOrder`
+/ `resolvePaneIdentityMode` in `tiling-renderer.tsx`):
+
+```
+render pass 1 (tree)                       render pass 2 (pool, later sibling of viewport)
+renderBranch(leaf)                          StablePanePool
+  ├─ registers slot: leaf wrapper             └─ StablePaneHost key=tileId  (append-only order)
+  │   ref=registerStablePaneSlot(tileId)          ├─ <div display:contents data-hpt-pane>
+  │   (NOT when the slot is the seat)             │     └─ renderTile(tileArgs) | DefaultTilingTile
+  ├─ collects StablePaneEntry{tileArgs}           └─ useLayoutEffect (every commit):
+  └─ renders seat | affordance only                    target = registry.get(tileId) ?? pool
+                                                       if wrapper.parentNode !== target → target.insertBefore(wrapper, firstChild)
+                                                       first real slot → setPlaced(true) → children mount IN the slot
+                                                  └─ useLayoutEffect cleanup (unmount): pool.appendChild(wrapper)
+                                                       BEFORE React's own removeChild(pool, wrapper)
+```
+
+Why the reconciler is never confused: (a) pool children are keyed by tile id
+and ordered by FIRST APPEARANCE (append-only; departed ids drop) so React only
+ever `appendChild`s new hosts and `removeChild`s departed ones — it never
+`insertBefore`s against a sibling that has been relocated out of the pool;
+(b) the unmount cleanup returns the node to the pool first; (c) the leaf
+wrapper's React children (seat, move affordance) are inserted/removed relative
+to React-known siblings, so a foreign first child is inert to them; (d) layout
+work runs in tree order — the pool is a LATER sibling of the viewport, so every
+slot ref has registered before any host's relocation effect runs, and refs use
+React 19 callback-ref cleanups guarded by element identity so a stale cleanup
+never evicts a newer registration (the swap case: the same slot element
+re-registers under the other tile id in one commit).
+
+Why nothing else breaks: React event delegation walks the FIBER tree, so pane
+handlers fire normally and root `onPointerEnter/Leave` still sees relocated
+panes (the pool is INSIDE the root). DOM-scoped concerns follow the node's DOM
+position, which is the slot — `[data-leaf-id]` measurement (`rootRef`
+`querySelector`, first match in document order → the in-tree node; the pool sits
+AFTER the viewport), the survivor-reflow `[data-leaf-id]` sweep (viewport
+scoped; parked panes are outside it), `pointer-events: none` on the viewport
+during `dragging`, `select-none` / `cursor-none` on the root, theme CSS.
+
+Live drag in stable mode: the seat slot registers nothing → the picked-up pane
+PARKS in the `display:none` pool (still mounted, state intact); the single
+ghost paints the pane via `renderTile(ghostTileArgs)` exactly as before (I1
+holds: one painted instance in the tree — the seat — plus the ghost). On drop
+the new slot registers under the tile id and the SAME node reseats. The ghost
+remains a transient second render of the tile rather than the relocated node
+because it is a `document.body` portal OUTSIDE the React root container's
+event-delegation scope and outside every measurement scope; moving the real
+node there would also make the pane's `[data-leaf-id]` disappear from the
+tree while the seat needs it (`cc23956`). Cost: a host whose content is
+expensive renders it twice during a drag (unchanged from slot mode).
+
+Mode resolution: `"auto"` (default) locks on the FIRST render via
+`useSyncExternalStore(noop, () => true, () => false)` — a hydration render
+returns the server snapshot (`false`) → `"slot"` for the life of the mount
+(switching later would remount every pane once); a client-only mount returns
+`true` → `"stable"`. `"stable"` on an SSR host emits EMPTY slots in server
+HTML (children mount after placement) — an explicit opt-in. `"slot"` is the
+legacy in-place render.
+
+Trade-offs accepted: (1) one extra synchronous render per pane at first mount
+(`placed` gate — keeps a host's first layout-effect measurement out of the
+`display:none` pool); (2) a parked pane's `ResizeObserver`s see a 0×0 box for
+the duration of the drag; (3) DOM focus is dropped when the node relocates
+(browsers blur a moved element) — parity with slot mode, where the remounted
+node also lacked focus, and the commit-focus effect re-focuses the destination
+leaf; (4) maximize still unmounts the non-maximized panes (only the maximized
+leaf is rendered, so only its entry is collected) — parity with slot mode.
+
+| # | Invariant | Enforced by | Tested |
+|---|---|---|---|
+| I10 | Stable mode: a pane's React instance + DOM node survive an insert drop, a swap drop, and any tree edit that keeps its tile | pool + relocation seam | yes (`stable-pane-identity.test.ts`: mount counter, `useRef` token, `useState` value, DOM node identity across `insertLeafAdjacent` + `swapLeafTiles`; StrictMode; CONTRAST case pins the `"slot"` remount) |
+| I11 | Pool order is append-only (no reconciler `insertBefore` against a relocated sibling) | `resolveStablePanePoolOrder` | yes (same file) |
+| I12 | `"auto"` → `"stable"` on client-only mount, `"slot"` when hydrating | `resolvePaneIdentityMode` + first-render lock | yes (pure resolver + jsdom mount) |

@@ -207,6 +207,44 @@ browser focus rings:
 // "suppress" (default) | "native"
 ```
 
+### Drag-state chrome (`theme.dragChrome`)
+
+Every drag surface the renderer paints — the ghost wrapper's elevation delta,
+the content-less seat the ghost hops into, the picked-up pane's dim, the
+drop-target highlight, the pointer-pinned drop-validity badge — reads the
+theme's optional, **partial** `dragChrome` slot. Omitted tokens inherit the
+pane shell (`resolveDragChrome(theme)`), so a theme that passes nothing drags
+with its own at-rest look: no library-imposed radius, ring, or shadow. To make
+a square, flat host drag square and flat:
+
+```tsx
+const THEME: TilingTheme = {
+  ...TILING_THEME_REGISTRY["clean-flat"],
+  paneShell: { ...base.paneShell, surface: "… rounded-none border border-slate-700 bg-slate-900" },
+  dragChrome: {
+    ghostLifted: "opacity-95 shadow-[0_8px_20px_-12px_rgba(0,0,0,0.5)]",
+    sourceReservation: "rounded-none border border-dashed border-slate-600 bg-slate-900/60",
+    sourcePane: "opacity-50",          // whole pane (title + content), applied by the renderer
+    cursorBadge: "rounded-none border",
+    resolveSeatFrame: () => "",        // frameless seat
+  },
+};
+```
+
+### Stable pane identity (`paneIdentity`)
+
+By default on a client-only mount, a pane's React instance survives every layout
+edit — drag → drop → settle, swaps, group folds — without remounting: panes
+render once in a hidden tile-keyed pool and their DOM node is relocated into
+whichever slot shows their tile. Hooks, state, refs, iframes, and scroll
+positions are preserved. When the renderer hydrates server markup it stays in
+the legacy in-place mode (`"slot"`); pass `paneIdentity="stable"` to opt an SSR
+host in (server HTML then carries empty pane slots).
+
+```tsx
+<TilingRenderer paneIdentity="stable" /* "auto" (default) | "stable" | "slot" */ />
+```
+
 ## Features
 
 - **Drag/drop rearrange** — Hyprland-style live drag; the move commits on
@@ -220,8 +258,11 @@ browser focus rings:
 - **Keyboard-driven focus** — directional focus, a pane switcher
   (cycle / jump / overlay), keyboard move-mode, and master/group commands behind
   a remappable keymap.
-- **Theming engine** — two built-in themes (`neon-terminal`, `clean-flat`),
-  eight accent hues, and live theme switching with no remount.
+- **Theming engine** — three built-in themes (`neon-terminal`, `clean-flat`,
+  `mosaic`), eight accent hues, a themeable drag state (`dragChrome`), and live
+  theme switching with no remount.
+- **Stable pane identity** — host pane content survives drag → drop → settle
+  and every other tree edit without remounting (`paneIdentity`).
 - **Self-healing drag recovery** — a frame-deadline backstop, an idle watchdog,
   transient-style teardown, and a `visibilitychange` reconcile so a drag never
   strands the tree mid-transition.
