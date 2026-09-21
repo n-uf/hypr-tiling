@@ -135,14 +135,13 @@ export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
     : args.isFocused
       ? "border-[#241f17]/45"
       : "border-[#e2dac6]";
-  const sourceFade: string = args.isDragSource ? "opacity-60" : "";
   const folio: string = String(args.paneOrdinal).padStart(2, "0");
   const metrics: PaneContentMetrics | null = paneContentMetrics(args.tile.id);
 
   return (
     <TilingPaneRoot
       pane={args}
-      className={`flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-[4px] border bg-[#fbf9f2] text-[#4b4335] shadow-[0_1px_0_rgba(36,31,23,0.03),0_10px_28px_-22px_rgba(36,31,23,0.4)] outline-none transition-[border-color,box-shadow,opacity] duration-200 ${border} ${ring} ${sourceFade}`}
+      className={`flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-[4px] border bg-[#fbf9f2] text-[#4b4335] shadow-[0_1px_0_rgba(36,31,23,0.03),0_10px_28px_-22px_rgba(36,31,23,0.4)] outline-none transition-[border-color,box-shadow,opacity] duration-200 ${border} ${ring}`}
     >
       <TilingDragHandle
         pane={args}

@@ -262,9 +262,6 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
     : args.isFocused
       ? "border-slate-400"
       : "";
-  const sourceFade: string = args.isDragSource
-    ? CANVAS_THEME.paneShell.dragSourceOpacity
-    : "";
   const index: string = String(args.paneOrdinal).padStart(2, "0");
   const metrics: PaneContentMetrics | null = paneContentMetrics(args.tile.id);
   // Canvas ghost chrome: the drag surfaces (`"drag-ghost"` / `"drag-cancel"`)
@@ -283,7 +280,7 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
   return (
     <TilingPaneRoot
       pane={args}
-      className={`${PANEL_SHELL} ${border} ${ring} ${sourceFade}`}
+      className={`${PANEL_SHELL} ${border} ${ring}`}
     >
       <TilingDragHandle
         pane={args}
