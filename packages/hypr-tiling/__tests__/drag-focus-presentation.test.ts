@@ -7,6 +7,7 @@ import {
   DragSourceSlotReservation,
   buildDragPaneSnapshot,
   buildGhostTileArgs,
+  dragCursorToneClassName,
   renderDragPaneShell,
   type GhostTileCapabilityFlags,
 } from "../react/tiling-renderer";
@@ -14,9 +15,11 @@ import { resolveDragCommitFocusLeafId } from "../engine/drag-machine";
 import {
   TILING_THEME_REGISTRY,
   accentHue,
+  resolveDragChrome,
   resolvePaneDropAffordanceClasses,
   type PaneDropAffordanceFlags,
   type TilingTheme,
+  type TilingThemeDragChromeTokens,
 } from "../react/theme";
 import type { TilingDropIntentState } from "../engine/drop-intent-resolver";
 import type {
@@ -524,6 +527,182 @@ describe("seat / hop-in slot wears the focus frame", (): void => {
       }),
     );
     expect(markup).toContain(accentHue("rose").focusGlowSoft);
+  });
+});
+
+/**
+ * `theme.dragChrome` — the drag-state chrome slot. Contract:
+ *
+ * 1. A theme that passes NOTHING drags with its own resting chrome: the seat
+ *    wears `paneShell.surface`, the seat frame is `resolveFocusFrame`, the ghost
+ *    wrapper carries only a small neutral elevation/opacity delta, no drop
+ *    target highlight. No `rounded-xl`, no cyan ring, no slate shadow appears
+ *    unless the theme authored it.
+ * 2. The slot is PARTIAL: an override of one token leaves every other token at
+ *    its pane-shell-inheriting default.
+ * 3. The library's neon-terminal look is expressed purely through the slot.
+ * 4. The renderer-painted drag surfaces (`DragSourceSlotReservation`, the
+ *    cursor badge tone helper) read the resolved tokens, never inline classes.
+ */
+describe("dragChrome slot — pane-shell-inheriting defaults + partial overrides", (): void => {
+  const CLEAN_FLAT: TilingTheme = TILING_THEME_REGISTRY["clean-flat"];
+  // A square, flat, hairline host theme (the DashAI shape) that passes NO drag
+  // chrome at all.
+  const SQUARE_HOST: TilingTheme = {
+    ...CLEAN_FLAT,
+    id: "square-host",
+    label: "square host",
+    paneShell: {
+      ...CLEAN_FLAT.paneShell,
+      surface:
+        "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-none border border-slate-700 bg-slate-900",
+    },
+    dragChrome: undefined,
+  };
+
+  it("a theme with no dragChrome resolves every token from its pane shell (seat = paneShell.surface, frame = resolveFocusFrame)", (): void => {
+    const chrome: TilingThemeDragChromeTokens = resolveDragChrome(SQUARE_HOST);
+    expect(chrome.sourceReservation).toBe(SQUARE_HOST.paneShell.surface);
+    expect(chrome.sourceReservation).toContain("rounded-none");
+    expect(chrome.resolveSeatFrame("violet")).toBe(
+      SQUARE_HOST.resolveFocusFrame("violet"),
+    );
+    expect(chrome.dropTarget).toBe("");
+    expect(chrome.sourcePane).toBe("opacity-60");
+    // The default ghost delta is a small neutral elevation + opacity — never the
+    // neon scale / slate-950 shadow, and nothing round.
+    expect(chrome.ghostLifted).not.toContain("scale-");
+    expect(chrome.ghostLifted).not.toContain("rgba(2,6,23");
+    expect(chrome.ghostLifted).not.toContain("rounded");
+    expect(chrome.ghostSeated).not.toContain("scale-");
+    expect(chrome.cancelFlyBack).toBe("");
+  });
+
+  it("the slot is partial — overriding one token keeps every other token at its default", (): void => {
+    const themed: TilingTheme = {
+      ...SQUARE_HOST,
+      dragChrome: { sourcePane: "opacity-40" },
+    };
+    const chrome: TilingThemeDragChromeTokens = resolveDragChrome(themed);
+    const defaults: TilingThemeDragChromeTokens = resolveDragChrome(SQUARE_HOST);
+    expect(chrome.sourcePane).toBe("opacity-40");
+    expect(chrome.sourceReservation).toBe(defaults.sourceReservation);
+    expect(chrome.ghostLifted).toBe(defaults.ghostLifted);
+    expect(chrome.cursorBadge).toBe(defaults.cursorBadge);
+    expect(chrome.resolveSeatFrame("amber")).toBe(
+      defaults.resolveSeatFrame("amber"),
+    );
+  });
+
+  it("neon-terminal expresses its legacy drag look purely through the slot", (): void => {
+    const chrome: TilingThemeDragChromeTokens = resolveDragChrome(NEON);
+    expect(NEON.dragChrome).toBeDefined();
+    expect(chrome.ghostSeated).toContain("scale-[1.01]");
+    expect(chrome.ghostSeated).toContain("opacity-95");
+    expect(chrome.ghostSeated).toContain("shadow-[0_22px_44px_rgba(2,6,23,0.62)]");
+    expect(chrome.ghostLifted).toContain("opacity-90");
+    expect(chrome.sourceReservation).toBe("rounded-xl");
+    expect(chrome.sourcePane).toBe("opacity-70");
+    expect(chrome.cursorBadge).toContain("rounded-full");
+    expect(chrome.cursorBadgeValid).toContain("cyan");
+    expect(chrome.cursorBadgeInvalid).toContain("rose");
+  });
+
+  it("clean-flat and mosaic pass no dragChrome and therefore drag with their own pane shell", (): void => {
+    for (const themeId of ["clean-flat", "mosaic"] as const) {
+      const theme: TilingTheme = TILING_THEME_REGISTRY[themeId];
+      expect(theme.dragChrome).toBeUndefined();
+      const chrome: TilingThemeDragChromeTokens = resolveDragChrome(theme);
+      expect(chrome.sourceReservation).toBe(theme.paneShell.surface);
+      expect(chrome.sourceReservation).not.toContain("rounded-xl");
+    }
+  });
+
+  it("the seat renders the theme's pane shell — no renderer-owned rounded-xl / cyan ring on a square host", (): void => {
+    const markup: string = renderToStaticMarkup(
+      createElement(DragSourceSlotReservation, {
+        theme: SQUARE_HOST,
+        accent: "cyan",
+        observabilityColors: TILING_OBSERVABILITY_COLOR_DEFAULTS,
+        observabilityColorEnables: TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
+      }),
+    );
+    expect(markup).toContain("data-drag-source-reservation");
+    expect(markup).toContain("rounded-none");
+    expect(markup).toContain("bg-slate-900");
+    expect(markup).not.toContain("rounded-xl");
+    // The seat frame is the host's own (clean-flat) focus frame for the dragged
+    // accent — it recolors the resting hairline (`twMerge` resolves the
+    // border-color pair in the frame's favor); the neon glow never appears.
+    expect(markup).toContain(SQUARE_HOST.resolveFocusFrame("cyan"));
+    expect(markup).not.toContain(accentHue("cyan").focusGlowSoft);
+    // No observability seat tint by default (the live-drag debug layers are
+    // opt-in), so the theme's own surface is what paints.
+    expect(markup).not.toContain("background-color:rgba(240, 171, 252");
+  });
+
+  it("the live-drag observability layers (pink seat tint, cyan target ring) are OFF by default", (): void => {
+    expect(TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS.dragSourceBorderEnabled).toBe(false);
+    expect(TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS.dragTargetBorderEnabled).toBe(false);
+    // Opting in still paints the seat tint over the themed surface.
+    const markup: string = renderToStaticMarkup(
+      createElement(DragSourceSlotReservation, {
+        theme: SQUARE_HOST,
+        accent: "cyan",
+        observabilityColors: TILING_OBSERVABILITY_COLOR_DEFAULTS,
+        observabilityColorEnables: {
+          ...TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
+          dragSourceBorderEnabled: true,
+        },
+      }),
+    );
+    expect(markup).toContain("background-color:rgba(240, 171, 252");
+    expect(markup).toContain("rounded-none");
+  });
+
+  it("a host can make the seat frameless through resolveSeatFrame", (): void => {
+    const frameless: TilingTheme = {
+      ...SQUARE_HOST,
+      dragChrome: {
+        sourceReservation: "rounded-none border border-dashed border-slate-600",
+        resolveSeatFrame: (): string => "",
+      },
+    };
+    const markup: string = renderToStaticMarkup(
+      createElement(DragSourceSlotReservation, {
+        theme: frameless,
+        accent: "cyan",
+        observabilityColors: TILING_OBSERVABILITY_COLOR_DEFAULTS,
+        observabilityColorEnables: TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
+      }),
+    );
+    expect(markup).toContain("border-dashed");
+    expect(markup).not.toContain(SQUARE_HOST.resolveFocusFrame("cyan"));
+    expect(markup).not.toContain("rounded-xl");
+  });
+
+  it("the cursor badge tones come from the slot (valid / invalid / neutral)", (): void => {
+    const themed: TilingTheme = {
+      ...SQUARE_HOST,
+      dragChrome: {
+        cursorBadge: "rounded-none border",
+        cursorBadgeValid: "badge-valid-token",
+        cursorBadgeInvalid: "badge-invalid-token",
+        cursorBadgeNeutral: "badge-neutral-token",
+      },
+    };
+    const chrome: TilingThemeDragChromeTokens = resolveDragChrome(themed);
+    expect(dragCursorToneClassName(chrome, "valid")).toBe("badge-valid-token");
+    expect(dragCursorToneClassName(chrome, "invalid")).toBe("badge-invalid-token");
+    expect(dragCursorToneClassName(chrome, "neutral")).toBe("badge-neutral-token");
+    expect(chrome.cursorBadge).toBe("rounded-none border");
+  });
+
+  it("paneShell no longer carries a drag-source opacity — the whole-pane dim lives in dragChrome.sourcePane", (): void => {
+    for (const theme of Object.values(TILING_THEME_REGISTRY)) {
+      expect("dragSourceOpacity" in theme.paneShell).toBe(false);
+      expect(resolveDragChrome(theme).sourcePane).toMatch(/^opacity-\d+$/);
+    }
   });
 });
 

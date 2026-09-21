@@ -326,10 +326,20 @@ export const TILING_OBSERVABILITY_COLOR_DEFAULTS: TilingObservabilityColorConfig
     hitZoneBlockedColorHex: "#fb7185",
   };
 
+/**
+ * Observability color-layer enables. The two LIVE-drag layers (source border
+ * + seat tint, drop-target border / fill / inset shadow) default OFF: they are
+ * inline-style debug overlays that would otherwise paint over the theme's
+ * `dragChrome` on every consumer drag (a pink seat tint and a cyan target ring
+ * no host theme authored). Toggle them on from the observability panel (or pass
+ * `observabilityColorEnables`) when diagnosing drop resolution. The
+ * PREVIEW-mode projected-landing layers stay on — they only render when
+ * `showDropPreviewOverlays` is set and live drag mode is off.
+ */
 export const TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS: TilingObservabilityColorEnableConfig =
   {
-    dragSourceBorderEnabled: true,
-    dragTargetBorderEnabled: true,
+    dragSourceBorderEnabled: false,
+    dragTargetBorderEnabled: false,
     projectedSourceBorderEnabled: true,
     projectedTargetBorderEnabled: true,
     projectedSourceFillEnabled: true,
