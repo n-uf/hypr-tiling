@@ -65,6 +65,9 @@ export interface PersistedTilingLayout {
 export function queryTilingLayout(layout: TilingLayoutNode): TilingLayoutQuery;
 
 // @public
+export function resolveDragChrome(theme: TilingTheme): TilingThemeDragChromeTokens;
+
+// @public
 export interface ResolvedTilingDragRecoveryCapability {
     enable: boolean;
     frameDeadlineMs: number;
@@ -599,6 +602,9 @@ export type TilingPaneBodyRenderMode = "render-content" | "render-empty" | "rend
 export type TilingPaneCycleDirection = "next" | "previous";
 
 // @public
+export type TilingPaneIdentityMode = "auto" | "stable" | "slot";
+
+// @public
 export function TilingPaneRoot(input: TilingPaneRootProps): React_2.ReactElement;
 
 // @public
@@ -662,6 +668,7 @@ export interface TilingRendererProps {
     onMaximizedLeafChange?: (leafId: string | null) => void;
     onThemeChange?: (themeId: TilingThemeId) => void;
     onTileAccentChange?: (tileId: string, accent: TilingTileAccent) => void;
+    paneIdentity?: TilingPaneIdentityMode;
     projectedOverlayBackgroundAlpha?: number;
     renderTile?: (args: TilingRenderTileProps) => React_2.ReactNode;
     showDropBorderHints?: boolean;
@@ -760,6 +767,7 @@ export interface TilingSplitNode {
 // @public
 export interface TilingTheme {
     readonly divider: TilingThemeDividerTokens;
+    readonly dragChrome?: Partial<TilingThemeDragChromeTokens>;
     readonly ghost: TilingThemeGhostTokens;
     readonly id: TilingThemeId | (string & {});
     readonly label: string;
@@ -779,6 +787,23 @@ export interface TilingThemeDividerTokens {
     readonly hidden: string;
     readonly visibleInteractive: string;
     readonly visibleStatic: string;
+}
+
+// @public
+export interface TilingThemeDragChromeTokens {
+    readonly cancelFlyBack: string;
+    readonly cursorBadge: string;
+    readonly cursorBadgeInvalid: string;
+    readonly cursorBadgeNeutral: string;
+    readonly cursorBadgeValid: string;
+    readonly dropIntentLayer: string;
+    readonly dropTarget: string;
+    readonly ghostLifted: string;
+    readonly ghostSeated: string;
+    readonly ghostTransition: string;
+    readonly resolveSeatFrame: (accent: TilingTileAccent | undefined) => string;
+    readonly sourcePane: string;
+    readonly sourceReservation: string;
 }
 
 // @public
@@ -806,7 +831,6 @@ export interface TilingThemePaneHeaderTokens {
 // @public
 export interface TilingThemePaneShellTokens {
     readonly bodyText: string;
-    readonly dragSourceOpacity: string;
     readonly invalidDropRing: string;
     readonly subtitleText: string;
     readonly surface: string;
