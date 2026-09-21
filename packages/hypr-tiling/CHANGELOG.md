@@ -6,7 +6,72 @@ This package uses calendar-aligned versioning (`YY.M.R`), which cannot signal a
 SemVer "major" bump. **Read the per-release notes below for breaking changes** —
 the version number alone does not flag them.
 
-## Unreleased
+## 26.9.0 — themeable drag chrome + stable pane identity
+
+Feature release (calendar-aligned `YY.M.R`; `26.9` = September, `.0` = first
+release of the month). **One breaking theme-shape change** — read the first
+bullet.
+
+- **BREAKING (theme shape): `paneShell.dragSourceOpacity` removed.** The
+  picked-up source pane's dim is now `dragChrome.sourcePane` (see below) and
+  is applied by the RENDERER to the whole leaf wrapper — title AND content,
+  one opacity — for the default tile and a custom `renderTile` alike. Custom
+  panes that applied their own `isDragSource` fade should drop it (it now
+  double-dims). A consumer theme object that still spells
+  `paneShell.dragSourceOpacity` fails typecheck (excess property); delete the
+  line or move the value to `dragChrome: { sourcePane }`.
+- **New theme slot `dragChrome` (`TilingThemeDragChromeTokens`, optional +
+  partial).** Every renderer-painted drag surface reads theme tokens, so a host
+  can make the drag state look exactly like its at-rest pane. Tokens:
+  `ghostLifted` / `ghostSeated` / `ghostTransition` (ghost WRAPPER elevation /
+  scale / opacity / tint delta — outside the `ghost.surface` shell),
+  `cancelFlyBack`, `sourceReservation` (the content-less seat's full surface —
+  radius / border / background / shadow), `sourcePane` (whole-pane source
+  dim), `dropTarget` (drop-target leaf highlight, default none),
+  `dropIntentLayer` (default tile's edge/center hint frame radius + border
+  width), `cursorBadge` + `cursorBadgeValid` / `cursorBadgeInvalid` /
+  `cursorBadgeNeutral` (the pointer-pinned drop-validity badge shape + tones),
+  and `resolveSeatFrame(accent)` (the seat's hop-in frame; default =
+  `resolveFocusFrame`). `resolveDragChrome(theme)` fills omitted tokens with a
+  PANE-SHELL-INHERITING default: the seat wears `paneShell.surface`, the ghost
+  wrapper carries a small neutral elevation + `opacity-95`, no drop-target
+  highlight. A theme that passes nothing never shows a look it did not author.
+- **Default drag look changed for `clean-flat` / `mosaic` / consumer themes.**
+  The renderer no longer hardcodes the neon look in the drag path: no
+  `rounded-xl` seat, no `scale-[1.01]` + slate-950 drop shadow on the ghost
+  wrapper, no cyan/rose/slate cursor badge unless the theme asks. The built-in
+  `neon-terminal` theme now carries that exact look in its own `dragChrome`, so
+  the showcase is unchanged.
+- **Live-drag observability layers default OFF.** `TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS.dragSourceBorderEnabled` /
+  `dragTargetBorderEnabled` are now `false`: the pink seat tint + source border
+  and the cyan drop-target border / fill / inset shadow were inline-style debug
+  overlays painting over every consumer's drag. Toggle them in the observability
+  panel (or pass `observabilityColorEnables`) when diagnosing drop resolution.
+  Preview-mode projected-landing layers are unchanged.
+- **Stable pane identity across drag → drop → settle (`paneIdentity` prop,
+  `TilingPaneIdentityMode = "auto" | "stable" | "slot"`).** The split tree is
+  reconciled positionally, so an insert drop (leaf moves to another branch)
+  used to unmount + remount the pane and a swap handed each instance the other
+  tile's props — host content re-initialized after every drop. In `"stable"`
+  mode panes render ONCE each in a hidden tile-keyed pool and their DOM node is
+  relocated (layout-effect `appendChild`) into whichever slot shows their tile;
+  the React instance (hooks, state, refs, iframes, scroll) is the same object
+  through drag → drop → settle and every other tree edit. `"auto"` (default)
+  is `"stable"` on a client-only mount and `"slot"` (the legacy in-place render,
+  SSR-faithful) when hydrating server markup; pass `"stable"` explicitly to
+  opt an SSR host in (server HTML then carries empty slots; content is placed
+  on the client). DOM shape in stable mode: the leaf wrapper carries
+  `data-hpt-pane-slot="<tileId>"`, the pane sits in a `display: contents`
+  wrapper `[data-hpt-pane]`, and a `[data-hpt-pane-pool]` (`display: none`)
+  sits after the viewport inside the root. The drag ghost is still a transient
+  second render of the tile through `renderTile` (a body-level portal outside
+  the React root's delegation scope) — see `_agent/drag-subsystem-audit.md`
+  §11.
+- **Leaf wrapper drag attributes.** `data-drag-source-pane` (preview-mode
+  dimmed source) and `data-drop-target-pane` (resolved drop target) on the leaf
+  wrapper for host CSS hooks; the ghost wrapper carries `data-drag-ghost-wrapper`.
+
+## Unreleased (pre-26.9.0 notes, shipped in 26.9.0)
 
 - **Layout reconciliation (`normalizeLayout`).** Commit-time normalization on
   every resize/rearrange `pointerup` / `pointercancel` / `lostpointercapture`
