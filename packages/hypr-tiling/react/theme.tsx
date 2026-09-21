@@ -25,6 +25,13 @@ import type {
  * for any consumer regardless of which theme is active at runtime. CSS
  * variables would move color decisions out of the type system and defeat the
  * closed-union exhaustiveness the rest of the renderer relies on.
+ *
+ * That JIT constraint is independent of where the drag ghost mounts. Host
+ * CSS that scopes tokens via CSS variables, `data-theme`, or a scoped
+ * `dark` class must redirect the overlay portal container
+ * (`TilingRendererProps.overlayPortalContainer`) so those inherited values
+ * reach the ghost / cursor / cancel overlays. Default remains
+ * `document.body`.
  */
 
 /**
@@ -152,6 +159,8 @@ export interface TilingThemeGhostTokens {
  * `resolveFocusFrame`, the ghost carries a small neutral elevation/opacity
  * delta). A theme that passes nothing therefore drags with its own resting
  * chrome; the built-in neon-terminal look is expressed purely through this slot.
+ * Tokens stay literal class strings (Tailwind JIT) — that is not a portal
+ * constraint. Scoped host CSS vars still need `overlayPortalContainer`.
  */
 export interface TilingThemeDragChromeTokens {
   /**
@@ -830,7 +839,10 @@ export function resolveTilingTheme(
  * neutral elevation + opacity delta, and no drop-target highlight is painted
  * (focus follows the dragged pane). A theme that passes no `dragChrome` at all
  * therefore never shows a look it did not author. Pure + referentially cheap
- * (no memo needed; callers may still `useMemo` on `theme`).
+ * (no memo needed; callers may still `useMemo` on `theme`). Tokens are
+ * Tailwind-JIT literals, not portal-scoped; a host that paints the ghost
+ * with inherited CSS variables must still pass
+ * `TilingRendererProps.overlayPortalContainer`.
  */
 export function resolveDragChrome(
   theme: TilingTheme,

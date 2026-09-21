@@ -212,7 +212,9 @@ cruft. Two ground-up splits enforce this generically at the source:
   `observabilityColorEnables`) moved to an INTERNAL superset
   (`TilingDefaultTileProps`) that only the built-in `DefaultTilingTile` consumes.
   A custom `renderTile` never receives them.
-- **Renderer props** — `TilingRendererProps` is the clean consumer surface. The
+- **Renderer props** — `TilingRendererProps` is the clean consumer surface
+  (`overlayPortalContainer` redirects the drag ghost / cursor / cancel
+  portals; default `document.body`). The
   observability inputs (overlay colors, hit-zone / drop-intent debug flags, and
   the `onDropIntentChange` / `onLiveHitLogChange` / `onProjectedOverlayCountChange`
   telemetry hooks) moved to `TilingRendererObservabilityProps` on

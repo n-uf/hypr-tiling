@@ -582,6 +582,9 @@ export interface TilingMaximizeCapability {
 export type TilingMovePlacement = "left" | "right" | "top" | "bottom";
 
 // @public
+export type TilingOverlayPortalContainer = HTMLElement | null | (() => HTMLElement | null);
+
+// @public
 export function TilingPaneAction(input: TilingPaneActionProps): React_2.ReactElement;
 
 // @public
@@ -668,6 +671,7 @@ export interface TilingRendererProps {
     onMaximizedLeafChange?: (leafId: string | null) => void;
     onThemeChange?: (themeId: TilingThemeId) => void;
     onTileAccentChange?: (tileId: string, accent: TilingTileAccent) => void;
+    overlayPortalContainer?: TilingOverlayPortalContainer;
     paneIdentity?: TilingPaneIdentityMode;
     projectedOverlayBackgroundAlpha?: number;
     renderTile?: (args: TilingRenderTileProps) => React_2.ReactNode;

@@ -626,7 +626,7 @@ export interface TilingPaneSwitchingCapability {
    * the toggle is inert chrome. Suppressing the toggle hands content ownership to
    * the embedding: pane-content is treated as VISIBLE by default
    * (`isPaneContentVisible` initializes `true`) for ALL drag surfaces — in-tree
-   * panes, the source slot, the hop-in slot, and the portaled drag ghost — so the
+   * panes, the source slot, the hop-in slot, and the portaled drag ghost (the overlay portal container, default `document.body`, see {@link TilingRendererProps.overlayPortalContainer}) — so the
    * ghost body matches the seated body. With no control rendered, the flag cannot
    * be flipped off, so this default holds for the lifetime of the embedding.
    * (Ghost-seat reservation slots still render empty — that is a drag mechanic
@@ -1267,11 +1267,13 @@ export interface TilingLayoutConfig {
  *
  * - `"pane"` — the seated in-tree pane (the normal, interactive case).
  * - `"drag-ghost"` — the floating, portaled pickup ghost that travels with the
- *   cursor during a drag. `aria-hidden` + `pointer-events-none`: handlers are
- *   inert no-ops, capability display flags stay real.
+ *   cursor during a drag (the overlay portal container, default
+ *   `document.body`, see {@link TilingRendererProps.overlayPortalContainer}).
+ *   `aria-hidden` + `pointer-events-none`: handlers are inert no-ops,
+ *   capability display flags stay real.
  * - `"drag-cancel"` — the cancel fly-back overlay (the ghost gliding home after
- *   a cancelled drag). Same inert-handlers / real-flags semantics as
- *   `"drag-ghost"`.
+ *   a cancelled drag; same overlay portal container as `"drag-ghost"`). Same
+ *   inert-handlers / real-flags semantics as `"drag-ghost"`.
  */
 export type TilingRenderSurface = "pane" | "drag-ghost" | "drag-cancel";
 
@@ -1930,12 +1932,29 @@ export type TilingChromeFocusOutline = "suppress" | "native";
  *   same object through drag → drop → settle and every other tree edit; only
  *   the DOM parent changes. During a live drag the picked-up pane is parked in
  *   the pool (its slot shows the content-less seat; the single ghost paints
- *   the pane) and reseats on drop. Server render emits EMPTY slots (content is
- *   placed on the client), so hydration-time flash is the cost.
+ *   the pane through the overlay portal container, default `document.body`,
+ *   see {@link TilingRendererProps.overlayPortalContainer}) and reseats on
+ *   drop. Server render emits EMPTY slots (content is placed on the client),
+ *   so hydration-time flash is the cost.
  * - `"auto"` (default) — `"stable"` on a client-only mount, `"slot"` when the
  *   first render is a hydration of server markup.
  */
 export type TilingPaneIdentityMode = "auto" | "stable" | "slot";
+
+/**
+ * Host node for the renderer's `position: fixed` drag overlays (ghost, custom
+ * cursor, cancel fly-back). An element, `null` (fall back to `document.body`),
+ * or a thunk evaluated every render so a late-mounted container (ref /
+ * callback) is picked up without remounting the renderer. See
+ * {@link TilingRendererProps.overlayPortalContainer} for the containing-block
+ * caveat, SSR `null`, and stacking-context z-index note.
+ *
+ * @public
+ */
+export type TilingOverlayPortalContainer =
+  | HTMLElement
+  | null
+  | (() => HTMLElement | null);
 
 /**
  * Props for the {@link TilingRenderer} component — the full controlled-component
@@ -2109,6 +2128,32 @@ export interface TilingRendererProps {
    * {@link TilingChromeFocusOutline}.
    */
   chromeFocusOutline?: TilingChromeFocusOutline;
+  /**
+   * DOM node that hosts the `position: fixed` drag overlays (ghost, custom
+   * cursor, cancel fly-back). Default `document.body`. Accepts an element,
+   * `null` (fall back to `document.body`), or a thunk evaluated every render
+   * so a late-mounted container (ref / callback) is picked up without
+   * remounting the renderer. On the server the resolver returns `null` and
+   * mounts nothing — overlays only paint during a client, post-hydration drag.
+   *
+   * Two independent reasons the default is `document.body`: (1) containing-
+   * block immunity — `position: fixed` stays window-relative; (2) the ghost
+   * stays outside the React root's event-delegation scope. Redirecting the
+   * DOM mount does not change (2): React still walks fibers, not the DOM,
+   * and measurement selectors stay root/viewport-scoped. React context
+   * (`TilingThemeProvider`, etc.) still propagates through `createPortal`.
+   *
+   * Containing-block caveat: the container MUST NOT sit under an ancestor
+   * with `transform`, `filter`, `backdrop-filter`, `perspective`,
+   * `contain: paint` (or `layout` / `strict` / `content`), or `will-change`
+   * of those. The overlays place themselves with window-relative client
+   * coordinates; any ancestor that establishes a containing block for
+   * `position: fixed` reintroduces ghost↔seat drift.
+   *
+   * Stacking: overlay z-indexes (ghost 220, cursor 230, cancel 219) are
+   * relative to the container's stacking context, not the document.
+   */
+  overlayPortalContainer?: TilingOverlayPortalContainer;
 }
 
 /**

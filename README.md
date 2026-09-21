@@ -146,7 +146,9 @@ Public API docs and export signatures live in:
   remappable keymap.
 - **Theming engine** — two built-in themes (`neon-terminal`, `clean-flat`), eight
   accent hues, a theme provider with hooks, and live theme switching with no
-  remount.
+  remount. Redirect drag overlays with `overlayPortalContainer` when host
+  theme tokens (CSS variables, scoped `dark`) must inherit into the ghost
+  (default remains `document.body`).
 - **Self-healing drag recovery** — a frame-deadline animation backstop, an idle
   watchdog, transient-style teardown, and a `visibilitychange` reconcile so a drag
   never strands the tree mid-transition.

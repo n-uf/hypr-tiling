@@ -1214,7 +1214,13 @@ export function DocsPage({
                   <Code>useTilingTheme()</Code> (<Code>resolveAccentText</Code>,{" "}
                   <Code>resolveFocusFrame</Code>). Render the body only when{" "}
                   <Code>paneBodyRenderMode</Code> is <Code>"render-content"</Code> so
-                  the drag ghost mirrors your pane. The homepage&rsquo;s own tiles
+                  the drag ghost mirrors your pane. The ghost / cursor / cancel
+                  overlays mount on the overlay portal container (default{" "}
+                  <Code>document.body</Code>, see{" "}
+                  <Code>overlayPortalContainer</Code>) so{" "}
+                  <Code>position: fixed</Code> stays window-relative and the
+                  ghost stays outside the React root&rsquo;s event-delegation
+                  scope. The homepage&rsquo;s own tiles
                   are built exactly this way — and the &ldquo;panes&rdquo; switch on
                   the homepage flips them to a light minimalist variant built with
                   these primitives.
@@ -1252,7 +1258,17 @@ export function DocsPage({
                   renderer; set <Code>tile.accent</Code> for one pane.{" "}
                   <Code>useTilingTheme()</Code> reads the active theme inside a
                   pane; <Code>resolveTilingTheme</Code> maps an id to its token
-                  object for <Code>TilingThemeProvider</Code>.
+                  object for <Code>TilingThemeProvider</Code>. Theme class
+                  tokens stay literal strings (Tailwind JIT) — that is not a
+                  portal constraint. Host CSS variables, <Code>data-theme</Code>,
+                  or a scoped <Code>dark</Code> class on a wrapper must pass
+                  that wrapper as <Code>overlayPortalContainer</Code> (element
+                  or thunk; default <Code>document.body</Code>) so the ghost
+                  inherits them. The container must not sit under a{" "}
+                  <Code>transform</Code> / <Code>filter</Code> /{" "}
+                  <Code>backdrop-filter</Code> / <Code>contain: paint</Code>{" "}
+                  ancestor; overlay z-indexes 220 / 230 are relative to that
+                  stacking context.
                 </>
               }
               symbols={[
@@ -1261,6 +1277,7 @@ export function DocsPage({
                 "resolveTilingTheme",
                 "TilingThemeId",
                 "TilingTheme",
+                "TilingRendererProps",
               ]}
             />
 

@@ -81,6 +81,12 @@ stylesheet:
 @source "../node_modules/@n-uf/hypr-tiling/dist/**/*.{js,mjs}";
 ```
 
+A custom `overlayPortalContainer` does not change that scan: library
+`dragChrome` tokens still come from this package's dist. If the ghost
+renders **host-only** Tailwind utilities (classes declared only in the
+host app), those still need the host's own `content` / `@source` globs —
+the portal mount does not pull them into the library scan.
+
 ## Quick start
 
 The renderer is a **controlled component**: you own the layout tree in state and
@@ -231,6 +237,26 @@ const THEME: TilingTheme = {
 };
 ```
 
+**Theme scoping.** `dragChrome` tokens are literal class strings so
+Tailwind's JIT can emit them — that is not a portal constraint. Host CSS
+that scopes colours via CSS variables, `data-theme`, or a scoped `dark`
+class will not reach the ghost / cursor / cancel overlays unless they
+mount on the overlay portal container (default `document.body`, see
+`overlayPortalContainer`):
+
+```tsx
+const overlayRef = useRef<HTMLDivElement | null>(null);
+return (
+  <div data-theme="dark" ref={overlayRef}>
+    <TilingRenderer overlayPortalContainer={() => overlayRef.current} /* … */ />
+  </div>
+);
+```
+
+The container must not sit under a `transform` / `filter` /
+`backdrop-filter` / `perspective` / `contain: paint` ancestor. Overlay
+z-indexes (220 / 230) are relative to that container's stacking context.
+
 ### Stable pane identity (`paneIdentity`)
 
 By default on a client-only mount, a pane's React instance survives every layout
@@ -239,11 +265,41 @@ render once in a hidden tile-keyed pool and their DOM node is relocated into
 whichever slot shows their tile. Hooks, state, refs, iframes, and scroll
 positions are preserved. When the renderer hydrates server markup it stays in
 the legacy in-place mode (`"slot"`); pass `paneIdentity="stable"` to opt an SSR
-host in (server HTML then carries empty pane slots).
+host in (server HTML then carries empty pane slots). The drag ghost remains a
+transient second `renderTile` on the overlay portal container (default
+`document.body`, see `overlayPortalContainer`) — DOM mount is configurable;
+the ghost staying outside the React root's event-delegation scope is not.
 
 ```tsx
 <TilingRenderer paneIdentity="stable" /* "auto" (default) | "stable" | "slot" */ />
 ```
+
+### Overlay portal container (theme scoping)
+
+Drag overlays (ghost, custom cursor, cancel fly-back) portal to
+`document.body` by default so their `position: fixed` coordinates stay
+window-relative — immune to ancestor `transform` / `filter` /
+`backdrop-filter` / `contain: paint` containing blocks. A host whose theme
+tokens live on a scoped root (CSS variables that the ghost must inherit) can
+redirect the portal:
+
+```tsx
+<TilingRenderer
+  overlayPortalContainer={overlayHost}          // HTMLElement
+  // overlayPortalContainer={() => overlayRef.current}  // thunk, re-read each render
+  /* … */
+/>
+```
+
+The thunk form is evaluated every render so a late-mounted container is
+picked up without remounting the renderer. `null` / omitted falls back to
+`document.body`.
+
+**Containing-block caveat.** The container must not sit under an ancestor
+with `transform`, `filter`, `backdrop-filter`, `perspective`,
+`contain: paint` (or `layout` / `strict` / `content`), or `will-change` of
+those. The overlays still use window-relative client coordinates; a
+containing-block ancestor reintroduces ghost↔seat drift.
 
 ## Features
 

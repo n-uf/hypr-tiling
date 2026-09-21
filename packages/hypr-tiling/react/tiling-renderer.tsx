@@ -241,6 +241,7 @@ import type {
   TilingRenderSurface,
   TilingRenderTileGroupContext,
   TilingRenderTileProps,
+  TilingOverlayPortalContainer,
   TilingRendererObservabilityProps,
   TilingRendererProps,
   TilingSplitAxis,
@@ -475,6 +476,9 @@ const DRAG_PANE_OVERLAY_Z_INDEX: number = 220;
 /**
  * The custom drag cursor (`DragCursorOverlay`) sits ABOVE the ghost so the
  * pointer affordance is never occluded by the dragged pane it carries.
+ * Overlay z-indexes (cancel 219 / ghost 220 / cursor 230) are relative to
+ * the overlay portal container's stacking context (default `document.body`,
+ * see `overlayPortalContainer`), not the document.
  */
 const DRAG_CURSOR_OVERLAY_Z_INDEX: number = 230;
 /** Cursor badge diameter (px); half is reserved as the viewport-clamp margin. */
@@ -1093,8 +1097,9 @@ export function renderDragPaneShell(
       className={cn(
         // Lifted ghost: the active theme's ghost surface tokens (a touch more
         // opaque + deeper shadow than a resting pane) tinted with the dragged
-        // pane's accent. Rendered through a document.body portal
-        // (position:fixed), so any backdrop-filter here never contains it.
+        // pane's accent. Rendered through the overlay portal container
+        // (default `document.body`, see `overlayPortalContainer`;
+        // `position:fixed`), so any backdrop-filter here never contains it.
         theme.ghost.surface,
         theme.resolvePaneAccentSurface(snapshot.accent),
         // Focus follows the dragged pane: the floating ghost wears the SAME
@@ -1250,8 +1255,13 @@ export function DragSourceSlotReservation({
 // mounted — while the single ghost paints the dragged pane; on drop the new
 // slot registers and the same node reseats. The ghost itself still paints
 // through `renderTile(ghostTileArgs)` (a transient second render of the same
-// tile, unchanged from slot mode) because the ghost is a body-level portal
-// outside the React root's event-delegation scope.
+// tile, unchanged from slot mode) because the ghost mounts on the overlay
+// portal container (default `document.body`, see `overlayPortalContainer`).
+// Two independent reasons for that default: containing-block immunity
+// (`position: fixed` stays window-relative) AND the ghost staying outside
+// the React root's event-delegation scope. Redirecting the DOM mount does
+// not change the delegation invariant — React still walks fibers, and
+// measurement selectors stay root/viewport-scoped.
 
 /** The relocation registry a stable-mode leaf slot writes to and a pane host reads. */
 type StablePaneSlotRegistry = Map<string, HTMLElement>;
@@ -1432,45 +1442,72 @@ export function resolvePaneIdentityMode(
 }
 
 /**
- * Resolves the stacking-context-free anchor (`document.body`) for the
- * `position: fixed` drag overlays. ALL of the drag overlays (ghost, custom
- * cursor, cancel fly-back) place themselves with WINDOW-relative client
- * coordinates derived from `getBoundingClientRect()` (the seat is measured the
- * same way). `position: fixed` only resolves against the window when NO ancestor
+ * Overlay portal host: an element, `null` (body fallback), a thunk, or
+ * `undefined` (unset prop → body). Held in context so `OverlayPortal` (used by
+ * `DragPaneOverlay`, `DragCursorOverlay`, and `DragCancelOverlay`) resolves
+ * the same container without threading the prop through every overlay.
+ */
+const OverlayPortalContainerContext: React.Context<
+  TilingOverlayPortalContainer | undefined
+> = React.createContext<TilingOverlayPortalContainer | undefined>(undefined);
+
+/**
+ * Resolves the stacking-context-free anchor for the `position: fixed` drag
+ * overlays. ALL of the drag overlays (ghost, custom cursor, cancel fly-back)
+ * place themselves with WINDOW-relative client coordinates derived from
+ * `getBoundingClientRect()` (the seat is measured the same way).
+ * `position: fixed` only resolves against the window when NO ancestor
  * establishes a containing block for fixed descendants — and `transform` /
  * `filter` / `backdrop-filter` / `perspective` / `will-change` of those /
- * `contain: paint|layout|strict|content` all silently do. Because this renderer
- * is a published library mounted inside arbitrary host chrome (and the showcase
- * shell + pane shells + tab strip already use `backdrop-blur`), pinning the
- * overlays' fixed coordinates to the document root via a portal makes them
- * immune to ANY ancestor reference frame: a future chrome rework that adds a
- * containing-block property to any ancestor can never reintroduce the
- * ghost↔seat constant-offset drift.
+ * `contain: paint|layout|strict|content` all silently do. Default is
+ * `document.body`. A consumer may redirect via
+ * `TilingRendererProps.overlayPortalContainer` (element or thunk) so host
+ * theme tokens (CSS variables on a scoped root) still inherit — the
+ * redirected container must itself not sit under a containing-block
+ * ancestor, or ghost↔seat drift returns.
  *
- * SSR-safe: the lazy `useState` initializer reads `document.body` only on the
- * client (guarded by `typeof document`), so server render yields `null` and
- * mounts nothing. The overlays only ever render during an active (user-driven,
- * post-hydration) drag, by which point the container is `document.body` on the
- * first render — no extra commit, no pickup-frame flicker.
+ * The body default also keeps the ghost outside the React root's
+ * event-delegation scope. Redirecting the DOM mount does not change that
+ * invariant: React still walks fibers, and measurement selectors stay
+ * root/viewport-scoped. Overlay z-indexes (cancel 219 / ghost 220 / cursor
+ * 230) are relative to the container's stacking context.
+ *
+ * SSR-safe: `document` is read only on the client, so server render yields
+ * `null` and mounts nothing. The function form is evaluated every render so
+ * a late-mounted container (ref / callback) is picked up without remounting
+ * the renderer. The overlays only ever render during an active (user-driven,
+ * post-hydration) drag.
  */
+function resolveOverlayPortalContainer(
+  spec: TilingOverlayPortalContainer | undefined,
+): HTMLElement | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const resolved: HTMLElement | null | undefined =
+    typeof spec === "function" ? spec() : spec;
+  return resolved ?? document.body;
+}
+
 function useOverlayPortalContainer(): HTMLElement | null {
-  const [container] = React.useState<HTMLElement | null>(
-    (): HTMLElement | null =>
-      typeof document === "undefined" ? null : document.body,
+  const spec: TilingOverlayPortalContainer | undefined = React.useContext(
+    OverlayPortalContainerContext,
   );
-  return container;
+  return resolveOverlayPortalContainer(spec);
 }
 
 /**
- * Renders the fixed-coordinate drag overlays through a portal to
- * `document.body` so their `position: fixed` placement is always window-relative
- * (see `useOverlayPortalContainer`). The portal preserves the React subtree
- * (state, refs, layout effects, context) of the overlay component — only the
- * DOM node is relocated — so the ghost's FLIP refs / `getBoundingClientRect`
- * reads and the reactive `dragVisualState` updates are unchanged; they now just
- * resolve against the document root instead of the (potentially transformed)
- * viewport ancestor. Returns `null` when there is no container (SSR only), at
- * which point the overlays are inactive anyway.
+ * Renders the fixed-coordinate drag overlays through a portal to the
+ * overlay portal container (default `document.body`, see
+ * `overlayPortalContainer` / `useOverlayPortalContainer`) so their
+ * `position: fixed` placement is window-relative unless a containing-block
+ * ancestor is introduced. The portal preserves the React subtree (state,
+ * refs, layout effects, context) of the overlay component — only the DOM
+ * node is relocated — so the ghost's FLIP refs / `getBoundingClientRect`
+ * reads and the reactive `dragVisualState` updates are unchanged. Event
+ * delegation still walks the fiber tree; measurement selectors stay
+ * root/viewport-scoped. Returns `null` when there is no container (SSR
+ * only), at which point the overlays are inactive anyway.
  */
 function OverlayPortal({
   children,
@@ -1909,16 +1946,18 @@ function DragPaneOverlay({
   // `data-leaf-id` / measurement invariant: a consumer `renderTile` root carries
   // `data-leaf-id={leafId}`, and here that id is the dragged SOURCE leaf id — the
   // same id the in-tree reservation slot emits. But the ghost renders through the
-  // `document.body` `OverlayPortal` (`position: fixed`), OUTSIDE both `rootRef`
+  // overlay `OverlayPortal` (`position: fixed`), OUTSIDE both `rootRef`
   // (which scopes `measureReservationRect` via `dragSourceReservationSelector`
   // and `measureLeafRect`) and `viewportRef` (which scopes the survivor-reflow
   // `querySelectorAll('[data-leaf-id]')`). Every measurement selector is
-  // root/viewport-scoped, so the body-portal ghost's `data-leaf-id` is never
+  // root/viewport-scoped, so the portaled ghost's `data-leaf-id` is never
   // collected — no duplicate-id collision, no `cc23956`-class seat-measurement
   // regression. Theme context: this component calls `useTilingTheme()` and is
   // rendered from within the renderer's `TilingThemeProvider` subtree; React
   // context propagates through `createPortal`, so the consumer `renderTile`'s own
-  // `useTilingTheme()` resolves the active theme inside the body portal too.
+  // `useTilingTheme()` resolves the active theme inside the portal too. Host
+  // CSS variables inherit only when the portal container sits under the host
+  // theme root (see `overlayPortalContainer`).
   const snapshot: TilingDragPaneSnapshot = dragVisualState.snapshot;
   const ghostTileArgs: TilingRenderTileProps = buildGhostTileArgs(
     snapshot,
@@ -2111,6 +2150,13 @@ function DragCursorGlyph({
  * cursor shares the motion language; it is dropped under `prefers-reduced-motion`
  * (static indicator only). The pinned point is clamped to the viewport so the
  * badge stays visible at the edges, mirroring the ghost's off-viewport clamp.
+ *
+ * Mounts through the overlay portal container (default `document.body`, see
+ * `overlayPortalContainer`) at z-index 230 — above the ghost (220) — relative
+ * to the container's stacking context. Same containing-block caveat as the
+ * ghost: no `transform` / `filter` / `backdrop-filter` / `perspective` /
+ * `contain: paint` ancestor. Redirecting the DOM mount does not change the
+ * delegation invariant (fiber walk + root/viewport-scoped measurement).
  */
 function DragCursorOverlay({
   dragVisualState,
@@ -2258,15 +2304,17 @@ function DragCancelOverlay({
     return null;
   }
 
-  // Same body-portal invariant as the pickup ghost (`DragPaneOverlay`): the
-  // overlay renders through the `document.body` `OverlayPortal`
-  // (`position: fixed`), OUTSIDE both `rootRef` (which scopes
-  // `measureReservationRect` / `measureLeafRect`) and `viewportRef` (which
-  // scopes the survivor-reflow `querySelectorAll('[data-leaf-id]')`) — so a
-  // consumer `renderTile` root carrying `data-leaf-id` here is never collected
-  // by a measurement selector (no `cc23956`-class regression). Theme context
-  // propagates through `createPortal`, so the consumer's `useTilingTheme()`
-  // resolves the active theme inside the portal too.
+  // Same overlay-portal invariant as the pickup ghost (`DragPaneOverlay`): the
+  // cancel overlay mounts through the overlay portal container (default
+  // `document.body`, see `overlayPortalContainer`; `position: fixed`), OUTSIDE
+  // both `rootRef` (which scopes `measureReservationRect` / `measureLeafRect`)
+  // and `viewportRef` (which scopes the survivor-reflow
+  // `querySelectorAll('[data-leaf-id]')`) — so a consumer `renderTile` root
+  // carrying `data-leaf-id` here is never collected by a measurement selector
+  // (no `cc23956`-class regression). Theme context propagates through
+  // `createPortal`. Redirecting the DOM mount does not change the delegation
+  // invariant. Overlay z-index 219 is relative to the container's stacking
+  // context.
   const cancelTileArgs: TilingRenderTileProps = buildGhostTileArgs(
     cancelVisualState.snapshot,
     cancelVisualState.sourceLeafId,
@@ -2743,8 +2791,9 @@ function DefaultTilingTile({
         // / eligibility / invalid rings, and the drag-source observability
         // border all supply their own width when active. A backdrop-filter in
         // the surface token creates a containing block for position:fixed
-        // DESCENDANTS only — the drag ghost is portaled to document.body (not a
-        // descendant), so this never reintroduces drift.
+        // DESCENDANTS only — the drag ghost is portaled to the overlay portal
+        // container (default `document.body`, see `overlayPortalContainer`;
+        // not a descendant), so this never reintroduces drift.
         theme.paneShell.surface,
         theme.resolvePaneAccentSurface(tile.accent),
         // Drop-affordance rings. The hover-target / resolved-target highlight
@@ -4229,6 +4278,7 @@ const TilingRendererComponent = React.forwardRef<
     paneHitZoneSourceLeafId = null,
     onDropIntentChange,
     onLiveHitLogChange,
+    overlayPortalContainer,
   }: TilingRendererProps & TilingRendererObservabilityProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
 ): React.ReactElement {
@@ -8694,6 +8744,7 @@ const TilingRendererComponent = React.forwardRef<
   stablePanePoolOrderRef.current = stablePanePoolOrder;
 
   return (
+    <OverlayPortalContainerContext.Provider value={overlayPortalContainer}>
     <TilingThemeProvider theme={theme}>
       <div
         ref={rootRef}
@@ -8845,6 +8896,7 @@ const TilingRendererComponent = React.forwardRef<
         ) : null}
       </div>
     </TilingThemeProvider>
+    </OverlayPortalContainerContext.Provider>
   );
 });
 
