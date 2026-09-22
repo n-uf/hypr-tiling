@@ -585,12 +585,15 @@ second edge:
    handled synchronously (a returned verdict or an `accept()` on the event) so
    the FSM settles `commit` — source leaf stays removed, no fly-back — rather
    than firing after a `cancel` has begun.
+   DashAI L0 (2026-09-21, `worker/dashai-drag-to-workspace`): **not met as an FSM claim** — 26.9.1 has no hook, so `POINTER_UP` still settles `cancel` and `DragCancelOverlay` still runs the 220 ms fly-back (`fromFootprint` → origin); the host records a claim on `pointerup` and hides `.dashai-tile[data-surface="drag-cancel"][data-drop-claimed]`. Residual only the hook closes: the FSM's seat fallback (`foldCommittableSeatFallback`, `SUSTAINED_NULL_SEAT_THRESHOLD = 2`) keeps the last in-tree seat through one null sample, so a release that reaches an external target on the next processed sample settles `commit` on that stale seat while the host also runs its drop.
 2. **Identity + point.** The event carries `sourceLeafId`, `tileId`, and the
    client point (`{ x, y }`); the scope needs nothing else to hit-test.
+   DashAI L0 (2026-09-21, `worker/dashai-drag-to-workspace`): **met app-side, not via the hook** — `TileDragSource` in the ghost publishes the item; window `pointerup` supplies `{ x, y }`. `sourceLeafId` / `tileId` are not delivered (no hook event).
 3. **Pointer-move sibling.** Either the hook fires on pointer move too (so
    `isOver` can light a tab while dragging), or L1 subscribes to the FSM's
    `TARGET_RESOLVED` edge for that — the pointer-up-only hook alone gives a
    correct but hover-blind drop.
+   DashAI L0 (2026-09-21, `worker/dashai-drag-to-workspace`): **met app-side** — `useTileDropTarget` subscribes to window `pointermove` and lights `over`.
 
 DashAI ships drag-to-tab on L0 now (§8 PR S1); the cut-over (§8 PR S3) moves it
 to L3 and deletes the host-side hit-test.
