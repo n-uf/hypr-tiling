@@ -179,6 +179,15 @@ adapter only. The items below describe where the project is going:
   persistent session layouts, fully keyboard-driven tiling, and
   per-monitor-style multi-viewport arrangements.
 
+**Planned: native workspaces.** Workspaces are pulled forward out of the Rust
+core item above into the current TypeScript engine as a first-class concept: a
+`TilingWorkspaceSet` (several layout trees, one active, leaves moved between
+them by drag or command, pinned leaves present in several), a workspace tab as
+a native drop target for a pane drag, a headless `TilingWorkspaceTabs`
+primitive, and a versioned extension of the persisted-layout adapter. The
+design record, including the DashAI cut-over plan and open questions, is
+[`_agent/workspace-set-concept.md`](_agent/workspace-set-concept.md).
+
 ## Contributing
 
 hypr-tiling is built in the open and welcomes collaboration — framework
