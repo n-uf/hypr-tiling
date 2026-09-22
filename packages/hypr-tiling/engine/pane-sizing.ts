@@ -1,12 +1,15 @@
 import type {
+  TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,
   TilingSplitAxis,
   TilingDimension,
   TilingPaneSizing,
   TilingPaneSizingMode,
+  TilingResizeFloor,
   TilingTitleBarSizingMode,
 } from "./types";
+import { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "./types";
 
 /**
  * Pure (DOM-free) layout helpers for the static-vs-flexible pane model.
@@ -24,24 +27,58 @@ import type {
  */
 
 /**
- * Clamp a split ratio so neither side falls below `minPaneSizePx` (the min-pane
- * constraint), expressed as a ratio against the gap-adjusted container extent.
- * Returns `0.5` when the two minimums cannot both be satisfied. This is the
- * single min-constraint helper reused by the resize path, projected-layout
- * geometry, and the `growLeafToward` acquire-space reducer (so all three share
- * one constraint math, never reinventing it).
+ * Safety-net bounds applied to the min-pane ratio clamp on top of the real
+ * per-side px requirement (`clampByMinSize`'s `boundedMin` / `boundedMax`):
+ * raises a tiny real requirement up to `floor` and caps a huge one down to
+ * `ceil`, so a pane never becomes imperceptibly thin (or its sibling
+ * imperceptibly thick) purely from a mismatched `minPaneSizePx`/container
+ * ratio. This is the "hardcoded 5%" — kept as the DEFAULT for the ordinary
+ * body-floor path; a resize-floor "chrome" side (HT-RESIZE-FLOOR-CHROME, size-out
+ * to the titlebar chrome extent) passes {@link RATIO_SAFETY_BOUNDS_UNBOUNDED}
+ * instead so a legitimately small chrome floor is not artificially raised.
+ */
+export interface RatioSafetyBounds {
+  floor: number;
+  ceil: number;
+}
+
+/** Default min-pane ratio safety bounds — the historical hardcoded 5%/95%. */
+export const RATIO_SAFETY_BOUNDS_DEFAULT: RatioSafetyBounds = { floor: 0.05, ceil: 0.95 };
+
+/**
+ * No artificial safety raise/cap — the ratio clamp reflects ONLY the real
+ * per-side px requirement. Used when a "chrome" resize-floor side's true
+ * required fraction is legitimately below the default 5% floor.
+ */
+export const RATIO_SAFETY_BOUNDS_UNBOUNDED: RatioSafetyBounds = { floor: 0, ceil: 1 };
+
+/**
+ * Clamp a split ratio so the FIRST side stays at/above `firstMinPaneSizePx`
+ * and the SECOND side stays at/above `secondMinPaneSizePx` (each expressed in
+ * CSS px, converted to a ratio against the gap-adjusted container extent).
+ * `secondMinPaneSizePx` defaults to `firstMinPaneSizePx` for the common
+ * symmetric case (both sides share one floor). Returns `0.5` when the two
+ * minimums cannot both be satisfied. This is the single min-constraint helper
+ * reused by the resize path, projected-layout geometry, and the
+ * `growLeafToward` acquire-space reducer (so all three share one constraint
+ * math, never reinventing it) — generalized (HT-MIN-BBOX-PX) so a caller can
+ * resolve each side's floor independently (e.g. a leaf-owned
+ * {@link TilingLeafNode.minBBoxPx} on one side only) rather than a single
+ * split-wide value.
  */
 export function clampByMinSize(
   ratio: number,
   containerSizePx: number,
   gapPx: number,
-  minPaneSizePx: number,
+  firstMinPaneSizePx: number,
+  secondMinPaneSizePx: number = firstMinPaneSizePx,
+  safetyBounds: RatioSafetyBounds = RATIO_SAFETY_BOUNDS_DEFAULT,
 ): number {
   const availableSizePx: number = Math.max(containerSizePx - gapPx, 1);
-  const maxFromMin: number = 1 - minPaneSizePx / availableSizePx;
-  const minFromMin: number = minPaneSizePx / availableSizePx;
-  const boundedMin: number = Math.min(Math.max(minFromMin, 0.05), 0.95);
-  const boundedMax: number = Math.max(Math.min(maxFromMin, 0.95), 0.05);
+  const maxFromMin: number = 1 - secondMinPaneSizePx / availableSizePx;
+  const minFromMin: number = firstMinPaneSizePx / availableSizePx;
+  const boundedMin: number = Math.min(Math.max(minFromMin, safetyBounds.floor), safetyBounds.ceil);
+  const boundedMax: number = Math.max(Math.min(maxFromMin, safetyBounds.ceil), safetyBounds.floor);
 
   if (boundedMin > boundedMax) {
     return 0.5;
@@ -106,6 +143,115 @@ export function isStaticOnCrossAxis(
   axis: TilingSplitAxis,
 ): boolean {
   return isStaticInDimension(node, crossAxisDimension(axis));
+}
+
+/**
+ * A leaf's own `minBBoxPx` floor (CSS px) for `dimension`, or `undefined` when
+ * absent or non-positive (a non-positive floor is meaningless and falls
+ * through to the next precedence level). @internal
+ */
+function leafMinBBoxFloorPx(leaf: TilingLeafNode, dimension: TilingDimension): number | undefined {
+  const floorPx: number | undefined =
+    dimension === "width" ? leaf.minBBoxPx?.widthPx : leaf.minBBoxPx?.heightPx;
+  return floorPx != null && Number.isFinite(floorPx) && floorPx > 0 ? floorPx : undefined;
+}
+
+/**
+ * Resolve the ALONG-AXIS min-pane floor (CSS px) for a split's DIRECT child,
+ * by precedence (most specific wins):
+ *
+ * 1. `child.minBBoxPx[alongDimension]` — a leaf-owned floor that TRAVELS WITH
+ *    the pane across rearrange (it lives on the leaf node itself, not the
+ *    split boundary), so a leaf dragged into a different split still carries
+ *    its own floor.
+ * 2. `splitMinPaneSizePx` — the split boundary's own override
+ *    ({@link TilingSplitNode.minPaneSizePx}), pinned to THIS boundary only.
+ * 3. `configMinPaneSizePx` — the library-wide default
+ *    ({@link TilingLayoutConfig.minPaneSizePx}).
+ *
+ * Only a bare LEAF direct child carries `minBBoxPx` — a nested split/group
+ * child has no leaf floor at THIS boundary (its own descendant leaves apply
+ * their floor at their own immediate parent boundary instead). This mirrors
+ * how a `sizing` static pin is direct-child-only elsewhere in this module
+ * (`alongAxisPinPx` in `leaf-geometry.ts` / `layout-normalize.ts`) — no
+ * parallel geometry system, same direct-child convention.
+ */
+export function resolveAlongAxisMinPaneSizePx(
+  child: TilingLayoutNode,
+  axis: TilingSplitAxis,
+  splitMinPaneSizePx: number | undefined,
+  configMinPaneSizePx: number,
+): number {
+  const leafFloorPx: number | undefined =
+    child.kind === "leaf" ? leafMinBBoxFloorPx(child, splitAxisDimension(axis)) : undefined;
+  return leafFloorPx ?? splitMinPaneSizePx ?? configMinPaneSizePx;
+}
+
+/**
+ * The resolved along-axis resize floor (CSS px) for a split's direct child,
+ * plus whether it came from "chrome" mode (HT-RESIZE-FLOOR) — the caller
+ * needs BOTH: the px value feeds `clampByMinSize`, and the chrome flag
+ * selects {@link RATIO_SAFETY_BOUNDS_UNBOUNDED} over the default 5%/95% net so
+ * a legitimately small chrome floor is reachable instead of being artificially
+ * raised.
+ */
+export interface AlongAxisFloorResolution {
+  floorPx: number;
+  isChromeFloor: boolean;
+}
+
+/**
+ * Resolve a split's direct child's along-axis resize floor by
+ * {@link TilingResizeFloor} mode, by precedence (most specific wins):
+ *
+ * 1. `child.resizeFloor` (a bare leaf only) — per-leaf override.
+ * 2. `config.resizeFloor` — library-wide default.
+ * 3. `"chrome"` — the LIBRARY default (HT-RESIZE-FLOOR-DEFAULT). `"body"`
+ *    remains available as an explicit opt-in via either precedence level
+ *    above, for consumers that want the old content-floor behavior.
+ *
+ * `"chrome"` REPLACES the body floor with `config.collapsedExtentPx` (→
+ * {@link TILING_DEFAULT_COLLAPSED_EXTENT_PX}) — the size-out floor is the
+ * library default, not layered on top of {@link resolveAlongAxisMinPaneSizePx}.
+ * `"body"` delegates to `resolveAlongAxisMinPaneSizePx` unchanged (the
+ * `minBBoxPx` → `split.minPaneSizePx` → `config.minPaneSizePx` chain).
+ */
+export function resolveAlongAxisFloor(
+  child: TilingLayoutNode,
+  axis: TilingSplitAxis,
+  splitMinPaneSizePx: number | undefined,
+  config: TilingLayoutConfig,
+): AlongAxisFloorResolution {
+  const resizeFloor: TilingResizeFloor =
+    (child.kind === "leaf" ? child.resizeFloor : undefined) ?? config.resizeFloor ?? "chrome";
+
+  if (resizeFloor === "chrome") {
+    return {
+      floorPx: config.collapsedExtentPx ?? TILING_DEFAULT_COLLAPSED_EXTENT_PX,
+      isChromeFloor: true,
+    };
+  }
+
+  return {
+    floorPx: resolveAlongAxisMinPaneSizePx(child, axis, splitMinPaneSizePx, config.minPaneSizePx),
+    isChromeFloor: false,
+  };
+}
+
+/**
+ * Pick the ratio-clamp safety bounds for a split boundary: the default
+ * 5%/95% net UNLESS either side resolved a `"chrome"` (size-out) floor, in
+ * which case the net is neutralized ({@link RATIO_SAFETY_BOUNDS_UNBOUNDED}) so
+ * a legitimately small chrome floor (e.g. a 40px titlebar in a 2000px
+ * viewport, well under 5%) is actually reachable.
+ */
+export function resolveRatioSafetyBounds(
+  first: AlongAxisFloorResolution,
+  second: AlongAxisFloorResolution,
+): RatioSafetyBounds {
+  return first.isChromeFloor || second.isChromeFloor
+    ? RATIO_SAFETY_BOUNDS_UNBOUNDED
+    : RATIO_SAFETY_BOUNDS_DEFAULT;
 }
 
 /**
@@ -264,6 +410,17 @@ export function resolveStaticAlongExtents(
  * `collectLeafFootprints` ratio fallback — so the renderer never keeps a
  * non-shrinking pin inside a too-small container (overflow / dead-space void).
  * When a pin fits, `staticExtents` carries the resolved along-axis px.
+ *
+ * `bothCollapsedVoid` (HT-PANE-COLLAPSE-VOID) opts into the both-collapsed-
+ * siblings arm: when true AND both sides are static-along with a fitting,
+ * positive pin, EACH keeps its OWN pin — `staticExtents.secondPx` is the
+ * second child's real pin, not "whatever container space the first side left
+ * behind." Any leftover container space beyond both pins + the gutter is an
+ * intentional split slack void (neither side reclaims it) and is never treated
+ * as an unfit failure. Omit (default `false`) for every other caller —
+ * `normalizeStaticAxisFill` never lets a non-collapsed both-static-along-axis
+ * pair reach this function, so the flag should only ever be set from the
+ * renderer's own both-collapsed-leaves check.
  * @internal
  */
 export function resolveEffectiveStaticAlong(
@@ -274,6 +431,7 @@ export function resolveEffectiveStaticAlong(
   containerPx: number,
   gapPx: number,
   handleSizePx: number,
+  bothCollapsedVoid: boolean = false,
 ): {
   firstStaticAlongAxis: boolean;
   secondStaticAlongAxis: boolean;
@@ -284,7 +442,21 @@ export function resolveEffectiveStaticAlong(
   let staticExtents: { firstPx: number; secondPx: number; gutterPx: number } | null =
     null;
 
-  if (firstStaticAlongAxis && firstPinPx != null) {
+  if (
+    bothCollapsedVoid &&
+    firstStaticAlongAxis &&
+    secondStaticAlongAxis &&
+    firstPinPx != null &&
+    secondPinPx != null &&
+    firstPinPx > 0 &&
+    secondPinPx > 0
+  ) {
+    staticExtents = {
+      firstPx: firstPinPx,
+      secondPx: secondPinPx,
+      gutterPx: splitBoundaryGutterPx(gapPx, handleSizePx),
+    };
+  } else if (firstStaticAlongAxis && firstPinPx != null) {
     staticExtents = resolveStaticAlongExtents(
       containerPx,
       firstPinPx,
@@ -319,28 +491,44 @@ export function resolveEffectiveStaticAlong(
  * Resolve how the two children of a binary split are sized ALONG the split axis,
  * given each child's static-along-axis flag and the split ratio:
  *
- * - both static → first content-sized, second FILLS (backstop, see below);
+ * - both static, both-collapsed-siblings (`bothCollapsedVoid`) → BOTH
+ *   content-sized, leftover axis space is an intentional split slack void;
+ * - both static, otherwise → first content-sized, second FILLS (backstop, see
+ *   below);
  * - one static → static child content-sized, flexible sibling fills the rest;
  * - both flexible → distribute the axis by the (renormalized) ratio.
  *
- * BACKSTOP (both-static arm): two fixed extents along one axis cannot
- * continuously sum to a variable container — `{content, content}` has no
+ * BOTH-COLLAPSED-SIBLINGS ARM (HT-PANE-COLLAPSE-VOID): a collapsed leaf's pin is
+ * the fixed chrome/titlebar extent, not an arbitrary static size that drifts
+ * with the container — two of them side by side (or stacked) simply do not
+ * fill the split, and forcing the second to FILL would silently re-expand it
+ * into a stretched, emptied body (collapse truth diverging from geometry). The
+ * locked design prefers both stay collapsed with a void; `bothCollapsedVoid` is
+ * true only when the renderer's own leaf-collapse check confirms this is that
+ * exact case (never inferred from the static flags alone).
+ *
+ * BACKSTOP (both-static, non-collapsed arm): two fixed extents along one axis
+ * cannot continuously sum to a variable container — `{content, content}` has no
  * flexing child, so any later container-extent change opens a trailing gap
  * (the Round-2 static-gap defect). The reducer-level `normalizeStaticAxisFill`
- * invariant (`state.ts`) prevents a both-static-along-axis split from ever being
- * stored, but this arm is the defense-in-depth view backstop: even if a
- * both-static tree reaches the renderer by an unnormalized path (hand-authored
- * `INITIAL_LAYOUT`, persistence, a future mutation that forgets to normalize),
- * the `second` child FILLS so the axis still re-absorbs the delta and cannot gap.
+ * invariant (`state.ts`) prevents a non-collapsed both-static-along-axis split
+ * from ever being stored, but this arm is the defense-in-depth view backstop:
+ * even if such a tree reaches the renderer by an unnormalized path
+ * (hand-authored `INITIAL_LAYOUT`, persistence, a future mutation that forgets
+ * to normalize), the `second` child FILLS so the axis still re-absorbs the
+ * delta and cannot gap.
  * @internal
  */
 export function resolveBinarySplitDistribution(
   firstStaticAlongAxis: boolean,
   secondStaticAlongAxis: boolean,
   ratio: number,
+  bothCollapsedVoid: boolean = false,
 ): BinarySplitDistribution {
   if (firstStaticAlongAxis && secondStaticAlongAxis) {
-    return { first: { kind: "content" }, second: { kind: "fill" } };
+    return bothCollapsedVoid
+      ? { first: { kind: "content" }, second: { kind: "content" } }
+      : { first: { kind: "content" }, second: { kind: "fill" } };
   }
   if (firstStaticAlongAxis) {
     return { first: { kind: "content" }, second: { kind: "fill" } };

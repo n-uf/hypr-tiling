@@ -1,6 +1,10 @@
 import {
   clampByMinSize,
+  crossAxisDimension,
   isStaticAlongSplitAxis,
+  isStaticOnCrossAxis,
+  resolveAlongAxisFloor,
+  resolveRatioSafetyBounds,
   resolveStaticAlongExtents,
   splitAxisDimension,
   splitBoundaryGutterPx,
@@ -67,6 +71,41 @@ function alongAxisPinPx(node: TilingLayoutNode, axis: TilingSplitAxis): number |
   return pinPx;
 }
 
+function crossAxisPinPx(node: TilingLayoutNode, axis: TilingSplitAxis): number | null {
+  const dimension: TilingDimension = crossAxisDimension(axis);
+  const pinPx: number | undefined = dimension === "width" ? node.sizing?.widthPx : node.sizing?.heightPx;
+  if (pinPx == null || !Number.isFinite(pinPx) || pinPx <= 0) {
+    return null;
+  }
+  return pinPx;
+}
+
+/**
+ * The CROSS-axis extent `collectLeafFootprints` reports for a split child:
+ * `crossContainerPx` (the full cross extent) for a flexible-on-cross-axis node
+ * — UNCHANGED — or its cross-axis pin for a node static on the cross axis (a
+ * fitting, positive, finite px). This mirrors the renderer's
+ * `align-self: flex-start` for a cross-axis-static child (see
+ * `isStaticOnCrossAxis` in `pane-sizing.ts` and its use in
+ * `tiling-renderer.tsx`): the DOM never stretches that child to fill the cross
+ * axis, it content-sizes to its pin — so a footprint that still reported the
+ * full cross extent was a phantom rect (an oversized hit-test / drop-zone /
+ * directional-focus target trailing past the pane's real, content-sized DOM
+ * box). The cross-axis offset (`left`/`top`) is untouched: `align-self:
+ * flex-start` keeps the box at the cross-axis START, exactly where the caller
+ * already positions it.
+ */
+function resolveCrossAxisExtentPx(
+  node: TilingLayoutNode,
+  axis: TilingSplitAxis,
+  crossContainerPx: number,
+): number {
+  if (!isStaticOnCrossAxis(node, axis)) {
+    return crossContainerPx;
+  }
+  return crossAxisPinPx(node, axis) ?? crossContainerPx;
+}
+
 /**
  * Distribute a split's along-axis extent when ONE child is static-along-axis
  * with a fitting pin: the static child takes exactly `staticPinPx`, a full
@@ -78,34 +117,34 @@ function collectStaticAlongFootprints(
   node: { axis: TilingSplitAxis; first: TilingLayoutNode; second: TilingLayoutNode },
   left: number,
   top: number,
-  width: number,
-  height: number,
   config: TilingLayoutConfig,
   firstPx: number,
   secondPx: number,
   gutterPx: number,
+  firstCrossPx: number,
+  secondCrossPx: number,
 ): ReadonlyArray<TilingLeafFootprint> {
   if (node.axis === "horizontal") {
     return [
-      ...collectLeafFootprints(node.first, left, top, firstPx, height, config),
+      ...collectLeafFootprints(node.first, left, top, firstPx, firstCrossPx, config),
       ...collectLeafFootprints(
         node.second,
         left + firstPx + gutterPx,
         top,
         secondPx,
-        height,
+        secondCrossPx,
         config,
       ),
     ];
   }
 
   return [
-    ...collectLeafFootprints(node.first, left, top, width, firstPx, config),
+    ...collectLeafFootprints(node.first, left, top, firstCrossPx, firstPx, config),
     ...collectLeafFootprints(
       node.second,
       left,
       top + firstPx + gutterPx,
-      width,
+      secondCrossPx,
       secondPx,
       config,
     ),
@@ -324,6 +363,23 @@ export function collectLeafFootprints(
   }
 
   const axisContainerSizePx: number = node.axis === "horizontal" ? width : height;
+  const crossContainerSizePx: number = node.axis === "horizontal" ? height : width;
+
+  // Cross-axis-aware: a child static on the split's CROSS axis with a fitting
+  // pin content-sizes to it (mirrors the renderer's `align-self: flex-start`)
+  // instead of stretching to the full cross extent — see
+  // `resolveCrossAxisExtentPx`. Independent of the along-axis static-aware arm
+  // below (a leaf can be cross-static, along-static, both, or neither).
+  const firstCrossPx: number = resolveCrossAxisExtentPx(
+    node.first,
+    node.axis,
+    crossContainerSizePx,
+  );
+  const secondCrossPx: number = resolveCrossAxisExtentPx(
+    node.second,
+    node.axis,
+    crossContainerSizePx,
+  );
 
   // Static-aware arm: a child static ALONG the split axis with a fitting pin
   // (`pin + gutter < axisSize`, gutter = gapPx + handleSizePx) is content-sized
@@ -331,14 +387,39 @@ export function collectLeafFootprints(
   // rest. The fit-guard also makes the normalized unit-space wrapper
   // (axisSize ~= 1) fall through to ratio — a CSS px pin is undefined against a
   // 1-unit container. `normalizeStaticAxisFill` forbids a stored
-  // both-static-along-axis split, so at most one child is static-along here; the
-  // first-static arm wins (matches the renderer `resolveBinarySplitDistribution`
-  // `{content, fill}` precedence) if both ever reach this point on an
-  // unnormalized tree.
+  // both-static-along-axis split EXCEPT for both-collapsed siblings
+  // (HT-PANE-COLLAPSE-VOID), so at most one child is static-along here UNLESS
+  // both are collapsed leaves — that case is handled first, each keeping its
+  // OWN pin with the leftover axis space left as an intentional split slack
+  // void (mirrors the renderer). On an unnormalized tree with two arbitrary
+  // (non-collapsed) static children, the first-static arm wins (matches
+  // `resolveBinarySplitDistribution`'s `{content, fill}` backstop).
   const resolvedGapPx: number = node.gapPx ?? config.gapPx;
   const boundaryGutterPx: number = splitBoundaryGutterPx(resolvedGapPx, config.handleSizePx);
   const firstStaticAlong: boolean = isStaticAlongSplitAxis(node.first, node.axis);
   const secondStaticAlong: boolean = isStaticAlongSplitAxis(node.second, node.axis);
+  const isBothCollapsedLeaves: boolean =
+    node.first.kind === "leaf" &&
+    node.first.collapsed === true &&
+    node.second.kind === "leaf" &&
+    node.second.collapsed === true;
+  if (isBothCollapsedLeaves && firstStaticAlong && secondStaticAlong) {
+    const firstPinPx: number | null = alongAxisPinPx(node.first, node.axis);
+    const secondPinPx: number | null = alongAxisPinPx(node.second, node.axis);
+    if (firstPinPx != null && secondPinPx != null) {
+      return collectStaticAlongFootprints(
+        node,
+        left,
+        top,
+        config,
+        firstPinPx,
+        secondPinPx,
+        boundaryGutterPx,
+        firstCrossPx,
+        secondCrossPx,
+      );
+    }
+  }
   if (firstStaticAlong) {
     const firstPinPx: number | null = alongAxisPinPx(node.first, node.axis);
     if (firstPinPx != null) {
@@ -354,12 +435,12 @@ export function collectLeafFootprints(
           node,
           left,
           top,
-          width,
-          height,
           config,
           extents.firstPx,
           extents.secondPx,
           extents.gutterPx,
+          firstCrossPx,
+          secondCrossPx,
         );
       }
     }
@@ -378,17 +459,25 @@ export function collectLeafFootprints(
           node,
           left,
           top,
-          width,
-          height,
           config,
           extents.firstPx,
           extents.secondPx,
           extents.gutterPx,
+          firstCrossPx,
+          secondCrossPx,
         );
       }
     }
   }
-  const resolvedMinPaneSizePx: number = node.minPaneSizePx ?? config.minPaneSizePx;
+  // Per-side along-axis floor (HT-MIN-BBOX-PX / HT-RESIZE-FLOOR): a
+  // direct-child leaf's own `minBBoxPx` wins over this split's
+  // `minPaneSizePx`, which wins over the config default — UNLESS that side
+  // resolves a "chrome" resize floor, which replaces the whole chain with the
+  // collapsed titlebar extent. Resolved independently per side so an
+  // asymmetric floor (one side only) does not force the other side up to
+  // match.
+  const firstFloor = resolveAlongAxisFloor(node.first, node.axis, node.minPaneSizePx, config);
+  const secondFloor = resolveAlongAxisFloor(node.second, node.axis, node.minPaneSizePx, config);
   // Min-pane clamp must reserve the SAME gutter the ratio flexBasis / divider
   // uses (gapPx + handleSizePx) — clamping against gap alone under-bounds the
   // floor by handleSizePx and can leave a visible shortfall between panes.
@@ -396,7 +485,9 @@ export function collectLeafFootprints(
     node.ratio,
     axisContainerSizePx,
     boundaryGutterPx,
-    resolvedMinPaneSizePx,
+    firstFloor.floorPx,
+    secondFloor.floorPx,
+    resolveRatioSafetyBounds(firstFloor, secondFloor),
   );
   const splitGapOffsetPx: number = boundaryGutterPx / 2;
 
@@ -404,16 +495,16 @@ export function collectLeafFootprints(
     const firstWidth: number = Math.max(0, width * safeRatio - splitGapOffsetPx);
     const secondWidth: number = Math.max(0, width * (1 - safeRatio) - splitGapOffsetPx);
     return [
-      ...collectLeafFootprints(node.first, left, top, firstWidth, height, config),
-      ...collectLeafFootprints(node.second, left + width * safeRatio + splitGapOffsetPx, top, secondWidth, height, config),
+      ...collectLeafFootprints(node.first, left, top, firstWidth, firstCrossPx, config),
+      ...collectLeafFootprints(node.second, left + width * safeRatio + splitGapOffsetPx, top, secondWidth, secondCrossPx, config),
     ];
   }
 
   const firstHeight: number = Math.max(0, height * safeRatio - splitGapOffsetPx);
   const secondHeight: number = Math.max(0, height * (1 - safeRatio) - splitGapOffsetPx);
   return [
-    ...collectLeafFootprints(node.first, left, top, width, firstHeight, config),
-    ...collectLeafFootprints(node.second, left, top + height * safeRatio + splitGapOffsetPx, width, secondHeight, config),
+    ...collectLeafFootprints(node.first, left, top, firstCrossPx, firstHeight, config),
+    ...collectLeafFootprints(node.second, left, top + height * safeRatio + splitGapOffsetPx, secondCrossPx, secondHeight, config),
   ];
 }
 

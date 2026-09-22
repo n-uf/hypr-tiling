@@ -46,6 +46,7 @@ export {
   DRAG_ANIMATION_SPEED_MIN_PERCENT,
   DEFAULT_TILING_LAYOUT_CONFIG,
 } from "./react/tiling-renderer";
+export { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "./engine/types";
 export {
   DEFAULT_DRAG_HOP_EASING,
   DEFAULT_DRAG_REFLOW_EASING,
@@ -113,14 +114,18 @@ export {
 // reachable through a public signature is missing here.
 export type {
   // Layout tree
+  TilingCollapseBodyMode,
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,
+  TilingMinBBoxPx,
+  TilingResizeFloor,
   TilingSplitNode,
   TilingGroupNode,
   TilingPaneSizing,
   TilingPaneSizingMode,
   TilingSplitAxis,
+  TilingDimension,
   TilingLayoutMode,
   TilingMasterOrientation,
   TilingTitleBarSizingMode,
@@ -167,6 +172,7 @@ export type {
   TilingCommandHandle,
   // Renderer props / render-tile contract
   TilingRendererProps,
+  TilingPaneCollapsedChangeEvent,
   TilingChromeFocusOutline,
   TilingOverlayPortalContainer,
   TilingPaneIdentityMode,

@@ -35,6 +35,8 @@ export interface TilingCommandGates {
   sizingEnabled: boolean;
   /** Directional acquire-space command. */
   acquireSpaceEnabled: boolean;
+  /** Per-pane collapse (`toggle-collapse` / `set-collapsed`) commands. */
+  collapseEnabled: boolean;
   /** Divider resize (`set-split-ratio` / `toggle-split-axis`) commands. */
   resizeEnabled: boolean;
   /** Master/stack layout-mode commands (HT-LAYOUT-MASTER-STACK). */
@@ -72,6 +74,9 @@ export function commandRequiredCapability(command: TilingCommand): keyof TilingC
       return "acquireSpaceEnabled";
     case "set-sizing":
       return "sizingEnabled";
+    case "toggle-collapse":
+    case "set-collapsed":
+      return "collapseEnabled";
     case "set-split-ratio":
     case "toggle-split-axis":
       return "resizeEnabled";
@@ -126,6 +131,7 @@ export function commandRequiredCapability(command: TilingCommand): keyof TilingC
  *     rearrangeEnabled: caps.rearrange,
  *     sizingEnabled: caps.paneTitleBarControls.sizing,
  *     acquireSpaceEnabled: caps.paneTitleBarControls.acquireSpace,
+ *     collapseEnabled: caps.paneTitleBarControls.collapse,
  *     resizeEnabled: caps.resize !== "none",
  *     layoutEnabled: caps.masterLayout,
  *     groupingEnabled: caps.grouping.enable,

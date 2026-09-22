@@ -2,6 +2,7 @@ import {
   clampByMinSize,
   crossAxisDimension,
   isStaticAlongSplitAxis,
+  splitAxisDimension,
 } from "./pane-sizing";
 import { collectNormalizedLeafRects, type LeafRect } from "./leaf-geometry";
 import type {
@@ -16,12 +17,23 @@ import type {
   TilingSplitAxis,
   TilingSplitNode,
   TilingDimension,
+  TilingPaneCollapsedChangeEvent,
   TilingPaneCycleDirection,
   TilingPaneSizing,
 } from "./types";
 
+/** Soft structural bounds for master-ratio nudges / insertion defaults. */
 const MIN_RATIO: number = 0.05;
 const MAX_RATIO: number = 0.95;
+/**
+ * Unit-interval clamp for ratios a caller already floor-constrained (via
+ * {@link clampByMinSize} + {@link RatioSafetyBounds}). The historical
+ * hardcoded 5%/95% soft net must NOT live here — it re-raised chrome-floor
+ * size-outs (HT-RESIZE-FLOOR) above the titlebar extent after the interactive
+ * path had correctly neutralized the safety net (HT-RATIO-UNIT-CLAMP).
+ */
+const MIN_STORED_RATIO: number = 0;
+const MAX_STORED_RATIO: number = 1;
 const DEFAULT_INSERTION_OPTIONS: TilingInsertionOptions = {
   preserveParentSplitAxis: true,
   splitRatio: 0.5,
@@ -35,9 +47,21 @@ function clampRatio(value: number): number {
   return Math.min(Math.max(value, MIN_RATIO), MAX_RATIO);
 }
 
+/** Persist a split ratio on the unit interval; NaN/∞ → 0.5. */
+function clampStoredSplitRatio(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0.5;
+  }
+
+  return Math.min(Math.max(value, MIN_STORED_RATIO), MAX_STORED_RATIO);
+}
+
 /**
  * Return a copy of the tree with split node `splitId`'s divider `ratio` set
- * (clamped to the legal range). Unchanged when no split with that id exists.
+ * (clamped to the unit interval). Per-side body/chrome floors are the
+ * caller's job via {@link clampByMinSize} — this reducer must not re-impose
+ * the soft 5%/95% net (HT-RATIO-UNIT-CLAMP / HT-RESIZE-FLOOR). Unchanged when
+ * no split with that id exists.
  */
 export function updateSplitRatio(
   node: TilingLayoutNode,
@@ -55,7 +79,7 @@ export function updateSplitRatio(
   if (node.id === splitId) {
     return {
       ...node,
-      ratio: clampRatio(ratio),
+      ratio: clampStoredSplitRatio(ratio),
     };
   }
 
@@ -145,11 +169,33 @@ function writeLeafSizing(
  * vertical split it is the reverse. When the node carries no cross-axis static
  * sizing to preserve it becomes fully flexible (`sizing: undefined`, matching the
  * `setLeafSizing` "no static dims → undefined" convention).
+ *
+ * HT-PANE-COLLAPSE coherence: a COLLAPSED leaf's along-axis pin IS the collapse
+ * pin (`collapseLeafNode` always pins the dimension along ITS PARENT split's
+ * axis — see there). When this demotion fires on a collapsed leaf it means a
+ * both-static-along-axis backstop (or an unfit-pin backstop, see
+ * `layout-normalize.ts`) is invalidating exactly that pin, so the leaf can no
+ * longer be geometrically collapsed along this axis. Leaving `collapsed: true`
+ * on it would paint a fully-expanded pane with an emptied body (collapse truth
+ * diverging from geometry — a "titlebar strip floating in the middle of a full
+ * pane" defect). Un-collapse it fully instead — restoring `collapsedRestore`
+ * verbatim, exactly like `setLeafCollapsed(..., false, ...)` — so collapse
+ * state and geometry never disagree. Exported so `layout-normalize.ts` reuses
+ * this ONE demotion primitive instead of forking a parallel copy.
  */
-function demoteAlongAxisStatic(
+export function demoteAlongAxisStatic(
   node: TilingLayoutNode,
   axis: TilingSplitAxis,
 ): TilingLayoutNode {
+  if (node.kind === "leaf" && node.collapsed === true) {
+    const {
+      collapsed: _collapsed,
+      collapsedRestore,
+      collapsedDimension: _collapsedDimension,
+      ...rest
+    } = node;
+    return { ...rest, sizing: collapsedRestore };
+  }
   if (node.sizing == null) {
     return node;
   }
@@ -166,34 +212,125 @@ function demoteAlongAxisStatic(
 }
 
 /**
+ * Re-pin a COLLAPSED leaf's along-axis dimension to the axis of its CURRENT
+ * immediate parent split (HT-PANE-COLLAPSE-DRAG). `collapseLeafNode` pins
+ * whichever dimension runs ALONG the parent split's axis AT COLLAPSE TIME
+ * (`collapsedDimension`) — but a drag re-parent (`insertLeafAdjacent`,
+ * `moveLeafToRoot`, `moveLeafToSplitContainer`, or an edge-insert that
+ * rewraps the TARGET) always builds its NEW split's axis from the drop
+ * placement, independent of the leaf's collapse axis. Left unreconciled, a
+ * collapsed leaf dropped into a split with a DIFFERENT axis keeps its STALE
+ * pin: `collectLeafFootprints` no longer treats it as along-axis static (the
+ * pin is now on the CROSS dimension), so the along axis flexes by ratio while
+ * the cross axis still content-sizes to the old chrome extent — a titlebar-
+ * sized box floating with dead space below/beside it, instead of a normal
+ * collapsed strip. This is the divergence that made collapsed drag behave
+ * differently from a flexible pane's drag (which never depends on which axis
+ * it lands under).
+ *
+ * The fix re-collapses the leaf under the new axis, reusing the SAME pinned
+ * px (whatever `collapsedExtentPx` was already baked into the stale pin) —
+ * expand-then-recollapse is exactly `demoteAlongAxisStatic`'s sibling
+ * operation, so collapse truth and geometry stay in sync through every
+ * rearrange, not just the initial collapse. A no-op (same reference) when the
+ * leaf is not collapsed, is already pinned to the axis-correct dimension, or
+ * carries no usable pin to carry over (defensive — unreachable for a leaf
+ * `collapseLeafNode` produced).
+ * @internal
+ */
+function reconcileCollapsedLeafAxis(
+  leaf: TilingLeafNode,
+  parentAxis: TilingSplitAxis,
+): TilingLeafNode {
+  if (leaf.collapsed !== true) {
+    return leaf;
+  }
+  const expectedDimension: TilingDimension = splitAxisDimension(parentAxis);
+  if (leaf.collapsedDimension === expectedDimension) {
+    return leaf;
+  }
+  const currentDimension: TilingDimension = leaf.collapsedDimension ?? expectedDimension;
+  const pinPx: number | undefined =
+    currentDimension === "width" ? leaf.sizing?.widthPx : leaf.sizing?.heightPx;
+  if (pinPx == null || !Number.isFinite(pinPx) || pinPx <= 0) {
+    return leaf;
+  }
+  return collapseLeafNode(expandLeafNode(leaf), pinPx, parentAxis);
+}
+
+/**
+ * Whether both children are LEAVES currently `collapsed: true` — the
+ * both-collapsed-siblings edge case (HT-PANE-COLLAPSE-VOID). Unlike an
+ * arbitrary both-static-along-axis pair, a collapsed leaf's pin has a defined
+ * un-collapse escape (`collapsedRestore`), so this combination is allowed to
+ * persist deliberately (see {@link normalizeStaticAxisFill}) instead of being
+ * demoted away.
+ * @internal
+ */
+function isBothCollapsedLeaves(
+  first: TilingLayoutNode,
+  second: TilingLayoutNode,
+): boolean {
+  return (
+    first.kind === "leaf" &&
+    first.collapsed === true &&
+    second.kind === "leaf" &&
+    second.collapsed === true
+  );
+}
+
+/**
  * Enforce the per-split invariant **"at least one child flexes ALONG the split's
  * own axis"** across the whole tree, bottom-up. Two fixed extents along one axis
  * cannot continuously sum to a variable container, so a split whose BOTH children
  * are static-along-its-axis (`{content, content}`) opens a trailing gap on any
  * later container-extent change (the Round-2 static-gap defect). This normalizer
- * forbids that state: when both children are static along the split axis it
- * demotes the SECOND child's along-axis static dimension to flexible (preserving
- * its cross-axis static sizing + px and the first child's pin) so the split
- * becomes `{content, fill}` and the axis re-absorbs any container delta.
+ * forbids that state for the general case: when both children are static along
+ * the split axis it demotes the SECOND child's along-axis static dimension to
+ * flexible (preserving its cross-axis static sizing + px and the first child's
+ * pin) so the split becomes `{content, fill}` and the axis re-absorbs any
+ * container delta.
+ *
+ * EXCEPTION — both-collapsed siblings (HT-PANE-COLLAPSE-VOID): when both
+ * children are LEAVES currently `collapsed: true`, the pair is exempted from
+ * demotion. Preferring "both stay collapsed" over silently un-collapsing
+ * whichever one lost the coin flip is the locked design for this edge case: the
+ * split becomes `{content, content}` and the leftover axis space is an
+ * intentional split slack void (see `resolveBinarySplitDistribution` /
+ * `collectLeafFootprints`) rather than a Round-2 gap — a collapsed leaf's pin
+ * never varies with the container the way an arbitrary static pin can, so there
+ * is no drift to re-absorb. The divider stays interactive so the void remains
+ * escapable (dragging or nudging it un-collapses both siblings — see
+ * `tiling-renderer.tsx`).
  *
  * Deterministic (always the `second` child — the "last edge to become static
- * yields the filler"), pure, and idempotent: a tree that already satisfies the
- * invariant is returned by the SAME reference (no allocation). Call at the tail
- * of every mutation that can create a both-static-along-axis edge — the
- * static-switch path (`setLeafSizing`) and the extraction/removal movers
- * (`removeLeafTile`, `insertLeafAdjacent`, `moveLeafToRoot`,
- * `moveLeafToSplitContainer`) — so both the reachable and the latent triggers are
- * covered.
+ * yields the filler" — outside the both-collapsed exception), pure, and
+ * idempotent: a tree that already satisfies the invariant is returned by the
+ * SAME reference (no allocation). Call at the tail of every mutation that can
+ * create a both-static-along-axis edge — the static-switch path
+ * (`setLeafSizing`) and the extraction/removal movers (`removeLeafTile`,
+ * `insertLeafAdjacent`, `moveLeafToRoot`, `moveLeafToSplitContainer`) — so both
+ * the reachable and the latent triggers are covered.
  */
 export function normalizeStaticAxisFill(node: TilingLayoutNode): TilingLayoutNode {
   if (node.kind === "leaf" || node.kind === "group") {
     return node;
   }
 
-  const normalizedFirst: TilingLayoutNode = normalizeStaticAxisFill(node.first);
-  let normalizedSecond: TilingLayoutNode = normalizeStaticAxisFill(node.second);
+  // HT-PANE-COLLAPSE-DRAG: re-pin a DIRECT-CHILD collapsed leaf to the axis it
+  // is ACTUALLY under before recursing. A drag re-parent (`insertLeafAdjacent`
+  // / `moveLeafTo*`) can land a collapsed leaf under a split whose axis
+  // differs from the axis it collapsed under — see `reconcileCollapsedLeafAxis`.
+  const reconciledFirst: TilingLayoutNode =
+    node.first.kind === "leaf" ? reconcileCollapsedLeafAxis(node.first, node.axis) : node.first;
+  const reconciledSecond: TilingLayoutNode =
+    node.second.kind === "leaf" ? reconcileCollapsedLeafAxis(node.second, node.axis) : node.second;
+
+  const normalizedFirst: TilingLayoutNode = normalizeStaticAxisFill(reconciledFirst);
+  let normalizedSecond: TilingLayoutNode = normalizeStaticAxisFill(reconciledSecond);
 
   if (
+    !isBothCollapsedLeaves(normalizedFirst, normalizedSecond) &&
     isStaticAlongSplitAxis(normalizedFirst, node.axis) &&
     isStaticAlongSplitAxis(normalizedSecond, node.axis)
   ) {
@@ -221,6 +358,300 @@ export function setLeafSizing(
   sizing: TilingPaneSizing | undefined,
 ): TilingLayoutNode {
   return normalizeStaticAxisFill(writeLeafSizing(node, leafId, sizing));
+}
+
+/**
+ * Collapse a leaf to titlebar-only (HT-PANE-COLLAPSE, axis-aware): pin the
+ * dimension that runs ALONG `parentAxis` — the immediate parent split's axis —
+ * STATIC to `collapsedExtentPx` (the chrome/header extent), so the flexible
+ * sibling reclaims exactly the space the collapse frees:
+ *
+ * - parent `vertical` (stacked) → pins `height` (matches the pre-axis-aware
+ *   behavior for the common stacked case).
+ * - parent `horizontal` (side-by-side) → pins `width`, so the neighbor's `fill`
+ *   arm reclaims WIDTH, not a cross-axis height nobody was fighting over.
+ *
+ * Any pre-existing sizing on the CROSS dimension is preserved (only the
+ * along-axis dimension is overwritten). Idempotent: a leaf already collapsed is
+ * returned unchanged, so re-collapsing never clobbers the restore snapshot with
+ * the collapsed pin.
+ */
+function collapseLeafNode(
+  leaf: TilingLeafNode,
+  collapsedExtentPx: number,
+  parentAxis: TilingSplitAxis,
+): TilingLeafNode {
+  if (leaf.collapsed === true) {
+    return leaf;
+  }
+  const alongDimension: TilingDimension = splitAxisDimension(parentAxis);
+  const collapsedSizing: TilingPaneSizing =
+    alongDimension === "width"
+      ? { ...leaf.sizing, width: "static", widthPx: collapsedExtentPx }
+      : { ...leaf.sizing, height: "static", heightPx: collapsedExtentPx };
+  const next: TilingLeafNode = {
+    ...leaf,
+    sizing: collapsedSizing,
+    collapsed: true,
+    collapsedDimension: alongDimension,
+  };
+  if (leaf.sizing != null) {
+    next.collapsedRestore = leaf.sizing;
+  }
+  return next;
+}
+
+/**
+ * Expand a collapsed leaf: restore the `collapsedRestore` sizing snapshot
+ * verbatim (undefined → the leaf returns to fully flexible) and drop the
+ * `collapsed` / `collapsedRestore` markers. Idempotent: an already-expanded leaf
+ * is returned unchanged.
+ */
+function expandLeafNode(leaf: TilingLeafNode): TilingLeafNode {
+  if (leaf.collapsed !== true) {
+    return leaf;
+  }
+  // Omit the collapse markers via rest-destructure (no `delete` on a typed node).
+  const {
+    collapsed: _collapsed,
+    collapsedRestore,
+    collapsedDimension: _collapsedDimension,
+    ...rest
+  } = leaf;
+  return { ...rest, sizing: collapsedRestore };
+}
+
+/**
+ * `parentAxis` is the axis of the nearest ANCESTOR split, threaded down through
+ * the recursion (each split hands its own `axis` to its children) — it is what
+ * `collapseLeafNode` pins along. A leaf with no ancestor split (the sole node in
+ * the tree) has no axis to be axis-AWARE of; `setLeafCollapsed` seeds the walk
+ * with `"vertical"` (pins `height`, the pre-axis-aware default) for that
+ * degenerate, sibling-less case — it never affects a real split's reflow.
+ */
+function writeLeafCollapsed(
+  node: TilingLayoutNode,
+  leafId: string,
+  collapsed: boolean,
+  collapsedExtentPx: number,
+  parentAxis: TilingSplitAxis,
+): TilingLayoutNode {
+  if (node.kind === "leaf") {
+    if (node.id !== leafId) {
+      return node;
+    }
+    return collapsed
+      ? collapseLeafNode(node, collapsedExtentPx, parentAxis)
+      : expandLeafNode(node);
+  }
+  // A group is a single slot; collapse targets a loose LEAF slot (a group member
+  // is not independently collapsible). Recurse splits only.
+  if (node.kind === "group") {
+    return node;
+  }
+  const nextFirst: TilingLayoutNode = writeLeafCollapsed(
+    node.first,
+    leafId,
+    collapsed,
+    collapsedExtentPx,
+    node.axis,
+  );
+  const nextSecond: TilingLayoutNode = writeLeafCollapsed(
+    node.second,
+    leafId,
+    collapsed,
+    collapsedExtentPx,
+    node.axis,
+  );
+  // Preserve the reference on a no-op so callers can `next === node` short-circuit
+  // (and skip spurious `onLayoutChange` / collapse events on an idempotent set).
+  if (nextFirst === node.first && nextSecond === node.second) {
+    return node;
+  }
+  return { ...node, first: nextFirst, second: nextSecond };
+}
+
+const ROOT_LEAF_COLLAPSE_AXIS: TilingSplitAxis = "vertical";
+
+/**
+ * Immutably set a single leaf's COLLAPSED (titlebar-only) state
+ * (HT-PANE-COLLAPSE, axis-aware). Collapsing pins the leaf's dimension ALONG
+ * its immediate parent split's axis (height under a `vertical`/stacked parent,
+ * width under a `horizontal`/side-by-side parent — see {@link collapseLeafNode})
+ * to `collapsedExtentPx` and remembers its prior sizing; expanding restores
+ * that prior sizing. The result is passed through {@link normalizeStaticAxisFill}
+ * so a collapse that creates a both-static-along-axis edge (e.g. two stacked —
+ * or two side-by-side — siblings both collapsed) still satisfies the "one child
+ * flexes along the split axis" invariant for every OTHER static combination —
+ * but the both-COLLAPSED-siblings edge is explicitly exempted (HT-PANE-COLLAPSE-
+ * VOID): both stay collapsed, and the leftover axis space is an intentional
+ * split slack void rather than either sibling silently losing its collapse
+ * state.
+ */
+export function setLeafCollapsed(
+  node: TilingLayoutNode,
+  leafId: string,
+  collapsed: boolean,
+  collapsedExtentPx: number,
+): TilingLayoutNode {
+  return normalizeStaticAxisFill(
+    writeLeafCollapsed(
+      node,
+      leafId,
+      collapsed,
+      collapsedExtentPx,
+      ROOT_LEAF_COLLAPSE_AXIS,
+    ),
+  );
+}
+
+/** Whether the leaf `leafId` is currently collapsed to titlebar-only. */
+export function isLeafCollapsed(node: TilingLayoutNode, leafId: string): boolean {
+  return findLeafById(node, leafId)?.collapsed === true;
+}
+
+/**
+ * Toggle a single leaf's collapsed state (HT-PANE-COLLAPSE) — collapse it when
+ * expanded, expand it when collapsed. A missing leaf id is a no-op (returns the
+ * same tree reference).
+ */
+export function toggleLeafCollapsed(
+  node: TilingLayoutNode,
+  leafId: string,
+  collapsedExtentPx: number,
+): TilingLayoutNode {
+  const leaf: TilingLeafNode | null = findLeafById(node, leafId);
+  if (leaf == null) {
+    return node;
+  }
+  return setLeafCollapsed(node, leafId, leaf.collapsed !== true, collapsedExtentPx);
+}
+
+function collectCollapsedFlags(
+  node: TilingLayoutNode,
+  out: Map<string, boolean>,
+): void {
+  if (node.kind === "leaf") {
+    out.set(node.id, node.collapsed === true);
+    return;
+  }
+  if (node.kind === "group") {
+    for (const member of node.members) {
+      collectCollapsedFlags(member, out);
+    }
+    return;
+  }
+  collectCollapsedFlags(node.first, out);
+  collectCollapsedFlags(node.second, out);
+}
+
+function collectCollapsedDiffs(
+  node: TilingLayoutNode,
+  beforeCollapsed: ReadonlyMap<string, boolean>,
+  out: TilingPaneCollapsedChangeEvent[],
+): void {
+  if (node.kind === "leaf") {
+    const priorCollapsed: boolean | undefined = beforeCollapsed.get(node.id);
+    const currentCollapsed: boolean = node.collapsed === true;
+    if (priorCollapsed != null && priorCollapsed !== currentCollapsed) {
+      out.push({ leafId: node.id, collapsed: currentCollapsed });
+    }
+    return;
+  }
+  if (node.kind === "group") {
+    for (const member of node.members) {
+      collectCollapsedDiffs(member, beforeCollapsed, out);
+    }
+    return;
+  }
+  collectCollapsedDiffs(node.first, beforeCollapsed, out);
+  collectCollapsedDiffs(node.second, beforeCollapsed, out);
+}
+
+/**
+ * Diff every leaf's `collapsed` boolean between two trees, by leaf id — the
+ * source of truth for `TilingPaneCollapsedChangeEvent`s a host consumes via
+ * `TilingRendererProps.onPaneCollapsedChange`.
+ *
+ * An EXPLICIT collapse toggle is not the only way `collapsed` changes: a
+ * normalize/reconcile side effect can flip it on a leaf the caller never
+ * targeted — `demoteAlongAxisStatic` fully un-collapsing a both-static-along-
+ * axis (or unfit-pin) sibling, or a rearrange commit's `normalizeLayout` pass
+ * doing the same deeper in the tree. Diffing the WHOLE tree (not just the leaf
+ * the caller meant to touch) is what keeps every reachable AND latent
+ * collapse-truth change observable — the renderer calls this against EVERY
+ * `onLayoutChange` edit (see `tiling-renderer.tsx`'s `commitLayoutChange`)
+ * rather than hand-rolling a per-call-site event.
+ *
+ * A leaf id present in only one tree (created or removed by the same edit) is
+ * not a collapse-state CHANGE and is skipped; result order is unspecified.
+ * @internal
+ */
+export function diffCollapsedLeaves(
+  before: TilingLayoutNode,
+  after: TilingLayoutNode,
+): ReadonlyArray<TilingPaneCollapsedChangeEvent> {
+  if (before === after) {
+    return [];
+  }
+  const beforeCollapsed = new Map<string, boolean>();
+  collectCollapsedFlags(before, beforeCollapsed);
+  const events: TilingPaneCollapsedChangeEvent[] = [];
+  collectCollapsedDiffs(after, beforeCollapsed, events);
+  return events;
+}
+
+/**
+ * Re-assert every COLLAPSED leaf's along-axis pin to `collapsedExtentPx`
+ * (HT-PANE-COLLAPSE-PIN-REASSERT). Collapse pins bake the chrome extent that
+ * was current at collapse / axis-reconcile time; a later config change (or a
+ * persisted tree hydrated under a different `collapsedExtentPx`) leaves a
+ * stale pin that diverges from the live chrome. Walk the tree and rewrite
+ * only the along-axis static px — `collapsed` / `collapsedRestore` /
+ * `collapsedDimension` stay untouched so expand restore is preserved.
+ *
+ * Idempotent (same reference when every pin already matches). Called from
+ * `normalizeLayout` so hydrate, idle settle, and resize/rearrange commit all
+ * keep collapse geometry ≡ current chrome extent.
+ */
+export function reassertCollapsedExtentPins(
+  node: TilingLayoutNode,
+  collapsedExtentPx: number,
+): TilingLayoutNode {
+  if (!(collapsedExtentPx > 0) || !Number.isFinite(collapsedExtentPx)) {
+    return node;
+  }
+  if (node.kind === "leaf") {
+    if (node.collapsed !== true || node.collapsedDimension == null) {
+      return node;
+    }
+    const dimension: TilingDimension = node.collapsedDimension;
+    const currentPx: number | undefined =
+      dimension === "width" ? node.sizing?.widthPx : node.sizing?.heightPx;
+    if (currentPx === collapsedExtentPx) {
+      return node;
+    }
+    const nextSizing: TilingPaneSizing =
+      dimension === "width"
+        ? { ...node.sizing, width: "static", widthPx: collapsedExtentPx }
+        : { ...node.sizing, height: "static", heightPx: collapsedExtentPx };
+    return { ...node, sizing: nextSizing };
+  }
+  if (node.kind === "group") {
+    return node;
+  }
+  const nextFirst: TilingLayoutNode = reassertCollapsedExtentPins(
+    node.first,
+    collapsedExtentPx,
+  );
+  const nextSecond: TilingLayoutNode = reassertCollapsedExtentPins(
+    node.second,
+    collapsedExtentPx,
+  );
+  if (nextFirst === node.first && nextSecond === node.second) {
+    return node;
+  }
+  return { ...node, first: nextFirst, second: nextSecond };
 }
 
 /** Find the leaf with id `leafId` anywhere in the tree (including inside a group), or `null`. */

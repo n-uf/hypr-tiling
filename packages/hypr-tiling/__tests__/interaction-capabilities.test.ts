@@ -39,7 +39,7 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
     tabDoubleClickMaximize: true,
     multiSelectGrouping: true,
   },
-  paneTitleBarControls: { sizing: true, acquireSpace: true },
+  paneTitleBarControls: { sizing: true, acquireSpace: true, collapse: false },
   dropHitZoneGeometry: {
     centerRatio: 0.34,
     centerRatioX: 0.34,
@@ -384,27 +384,36 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     expect(resolveInteractionCapabilities(undefined).paneTitleBarControls).toEqual({
       sizing: true,
       acquireSpace: true,
+      collapse: false,
     });
     expect(resolveInteractionCapabilities({}).paneTitleBarControls).toEqual({
       sizing: true,
       acquireSpace: true,
+      collapse: false,
     });
   });
 
   it("preserves an explicit paneTitleBarControls disable per group", (): void => {
     expect(resolveInteractionCapabilities({ paneTitleBarControls: { sizing: false } })).toEqual({
       ...RESOLVED_DEFAULTS,
-      paneTitleBarControls: { sizing: false, acquireSpace: true },
+      paneTitleBarControls: { sizing: false, acquireSpace: true, collapse: false },
     });
     expect(resolveInteractionCapabilities({ paneTitleBarControls: { acquireSpace: false } })).toEqual({
       ...RESOLVED_DEFAULTS,
-      paneTitleBarControls: { sizing: true, acquireSpace: false },
+      paneTitleBarControls: { sizing: true, acquireSpace: false, collapse: false },
     });
     expect(
       resolveInteractionCapabilities({ paneTitleBarControls: { sizing: false, acquireSpace: false } }),
     ).toEqual({
       ...RESOLVED_DEFAULTS,
-      paneTitleBarControls: { sizing: false, acquireSpace: false },
+      paneTitleBarControls: { sizing: false, acquireSpace: false, collapse: false },
+    });
+  });
+
+  it("resolves an explicit paneTitleBarControls.collapse opt-in", (): void => {
+    expect(resolveInteractionCapabilities({ paneTitleBarControls: { collapse: true } })).toEqual({
+      ...RESOLVED_DEFAULTS,
+      paneTitleBarControls: { sizing: true, acquireSpace: true, collapse: true },
     });
   });
 
@@ -434,6 +443,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     expect(resolveInteractionCapabilities(TILING_DASHBOARD_PRESET).paneTitleBarControls).toEqual({
       sizing: false,
       acquireSpace: false,
+      collapse: false,
     });
   });
 

@@ -1,4 +1,5 @@
 import type * as React from "react";
+import type { RatioSafetyBounds } from "./pane-sizing";
 // Type-only edge (erased at build): `TilingTheme` is the react-layer theme
 // contract surfaced on `TilingRendererProps.theme`. No runtime engine→react
 // coupling (see check-guardrails.mjs rule 1).
@@ -523,6 +524,11 @@ export type TilingCommand =
   | { kind: "insert-adjacent"; sourceLeafId: string; targetLeafId: string; placement: TilingMovePlacement }
   | { kind: "acquire-space"; leafId?: string; direction: TilingFocusDirection }
   | { kind: "set-sizing"; leafId?: string; mode: TilingTitleBarSizingMode }
+  // collapse-to-titlebar (HT-PANE-COLLAPSE). `leafId` omitted → the focused leaf
+  // (the "act on the focused pane" ergonomic). `toggle-collapse` flips the
+  // leaf's collapsed state; `set-collapsed` sets it explicitly (idempotent).
+  | { kind: "toggle-collapse"; leafId?: string }
+  | { kind: "set-collapsed"; leafId?: string; collapsed: boolean }
   | { kind: "set-split-ratio"; splitId: string; ratio: number }
   | { kind: "toggle-split-axis"; splitId: string }
   // layout-mode (master/stack). `splitId` omitted → the ROOT split (the
@@ -695,6 +701,14 @@ export interface TilingPaneTitleBarControlsCapability {
   sizing?: boolean;
   /** Render the per-pane directional (→ ← ↑ ↓) acquire-space controls. Default `true`. */
   acquireSpace?: boolean;
+  /**
+   * Render the per-pane COLLAPSE-to-titlebar control + enable the
+   * `toggle-collapse` / `set-collapsed` commands (HT-PANE-COLLAPSE). Default
+   * `false` — collapse is OPT-IN for backward compatibility (an existing
+   * consumer's title-bars keep exactly today's control set until it turns this
+   * on), mirroring the `paneSwitching.showContentToggle` opt-in exception.
+   */
+  collapse?: boolean;
 }
 
 /** Resolved per-pane title-bar control capability (no optional fields). */
@@ -703,6 +717,8 @@ export interface ResolvedTilingPaneTitleBarControlsCapability {
   sizing: boolean;
   /** Whether the per-pane directional acquire-space controls render. */
   acquireSpace: boolean;
+  /** Whether the per-pane collapse-to-titlebar control + collapse commands are live. */
+  collapse: boolean;
 }
 
 /** Resolved maximize capability (no optional fields). */
@@ -1162,6 +1178,58 @@ export interface TilingTile {
 }
 
 /**
+ * Which floor an interactive resize (pointer drag / keyboard) bounds a pane
+ * to (HT-RESIZE-FLOOR):
+ *
+ * - `"chrome"` (LIBRARY DEFAULT, HT-RESIZE-FLOOR-DEFAULT) — "size-out": the
+ *   gutter may shrink all the way to the collapsed titlebar-only extent
+ *   ({@link TilingLayoutConfig.collapsedExtentPx}), REPLACING the body floor
+ *   for this leaf entirely (not layered on top of it). This is purely a
+ *   resize-time ratio bound: it never touches `collapsed` / `collapsedRestore`
+ *   (no auto-collapse, no state change from resize — only the
+ *   titlebar-collapse control owns `collapsed`), and the pane stays
+ *   flexible/ratio-based (re-grows with the window), never a
+ *   `sizing: "static"` pin. Settle-on-release (snapping to a fixed size when
+ *   released near the chrome floor) is intentionally NOT implemented.
+ * - `"body"` — the ordinary content floor: the min-pane precedence chain
+ *   ({@link TilingLeafNode.minBBoxPx} → {@link TilingSplitNode.minPaneSizePx}
+ *   → {@link TilingLayoutConfig.minPaneSizePx}). A resize cannot shrink the
+ *   pane below its usable content size. Opt in per-leaf via
+ *   {@link TilingLeafNode.resizeFloor} or library-wide via
+ *   {@link TilingLayoutConfig.resizeFloor} for consumers that want the old
+ *   content-floor behavior back.
+ */
+export type TilingResizeFloor = "body" | "chrome";
+
+/**
+ * Collapsed pane body MOUNT policy (HT-COLLAPSE-BODY-MODE) — lib-controlled,
+ * not a per-consumer `renderTile` decision (see {@link TilingPaneBody}, which
+ * is the ONE place this policy takes effect):
+ *
+ * - `"keep-mounted"` (default) — a collapsed pane's body stays mounted (its
+ *   React subtree is preserved, only hidden via `display: none`), so
+ *   scroll position, focus, form state, iframes, etc. inside the pane survive
+ *   collapse/expand.
+ * - `"unmount"` — a collapsed pane's body is removed from the tree entirely
+ *   (like the content-visibility toggle turned off), trading state
+ *   preservation for a lighter DOM / fewer live subtrees while collapsed.
+ */
+export type TilingCollapseBodyMode = "keep-mounted" | "unmount";
+
+/**
+ * Leaf-scoped minimum bounding-box floor (CSS px), one optional component per
+ * dimension. See {@link TilingLeafNode.minBBoxPx} for the precedence this
+ * floor takes over {@link TilingSplitNode.minPaneSizePx} and
+ * {@link TilingLayoutConfig.minPaneSizePx}.
+ */
+export interface TilingMinBBoxPx {
+  /** Minimum width (CSS px) this leaf's pane must retain during resize. */
+  widthPx?: number;
+  /** Minimum height (CSS px) this leaf's pane must retain during resize. */
+  heightPx?: number;
+}
+
+/**
  * A leaf slot: a single pane that renders one tile. The renderer's smallest
  * addressable layout unit — focus, drag, resize, and sizing all target a leaf
  * by its `id`.
@@ -1175,6 +1243,75 @@ export interface TilingLeafNode {
   tileId: string;
   /** Per-dimension static/flexible sizing. Undefined dimensions are flexible. */
   sizing?: TilingPaneSizing;
+  /**
+   * Leaf-scoped resize floor (CSS px) — a per-pane along-axis minimum that
+   * TRAVELS WITH the pane across rearrange, because it is stored on the leaf
+   * node itself rather than on a split boundary. When this leaf sits as a
+   * DIRECT child of a split, the component that runs ALONG that split's axis
+   * (`widthPx` for a `"horizontal"` split, `heightPx` for a `"vertical"`
+   * split) is the effective floor for that boundary — resolved with this
+   * precedence (most specific wins):
+   *
+   * 1. `leaf.minBBoxPx[alongDimension]` (this field) — travels with the pane.
+   * 2. {@link TilingSplitNode.minPaneSizePx} — pinned to that split boundary.
+   * 3. {@link TilingLayoutConfig.minPaneSizePx} — the library-wide default.
+   *
+   * An undefined or non-positive per-dimension value falls through to the
+   * next precedence level. The cross-axis component is reserved for a future
+   * cross-axis floor; today's clamp pipeline only bounds the split-axis ratio,
+   * so only the along-axis component is consulted. Persisted alongside
+   * `sizing` so `createPersistedTilingLayout` round-trips it.
+   */
+  minBBoxPx?: TilingMinBBoxPx;
+  /**
+   * Per-leaf override of which floor an interactive resize bounds this pane
+   * to (HT-RESIZE-FLOOR) — wins over {@link TilingLayoutConfig.resizeFloor}.
+   * Undefined falls through to the config default, itself defaulting to
+   * `"chrome"` (HT-RESIZE-FLOOR-DEFAULT). Set `"body"` here to opt this leaf
+   * back into the content floor. See {@link TilingResizeFloor} for the two
+   * modes.
+   */
+  resizeFloor?: TilingResizeFloor;
+  /**
+   * Whether this leaf is COLLAPSED to titlebar-only (HT-PANE-COLLAPSE,
+   * axis-aware). A collapsed leaf is pinned STATIC, to the chrome/titlebar
+   * extent (`collapsedExtentPx`, see {@link TilingLayoutConfig}), in the
+   * dimension that runs ALONG its immediate PARENT split's axis:
+   *
+   * - parent `vertical` (stacked) → pins `height`; its flexible sibling
+   *   reclaims the freed height.
+   * - parent `horizontal` (side-by-side) → pins `width`; its flexible sibling
+   *   reclaims the freed width.
+   *
+   * This mirrors the split's own along-axis/cross-axis convention
+   * (`isStaticAlongSplitAxis`) rather than always pinning `height`, so a
+   * side-by-side collapse actually narrows the pane instead of leaving its full
+   * column width reserved. Its body is not painted. Undefined → expanded (the
+   * default). Persisted in the layout tree alongside `sizing`, so
+   * `createPersistedTilingLayout` round-trips it and integrity stays sensible.
+   */
+  collapsed?: boolean;
+  /**
+   * The pre-collapse {@link TilingPaneSizing} snapshot, captured when the leaf
+   * is collapsed and restored verbatim on expand (so the leaf returns to its
+   * exact prior flexible/static contribution). Undefined when the leaf was
+   * flexible before collapse (expand then clears the pin → flexible) or when the
+   * leaf is not collapsed. Only meaningful while `collapsed === true`.
+   */
+  collapsedRestore?: TilingPaneSizing;
+  /**
+   * Which dimension `collapsed` pinned — the along-axis dimension of the
+   * immediate parent split AT THE MOMENT this leaf collapsed. Recorded
+   * explicitly (rather than re-derived from `sizing` at read time) so a
+   * consumer can render axis-appropriate chrome
+   * (e.g. a narrow vertical titlebar for a `"width"` collapse vs. a short
+   * horizontal one for `"height"`) without guessing from pixel values, which
+   * would be ambiguous if an unrelated cross-axis static pin happens to equal
+   * `collapsedExtentPx`. Cleared on expand. Only meaningful while
+   * `collapsed === true`; exposed to custom `renderTile` panes as
+   * {@link TilingRenderTileProps.collapsedDimension}.
+   */
+  collapsedDimension?: TilingDimension;
 }
 
 /**
@@ -1197,7 +1334,14 @@ export interface TilingSplitNode {
   second: TilingLayoutNode;
   /** Optional per-split gap override (CSS px) between the two children. */
   gapPx?: number;
-  /** Optional per-split minimum pane extent (CSS px) enforced on resize. */
+  /**
+   * Optional per-split minimum pane extent (CSS px) enforced on resize. Sits
+   * in the MIDDLE of the min-pane precedence chain: a direct child leaf's own
+   * {@link TilingLeafNode.minBBoxPx} (along-axis component) wins over this;
+   * this wins over {@link TilingLayoutConfig.minPaneSizePx}. Unlike
+   * `minBBoxPx`, this floor is pinned to THIS split boundary and does not
+   * travel with either child across rearrange.
+   */
   minPaneSizePx?: number;
   /** Per-dimension static/flexible sizing. Undefined dimensions are flexible. */
   sizing?: TilingPaneSizing;
@@ -1252,7 +1396,13 @@ export type TilingLayoutNode = TilingLeafNode | TilingSplitNode | TilingGroupNod
 export interface TilingLayoutConfig {
   /** Gap (CSS px) painted in the gutters between panes. */
   gapPx: number;
-  /** Minimum pane extent (CSS px) a resize divider will not shrink a pane below. */
+  /**
+   * Library-wide default minimum pane extent (CSS px) a resize divider will
+   * not shrink a pane below — the LAST-resort fallback in the min-pane
+   * precedence chain, behind a direct child leaf's own
+   * {@link TilingLeafNode.minBBoxPx} (along-axis component) and behind
+   * {@link TilingSplitNode.minPaneSizePx}.
+   */
   minPaneSizePx: number;
   /**
    * Resize-handle chrome thickness (CSS px). The interactive hit-target spans
@@ -1260,7 +1410,38 @@ export interface TilingLayoutConfig {
    * center strip when `resizeHandlesVisible` is on.
    */
   handleSizePx: number;
+  /**
+   * Collapsed titlebar-only extent (CSS px) — the along-parent-split-axis
+   * extent a leaf is pinned to when COLLAPSED (HT-PANE-COLLAPSE): `height`
+   * under a stacked (vertical) parent, `width` under a side-by-side
+   * (horizontal) parent (see {@link TilingLeafNode.collapsed}). Sized to the
+   * pane's chrome/header extent so a collapsed pane shows just its title bar.
+   * Undefined → {@link TILING_DEFAULT_COLLAPSED_EXTENT_PX}. Set it to match
+   * your custom header extent when it differs from the default.
+   */
+  collapsedExtentPx?: number;
+  /**
+   * Library-wide default for which floor an interactive resize bounds a pane
+   * to (HT-RESIZE-FLOOR) — a direct-child leaf's own
+   * {@link TilingLeafNode.resizeFloor} wins over this. Undefined →
+   * `"chrome"` (HT-RESIZE-FLOOR-DEFAULT, size-out to the collapsed titlebar
+   * extent). Set `"body"` here to restore the old content-floor behavior
+   * library-wide. See {@link TilingResizeFloor} for the two modes.
+   */
+  resizeFloor?: TilingResizeFloor;
+  /**
+   * Collapsed pane body mount policy (HT-COLLAPSE-BODY-MODE) — see
+   * {@link TilingCollapseBodyMode}. Undefined → `"keep-mounted"`.
+   */
+  collapseBodyMode?: TilingCollapseBodyMode;
 }
+
+/**
+ * Default collapsed titlebar-only extent (CSS px) when
+ * {@link TilingLayoutConfig.collapsedExtentPx} is undefined — sized to the
+ * built-in pane header height so a collapsed pane shows just its title bar.
+ */
+export const TILING_DEFAULT_COLLAPSED_EXTENT_PX: number = 40;
 
 /**
  * The renderer surface a `renderTile` invocation paints:
@@ -1438,6 +1619,29 @@ export interface TilingRenderTileProps {
    * to their minimum). Emits via `onLayoutChange` (controlled).
    */
   onAcquireSpace: (direction: TilingFocusDirection) => void;
+  /** Whether THIS pane is currently collapsed to titlebar-only (HT-PANE-COLLAPSE). */
+  isCollapsed: boolean;
+  /**
+   * Which dimension collapse pinned (`"width"` under a `horizontal`/
+   * side-by-side parent, `"height"` under a `vertical`/stacked parent) — see
+   * {@link TilingLeafNode.collapsedDimension}. `null` while `isCollapsed` is
+   * `false`. A custom `renderTile` pane uses this (not a pixel-size guess) to
+   * pick axis-appropriate collapsed chrome, e.g. a narrow vertical titlebar
+   * for a `"width"` collapse vs. the short horizontal strip for `"height"`.
+   */
+  collapsedDimension: TilingDimension | null;
+  /** Whether the per-pane collapse control is enabled (`paneTitleBarControls.collapse`). */
+  isCollapseEnabled: boolean;
+  /**
+   * Toggle THIS pane's collapse (titlebar-only) state. Collapse pins the
+   * leaf's along-parent-axis dimension (see
+   * {@link TilingLeafNode.collapsed}: `height` under a stacked parent, `width`
+   * under a side-by-side parent) to the chrome extent (its body is hidden) so
+   * its sibling reclaims the freed space; expand restores the pre-collapse
+   * sizing. Emits via `onLayoutChange` (controlled) and fires
+   * {@link TilingRendererProps.onPaneCollapsedChange}.
+   */
+  onToggleCollapse: () => void;
   /** The resolved drop zone under the cursor for this pane, or `null`. */
   dropZone: TilingLeafDropZone | null;
   /** The projected landing/result preview for this pane, or `null`. */
@@ -1554,8 +1758,12 @@ export interface TilingDefaultTileProps extends TilingRenderTileProps {
 export type TilingLeafDropZone = "center" | "left" | "right" | "top" | "bottom";
 /**
  * Resolved pane-body render decision:
- * - `"render-content"` — paint the tile body,
- * - `"render-empty"` — hidden body (content toggle off),
+ * - `"render-content"` — paint the tile body. Also resolved for a COLLAPSED
+ *   pane under the default `collapseBodyMode: "keep-mounted"` (HT-COLLAPSE-BODY-MODE)
+ *   — {@link TilingPaneBody} still visually hides it via its own independent
+ *   `display: none` gate.
+ * - `"render-empty"` — body removed from the tree (content toggle off, OR a
+ *   collapsed pane under `collapseBodyMode: "unmount"`).
  * - `"render-reservation"` — empty ghost-seat reservation slot during a drag.
  */
 export type TilingPaneBodyRenderMode =
@@ -1957,6 +2165,19 @@ export type TilingOverlayPortalContainer =
   | (() => HTMLElement | null);
 
 /**
+ * The payload of {@link TilingRendererProps.onPaneCollapsedChange}: which leaf
+ * changed collapse state and its NEW state. Emitted after the collapse edit is
+ * reported via `onLayoutChange`, so a host reacting here (e.g. retitling the
+ * pane) reads a consistent post-edit world.
+ */
+export interface TilingPaneCollapsedChangeEvent {
+  /** The leaf node id whose collapse state changed. */
+  readonly leafId: string;
+  /** The leaf's new collapse state — `true` collapsed to titlebar-only, `false` expanded. */
+  readonly collapsed: boolean;
+}
+
+/**
  * Props for the {@link TilingRenderer} component — the full controlled-component
  * surface. `layout` + `tiles` + `config` + `onLayoutChange` are the four
  * required props; everything else is optional and resolves to a documented
@@ -2068,6 +2289,17 @@ export interface TilingRendererProps {
   maximizedLeafId?: string | null;
   /** Notified whenever the maximized pane changes (`null` on restore). */
   onMaximizedLeafChange?: (leafId: string | null) => void;
+  /**
+   * Notified whenever a pane's COLLAPSE state changes (HT-PANE-COLLAPSE) —
+   * fired on every `toggle-collapse` / `set-collapsed` that actually flips a
+   * leaf, from the title-bar control, a keyboard binding, or an imperative
+   * `dispatch`. The event-driven hook a host uses to react to collapse/expand
+   * (e.g. to swap a pane's title between a short collapsed label and its full
+   * expanded label by updating its own tiles state). The layout edit itself
+   * still flows through `onLayoutChange`; this callback is the semantic
+   * notification alongside it.
+   */
+  onPaneCollapsedChange?: (event: TilingPaneCollapsedChangeEvent) => void;
   /** Whether translucent projected landing overlays are shown during a drag. */
   showDropPreviewOverlays?: boolean;
   /** Background opacity `[0, 1]` for the projected landing overlays. */
@@ -2190,6 +2422,12 @@ export interface TilingRendererObservabilityProps {
   onLiveHitLogChange?: (state: TilingLiveHitLogState | null) => void;
 }
 
+/**
+ * Live pointer/keyboard resize gesture state for one split divider. The two
+ * floors are resolved PER SIDE (HT-MIN-BBOX-PX) — `resolveAlongAxisMinPaneSizePx`
+ * — so a leaf-owned {@link TilingLeafNode.minBBoxPx} on only one side does not
+ * force the other side up to match.
+ */
 export interface TilingSplitResizeState {
   splitId: string;
   axis: TilingSplitAxis;
@@ -2197,5 +2435,15 @@ export interface TilingSplitResizeState {
   startPointerPx: number;
   startRatio: number;
   gapPx: number;
-  minPaneSizePx: number;
+  /** Resolved along-axis floor (CSS px) for the split's FIRST child. */
+  firstMinPaneSizePx: number;
+  /** Resolved along-axis floor (CSS px) for the split's SECOND child. */
+  secondMinPaneSizePx: number;
+  /**
+   * Ratio-clamp safety bounds (HT-RESIZE-FLOOR) resolved at gesture start —
+   * neutralized when either side resolved a "chrome" resize floor, so a
+   * legitimately small chrome floor stays reachable for the gesture's
+   * duration.
+   */
+  ratioSafetyBounds: RatioSafetyBounds;
 }

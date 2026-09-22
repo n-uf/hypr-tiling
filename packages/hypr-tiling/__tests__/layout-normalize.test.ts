@@ -25,20 +25,31 @@ const EXPECTED_ANNOTATE_TILES: ReadonlyArray<string> = [
   "review",
 ];
 
+// This file exercises the body-floor precedence chain (minBBoxPx →
+// split.minPaneSizePx → config.minPaneSizePx); it predates and is unrelated
+// to HT-RESIZE-FLOOR-DEFAULT, so it opts into "body" explicitly rather than
+// picking up the library's chrome default.
 const CONFIG: TilingLayoutConfig = {
   gapPx: 8,
   minPaneSizePx: 200,
   handleSizePx: 4,
+  resizeFloor: "body",
 };
 
 function leaf(
   id: string,
   tileId: string,
   sizing?: TilingLeafNode["sizing"],
+  minBBoxPx?: TilingLeafNode["minBBoxPx"],
 ): TilingLeafNode {
-  return sizing == null
-    ? { kind: "leaf", id, tileId }
-    : { kind: "leaf", id, tileId, sizing };
+  const node: TilingLeafNode = { kind: "leaf", id, tileId };
+  if (sizing != null) {
+    node.sizing = sizing;
+  }
+  if (minBBoxPx != null) {
+    node.minBBoxPx = minBBoxPx;
+  }
+  return node;
 }
 
 /**
@@ -186,6 +197,45 @@ describe("normalizeLayout", (): void => {
     // available = 1000 - 12 = 988; min ratio = 200/988 ≈ 0.202
     expect(normalized.ratio).toBeGreaterThanOrEqual(0.2);
     expect(normalized.ratio).toBeLessThan(0.99);
+  });
+
+  it("HT-MIN-BBOX-PX: reconciliation clamps against a leaf's own minBBoxPx floor, not just config.minPaneSizePx", (): void => {
+    const input: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.99,
+      first: leaf("A", "a"),
+      second: leaf("B", "b", undefined, { widthPx: 400 }),
+    };
+    const normalized = normalizeLayout(input, {
+      containerWidthPx: 1000,
+      containerHeightPx: 600,
+      config: CONFIG,
+    }) as TilingSplitNode;
+    // B's own 400px floor (stronger than CONFIG's 200) bounds the upper ratio:
+    // available = 1000 - 12 = 988; boundedMax = 1 - 400/988 ≈ 0.595.
+    expect(normalized.ratio).toBeLessThanOrEqual(0.596);
+    expect(normalized.ratio).toBeGreaterThan(0.5);
+  });
+
+  it("HT-MIN-BBOX-PX: falls back to split.minPaneSizePx (over config) when no leaf floor is declared", (): void => {
+    const input: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.99,
+      minPaneSizePx: 350,
+      first: leaf("A", "a"),
+      second: leaf("B", "b"),
+    };
+    const normalized = normalizeLayout(input, {
+      containerWidthPx: 1000,
+      containerHeightPx: 600,
+      config: CONFIG,
+    }) as TilingSplitNode;
+    // split override 350 (not config's 200): available 988, boundedMax = 1 - 350/988 ≈ 0.646.
+    expect(normalized.ratio).toBeLessThanOrEqual(0.647);
   });
 
   it("reports fill slack for an unfit declared pin (pre-normalize void)", (): void => {
@@ -434,6 +484,76 @@ describe("normalizeLayout", (): void => {
     expect(post.requiresRebuild).toBe(false);
     expect(post.hasOverlappingLeaves).toBe(false);
     expect(layoutCoversExpectedTiles(repaired, ["a", "b"])).toBe(true);
+  });
+
+  it("both-collapsed siblings (HT-PANE-COLLAPSE-VOID): normalize preserves the pair, each own pin, no rebuild/void-heal", (): void => {
+    const bothCollapsed: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: {
+        kind: "leaf",
+        id: "A",
+        tileId: "a",
+        collapsed: true,
+        collapsedDimension: "width",
+        sizing: { width: "static", widthPx: 40 },
+      },
+      second: {
+        kind: "leaf",
+        id: "B",
+        tileId: "b",
+        collapsed: true,
+        collapsedDimension: "width",
+        sizing: { width: "static", widthPx: 40 },
+      },
+    };
+    const normalized: TilingLayoutNode = normalizeLayout(bothCollapsed, {
+      containerWidthPx: 1000,
+      containerHeightPx: 600,
+      config: { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 },
+      expectedTileIds: ["a", "b"],
+    }) as TilingSplitNode;
+    const a: TilingLeafNode | null = findLeaf(normalized, "A");
+    const b: TilingLeafNode | null = findLeaf(normalized, "B");
+    expect(a?.collapsed).toBe(true);
+    expect(b?.collapsed).toBe(true);
+    expect(a?.sizing?.widthPx).toBe(40);
+    expect(b?.sizing?.widthPx).toBe(40);
+  });
+
+  it("both-collapsed siblings' leftover axis space is NOT counted as fill slack (it is an intentional void)", (): void => {
+    const bothCollapsed: TilingSplitNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: {
+        kind: "leaf",
+        id: "A",
+        tileId: "a",
+        collapsed: true,
+        collapsedDimension: "width",
+        sizing: { width: "static", widthPx: 40 },
+      },
+      second: {
+        kind: "leaf",
+        id: "B",
+        tileId: "b",
+        collapsed: true,
+        collapsedDimension: "width",
+        sizing: { width: "static", widthPx: 40 },
+      },
+    };
+    // 1000 - 40 - 40 = 920px of leftover space would read as fill slack under
+    // the general both-static rule; the both-collapsed exemption must report 0.
+    const slackPx: number = measureLayoutFillSlackPx(bothCollapsed, {
+      containerWidthPx: 1000,
+      containerHeightPx: 600,
+      config: { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 },
+    });
+    expect(slackPx).toBe(0);
   });
 
   it("derives expected tile ids from a host tile registry", (): void => {

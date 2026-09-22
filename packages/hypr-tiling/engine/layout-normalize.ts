@@ -1,23 +1,28 @@
 import { collectLeafFootprints, type TilingLeafFootprint } from "./leaf-geometry";
 import {
   clampByMinSize,
-  crossAxisDimension,
   isStaticAlongSplitAxis,
+  resolveAlongAxisFloor,
+  resolveRatioSafetyBounds,
   resolveStaticAlongExtents,
   splitAxisDimension,
   splitBoundaryGutterPx,
 } from "./pane-sizing";
-import { normalizeStaticAxisFill } from "./state";
+import {
+  demoteAlongAxisStatic,
+  normalizeStaticAxisFill,
+  reassertCollapsedExtentPins,
+} from "./state";
 import type {
   TilingDimension,
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,
-  TilingPaneSizing,
   TilingSplitAxis,
   TilingSplitNode,
   TilingTile,
 } from "./types";
+import { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "./types";
 
 /**
  * Idle-period safety-net delay after the last resize/rearrange move before a
@@ -126,31 +131,6 @@ export type AssertLayoutIntegrityOptions = AssessLayoutTileIntegrityOptions;
 /** Options for {@link repairLayout} (same as {@link NormalizeLayoutOptions}). */
 export type RepairLayoutOptions = NormalizeLayoutOptions;
 
-/**
- * Demote a node's ALONG-the-given-axis static dimension back to flexible while
- * PRESERVING its cross-axis static sizing + px. Local copy of the state-layer
- * helper so commit-time reconciliation can demote unfit pins without exporting
- * the private reducer primitive.
- */
-function demoteAlongAxisStatic(
-  node: TilingLayoutNode,
-  axis: TilingSplitAxis,
-): TilingLayoutNode {
-  if (node.sizing == null) {
-    return node;
-  }
-  const crossDimension: TilingDimension = crossAxisDimension(axis);
-  const crossIsStatic: boolean = node.sizing[crossDimension] === "static";
-  if (!crossIsStatic) {
-    return { ...node, sizing: undefined };
-  }
-  const nextSizing: TilingPaneSizing =
-    crossDimension === "width"
-      ? { width: "static", widthPx: node.sizing.widthPx }
-      : { height: "static", heightPx: node.sizing.heightPx };
-  return { ...node, sizing: nextSizing };
-}
-
 function alongAxisPinPx(node: TilingLayoutNode, axis: TilingSplitAxis): number | null {
   const dimension: TilingDimension = splitAxisDimension(axis);
   const pinPx: number | undefined =
@@ -161,11 +141,17 @@ function alongAxisPinPx(node: TilingLayoutNode, axis: TilingSplitAxis): number |
   return pinPx;
 }
 
+/**
+ * Unit-interval clamp for ratios normalize keeps on the tree (HT-RATIO-UNIT-CLAMP).
+ * Soft 5%/95% used to live here and silently undid chrome-floor size-outs after
+ * {@link clampByMinSize} had already neutralized the safety net — keep only the
+ * unit interval; per-side floors remain {@link clampByMinSize}'s job.
+ */
 function clampStoredRatio(value: number): number {
   if (!Number.isFinite(value)) {
     return 0.5;
   }
-  return Math.min(Math.max(value, 0.05), 0.95);
+  return Math.min(Math.max(value, 0), 1);
 }
 
 interface SplitAxisExtents {
@@ -188,7 +174,6 @@ function reconcileBinarySplitAxis(
   config: TilingLayoutConfig,
 ): SplitAxisExtents {
   const resolvedGapPx: number = node.gapPx ?? config.gapPx;
-  const resolvedMinPaneSizePx: number = node.minPaneSizePx ?? config.minPaneSizePx;
   const gutterPx: number = splitBoundaryGutterPx(resolvedGapPx, config.handleSizePx);
 
   let first: TilingLayoutNode = node.first;
@@ -198,6 +183,32 @@ function reconcileBinarySplitAxis(
   const secondStatic: boolean = isStaticAlongSplitAxis(second, node.axis);
   const firstPin: number | null = firstStatic ? alongAxisPinPx(first, node.axis) : null;
   const secondPin: number | null = secondStatic ? alongAxisPinPx(second, node.axis) : null;
+
+  // Both-collapsed siblings (HT-PANE-COLLAPSE-VOID): each keeps its OWN pin —
+  // never the single-pin branches below, which would hand the second child
+  // "whatever's left after the first's pin" instead of its actual collapse
+  // extent. The leftover axis space is an intentional split slack void, not a
+  // fit failure to demote away (`normalizeStaticAxisFill` already exempts this
+  // exact pair from the both-static demotion, so both stay static here too).
+  if (
+    first.kind === "leaf" &&
+    first.collapsed === true &&
+    second.kind === "leaf" &&
+    second.collapsed === true &&
+    firstStatic &&
+    secondStatic &&
+    firstPin != null &&
+    secondPin != null
+  ) {
+    return {
+      firstPx: firstPin,
+      secondPx: secondPin,
+      gutterPx,
+      ratio: clampStoredRatio(node.ratio),
+      first,
+      second,
+    };
+  }
 
   if (firstStatic && firstPin != null) {
     const extents = resolveStaticAlongExtents(
@@ -263,11 +274,15 @@ function reconcileBinarySplitAxis(
     };
   }
 
+  const firstFloor = resolveAlongAxisFloor(first, node.axis, node.minPaneSizePx, config);
+  const secondFloor = resolveAlongAxisFloor(second, node.axis, node.minPaneSizePx, config);
   const ratio: number = clampByMinSize(
     node.ratio,
     containerPx,
     gutterPx,
-    resolvedMinPaneSizePx,
+    firstFloor.floorPx,
+    secondFloor.floorPx,
+    resolveRatioSafetyBounds(firstFloor, secondFloor),
   );
   const halfGutter: number = gutterPx / 2;
   const firstPx: number = Math.max(0, containerPx * ratio - halfGutter);
@@ -660,7 +675,17 @@ function geometryNormalizeLayout(
   heightPx: number,
   config: TilingLayoutConfig,
 ): TilingLayoutNode {
-  const structurallyNormalized: TilingLayoutNode = normalizeStaticAxisFill(node);
+  const collapsedExtentPx: number =
+    config.collapsedExtentPx ?? TILING_DEFAULT_COLLAPSED_EXTENT_PX;
+  // HT-PANE-COLLAPSE-PIN-REASSERT: rewrite stale collapse pins to the live
+  // chrome extent before axis-fill / ratio reconcile so hydrate and settle
+  // keep collapse geometry ≡ current config (see `reassertCollapsedExtentPins`).
+  const pinReasserted: TilingLayoutNode = reassertCollapsedExtentPins(
+    node,
+    collapsedExtentPx,
+  );
+  const structurallyNormalized: TilingLayoutNode =
+    normalizeStaticAxisFill(pinReasserted);
   if (widthPx <= 1 || heightPx <= 1) {
     return structurallyNormalized;
   }
@@ -869,6 +894,43 @@ function walkFillSlack(
   let secondPx: number;
   let usedGutterPx: number = gutterPx;
 
+  // Both-collapsed siblings (HT-PANE-COLLAPSE-VOID): each keeps its OWN pin;
+  // the leftover axis space is an intentional split slack void, so it is
+  // deliberately excluded from the slack measurement below (recurse into
+  // children with their own pinned extents and return early).
+  if (
+    node.first.kind === "leaf" &&
+    node.first.collapsed === true &&
+    node.second.kind === "leaf" &&
+    node.second.collapsed === true &&
+    firstStatic &&
+    secondStatic &&
+    firstPin != null &&
+    secondPin != null
+  ) {
+    const voidFirstPx: number = firstPin;
+    const voidSecondPx: number = secondPin;
+    const voidFirstWidth: number = node.axis === "horizontal" ? voidFirstPx : widthPx;
+    const voidFirstHeight: number = node.axis === "horizontal" ? heightPx : voidFirstPx;
+    const voidSecondWidth: number = node.axis === "horizontal" ? voidSecondPx : widthPx;
+    const voidSecondHeight: number = node.axis === "horizontal" ? heightPx : voidSecondPx;
+    walkFillSlack(
+      node.first,
+      voidFirstWidth > 0 ? voidFirstWidth : widthPx,
+      voidFirstHeight > 0 ? voidFirstHeight : heightPx,
+      config,
+      acc,
+    );
+    walkFillSlack(
+      node.second,
+      voidSecondWidth > 0 ? voidSecondWidth : widthPx,
+      voidSecondHeight > 0 ? voidSecondHeight : heightPx,
+      config,
+      acc,
+    );
+    return;
+  }
+
   if (firstStatic && firstPin != null) {
     const extents = resolveStaticAlongExtents(
       axisContainerPx,
@@ -903,12 +965,15 @@ function walkFillSlack(
       firstPx = Math.max(0, axisContainerPx - secondPin - gutterPx);
     }
   } else {
-    const resolvedMinPaneSizePx: number = node.minPaneSizePx ?? config.minPaneSizePx;
+    const firstFloor = resolveAlongAxisFloor(node.first, node.axis, node.minPaneSizePx, config);
+    const secondFloor = resolveAlongAxisFloor(node.second, node.axis, node.minPaneSizePx, config);
     const ratio: number = clampByMinSize(
       node.ratio,
       axisContainerPx,
       gutterPx,
-      resolvedMinPaneSizePx,
+      firstFloor.floorPx,
+      secondFloor.floorPx,
+      resolveRatioSafetyBounds(firstFloor, secondFloor),
     );
     const halfGutter: number = gutterPx / 2;
     firstPx = Math.max(0, axisContainerPx * ratio - halfGutter);

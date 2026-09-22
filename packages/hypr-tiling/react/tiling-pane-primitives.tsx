@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { isInteractiveControlTarget } from "../engine/interactive-controls";
 import { isMultiSelectModifierActive } from "../engine/multi-selection";
 import type { TilingRenderTileProps } from "../engine/types";
 
@@ -161,12 +162,21 @@ export interface TilingPaneTitleBarContentProps extends React.HTMLAttributes<HTM
 
 /**
  * Middle slot of a custom pane titlebar — between the title (left) and native
- * window controls (right). Stops pointer-down propagation so toolbar clicks /
- * find inputs do not start a rearrange drag from the surrounding
- * {@link TilingDragHandle}. Unstyled: bring `className` (typically
- * `min-w-0 flex-1` so the slot fills remaining header width and truncates).
- * Prefer reading `tile.titleBarContent` from {@link TilingRenderTileProps} and
- * wrapping it here.
+ * window controls (right). Stops pointer-down propagation ONLY when the press
+ * lands on a genuine interactive control inside the slot (button, link,
+ * input/textarea/select, `role="button"`, or a `contenteditable` node — see
+ * {@link isInteractiveControlTarget}), so a real toolbar click / find input
+ * does not start a rearrange drag from the surrounding {@link TilingDragHandle}.
+ * A press anywhere ELSE in the slot — decorative labels, badges, a selected-
+ * case id, any non-interactive content — falls through untouched, so the
+ * titlebar stays draggable from the whole slot minus its actual controls
+ * (HT-TITLEBAR-DRAG-THRU: a blanket stop here previously turned any non-empty
+ * `titleBarContent` into a dead zone that swallowed drag pickup entirely, even
+ * where nothing inside it was interactive).
+ *
+ * Unstyled: bring `className` (typically `min-w-0 flex-1` so the slot fills
+ * remaining header width and truncates). Prefer reading `tile.titleBarContent`
+ * from {@link TilingRenderTileProps} and wrapping it here.
  *
  * @param props - {@link TilingPaneTitleBarContentProps}
  */
@@ -178,7 +188,9 @@ export function TilingPaneTitleBarContent({
     <div
       {...rest}
       onPointerDown={(event: React.PointerEvent<HTMLDivElement>): void => {
-        event.stopPropagation();
+        if (isInteractiveControlTarget(event.target)) {
+          event.stopPropagation();
+        }
         onPointerDown?.(event);
       }}
     />
@@ -188,10 +200,10 @@ export function TilingPaneTitleBarContent({
 /** Props for {@link TilingPaneBody}. */
 export interface TilingPaneBodyProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
-   * The `renderTile` args for this pane (only `paneBodyRenderMode` is read).
-   * Pass the whole args object.
+   * The `renderTile` args for this pane (`paneBodyRenderMode`, `isCollapsed`,
+   * and `isMaximized` are read). Pass the whole args object.
    */
-  pane: Pick<TilingRenderTileProps, "paneBodyRenderMode">;
+  pane: Pick<TilingRenderTileProps, "paneBodyRenderMode" | "isCollapsed" | "isMaximized">;
 }
 
 /**
@@ -203,15 +215,39 @@ export interface TilingPaneBodyProps extends React.HTMLAttributes<HTMLDivElement
  * empty body never rides along. Bring your own
  * `className` / `style`.
  *
+ * HT-PANE-COLLAPSE: while `pane.isCollapsed` is true (and the pane is NOT
+ * maximized — see below) the wrapper is forced to `display: none` (merged into
+ * any consumer `style`) rather than merely emptying its children. A collapsed
+ * leaf is pinned to the chrome extent (titlebar-only, along its parent split's
+ * axis), but a bare empty body still keeps its `flex-1` / `min-h-0` box in the
+ * layout — the leftover slack between that box and the pinned extent rendered
+ * as a dead strip beside/below the titlebar. Hiding the box entirely removes
+ * that strip so the collapsed pane is exactly titlebar-sized.
+ *
+ * HT-COLLAPSE-BODY-MODE: this `display: none` hide is INDEPENDENT of whether
+ * children are mounted. With the default `collapseBodyMode: "keep-mounted"`,
+ * `resolvePaneBodyRenderMode` resolves `"render-content"` while collapsed, so
+ * children stay mounted (state/scroll/focus survive collapse/expand) behind
+ * the `display: none` wrapper; `"unmount"` resolves `"render-empty"` instead,
+ * removing children from the tree exactly like the legacy behavior.
+ *
+ * HT-PANE-COLLAPSE + maximize: `pane.isMaximized` SUSPENDS the `display: none`
+ * gate for exactly this leaf, matching `resolvePaneBodyRenderMode`'s own
+ * maximize override — otherwise a maximized collapsed pane would render
+ * `render-content` children into a wrapper still forced invisible, i.e. a
+ * titlebar strip in an empty full-screen frame.
+ *
  * @param props - {@link TilingPaneBodyProps}
  */
 export function TilingPaneBody({
   pane,
   children,
+  style,
   ...rest
 }: TilingPaneBodyProps): React.ReactElement {
+  const forceHidden: boolean = pane.isCollapsed === true && pane.isMaximized !== true;
   return (
-    <div {...rest}>
+    <div {...rest} style={forceHidden ? { ...style, display: "none" } : style}>
       {pane.paneBodyRenderMode === "render-content" ? children : null}
     </div>
   );
