@@ -6,6 +6,32 @@ This package uses calendar-aligned versioning (`YY.M.R`), which cannot signal a
 SemVer "major" bump. **Read the per-release notes below for breaking changes** —
 the version number alone does not flag them.
 
+## Unreleased
+
+Titlebar-only pane collapse, chrome-aware resize floors, and collapse-state
+events. **Two default-only breakages** — read the first two bullets.
+
+- **BREAKING (default only): `resizeFloor` now defaults to `"chrome"`.** An
+  interactive resize can size a pane out to its collapsed titlebar/chrome
+  extent with no opt-in. The old content floor remains as `resizeFloor:
+  "body"` on `TilingLeafNode` (per-leaf) or `TilingLayoutConfig` (library-wide).
+- **BREAKING (default only): a collapsed pane's body stays mounted.**
+  `TilingLayoutConfig.collapseBodyMode` is `"keep-mounted"` | `"unmount"`
+  (default `"keep-mounted"`). The prior unmount-on-collapse behavior is
+  `collapseBodyMode: "unmount"`.
+- **Titlebar-only pane collapse (`paneTitleBarControls.collapse`, opt-in).**
+  Collapse pins the pane to its chrome extent on the split axis; the body is
+  hidden (`display: none`). Collapsed panes stay draggable. Axis is recorded
+  so a drag re-parent reasserts the pin on the new split. Both-collapsed
+  siblings stay collapsed; leftover axis space is an intentional split slack
+  void (drag or nudge the divider to expand both).
+- **`onPaneCollapsedChange`** — `{ leafId, collapsed }` after the layout
+  edit, so a host can retitle or react without parsing the tree.
+- **`minBBoxPx`** — leaf-scoped resize floor that travels with the pane.
+- **`TilingCommandGates.collapseEnabled`** gates `toggle-collapse` /
+  `set-collapsed`. Non-interactive `titleBarContent` no longer swallows
+  titlebar drag.
+
 ## 26.9.1 — overlay portal container (theme scoping)
 
 Patch release. The drag overlays (ghost, custom cursor, cancel fly-back) still
