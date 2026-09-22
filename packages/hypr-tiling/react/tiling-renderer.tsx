@@ -213,6 +213,12 @@ import {
 } from "../engine/state";
 import type { StyleApplierPort } from "../engine/style-applier-port";
 import {
+  activeWorkspace,
+  setWorkspaceLayout,
+  type TilingWorkspace,
+  type TilingWorkspaceSet,
+} from "../engine/workspace-set";
+import {
   shouldSnapSurvivorReflowOnSettleCommit,
   type SurvivorRect,
 } from "../engine/survivor-reflow";
@@ -258,8 +264,10 @@ import type {
   TilingRenderTileGroupContext,
   TilingRenderTileProps,
   TilingOverlayPortalContainer,
+  TilingRendererModeProps,
   TilingRendererObservabilityProps,
   TilingRendererProps,
+  TilingRendererWorkspaceSetProps,
   TilingSplitAxis,
   TilingSplitNode,
   TilingSplitResizeState,
@@ -7782,6 +7790,25 @@ const TilingRendererComponent = React.forwardRef<
     stripSurvivorTransientStyles,
   ]);
 
+  // Drag source vanished from the CONTROLLED tree while the gesture is still
+  // in flight (`armed` / `dragging`) — the host swapped the tree under the
+  // drag (a workspace switch in set mode, an external removal). The live
+  // candidate is derived from `layout` + `sourceLeafId`, so carrying on would
+  // paint a ghost for a leaf that no longer exists; cancel through the
+  // existing `POINTER_CANCEL` edge instead (`_agent/workspace-set-concept.md`
+  // §5.3: drag state is cleared on switch). A claimed / committed settle is
+  // untouched: the host's synchronous removal lands while the FSM is already
+  // `settling`.
+  React.useEffect((): void => {
+    if (dragState.phase !== "armed" && dragState.phase !== "dragging") {
+      return;
+    }
+    if (findLeafById(layout, dragState.sourceLeafId) != null) {
+      return;
+    }
+    dispatchDrag({ type: "POINTER_CANCEL" });
+  }, [dispatchDrag, dragState, layout]);
+
   // M3 idle watchdog. While the FSM is `armed` or `dragging`, a monotonic-clock
   // timer is armed for `dragRecoveryMaxIdleMs`; every FSM transition (pickup,
   // each coalesced pointer move, target resolution) re-runs this effect and so
@@ -9322,9 +9349,188 @@ const TilingRendererComponent = React.forwardRef<
  * `TilingRendererObservabilityProps`; that widened view is exported as
  * `TilingRenderer` from `@n-uf/hypr-tiling/devtools` for the observability panel.
  */
-export const TilingRenderer =
+const TilingSingleLayoutRenderer =
   TilingRendererComponent as React.ForwardRefExoticComponent<
-    TilingRendererProps & React.RefAttributes<TilingCommandHandle>
+    TilingRendererProps &
+      TilingRendererObservabilityProps &
+      React.RefAttributes<TilingCommandHandle>
+  >;
+
+/** A leaf id remembered per workspace, dropped once the leaf leaves that tree. */
+function rememberedLeafInTree(
+  memory: ReadonlyMap<string, string>,
+  workspaceId: string,
+  layout: TilingLayoutNode | null,
+): string | undefined {
+  const remembered: string | undefined = memory.get(workspaceId);
+  if (remembered == null || layout == null) {
+    return undefined;
+  }
+  return findLeafById(layout, remembered) != null ? remembered : undefined;
+}
+
+function withRemembered(
+  memory: ReadonlyMap<string, string>,
+  workspaceId: string,
+  leafId: string | null,
+): ReadonlyMap<string, string> {
+  if ((memory.get(workspaceId) ?? null) === leafId) {
+    return memory;
+  }
+  const next: Map<string, string> = new Map<string, string>(memory);
+  if (leafId == null) {
+    next.delete(workspaceId);
+  } else {
+    next.set(workspaceId, leafId);
+  }
+  return next;
+}
+
+/**
+ * Workspace-set mode of {@link TilingRenderer}: paints the active workspace's
+ * tree through the single-layout renderer and folds every reported tree edit
+ * back into the set (`setWorkspaceLayout`). Owns the per-workspace focus /
+ * maximize memory for the uncontrolled case.
+ */
+const TilingWorkspaceSetRendererComponent = React.forwardRef<
+  TilingCommandHandle,
+  TilingRendererWorkspaceSetProps & TilingRendererObservabilityProps
+>(function TilingWorkspaceSetRenderer(
+  {
+    workspaces,
+    onWorkspacesChange,
+    renderEmptyWorkspace,
+    focusedLeafId,
+    onFocusedLeafChange,
+    maximizedLeafId,
+    onMaximizedLeafChange,
+    className,
+    themeId,
+    theme: themeProp,
+    ...rest
+  }: TilingRendererWorkspaceSetProps & TilingRendererObservabilityProps,
+  ref: React.ForwardedRef<TilingCommandHandle>,
+): React.ReactElement {
+  const active: TilingWorkspace | null = activeWorkspace(workspaces);
+  const activeId: string = active?.id ?? workspaces.activeId;
+  const layout: TilingLayoutNode | null = active?.layout ?? null;
+
+  // Per-workspace memory for the UNCONTROLLED focus / maximize case: the
+  // inner renderer is driven controlled from here so a switch restores the
+  // workspace's own pane and never inherits the previous one's maximize. A
+  // host that passes `focusedLeafId` / `maximizedLeafId` owns the scoping.
+  const [focusMemory, setFocusMemory] = React.useState<
+    ReadonlyMap<string, string>
+  >(() => new Map<string, string>());
+  const [maximizeMemory, setMaximizeMemory] = React.useState<
+    ReadonlyMap<string, string>
+  >(() => new Map<string, string>());
+  const focusControlledByHost: boolean = focusedLeafId !== undefined;
+  const maximizeControlledByHost: boolean = maximizedLeafId !== undefined;
+  const effectiveFocusedLeafId: string | null | undefined = focusControlledByHost
+    ? focusedLeafId
+    : rememberedLeafInTree(focusMemory, activeId, layout);
+  const effectiveMaximizedLeafId: string | null | undefined =
+    maximizeControlledByHost
+      ? maximizedLeafId
+      : (rememberedLeafInTree(maximizeMemory, activeId, layout) ?? null);
+
+  const workspacesRef = React.useRef<TilingWorkspaceSet>(workspaces);
+  workspacesRef.current = workspaces;
+  const onWorkspacesChangeRef = React.useRef(onWorkspacesChange);
+  onWorkspacesChangeRef.current = onWorkspacesChange;
+
+  const handleLayoutChange = React.useCallback(
+    (nextLayout: TilingLayoutNode): void => {
+      const current: TilingWorkspaceSet = workspacesRef.current;
+      const next: TilingWorkspaceSet = setWorkspaceLayout(
+        current,
+        current.activeId,
+        nextLayout,
+      );
+      if (next !== current) {
+        onWorkspacesChangeRef.current(next);
+      }
+    },
+    [],
+  );
+
+  const handleFocusedLeafChange = React.useCallback(
+    (leafId: string): void => {
+      setFocusMemory(
+        (memory: ReadonlyMap<string, string>): ReadonlyMap<string, string> =>
+          withRemembered(memory, workspacesRef.current.activeId, leafId),
+      );
+      onFocusedLeafChange?.(leafId);
+    },
+    [onFocusedLeafChange],
+  );
+
+  const handleMaximizedLeafChange = React.useCallback(
+    (leafId: string | null): void => {
+      setMaximizeMemory(
+        (memory: ReadonlyMap<string, string>): ReadonlyMap<string, string> =>
+          withRemembered(memory, workspacesRef.current.activeId, leafId),
+      );
+      onMaximizedLeafChange?.(leafId);
+    },
+    [onMaximizedLeafChange],
+  );
+
+  if (layout == null) {
+    const theme: TilingTheme = themeProp ?? resolveTilingTheme(themeId);
+    return (
+      <TilingThemeProvider theme={theme}>
+        <div
+          tabIndex={-1}
+          className={cn("hpt-root", theme.root.container, className)}
+          data-hpt-workspace-id={activeId}
+          data-hpt-workspace-empty=""
+        >
+          {active != null ? renderEmptyWorkspace?.(active) : null}
+        </div>
+      </TilingThemeProvider>
+    );
+  }
+  return (
+    <TilingSingleLayoutRenderer
+      {...rest}
+      ref={ref}
+      className={className}
+      themeId={themeId}
+      theme={themeProp}
+      layout={layout}
+      onLayoutChange={handleLayoutChange}
+      focusedLeafId={effectiveFocusedLeafId}
+      onFocusedLeafChange={handleFocusedLeafChange}
+      maximizedLeafId={effectiveMaximizedLeafId}
+      onMaximizedLeafChange={handleMaximizedLeafChange}
+    />
+  );
+});
+
+function isWorkspaceSetProps(
+  props: TilingRendererModeProps & TilingRendererObservabilityProps,
+): props is TilingRendererWorkspaceSetProps & TilingRendererObservabilityProps {
+  return "workspaces" in props && props.workspaces != null;
+}
+
+const TilingRendererModeSwitch = React.forwardRef<
+  TilingCommandHandle,
+  TilingRendererModeProps & TilingRendererObservabilityProps
+>(function TilingRenderer(
+  props: TilingRendererModeProps & TilingRendererObservabilityProps,
+  ref: React.ForwardedRef<TilingCommandHandle>,
+): React.ReactElement {
+  if (isWorkspaceSetProps(props)) {
+    return <TilingWorkspaceSetRendererComponent {...props} ref={ref} />;
+  }
+  return <TilingSingleLayoutRenderer {...props} ref={ref} />;
+});
+
+export const TilingRenderer =
+  TilingRendererModeSwitch as React.ForwardRefExoticComponent<
+    TilingRendererModeProps & React.RefAttributes<TilingCommandHandle>
   >;
 
 /**
@@ -9335,8 +9541,8 @@ export const TilingRenderer =
  * panel; consumers use the clean `.` renderer instead.
  */
 export const TilingRendererWithObservability =
-  TilingRendererComponent as React.ForwardRefExoticComponent<
-    TilingRendererProps &
+  TilingRendererModeSwitch as React.ForwardRefExoticComponent<
+    TilingRendererModeProps &
       TilingRendererObservabilityProps &
       React.RefAttributes<TilingCommandHandle>
   >;

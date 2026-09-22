@@ -173,6 +173,19 @@ export function workspaceSetOfLayout(
   return { workspaces: [{ id, name, layout }], activeId: id };
 }
 
+/** The workspace `set.activeId` names, or `null` when it names none (an integrity issue). */
+export function activeWorkspace(set: TilingWorkspaceSet): TilingWorkspace | null {
+  return workspaceById(set, set.activeId);
+}
+
+/** The workspace with `id`, or `null` when absent. */
+export function findWorkspaceById(
+  set: TilingWorkspaceSet,
+  id: TilingWorkspaceId,
+): TilingWorkspace | null {
+  return workspaceById(set, id);
+}
+
 /** Input to {@link createWorkspace}. */
 export interface CreateWorkspaceInput {
   /** Unique within the set. Refused (unchanged set) when empty or already present. */

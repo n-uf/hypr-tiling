@@ -4,6 +4,7 @@ import type { RatioSafetyBounds } from "./pane-sizing";
 // contract surfaced on `TilingRendererProps.theme`. No runtime engine→react
 // coupling (see check-guardrails.mjs rule 1).
 import type { TilingTheme } from "../react/theme";
+import type { TilingWorkspace, TilingWorkspaceSet } from "./workspace-set";
 
 /**
  * Orientation of a binary split. `"horizontal"` places its two children
@@ -2212,10 +2213,12 @@ export interface TilingPaneCollapsedChangeEvent {
 }
 
 /**
- * Props for the {@link TilingRenderer} component — the full controlled-component
- * surface. `layout` + `tiles` + `config` + `onLayoutChange` are the four
- * required props; everything else is optional and resolves to a documented
- * default.
+ * Props for the {@link TilingRenderer} component in SINGLE-LAYOUT mode — the
+ * full controlled-component surface. `layout` + `tiles` + `config` +
+ * `onLayoutChange` are the four required props; everything else is optional
+ * and resolves to a documented default. The mode-independent part is
+ * {@link TilingRendererCommonProps}; the workspace-set alternative is
+ * {@link TilingRendererWorkspaceSetProps}.
  *
  * @remarks
  * The renderer is a CONTROLLED component: you hold the layout tree in state and
@@ -2244,6 +2247,65 @@ export interface TilingPaneCollapsedChangeEvent {
  * @see {@link TilingRenderer}
  * @see {@link TilingInteractionCapabilities}
  */
+export interface TilingRendererProps extends TilingRendererCommonProps {
+  /** The controlled layout tree to render. Apply every reported edit back here. */
+  layout: TilingLayoutNode;
+  /** Called with the next layout tree whenever the renderer edits it (controlled). */
+  onLayoutChange: (layout: TilingLayoutNode) => void;
+}
+
+/**
+ * Props for {@link TilingRenderer} in WORKSPACE-SET mode: the host holds a
+ * {@link TilingWorkspaceSet} and the renderer paints the ACTIVE workspace's
+ * tree. Every tree edit is reported as a whole next set through
+ * `onWorkspacesChange` (the active workspace's `layout` replaced via
+ * `setWorkspaceLayout`), so the host reducer stays a single `set → set` step.
+ *
+ * @remarks
+ * Switching `workspaces.activeId` does NOT remount panes whose leaf exists in
+ * both workspaces (stable pane identity keys on the leaf/tile id, not the
+ * workspace). Uncontrolled focus and maximize are remembered PER WORKSPACE
+ * (`_agent/workspace-set-concept.md` §5.3): switching away and back restores
+ * that workspace's focused / maximized pane; a workspace never inherits the
+ * previous one's maximize. A drag in flight when the active workspace changes
+ * is cancelled. Pass `focusedLeafId` / `maximizedLeafId` to own that scoping
+ * yourself.
+ *
+ * @example
+ * ```tsx
+ * const [set, setSet] = useState<TilingWorkspaceSet>(() => workspaceSetOfLayout(initialLayout));
+ * return (
+ *   <TilingRenderer
+ *     workspaces={set}
+ *     onWorkspacesChange={setSet}
+ *     tiles={tiles}
+ *     config={DEFAULT_TILING_LAYOUT_CONFIG}
+ *   />
+ * );
+ * ```
+ */
+export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonProps {
+  /** The controlled workspace set. The `activeId` workspace's tree is rendered. */
+  workspaces: TilingWorkspaceSet;
+  /** Called with the next set whenever the renderer edits a tree or moves a leaf. */
+  onWorkspacesChange: (workspaces: TilingWorkspaceSet) => void;
+  /**
+   * Rendered inside the tiling root while the active workspace's `layout` is
+   * `null` (empty workspace). Undefined → an empty root element.
+   */
+  renderEmptyWorkspace?: (workspace: TilingWorkspace) => React.ReactNode;
+}
+
+/**
+ * Either prop shape {@link TilingRenderer} accepts: the single controlled
+ * `layout` ({@link TilingRendererProps}) or a controlled workspace set
+ * ({@link TilingRendererWorkspaceSetProps}). Discriminated by the presence of
+ * `workspaces`.
+ */
+export type TilingRendererModeProps =
+  | TilingRendererProps
+  | TilingRendererWorkspaceSetProps;
+
 /**
  * How the live-drag ghost paints while a leaf is carried.
  *
@@ -2295,9 +2357,13 @@ export type TilingOnExternalDrop = (
   point: TilingClientPoint,
 ) => void;
 
-export interface TilingRendererProps {
-  /** The controlled layout tree to render. Apply every reported edit back here. */
-  layout: TilingLayoutNode;
+/**
+ * The mode-independent {@link TilingRenderer} props — everything except the
+ * layout source. Extended by {@link TilingRendererProps} (single controlled
+ * `layout`) and {@link TilingRendererWorkspaceSetProps} (controlled
+ * {@link TilingWorkspaceSet}).
+ */
+export interface TilingRendererCommonProps {
   /**
    * Tile registry, accepted as either an ordered array (resolved by `id`) or a
    * `Map` keyed by tile id. A dashboard can pass a plain `ReadonlyArray` of
@@ -2306,8 +2372,6 @@ export interface TilingRendererProps {
   tiles: ReadonlyArray<TilingTile> | ReadonlyMap<string, TilingTile>;
   /** Global geometry configuration (gap, min pane size, handle size). */
   config: TilingLayoutConfig;
-  /** Called with the next layout tree whenever the renderer edits it (controlled). */
-  onLayoutChange: (layout: TilingLayoutNode) => void;
   /** Optional class name applied to the tiling root element. */
   className?: string;
   /**
