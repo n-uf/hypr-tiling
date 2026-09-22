@@ -84,7 +84,8 @@ function importSpecifiers(fileText) {
 // ── Rule 1: engine ↛ react (framework-free engine layer) ──────────────────────
 // Covers `engine/**` AND the `engine.ts` entry file itself: the entry is what
 // `dist/engine.{mjs,cjs}` is built from, so a `react/` re-export there drags the
-// React renderer into the server-safe bundle (26.10.0 shipped exactly that).
+// React renderer into the server-safe bundle (the mis-numbered 26.10.0 publish
+// shipped exactly that; fixed in 26.9.3).
 const engineDir = resolve(packageDir, "engine");
 const engineEntry = resolve(packageDir, "engine.ts");
 for (const file of [engineEntry, ...collectSources(engineDir)]) {

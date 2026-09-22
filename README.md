@@ -219,7 +219,9 @@ prerendered to static HTML alongside a `/llms.txt` mirror.
 The package uses calendar-aligned versioning, `YY.M.R`:
 
 - First clause (`26`) is the release year (`2026`)
-- Second clause (`6`) is the release month (`June`)
+- Second clause (`6`) is the calendar month of the release date (`June`) — a
+  September release is `26.9.x`, never `26.10.x` (the `26.10.0` publish on
+  2026-09-22 was mis-numbered and is superseded by `26.9.3`)
 - Third clause (`1`) is the major release sequence for that year/month window
 
 Semver numeric identifiers cannot use leading zeroes (`26.06.1` is invalid), so

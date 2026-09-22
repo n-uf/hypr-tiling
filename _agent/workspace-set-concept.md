@@ -712,7 +712,8 @@ question dissolves into two real questions:
 
 1. **Which calendar release carries it?** The next feature release after the
    pane-collapse `Unreleased` — `26.10.0` if it publishes in October 2026
-   (`26.9.2` if it lands in September). No version-shape choice is available or
+   (`26.9.x` if it lands in September; it landed in September and shipped as
+   `26.9.3`, initially mis-published as `26.10.0`). No version-shape choice is available or
    needed.
 2. **Does the release carry `BREAKING` bullets?** Yes — the changelog
    convention is one bold `**BREAKING (…)**` bullet per break at the top of the
@@ -859,16 +860,16 @@ hypr-tiling first, then starpay; every library PR gates on the §7 green gate.
 | H1 | hypr-tiling | `engine/workspace-set.ts` types + ops + integrity + repair; `state.ts` `extractLeafNode` / `insertLeafInto` export and the `moveLeafTo*` recomposition | NEW `__tests__/workspace-set.test.ts` (every §3.1 row; I1–I5 property checks); `state.test.ts` byte-identical trees for the recomposed reducers |
 | H2 | hypr-tiling | drag: external `DragResolvedTarget`, `isCommittableTarget`, settle-to-target; `react/tiling-drag-scope.tsx` + `useWorkspaceDropTarget`; `MeasurementPort.measureExternalTargetRect`; renderer `workspaces` prop, per-workspace focus memory, `inactiveWorkspaces`; commands + gate | `drag-machine.test.ts` external commit / cancel matrix; NEW `workspace-drop-target.test.tsx` (register, resolve, `isOver`, `canDrop` for pinned-already-there, no scope → no external targets); `controller-headless.test.ts` set mode; `stable-pane-identity.test.ts` pool across switch; `commands.test.ts` gate rows; `live-render-invariant` / `drag-recovery*` INV-R1..R4 unchanged; CDP throttle checkpoint (`packages/hypr-tiling/_agent/drag-recovery-cdp-throttle.md`) for the external settle |
 | H3 | hypr-tiling | `react/tiling-workspace-tabs.tsx` headless primitive | NEW `workspace-tabs.test.tsx` (roles, roving focus, automatic/manual activation, reorder chords only with `onReorder`, drop attributes) — the a11y pattern of `keyboard-a11y.test.ts` |
-| H4 | hypr-tiling | persisted envelope v2 + `createPersistedTilingWorkspaceSet` + projection; README / docs-site / API reports / `CHANGELOG.md` release note with the §7 bullets; publish `26.10.0` | `persisted-layout.test.ts` v1→v2 migration, projection round-trip, downgrade note; `api:check` all three reports; `check:guardrails` |
+| H4 | hypr-tiling | persisted envelope v2 + `createPersistedTilingWorkspaceSet` + projection; README / docs-site / API reports / `CHANGELOG.md` release note with the §7 bullets; publish `26.9.3` (shipped as 26.9.3, initially mis-published as 26.10.0) | `persisted-layout.test.ts` v1→v2 migration, projection round-trip, downgrade note; `api:check` all three reports; `check:guardrails` |
 | S1 | starpay-app (now, on H0) | drag a tile onto a workspace tab in `DashboardBoard` via the L0 hook + `moveItem`; `WorkspaceSwitcher` tab lights on hover | `dashboard-renderer.test.tsx` drop-on-tab case; `workspace-layout.test.ts` unchanged |
-| S2 | starpay-app | bump to `26.10.0`; move `hypr-layout.ts` to core; add `core/schema/workspace-set.ts` (`toWorkspaceSet` / `applyWorkspaceSet`); rewrite `workspaces.ts` reducers as thin engine calls (same exported names, so callers compile) | `core/__tests__/tiling.test.ts` + a NEW `workspace-set.test.ts` round-trip (document ↔ set identity for every fixture incl. multi-presence → list pins, `stickyItemIds` → `"all"`); existing `workspace-layout.test.ts` passes against the engine-backed reducers |
+| S2 | starpay-app | bump to `26.9.3`; move `hypr-layout.ts` to core; add `core/schema/workspace-set.ts` (`toWorkspaceSet` / `applyWorkspaceSet`); rewrite `workspaces.ts` reducers as thin engine calls (same exported names, so callers compile) | `core/__tests__/tiling.test.ts` + a NEW `workspace-set.test.ts` round-trip (document ↔ set identity for every fixture incl. multi-presence → list pins, `stickyItemIds` → `"all"`); existing `workspace-layout.test.ts` passes against the engine-backed reducers |
 | S3 | starpay-app | renderer on the `workspaces` prop, `WorkspaceSwitcher` on `TilingWorkspaceTabs`, delete `layouts` map + remount key, S1's L0 path → L3; delete `workspaces.ts` (names → `dashboard.ts`); `arrange_board pin_item` / `unpin_item`; prompt `2.3.0`; `stickyItemIds` | `dashboard-renderer.test.tsx` snapshot regenerated (one renderer instance across switches; stable pool); `workspace-switcher.test.tsx` a11y parity with today; harness `arrange_board` golden case; `document-digest` unchanged for single-workspace documents |
 
 S2 is the safety net: it puts DashAI on the engine's set ops behind unchanged
 export names, so S3 is a pure deletion plus renderer swap with the reducer
 behaviour already proven identical.
 
-### 8.5 Library half status — H1–H4 DONE on `feat/workspace-set` (2026-09-22, `26.10.0` unreleased)
+### 8.5 Library half status — H1–H4 DONE on `feat/workspace-set` (2026-09-22, shipped as `26.9.3` — initially mis-published as `26.10.0`, deprecated on npm)
 
 The library half landed as four commits on `feat/workspace-set` in the
 sequence the dispatch asked for (engine set → renderer prop → tab drop target
@@ -883,7 +884,7 @@ the landed H3 + H4; the table's H4 persisted envelope v2 did **not** land
 | H1 `workspace set: engine types, pure ops, integrity walker and repair` | `engine/workspace-set.ts`; `TilingWorkspacePlacement`; `extractLeafNode` / `insertLeafInto` exported from `state.ts` | `__tests__/workspace-set.test.ts` (34: every §3.1 row, property checks over random sets → ops → `issues()` empty, `insertLeafInto` mirrors each mover) |
 | H2 `renderer workspaces prop, per-workspace focus/maximize scope, drag cancel on switch` | `TilingRendererWorkspaceSetProps`, `TilingRendererCommonProps`, `TilingRendererModeProps`; set-mode wrapper; `renderEmptyWorkspace` | `__tests__/workspace-set-renderer.test.ts` (7: DOM-node identity across a switch, empty shell, edit → next set, maximize scope + restore, controlled pass-through, drag cancelled on switch, single-layout unchanged) |
 | H3 `native workspace-tab drop target, tab hit-test, declinable external claim` | `TilingWorkspaceTabDragHover` / `TilingExternalDropHover` union; set-mode settle by `moveLeafToWorkspace`; `engine/workspace-tabs.ts` `resolveWorkspaceTabHover`; `onExternalDrop` 4th arg + `false` = decline; `ghostChip` `workspaceId` | `__tests__/workspace-tab-drop.test.ts` (9) |
-| H4 `headless TilingWorkspaceTabs, drag-hover resolver, 26.10.0 release prep` | `useTilingWorkspaceTabs` / `TilingWorkspaceTabs`; `resolveExternalDragHover` / `onExternalDragHoverChange` renderer props; `resolveWorkspaceTabKey`; theme tokens; README / CHANGELOG / API reports / version | `__tests__/workspace-tabs.test.ts` (8, incl. drag over tab → drop into an empty workspace end-to-end) |
+| H4 `headless TilingWorkspaceTabs, drag-hover resolver, 26.10.0 release prep` (commit title; the release shipped as `26.9.3`) | `useTilingWorkspaceTabs` / `TilingWorkspaceTabs`; `resolveExternalDragHover` / `onExternalDragHoverChange` renderer props; `resolveWorkspaceTabKey`; theme tokens; README / CHANGELOG / API reports / version | `__tests__/workspace-tabs.test.ts` (8, incl. drag over tab → drop into an empty workspace end-to-end) |
 
 #### Divergences from the design above, and why
 
@@ -954,7 +955,8 @@ the landed H3 + H4; the table's H4 persisted envelope v2 did **not** land
 10. **The API reports regenerated in H4 also absorb the pane-collapse
     surface that shipped in `main` after the 26.9.2 report was cut**
     (`isCollapsed` / `onToggleCollapse` / `collapseEnabled`…); the
-    CHANGELOG folds that "Unreleased" block into `26.10.0`.
+    CHANGELOG folds that "Unreleased" block into `26.9.3` (initially
+    mis-published as `26.10.0`).
 
 ---
 

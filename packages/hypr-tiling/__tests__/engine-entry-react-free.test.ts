@@ -3,7 +3,8 @@
  * after `pnpm build`).
  *
  * The `./engine` entry is documented as the pure, isomorphic, React-free engine.
- * 26.10.0 violated that in the BUILD (not the source): tsup code splitting put
+ * The 26.10.0 publish (mis-numbered; superseded by 26.9.3) violated that in the
+ * BUILD (not the source): tsup code splitting put
  * the React renderer (`createContext`, hooks, theme) into a shared chunk that
  * `dist/engine.mjs` imported, and `engine.ts` itself re-exported three symbols
  * from `react/`. Consumers importing `@n-uf/hypr-tiling/engine` from a Next.js

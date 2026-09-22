@@ -111,10 +111,11 @@ Dependency direction (enforced by the Stage-6 lint): `react/` → `engine/`;
 `index.ts`/`devtools.ts` → both; **`engine.ts` and `engine/` never import
 `react/`**. The facade reaches React symbols only through `react/` (never a
 direct engine→react hop). The `engine.ts` entry is part of the engine layer:
-26.10.0 re-exported `accentHue` / `BASELINE_DRAG_HOP_DURATION_MS` /
-`INSTANT_DRAG_DURATION_MS` from `react/`, which dragged the whole renderer into
-`dist/engine.mjs` and broke react-server consumers (26.10.1 moved that pure
-data to `engine/accent-hues.ts` + `engine/drag-timing.ts`).
+the mis-numbered 26.10.0 publish re-exported `accentHue` /
+`BASELINE_DRAG_HOP_DURATION_MS` / `INSTANT_DRAG_DURATION_MS` from `react/`,
+which dragged the whole renderer into `dist/engine.mjs` and broke react-server
+consumers (26.9.3 moved that pure data to `engine/accent-hues.ts` +
+`engine/drag-timing.ts`).
 
 ---
 
@@ -273,7 +274,7 @@ deliberate power-user escape.
   chunk), and `{ entry: [engine], splitting: false }` so `dist/engine.{mjs,cjs}`
   is a standalone bundle that shares NO chunk with the React entries. A single
   three-entry config let esbuild hoist the renderer (`createContext`, hooks,
-  theme) into a chunk `engine.mjs` imported at load — the 26.10.0
+  theme) into a chunk `engine.mjs` imported at load — the 26.10.0-publish
   `createContext is not a function` failure in Next.js route handlers. Neither
   config uses `clean: true` (they run concurrently; one clean would race the
   other's output) — `pnpm build` is `rm -rf dist && tsup`. `"use client"`
@@ -321,7 +322,7 @@ enforced invariants are identical.
 
 - **Layering (engine ↛ react)**: `engine/**` AND the `engine.ts` entry file
   must not **value**-import `react`/`react-dom` or reach into `react/` (the
-  entry was added to the scan in 26.10.1 after it re-exported three `react/`
+  entry was added to the scan in 26.9.3 after it re-exported three `react/`
   symbols unnoticed). Type-only imports
   (`import type * as React` for `React.ReactNode` in a prop DTO — as in
   `engine/types.ts`) are **allowed**: they are erased at build and create no
