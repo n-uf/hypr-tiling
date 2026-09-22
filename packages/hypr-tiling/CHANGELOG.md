@@ -17,7 +17,7 @@ its first two bullets.
 ### Note
 
 26.10.0 was published under a mis-numbered calendar version (month 10 ≠
-September) and is deprecated on npm; 26.9.3 supersedes it with identical
+September) and was unpublished from npm; 26.9.3 supersedes it with identical
 workspace-set API plus the React-free `./engine` entry. (`YY.M.R`: `M` is the
 calendar month of the release — September is `9`.)
 

@@ -869,7 +869,7 @@ S2 is the safety net: it puts DashAI on the engine's set ops behind unchanged
 export names, so S3 is a pure deletion plus renderer swap with the reducer
 behaviour already proven identical.
 
-### 8.5 Library half status — H1–H4 DONE on `feat/workspace-set` (2026-09-22, shipped as `26.9.3` — initially mis-published as `26.10.0`, deprecated on npm)
+### 8.5 Library half status — H1–H4 DONE on `feat/workspace-set` (2026-09-22, shipped as `26.9.3` — initially mis-published as `26.10.0`, unpublished from npm — that number is burned; October starts at `26.10.1`)
 
 The library half landed as four commits on `feat/workspace-set` in the
 sequence the dispatch asked for (engine set → renderer prop → tab drop target
