@@ -282,10 +282,12 @@ describe("TilingRenderer compact drag ghost", (): void => {
     await startLiveDrag(container);
     await releaseDrag();
     expect(onExternalDrop).toHaveBeenCalledTimes(1);
-    expect(onExternalDrop).toHaveBeenCalledWith("left", "ws:ops", {
-      x: 320,
-      y: 24,
-    });
+    expect(onExternalDrop).toHaveBeenCalledWith(
+      "left",
+      "ws:ops",
+      { x: 320, y: 24 },
+      HOVER,
+    );
     expect(document.querySelector("[data-drag-cancel]")).toBeNull();
   });
 

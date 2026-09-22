@@ -320,7 +320,12 @@ describe("TilingRenderer workspace-tab drop target (set mode)", (): void => {
     );
     await startLiveDrag(view.container, "leaf:a");
     await releaseDrag();
-    expect(onExternalDrop).toHaveBeenCalledWith("leaf:a", "chat", { x: 5, y: 5 });
+    expect(onExternalDrop).toHaveBeenCalledWith(
+      "leaf:a",
+      "chat",
+      { x: 5, y: 5 },
+      { targetId: "chat", point: { x: 5, y: 5 } },
+    );
     expect(onWorkspacesChange).not.toHaveBeenCalled();
     expect(document.querySelector("[data-drag-cancel]")).toBeNull();
   });
@@ -374,7 +379,12 @@ describe("TilingRenderer workspace-tab hover in single-layout mode", (): void =>
     );
     await startLiveDrag(view.container, "leaf:a");
     await releaseDrag();
-    expect(onExternalDrop).toHaveBeenCalledWith("leaf:a", "tab:ops", { x: 320, y: 24 });
+    expect(onExternalDrop).toHaveBeenCalledWith(
+      "leaf:a",
+      "tab:ops",
+      { x: 320, y: 24 },
+      TAB_HOVER,
+    );
     expect(document.querySelector("[data-drag-cancel]")).toBeNull();
   });
 

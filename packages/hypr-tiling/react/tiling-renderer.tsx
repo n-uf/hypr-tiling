@@ -236,6 +236,7 @@ import type {
   TilingDragVisualState,
   TilingClientPoint,
   TilingExternalDragHover,
+  TilingExternalDragHoverResolver,
   TilingGhostChipContext,
   TilingOnExternalDrop,
   TilingDropIntentDebugState,
@@ -297,6 +298,22 @@ import {
 } from "./theme";
 import { TilingPaneTitleBarContent } from "./tiling-pane-primitives";
 import { createWindowSchedulerPort } from "./window-scheduler-port";
+
+/** Same external target (kind / targetId / workspaceId) — the point may differ. */
+function isSameExternalDragTarget(
+  a: TilingExternalDragHover | null,
+  b: TilingExternalDragHover | null,
+): boolean {
+  if (a == null || b == null) {
+    return a === b;
+  }
+  if (a.targetId !== b.targetId || (a.kind ?? "external") !== (b.kind ?? "external")) {
+    return false;
+  }
+  return a.kind === "workspace-tab" && b.kind === "workspace-tab"
+    ? a.workspaceId === b.workspaceId
+    : true;
+}
 
 function resolveDragPointerType(pointerType: string): DragPointerType {
   if (pointerType === "touch") {
@@ -4431,8 +4448,10 @@ const TilingRendererComponent = React.forwardRef<
     onLiveHitLogChange,
     overlayPortalContainer,
     dragGhostMode = "footprint",
-    externalDragHover = null,
+    externalDragHover: externalDragHoverProp = null,
     onExternalDrop,
+    resolveExternalDragHover,
+    onExternalDragHoverChange,
   }: TilingRendererProps & TilingRendererObservabilityProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
 ): React.ReactElement {
@@ -4447,14 +4466,55 @@ const TilingRendererComponent = React.forwardRef<
   onLayoutChangeRef.current = onLayoutChange;
   const onPaneCollapsedChangeRef = React.useRef(onPaneCollapsedChange);
   onPaneCollapsedChangeRef.current = onPaneCollapsedChange;
-  const externalDragHoverRef = React.useRef<TilingExternalDragHover | null>(
-    externalDragHover ?? null,
+  // Engine-resolved external hover (`resolveExternalDragHover`): state for the
+  // render (ghost mode / chip), a ref for the synchronous release-time claim.
+  // A host-supplied `externalDragHover` prop takes precedence over it.
+  const [resolvedExternalDragHover, setResolvedExternalDragHover] =
+    React.useState<TilingExternalDragHover | null>(null);
+  const resolvedExternalDragHoverRef =
+    React.useRef<TilingExternalDragHover | null>(null);
+  const externalDragHover: TilingExternalDragHover | null =
+    externalDragHoverProp ?? resolvedExternalDragHover;
+  const externalDragHoverPropRef = React.useRef<TilingExternalDragHover | null>(
+    externalDragHoverProp ?? null,
   );
-  externalDragHoverRef.current = externalDragHover ?? null;
+  externalDragHoverPropRef.current = externalDragHoverProp ?? null;
+  const resolveExternalDragHoverRef = React.useRef<
+    TilingExternalDragHoverResolver | undefined
+  >(resolveExternalDragHover);
+  resolveExternalDragHoverRef.current = resolveExternalDragHover;
+  const onExternalDragHoverChangeRef = React.useRef<
+    ((hover: TilingExternalDragHover | null) => void) | undefined
+  >(onExternalDragHoverChange);
+  onExternalDragHoverChangeRef.current = onExternalDragHoverChange;
   const onExternalDropRef = React.useRef<TilingOnExternalDrop | undefined>(
     onExternalDrop,
   );
   onExternalDropRef.current = onExternalDrop;
+  /**
+   * Run the host resolver for `point` (no-op without one) and publish the
+   * result: ref synchronously (release-time claim), state for the render,
+   * `onExternalDragHoverChange` only when the target IDENTITY changes.
+   */
+  const applyResolvedExternalDragHover = React.useCallback(
+    (point: TilingClientPoint, sourceLeafId: string | null): void => {
+      const resolver: TilingExternalDragHoverResolver | undefined =
+        resolveExternalDragHoverRef.current;
+      if (resolver == null) {
+        return;
+      }
+      const next: TilingExternalDragHover | null =
+        sourceLeafId == null ? null : resolver(point, sourceLeafId);
+      const previous: TilingExternalDragHover | null =
+        resolvedExternalDragHoverRef.current;
+      resolvedExternalDragHoverRef.current = next;
+      setResolvedExternalDragHover(next);
+      if (!isSameExternalDragTarget(previous, next)) {
+        onExternalDragHoverChangeRef.current?.(next);
+      }
+    },
+    [],
+  );
 
   // Single choke point for every layout edit (HT-PANE-COLLAPSE-EVENTS): reports
   // the edit via `onLayoutChange`, THEN diffs the whole tree's collapse truth
@@ -7470,6 +7530,11 @@ const TilingRendererComponent = React.forwardRef<
       createFrameCoalescer<DragMachinePoint>(
         (payload: DragMachinePoint): void => {
           inputDriver.processPointerSample(payload);
+          const phase: DragMachineState = dragStateRef.current;
+          applyResolvedExternalDragHover(
+            payload,
+            phase.phase === "dragging" ? phase.sourceLeafId : null,
+          );
         },
         {
           request: WINDOW_SCHEDULER_PORT.requestFrame,
@@ -7578,19 +7643,28 @@ const TilingRendererComponent = React.forwardRef<
       // §5.5 claim-before-settle: if the host has an external hover AND a
       // claim callback, fire it synchronously then settle `claimed` so
       // `DragCancelOverlay` never mounts. Absent callback → existing cancel.
+      const claimState: DragMachineState = dragStateRef.current;
+      applyResolvedExternalDragHover(
+        { x: event.clientX, y: event.clientY },
+        claimState.phase === "dragging" ? claimState.sourceLeafId : null,
+      );
       const hover: TilingExternalDragHover | null =
-        externalDragHoverRef.current;
+        externalDragHoverPropRef.current ??
+        resolvedExternalDragHoverRef.current;
       const onDrop: TilingOnExternalDrop | undefined =
         onExternalDropRef.current;
-      const claimState: DragMachineState = dragStateRef.current;
       if (
         hover != null &&
         onDrop != null &&
         claimState.phase === "dragging"
       ) {
         const claimed: boolean =
-          onDrop(claimState.sourceLeafId, hover.targetId, hover.point) !==
-          false;
+          onDrop(
+            claimState.sourceLeafId,
+            hover.targetId,
+            hover.point,
+            hover,
+          ) !== false;
         if (claimed) {
           dispatchDrag({
             type: "POINTER_UP",
@@ -7686,6 +7760,7 @@ const TilingRendererComponent = React.forwardRef<
     };
   }, [
     activeDragPointerId,
+    applyResolvedExternalDragHover,
     onLiveHitLogChange,
     resolvePointerTarget,
     stripSurvivorTransientStyles,
@@ -7788,6 +7863,11 @@ const TilingRendererComponent = React.forwardRef<
     setSeatFootprint(null);
     onLiveHitLogChange?.(null);
     didPaintDraggingFrameRef.current = false;
+    if (resolvedExternalDragHoverRef.current != null) {
+      resolvedExternalDragHoverRef.current = null;
+      setResolvedExternalDragHover(null);
+      onExternalDragHoverChangeRef.current?.(null);
+    }
     dispatchDrag({ type: "SETTLE_DONE" });
   }, [
     armLayoutIdleSettle,
@@ -9357,13 +9437,7 @@ const TilingRendererComponent = React.forwardRef<
   );
 });
 
-/**
- * The controlled tiling renderer — the single component a consumer mounts. Its
- * public prop surface ({@link TilingRendererProps}) is the curated, debug-free
- * contract. The underlying component also accepts the devtools-tier
- * `TilingRendererObservabilityProps`; that widened view is exported as
- * `TilingRenderer` from `@n-uf/hypr-tiling/devtools` for the observability panel.
- */
+/** The single-layout renderer, typed to also accept the observability props. */
 const TilingSingleLayoutRenderer =
   TilingRendererComponent as React.ForwardRefExoticComponent<
     TilingRendererProps &
@@ -9421,7 +9495,6 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
     onFocusedLeafChange,
     maximizedLeafId,
     onMaximizedLeafChange,
-    externalDragHover = null,
     onExternalDrop,
     className,
     themeId,
@@ -9460,10 +9533,6 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
   onWorkspacesChangeRef.current = onWorkspacesChange;
   const onMoveLeafRef = React.useRef(onMoveLeaf);
   onMoveLeafRef.current = onMoveLeaf;
-  const externalDragHoverRef = React.useRef<TilingExternalDragHover | null>(
-    externalDragHover,
-  );
-  externalDragHoverRef.current = externalDragHover;
 
   const handleLayoutChange = React.useCallback(
     (nextLayout: TilingLayoutNode): void => {
@@ -9506,11 +9575,20 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
   // fires this synchronously on release BEFORE the FSM settles `claimed`, so
   // the moved set lands in the same tick and no cancel fly-back paints. Any
   // other external hover is the host's to claim through its own callback.
-  const handleWorkspaceTabDrop: TilingOnExternalDrop = React.useCallback(
-    (leafId: string, targetId: string, point: TilingClientPoint): boolean => {
-      const hover: TilingExternalDragHover | null = externalDragHoverRef.current;
-      if (hover == null || hover.kind !== "workspace-tab") {
-        return onExternalDrop?.(leafId, targetId, point) !== false;
+  const handleExternalDrop: TilingOnExternalDrop = React.useCallback(
+    (
+      leafId: string,
+      targetId: string,
+      point: TilingClientPoint,
+      hover: TilingExternalDragHover,
+    ): boolean => {
+      if (hover.kind !== "workspace-tab") {
+        // Not a tab: the host's claim (absent host callback → decline, i.e.
+        // the same cancel fly-back single-layout mode shows without one).
+        return (
+          onExternalDrop != null &&
+          onExternalDrop(leafId, targetId, point, hover) !== false
+        );
       }
       const current: TilingWorkspaceSet = workspacesRef.current;
       const from: string = current.activeId;
@@ -9531,10 +9609,6 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
     },
     [onExternalDrop],
   );
-  const effectiveOnExternalDrop: TilingOnExternalDrop | undefined =
-    externalDragHover?.kind === "workspace-tab"
-      ? handleWorkspaceTabDrop
-      : onExternalDrop;
 
   if (layout == null) {
     const theme: TilingTheme = themeProp ?? resolveTilingTheme(themeId);
@@ -9564,8 +9638,7 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       onFocusedLeafChange={handleFocusedLeafChange}
       maximizedLeafId={effectiveMaximizedLeafId}
       onMaximizedLeafChange={handleMaximizedLeafChange}
-      externalDragHover={externalDragHover}
-      onExternalDrop={effectiveOnExternalDrop}
+      onExternalDrop={handleExternalDrop}
     />
   );
 });
@@ -9589,6 +9662,16 @@ const TilingRendererModeSwitch = React.forwardRef<
   return <TilingSingleLayoutRenderer {...props} ref={ref} />;
 });
 
+/**
+ * The controlled tiling renderer — the single component a consumer mounts.
+ * Accepts either a controlled `layout` ({@link TilingRendererProps}) or a
+ * controlled workspace set ({@link TilingRendererWorkspaceSetProps}); the
+ * two are discriminated by the presence of `workspaces`. The public prop
+ * surface is the curated, debug-free contract. The underlying component also
+ * accepts the devtools-tier `TilingRendererObservabilityProps`; that widened
+ * view is exported as `TilingRenderer` from `@n-uf/hypr-tiling/devtools` for
+ * the observability panel.
+ */
 export const TilingRenderer =
   TilingRendererModeSwitch as React.ForwardRefExoticComponent<
     TilingRendererModeProps & React.RefAttributes<TilingCommandHandle>

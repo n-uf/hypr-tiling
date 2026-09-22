@@ -166,7 +166,7 @@ export interface TilingPaneHitZoneOverlayDebugState {
 }
 
 // @public
-export const TilingRenderer: React_2.ForwardRefExoticComponent<TilingRendererProps & TilingRendererObservabilityProps & React_2.RefAttributes<TilingCommandHandle>>;
+export const TilingRenderer: React_2.ForwardRefExoticComponent<TilingRendererModeProps & TilingRendererObservabilityProps & React_2.RefAttributes<TilingCommandHandle>>;
 
 // @public
 export interface TilingRendererObservabilityProps {

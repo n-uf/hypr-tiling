@@ -301,6 +301,20 @@ export interface TilingTheme {
    * Optional — omitted themes keep the built-in chip.
    */
   readonly ghostChip?: (ctx: TilingGhostChipContext) => React.ReactNode;
+  /**
+   * Workspace tab-strip `tablist` element classes, consumed by the headless
+   * `useTilingWorkspaceTabs` / `TilingWorkspaceTabs` (`tablistProps.className`).
+   * Optional — the strip is UNSTYLED until a theme (or the host) supplies the
+   * `workspaceTab*` tokens, so a theme that omits them never shows a look it
+   * did not author.
+   */
+  readonly workspaceTabs?: string;
+  /** Every workspace `tab` element's resting classes (`tabProps.className`). */
+  readonly workspaceTab?: string;
+  /** Composed onto the ACTIVE workspace tab (`aria-selected="true"`). */
+  readonly workspaceTabActive?: string;
+  /** Composed onto the tab a dragged leaf is hovering (`data-drop-target`). */
+  readonly workspaceTabDropTarget?: string;
   /** Split-divider / gap handle tokens. */
   readonly divider: TilingThemeDividerTokens;
   /** Top-bar / tab-strip chrome tokens. */

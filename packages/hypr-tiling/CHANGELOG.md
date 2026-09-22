@@ -6,10 +6,67 @@ This package uses calendar-aligned versioning (`YY.M.R`), which cannot signal a
 SemVer "major" bump. **Read the per-release notes below for breaking changes** —
 the version number alone does not flag them.
 
-## Unreleased
+## 26.10.0 — 2026-09-22
 
-Titlebar-only pane collapse, chrome-aware resize floors, and collapse-state
-events. **Two default-only breakages** — read the first two bullets.
+Engine-native workspace set (`_agent/workspace-set-concept.md`, library half
+H1–H4), plus the titlebar-only pane collapse that was pending as
+"Unreleased". Additive minor for the workspace set; the collapse work carries
+**two default-only breakages** — read its first two bullets.
+
+### Workspace set
+
+- **`TilingWorkspaceSet`** — `{ workspaces: [{ id, name, layout }], activeId }`
+  over one tile pool. Pure `set → set` ops: `createWorkspace`,
+  `renameWorkspace`, `deleteWorkspace` (refuses the last; returns
+  `removedTileIds` shown only there), `switchWorkspace`, `cycleWorkspace`,
+  `setWorkspaceLayout`, `moveLeafToWorkspace(set, leafId, to, placement?)`,
+  `showInWorkspace`, `hideFromWorkspace`, `workspaceSetOfLayout`,
+  `activeWorkspace`, `findWorkspaceById`, `queryWorkspaceSet`,
+  `normalizeWorkspaceName`. Limits `TILING_WORKSPACES_MAX` (12) and
+  `TILING_WORKSPACE_NAME_MAX_CHARS` (40) are enforced at create / rename.
+- **Integrity** — `workspaceSetIssues(set, { expectedTileIds? })` walks the
+  invariants (unique non-empty workspace ids, valid names, `activeId`
+  exists, every tree structurally valid, one leaf id ↔ one tile id across
+  the set, no orphan / unknown tile against `expectedTileIds`);
+  `repairWorkspaceSet` fixes deterministically and returns the reasons.
+- **`TilingWorkspacePlacement`** + `insertLeafInto` / `extractLeafNode`
+  (engine) — the seat-and-extract halves the movers share, now public so the
+  set ops reuse them instead of duplicating tree code.
+- **`TilingRenderer` workspace-set mode** — `workspaces` +
+  `onWorkspacesChange` (`TilingRendererWorkspaceSetProps`) as the alternative
+  to `layout` + `onLayoutChange`; `TilingRendererProps` is unchanged and the
+  mode-independent surface is `TilingRendererCommonProps`. The active tree is
+  painted; a switch does not remount a pane whose leaf exists in both
+  workspaces. Uncontrolled focus and maximize are remembered per workspace;
+  a drag in flight is cancelled when its source leaf leaves the controlled
+  tree (workspace switch). `renderEmptyWorkspace(workspace)` fills a `null`
+  layout. `onMoveLeaf(leafId, from, to)` reports a tab drop.
+- **Native workspace-tab drop target** — `TilingExternalDragHover` is now the
+  union `TilingExternalDropHover | TilingWorkspaceTabDragHover` (a bare
+  `{ targetId, point }` literal is still the former). A
+  `kind: "workspace-tab"` hover settles in set mode by
+  `moveLeafToWorkspace` through the 26.9.2 claim-before-settle path — no
+  host hit-test, no host claim. `resolveWorkspaceTabHover(targets, point)`
+  is the pure hit-test; `TilingGhostChipContext.workspaceId` names the
+  destination for the chip.
+- **`resolveExternalDragHover` / `onExternalDragHoverChange`** renderer
+  props — engine-driven hover resolution (called per processed drag frame
+  and synchronously at release) as the alternative to feeding
+  `externalDragHover` from host state.
+- **`onExternalDrop`** now receives the full hover as a 4th argument and may
+  return `false` to decline the claim (the release then cancels with the
+  fly-back). Existing 3-argument `void` hosts are unaffected.
+- **Headless `useTilingWorkspaceTabs` / `TilingWorkspaceTabs`** — `tablist`
+  / `tab` / `tabpanel` props, roving focus, Arrow / Home / End / Enter /
+  Space / F2 / Delete (`resolveWorkspaceTabKey` is the pure model),
+  `onRenameRequest` / `onCloseRequest` affordances with `tab.rename` /
+  `tab.close` / `create` committing through the engine ops, and
+  `rendererProps` that make every tab a native drop target. Renders
+  nothing; classes come only from the new theme tokens.
+- **Theme tokens** `TilingTheme.workspaceTabs`, `workspaceTab`,
+  `workspaceTabActive`, `workspaceTabDropTarget` (all optional strings).
+
+### Pane collapse (previously "Unreleased")
 
 - **BREAKING (default only): `resizeFloor` now defaults to `"chrome"`.** An
   interactive resize can size a pane out to its collapsed titlebar/chrome

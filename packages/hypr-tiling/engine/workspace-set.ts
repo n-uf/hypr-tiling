@@ -537,6 +537,7 @@ export type TilingWorkspaceSetIssueKind =
 
 /** One integrity finding of {@link workspaceSetIssues}. */
 export interface TilingWorkspaceSetIssue {
+  /** Which invariant is broken. */
   readonly kind: TilingWorkspaceSetIssueKind;
   /** The workspace the finding is about, when it is workspace-local. */
   readonly workspaceId?: TilingWorkspaceId;

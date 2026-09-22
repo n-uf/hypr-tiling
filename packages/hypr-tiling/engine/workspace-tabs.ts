@@ -12,9 +12,13 @@ import type {
 
 /** A window-client rectangle (CSS px), the `DOMRect` subset the hit-test reads. */
 export interface TilingClientRect {
+  /** Left edge (window-client CSS px). */
   readonly left: number;
+  /** Top edge (window-client CSS px). */
   readonly top: number;
+  /** Right edge (window-client CSS px). */
   readonly right: number;
+  /** Bottom edge (window-client CSS px). */
   readonly bottom: number;
 }
 
@@ -28,6 +32,60 @@ export interface TilingWorkspaceTabTarget {
   readonly rect: TilingClientRect;
   /** Where a dropped leaf lands in that workspace. Undefined → root, second side. */
   readonly placement?: TilingWorkspacePlacement;
+}
+
+/** Which axis the tab strip lays out along; picks the arrow keys that move focus. */
+export type TilingWorkspaceTabsOrientation = "horizontal" | "vertical";
+
+/**
+ * What a key press on a focused workspace tab asks for. `focus` moves the
+ * roving focus (arrows wrap; Home / End jump); `activate` switches to the
+ * focused workspace (Enter / Space); `rename` (F2) and `close` (Delete) are
+ * affordance requests the host answers. `null` — not a tab-strip key.
+ */
+export type TilingWorkspaceTabKeyAction =
+  | { readonly kind: "focus"; readonly index: number }
+  | { readonly kind: "activate" }
+  | { readonly kind: "rename" }
+  | { readonly kind: "close" };
+
+/**
+ * The roving-focus keyboard model of a `tablist` (WAI-ARIA tabs pattern,
+ * manual activation). `focusedIndex` is the tab holding focus, `count` the
+ * number of tabs. Pure; `null` for keys the strip does not handle so the host
+ * can let them propagate.
+ */
+export function resolveWorkspaceTabKey(
+  key: string,
+  focusedIndex: number,
+  count: number,
+  orientation: TilingWorkspaceTabsOrientation = "horizontal",
+): TilingWorkspaceTabKeyAction | null {
+  if (count <= 0) {
+    return null;
+  }
+  const nextKey: string = orientation === "horizontal" ? "ArrowRight" : "ArrowDown";
+  const previousKey: string = orientation === "horizontal" ? "ArrowLeft" : "ArrowUp";
+  const current: number = Math.min(Math.max(focusedIndex, 0), count - 1);
+  switch (key) {
+    case nextKey:
+      return { kind: "focus", index: (current + 1) % count };
+    case previousKey:
+      return { kind: "focus", index: (current - 1 + count) % count };
+    case "Home":
+      return { kind: "focus", index: 0 };
+    case "End":
+      return { kind: "focus", index: count - 1 };
+    case "Enter":
+    case " ":
+      return { kind: "activate" };
+    case "F2":
+      return { kind: "rename" };
+    case "Delete":
+      return { kind: "close" };
+    default:
+      return null;
+  }
 }
 
 /** Whether `point` lies inside `rect` (edges inclusive). */

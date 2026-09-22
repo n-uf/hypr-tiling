@@ -7,6 +7,12 @@
 import * as React_2 from 'react';
 
 // @public
+export function activeWorkspace(set: TilingWorkspaceSet): TilingWorkspace | null;
+
+// @public
+export function clientRectContains(rect: TilingClientRect, point: TilingClientPoint): boolean;
+
+// @public
 export function createPersistedTilingLayout(options: CreatePersistedTilingLayoutOptions): PersistedTilingLayout;
 
 // @public
@@ -18,6 +24,21 @@ export interface CreatePersistedTilingLayoutOptions {
     storage?: TilingLayoutStorage;
     storageKey: string;
 }
+
+// @public
+export function createWorkspace(set: TilingWorkspaceSet, input: CreateWorkspaceInput): TilingWorkspaceSet;
+
+// @public
+export interface CreateWorkspaceInput {
+    readonly activate?: boolean;
+    readonly at?: number;
+    readonly id: TilingWorkspaceId;
+    readonly layout?: TilingLayoutNode | null;
+    readonly name: string;
+}
+
+// @public
+export function cycleWorkspace(set: TilingWorkspaceSet, direction: TilingPaneCycleDirection): TilingWorkspaceSet;
 
 // @public
 export const DEFAULT_DRAG_ANIMATION_SPEED_PERCENT: number;
@@ -38,10 +59,19 @@ export const DEFAULT_TILING_LAYOUT_CONFIG: TilingLayoutConfig;
 export const DEFAULT_TILING_THEME_ID: TilingThemeId;
 
 // @public
+export function deleteWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingDeleteWorkspaceResult;
+
+// @public
 export const DRAG_ANIMATION_SPEED_MAX_PERCENT: number;
 
 // @public
 export const DRAG_ANIMATION_SPEED_MIN_PERCENT: number;
+
+// @public
+export function findWorkspaceById(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingWorkspace | null;
+
+// @public
+export function hideFromWorkspace(set: TilingWorkspaceSet, leafId: string, from: TilingWorkspaceId): TilingWorkspaceSet;
 
 // @public
 export function isCommandEnabled(command: TilingCommand, gates: TilingCommandGates): boolean;
@@ -50,9 +80,15 @@ export function isCommandEnabled(command: TilingCommand, gates: TilingCommandGat
 export function isMultiSelectModifierActive(event: MultiSelectModifierState): boolean;
 
 // @public
+export function moveLeafToWorkspace(set: TilingWorkspaceSet, leafId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement): TilingWorkspaceSet;
+
+// @public
 export interface MultiSelectModifierState {
     readonly altKey: boolean;
 }
+
+// @public
+export function normalizeWorkspaceName(name: string): string | null;
 
 // @public
 export interface PersistedTilingLayout {
@@ -63,6 +99,22 @@ export interface PersistedTilingLayout {
 
 // @public
 export function queryTilingLayout(layout: TilingLayoutNode): TilingLayoutQuery;
+
+// @public
+export function queryWorkspaceSet(set: TilingWorkspaceSet): TilingWorkspaceSetQuery;
+
+// @public
+export function renameWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId, name: string): TilingWorkspaceSet;
+
+// @public
+export function repairWorkspaceSet(set: TilingWorkspaceSet, options?: RepairWorkspaceSetOptions): TilingWorkspaceSetRepairResult;
+
+// @public
+export interface RepairWorkspaceSetOptions extends WorkspaceSetIntegrityOptions {
+    readonly mintLeafId?: (tileId: string) => string;
+    readonly orphanPlacement?: TilingWorkspacePlacement;
+    readonly orphanWorkspaceId?: TilingWorkspaceId;
+}
 
 // @public
 export function resolveDragChrome(theme: TilingTheme): TilingThemeDragChromeTokens;
@@ -179,6 +231,7 @@ export interface ResolvedTilingPaneSwitchingCapability {
 // @public
 export interface ResolvedTilingPaneTitleBarControlsCapability {
     acquireSpace: boolean;
+    collapse: boolean;
     sizing: boolean;
 }
 
@@ -204,13 +257,40 @@ export function resolveJumpedPaneId(leafIds: ReadonlyArray<string>, paneNumber: 
 export function resolveTilingTheme(themeId: TilingThemeId | undefined): TilingTheme;
 
 // @public
+export function resolveWorkspaceTabHover(targets: ReadonlyArray<TilingWorkspaceTabTarget>, point: TilingClientPoint): TilingWorkspaceTabDragHover | null;
+
+// @public
+export function resolveWorkspaceTabKey(key: string, focusedIndex: number, count: number, orientation?: TilingWorkspaceTabsOrientation): TilingWorkspaceTabKeyAction | null;
+
+// @public
+export function setWorkspaceLayout(set: TilingWorkspaceSet, id: TilingWorkspaceId, layout: TilingLayoutNode | null): TilingWorkspaceSet;
+
+// @public
+export function showInWorkspace(set: TilingWorkspaceSet, leafId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement): TilingWorkspaceSet;
+
+// @public
+export function switchWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingWorkspaceSet;
+
+// @public
 export const TILING_ACCENT_HUES: Record<TilingTileAccent, TilingAccentHue>;
 
 // @public
 export const TILING_DASHBOARD_PRESET: TilingInteractionCapabilities;
 
 // @public
+export const TILING_DEFAULT_COLLAPSED_EXTENT_PX: number;
+
+// @public
+export const TILING_DEFAULT_WORKSPACE_PLACEMENT: TilingWorkspacePlacement;
+
+// @public
 export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCapabilities;
+
+// @public
+export const TILING_MAIN_WORKSPACE_ID: TilingWorkspaceId;
+
+// @public
+export const TILING_MAIN_WORKSPACE_NAME: string;
 
 // @public
 export const TILING_THEME_REGISTRY: Record<TilingThemeId, TilingTheme>;
@@ -223,6 +303,12 @@ export const TILING_TILE_ACCENT_SWATCHES: readonly TilingTileAccentSwatch[];
 
 // @public
 export const TILING_TILE_ACCENTS: readonly TilingTileAccent[];
+
+// @public
+export const TILING_WORKSPACE_NAME_MAX_CHARS: number;
+
+// @public
+export const TILING_WORKSPACES_MAX: number;
 
 // @public
 export interface TilingAccentHue {
@@ -243,6 +329,23 @@ export interface TilingAccentHue {
 
 // @public
 export type TilingChromeFocusOutline = "suppress" | "native";
+
+// @public
+export interface TilingClientPoint {
+    readonly x: number;
+    readonly y: number;
+}
+
+// @public
+export interface TilingClientRect {
+    readonly bottom: number;
+    readonly left: number;
+    readonly right: number;
+    readonly top: number;
+}
+
+// @public
+export type TilingCollapseBodyMode = "keep-mounted" | "unmount";
 
 // @public
 export type TilingCommand = {
@@ -294,6 +397,13 @@ export type TilingCommand = {
     kind: "set-sizing";
     leafId?: string;
     mode: TilingTitleBarSizingMode;
+} | {
+    kind: "toggle-collapse";
+    leafId?: string;
+} | {
+    kind: "set-collapsed";
+    leafId?: string;
+    collapsed: boolean;
 } | {
     kind: "set-split-ratio";
     splitId: string;
@@ -358,6 +468,7 @@ export type TilingCommand = {
 // @public
 export interface TilingCommandGates {
     acquireSpaceEnabled: boolean;
+    collapseEnabled: boolean;
     focusEnabled: boolean;
     groupingEnabled: boolean;
     layoutEnabled: boolean;
@@ -372,6 +483,18 @@ export interface TilingCommandGates {
 export interface TilingCommandHandle {
     dispatch: (command: TilingCommand) => void;
 }
+
+// @public
+export interface TilingDeleteWorkspaceResult {
+    readonly removedTileIds: ReadonlyArray<string>;
+    readonly set: TilingWorkspaceSet;
+}
+
+// @public
+export type TilingDimension = "width" | "height";
+
+// @public
+export type TilingDragGhostMode = "footprint" | "compact" | "auto";
 
 // @public
 export function TilingDragHandle(input: TilingDragHandleProps): React_2.ReactElement;
@@ -405,7 +528,29 @@ export interface TilingDropHitZoneGeometryCapability {
 }
 
 // @public
+export type TilingExternalDragHover = TilingExternalDropHover | TilingWorkspaceTabDragHover;
+
+// @public
+export type TilingExternalDragHoverResolver = (point: TilingClientPoint, leafId: string) => TilingExternalDragHover | null;
+
+// @public
+export interface TilingExternalDropHover {
+    readonly kind?: "external";
+    readonly point: TilingClientPoint;
+    readonly targetId: string;
+}
+
+// @public
 export type TilingFocusDirection = "left" | "right" | "up" | "down";
+
+// @public
+export interface TilingGhostChipContext {
+    readonly leafId: string;
+    readonly point: TilingClientPoint;
+    readonly targetId?: string;
+    readonly title?: string;
+    readonly workspaceId?: string;
+}
 
 // @public
 export interface TilingGroupingCapability {
@@ -510,9 +655,12 @@ export interface TilingKeymap {
 
 // @public
 export interface TilingLayoutConfig {
+    collapseBodyMode?: TilingCollapseBodyMode;
+    collapsedExtentPx?: number;
     gapPx: number;
     handleSizePx: number;
     minPaneSizePx: number;
+    resizeFloor?: TilingResizeFloor;
 }
 
 // @public
@@ -557,8 +705,13 @@ export type TilingLeafDropZone = "center" | "left" | "right" | "top" | "bottom";
 
 // @public
 export interface TilingLeafNode {
+    collapsed?: boolean;
+    collapsedDimension?: TilingDimension;
+    collapsedRestore?: TilingPaneSizing;
     id: string;
     kind: "leaf";
+    minBBoxPx?: TilingMinBBoxPx;
+    resizeFloor?: TilingResizeFloor;
     sizing?: TilingPaneSizing;
     tileId: string;
 }
@@ -579,7 +732,16 @@ export interface TilingMaximizeCapability {
 }
 
 // @public
+export interface TilingMinBBoxPx {
+    heightPx?: number;
+    widthPx?: number;
+}
+
+// @public
 export type TilingMovePlacement = "left" | "right" | "top" | "bottom";
+
+// @public
+export type TilingOnExternalDrop = (leafId: string, targetId: string, point: TilingClientPoint, hover: TilingExternalDragHover) => void | boolean;
 
 // @public
 export type TilingOverlayPortalContainer = HTMLElement | null | (() => HTMLElement | null);
@@ -595,11 +757,17 @@ export function TilingPaneBody(input: TilingPaneBodyProps): React_2.ReactElement
 
 // @public
 export interface TilingPaneBodyProps extends React_2.HTMLAttributes<HTMLDivElement> {
-    pane: Pick<TilingRenderTileProps, "paneBodyRenderMode">;
+    pane: Pick<TilingRenderTileProps, "paneBodyRenderMode" | "isCollapsed" | "isMaximized">;
 }
 
 // @public
 export type TilingPaneBodyRenderMode = "render-content" | "render-empty" | "render-reservation";
+
+// @public
+export interface TilingPaneCollapsedChangeEvent {
+    readonly collapsed: boolean;
+    readonly leafId: string;
+}
 
 // @public
 export type TilingPaneCycleDirection = "next" | "previous";
@@ -647,34 +815,39 @@ export interface TilingPaneTitleBarContentProps extends React_2.HTMLAttributes<H
 // @public
 export interface TilingPaneTitleBarControlsCapability {
     acquireSpace?: boolean;
+    collapse?: boolean;
     sizing?: boolean;
 }
 
 // @public
-export const TilingRenderer: React_2.ForwardRefExoticComponent<TilingRendererProps & React_2.RefAttributes<TilingCommandHandle>>;
+export const TilingRenderer: React_2.ForwardRefExoticComponent<TilingRendererModeProps & React_2.RefAttributes<TilingCommandHandle>>;
 
 // @public
-export interface TilingRendererProps {
+export interface TilingRendererCommonProps {
     chromeFocusOutline?: TilingChromeFocusOutline;
     className?: string;
     config: TilingLayoutConfig;
     dragAnimationEnabled?: boolean;
+    dragGhostMode?: TilingDragGhostMode;
     dragHopEasing?: string;
     dragReflowEasing?: string;
+    externalDragHover?: TilingExternalDragHover | null;
     focusedLeafId?: string | null;
     ghostTransitSpeedPercent?: number;
     interaction?: TilingInteractionCapabilities;
-    layout: TilingLayoutNode;
     maximizedLeafId?: string | null;
+    onExternalDragHoverChange?: (hover: TilingExternalDragHover | null) => void;
+    onExternalDrop?: TilingOnExternalDrop;
     onFocusedLeafChange?: (leafId: string) => void;
-    onLayoutChange: (layout: TilingLayoutNode) => void;
     onMaximizedLeafChange?: (leafId: string | null) => void;
+    onPaneCollapsedChange?: (event: TilingPaneCollapsedChangeEvent) => void;
     onThemeChange?: (themeId: TilingThemeId) => void;
     onTileAccentChange?: (tileId: string, accent: TilingTileAccent) => void;
     overlayPortalContainer?: TilingOverlayPortalContainer;
     paneIdentity?: TilingPaneIdentityMode;
     projectedOverlayBackgroundAlpha?: number;
     renderTile?: (args: TilingRenderTileProps) => React_2.ReactNode;
+    resolveExternalDragHover?: TilingExternalDragHoverResolver;
     showDropBorderHints?: boolean;
     showDropPreviewOverlays?: boolean;
     survivorReflowSpeedPercent?: number;
@@ -682,6 +855,23 @@ export interface TilingRendererProps {
     theme?: TilingTheme;
     themeId?: TilingThemeId;
     tiles: ReadonlyArray<TilingTile> | ReadonlyMap<string, TilingTile>;
+}
+
+// @public
+export type TilingRendererModeProps = TilingRendererProps | TilingRendererWorkspaceSetProps;
+
+// @public
+export interface TilingRendererProps extends TilingRendererCommonProps {
+    layout: TilingLayoutNode;
+    onLayoutChange: (layout: TilingLayoutNode) => void;
+}
+
+// @public
+export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonProps {
+    onMoveLeaf?: (leafId: string, fromWorkspaceId: string, toWorkspaceId: string) => void;
+    onWorkspacesChange: (workspaces: TilingWorkspaceSet) => void;
+    renderEmptyWorkspace?: (workspace: TilingWorkspace) => React_2.ReactNode;
+    workspaces: TilingWorkspaceSet;
 }
 
 // @public
@@ -699,9 +889,12 @@ export interface TilingRenderTileGroupContext {
 // @public
 export interface TilingRenderTileProps {
     canGroupMultiSelection: boolean;
+    collapsedDimension: TilingDimension | null;
     dropZone: TilingLeafDropZone | null;
     readonly group: TilingRenderTileGroupContext | null;
     heightSizingMode: TilingPaneSizingMode;
+    isCollapsed: boolean;
+    isCollapseEnabled: boolean;
     isDragSource: boolean;
     isDropEligible: boolean;
     isDropTarget: boolean;
@@ -726,6 +919,7 @@ export interface TilingRenderTileProps {
     onPointerLeave: (event: React_2.PointerEvent<HTMLElement>) => void;
     onPointerMove: (event: React_2.PointerEvent<HTMLElement>) => void;
     onSetSizingMode: (mode: TilingTitleBarSizingMode) => void;
+    onToggleCollapse: () => void;
     onToggleMaximize: () => void;
     onToggleMultiSelect: () => void;
     paneBodyRenderMode: TilingPaneBodyRenderMode;
@@ -739,6 +933,9 @@ export interface TilingRenderTileProps {
 
 // @public
 export type TilingResizeCapability = "both" | "horizontal" | "vertical" | "none";
+
+// @public
+export type TilingResizeFloor = "body" | "chrome";
 
 // @public
 export interface TilingSlotCommitmentCapability {
@@ -773,6 +970,7 @@ export interface TilingTheme {
     readonly divider: TilingThemeDividerTokens;
     readonly dragChrome?: Partial<TilingThemeDragChromeTokens>;
     readonly ghost: TilingThemeGhostTokens;
+    readonly ghostChip?: (ctx: TilingGhostChipContext) => React_2.ReactNode;
     readonly id: TilingThemeId | (string & {});
     readonly label: string;
     readonly paneHeader: TilingThemePaneHeaderTokens;
@@ -783,6 +981,10 @@ export interface TilingTheme {
     readonly resolveTabActive: (accent: TilingTileAccent | undefined) => string;
     readonly root: TilingThemeRootTokens;
     readonly topBar: TilingThemeTopBarTokens;
+    readonly workspaceTab?: string;
+    readonly workspaceTabActive?: string;
+    readonly workspaceTabDropTarget?: string;
+    readonly workspaceTabs?: string;
 }
 
 // @public
@@ -895,7 +1097,204 @@ export interface TilingTouchDragCapability {
 }
 
 // @public
+export interface TilingWorkspace {
+    readonly id: TilingWorkspaceId;
+    readonly layout: TilingLayoutNode | null;
+    readonly name: string;
+}
+
+// @public
+export type TilingWorkspaceId = string;
+
+// @public
+export interface TilingWorkspacePanelElementProps {
+    readonly "aria-labelledby": string;
+    readonly hidden: boolean;
+    readonly id: string;
+    readonly role: "tabpanel";
+}
+
+// @public
+export type TilingWorkspacePlacement = {
+    readonly kind: "root";
+    readonly side: "first" | "second";
+} | {
+    readonly kind: "adjacent";
+    readonly targetLeafId: string;
+    readonly placement: TilingMovePlacement;
+} | {
+    readonly kind: "split-container";
+    readonly splitId: string;
+    readonly side: "first" | "second";
+} | {
+    readonly kind: "group";
+    readonly groupId: string;
+};
+
+// @public
+export interface TilingWorkspaceSet {
+    readonly activeId: TilingWorkspaceId;
+    readonly workspaces: ReadonlyArray<TilingWorkspace>;
+}
+
+// @public
+export interface TilingWorkspaceSetIssue {
+    readonly kind: TilingWorkspaceSetIssueKind;
+    readonly leafId?: string;
+    readonly message: string;
+    readonly tileId?: string;
+    readonly workspaceId?: TilingWorkspaceId;
+}
+
+// @public
+export type TilingWorkspaceSetIssueKind = "no-workspaces" | "empty-workspace-id" | "duplicate-workspace-id" | "invalid-workspace-name" | "active-workspace-missing" | "invalid-tree" | "leaf-tile-binding-mismatch" | "orphan-tile" | "unknown-tile";
+
+// @public
+export interface TilingWorkspaceSetQuery {
+    readonly active: TilingWorkspace;
+    readonly leafCount: (workspaceId: TilingWorkspaceId) => number;
+    readonly leafIds: (workspaceId: TilingWorkspaceId) => ReadonlyArray<string>;
+    readonly neighbour: (workspaceId: TilingWorkspaceId, direction: TilingPaneCycleDirection) => TilingWorkspaceId | null;
+    readonly tileIds: (workspaceId: TilingWorkspaceId) => ReadonlyArray<string>;
+    readonly workspace: (id: TilingWorkspaceId) => TilingWorkspace | null;
+    readonly workspacesOfLeaf: (leafId: string) => ReadonlyArray<TilingWorkspaceId>;
+    readonly workspacesOfTile: (tileId: string) => ReadonlyArray<TilingWorkspaceId>;
+}
+
+// @public
+export type TilingWorkspaceSetRepairReason = "workspace-created" | "workspace-dropped" | "workspace-renamed" | "tree-rebuilt" | "leaf-rebound" | "leaf-removed" | "unknown-tile-pruned" | "orphan-seated" | "active-reset";
+
+// @public
+export interface TilingWorkspaceSetRepairResult {
+    readonly reasons: ReadonlyArray<TilingWorkspaceSetRepairReason>;
+    readonly set: TilingWorkspaceSet;
+}
+
+// @public
+export interface TilingWorkspaceTab {
+    readonly activate: () => void;
+    readonly close: () => TilingDeleteWorkspaceResult;
+    readonly id: string;
+    readonly index: number;
+    readonly isActive: boolean;
+    readonly isDropTarget: boolean;
+    readonly isFocused: boolean;
+    readonly rename: (name: string) => boolean;
+    readonly requestClose: () => void;
+    readonly requestRename: () => void;
+    readonly tabProps: TilingWorkspaceTabElementProps;
+    readonly workspace: TilingWorkspace;
+}
+
+// @public
+export interface TilingWorkspaceTabDragHover {
+    readonly kind: "workspace-tab";
+    readonly placement?: TilingWorkspacePlacement;
+    readonly point: TilingClientPoint;
+    readonly targetId: string;
+    readonly workspaceId: string;
+}
+
+// @public
+export interface TilingWorkspaceTabElementProps {
+    readonly "aria-controls": string;
+    readonly "aria-selected": boolean;
+    readonly "data-active": "" | undefined;
+    readonly "data-drop-target": "" | undefined;
+    readonly "data-workspace-id": string;
+    readonly className: string | undefined;
+    readonly id: string;
+    readonly onClick: () => void;
+    readonly onFocus: () => void;
+    readonly onKeyDown: (event: React_2.KeyboardEvent<HTMLElement>) => void;
+    readonly ref: (element: HTMLElement | null) => void;
+    readonly role: "tab";
+    readonly tabIndex: 0 | -1;
+    readonly type: "button";
+}
+
+// @public
+export type TilingWorkspaceTabKeyAction = {
+    readonly kind: "focus";
+    readonly index: number;
+} | {
+    readonly kind: "activate";
+} | {
+    readonly kind: "rename";
+} | {
+    readonly kind: "close";
+};
+
+// @public
+export interface TilingWorkspaceTablistElementProps {
+    readonly "aria-orientation": TilingWorkspaceTabsOrientation;
+    readonly className: string | undefined;
+    readonly role: "tablist";
+}
+
+// @public
+export function TilingWorkspaceTabs(input: TilingWorkspaceTabsProps): React_2.ReactElement;
+
+// @public
+export type TilingWorkspaceTabsOrientation = "horizontal" | "vertical";
+
+// @public
+export interface TilingWorkspaceTabsProps extends UseTilingWorkspaceTabsOptions {
+    readonly children: (tabs: UseTilingWorkspaceTabsResult) => React_2.ReactNode;
+}
+
+// @public
+export interface TilingWorkspaceTabTarget {
+    readonly placement?: TilingWorkspacePlacement;
+    readonly rect: TilingClientRect;
+    readonly targetId: string;
+    readonly workspaceId: string;
+}
+
+// @public
 export function useTilingTheme(): TilingTheme;
+
+// @public
+export function useTilingWorkspaceTabs(options: UseTilingWorkspaceTabsOptions): UseTilingWorkspaceTabsResult;
+
+// @public
+export interface UseTilingWorkspaceTabsOptions {
+    readonly activation?: "manual" | "automatic";
+    readonly dropPlacement?: (workspace: TilingWorkspace) => TilingWorkspacePlacement | undefined;
+    readonly idPrefix?: string;
+    readonly onCloseRequest?: (workspace: TilingWorkspace) => void;
+    readonly onRenameRequest?: (workspace: TilingWorkspace) => void;
+    readonly onWorkspacesChange: (workspaces: TilingWorkspaceSet) => void;
+    readonly orientation?: TilingWorkspaceTabsOrientation;
+    readonly theme?: TilingTheme;
+    readonly workspaces: TilingWorkspaceSet;
+}
+
+// @public
+export interface UseTilingWorkspaceTabsResult {
+    readonly activeTab: TilingWorkspaceTab | null;
+    readonly create: (input: CreateWorkspaceInput) => boolean;
+    readonly dropTargetWorkspaceId: string | null;
+    readonly focusTab: (workspaceId: string) => void;
+    readonly panelProps: (workspaceId: string) => TilingWorkspacePanelElementProps;
+    readonly rendererProps: {
+        readonly resolveExternalDragHover: TilingExternalDragHoverResolver;
+        readonly onExternalDragHoverChange: (hover: TilingExternalDragHover | null) => void;
+    };
+    readonly tablistProps: TilingWorkspaceTablistElementProps;
+    readonly tabs: ReadonlyArray<TilingWorkspaceTab>;
+}
+
+// @public
+export interface WorkspaceSetIntegrityOptions {
+    readonly expectedTileIds?: ReadonlyArray<string>;
+}
+
+// @public
+export function workspaceSetIssues(set: TilingWorkspaceSet, options?: WorkspaceSetIntegrityOptions): ReadonlyArray<TilingWorkspaceSetIssue>;
+
+// @public
+export function workspaceSetOfLayout(layout: TilingLayoutNode | null, id?: TilingWorkspaceId, name?: string): TilingWorkspaceSet;
 
 // (No @packageDocumentation comment for this package)
 

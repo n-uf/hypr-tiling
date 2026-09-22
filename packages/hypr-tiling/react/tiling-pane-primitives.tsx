@@ -165,7 +165,7 @@ export interface TilingPaneTitleBarContentProps extends React.HTMLAttributes<HTM
  * window controls (right). Stops pointer-down propagation ONLY when the press
  * lands on a genuine interactive control inside the slot (button, link,
  * input/textarea/select, `role="button"`, or a `contenteditable` node — see
- * {@link isInteractiveControlTarget}), so a real toolbar click / find input
+ * `isInteractiveControlTarget`), so a real toolbar click / find input
  * does not start a rearrange drag from the surrounding {@link TilingDragHandle}.
  * A press anywhere ELSE in the slot — decorative labels, badges, a selected-
  * case id, any non-interactive content — falls through untouched, so the

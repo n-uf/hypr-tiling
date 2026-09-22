@@ -331,7 +331,82 @@ standalone subset of the WorkspaceSet drag scope — see
 
 `"footprint"` (default) is today's tile-sized ghost. `"compact"` is
 always the chip. `"auto"` toggles on `externalDragHover`. Omit
-`onExternalDrop` and release still cancels with the fly-back.
+`onExternalDrop` (or return `false` from it) and release still cancels
+with the fly-back.
+
+## Workspaces
+
+Several layout trees over one tile pool, one active at a time — the
+window-manager "workspace" (i3 / Hyprland / Sway). The engine owns the set
+(`TilingWorkspaceSet`, pure ops, integrity walker + repair); the renderer
+paints the active tree and switches **without remounting** a pane whose
+leaf exists in both workspaces; the headless tab strip owns the WAI-ARIA
+semantics, keyboard model and drop-target wiring. Design record:
+[`_agent/workspace-set-concept.md`](../../_agent/workspace-set-concept.md).
+
+```tsx
+import {
+  TilingRenderer,
+  useTilingWorkspaceTabs,
+  workspaceSetOfLayout,
+  createWorkspace,
+  type TilingWorkspaceSet,
+} from "@n-uf/hypr-tiling";
+
+function Dashboard() {
+  const [set, setSet] = useState<TilingWorkspaceSet>(() =>
+    workspaceSetOfLayout(initialLayout), // one "Main" workspace
+  );
+  const tabs = useTilingWorkspaceTabs({
+    workspaces: set,
+    onWorkspacesChange: setSet,
+    onRenameRequest: (ws) => openRenameDialog(ws), // commit via tab.rename(name)
+    onCloseRequest: (ws) => confirmClose(ws),      // commit via tab.close()
+  });
+  return (
+    <>
+      <div {...tabs.tablistProps}>
+        {tabs.tabs.map((tab) => (
+          <button key={tab.workspace.id} {...tab.tabProps}>
+            {tab.workspace.name}
+          </button>
+        ))}
+        <button onClick={() => tabs.create({ id: crypto.randomUUID(), name: "New" })}>+</button>
+      </div>
+      <div {...tabs.panelProps(set.activeId)}>
+        <TilingRenderer
+          workspaces={set}
+          onWorkspacesChange={setSet}
+          tiles={tiles}
+          config={DEFAULT_TILING_LAYOUT_CONFIG}
+          dragGhostMode="auto"
+          {...tabs.rendererProps} // tabs become native drop targets
+        />
+      </div>
+    </>
+  );
+}
+```
+
+- **Engine ops** (pure, `set → set`): `createWorkspace`, `renameWorkspace`,
+  `deleteWorkspace` (refuses the last; returns `removedTileIds` shown only
+  there), `switchWorkspace`, `cycleWorkspace`, `setWorkspaceLayout`,
+  `moveLeafToWorkspace(set, leafId, to, placement?)`, `showInWorkspace`,
+  `hideFromWorkspace`, `queryWorkspaceSet`, `workspaceSetIssues`,
+  `repairWorkspaceSet`. Limits: `TILING_WORKSPACES_MAX` (12),
+  `TILING_WORKSPACE_NAME_MAX_CHARS` (40).
+- **Renderer** — `workspaces` + `onWorkspacesChange` replace `layout` +
+  `onLayoutChange`. Uncontrolled focus / maximize are remembered per
+  workspace; a drag in flight is cancelled when the active workspace
+  changes; an empty workspace renders `renderEmptyWorkspace(workspace)`.
+- **Drop on a tab** — a `kind: "workspace-tab"` `externalDragHover` (what
+  `tabs.rendererProps` resolves for you) settles by `moveLeafToWorkspace`
+  with no host claim; `onMoveLeaf(leafId, from, to)` reports it.
+- **Tab strip** — `role="tablist"` / `role="tab"`, roving `tabIndex`,
+  Arrow keys / Home / End move focus, Enter / Space activate, F2 → 
+  `onRenameRequest`, Delete → `onCloseRequest`. Unstyled until a theme
+  supplies `workspaceTabs` / `workspaceTab` / `workspaceTabActive` /
+  `workspaceTabDropTarget`.
 
 ## Features
 

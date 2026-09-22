@@ -139,9 +139,25 @@ export {
 export {
   clientRectContains,
   resolveWorkspaceTabHover,
+  resolveWorkspaceTabKey,
   type TilingClientRect,
+  type TilingWorkspaceTabKeyAction,
   type TilingWorkspaceTabTarget,
+  type TilingWorkspaceTabsOrientation,
 } from "./engine/workspace-tabs";
+// Headless workspace tab strip: `tablist` / `tab` semantics, roving focus,
+// keyboard model, rename / close affordances, native drop-target wiring.
+export {
+  TilingWorkspaceTabs,
+  useTilingWorkspaceTabs,
+  type TilingWorkspacePanelElementProps,
+  type TilingWorkspaceTab,
+  type TilingWorkspaceTabElementProps,
+  type TilingWorkspaceTablistElementProps,
+  type TilingWorkspaceTabsProps,
+  type UseTilingWorkspaceTabsOptions,
+  type UseTilingWorkspaceTabsResult,
+} from "./react/workspace-tabs";
 
 // ── Persisted-layout adapter ─────────────────────────────────────────────────
 // Optional glue that persists ONLY the layout tree (localStorage by default)
@@ -231,6 +247,7 @@ export type {
   TilingWorkspaceTabDragHover,
   TilingGhostChipContext,
   TilingOnExternalDrop,
+  TilingExternalDragHoverResolver,
   TilingPaneCollapsedChangeEvent,
   TilingChromeFocusOutline,
   TilingOverlayPortalContainer,

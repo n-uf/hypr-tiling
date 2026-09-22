@@ -104,8 +104,11 @@ export {
 export {
   clientRectContains,
   resolveWorkspaceTabHover,
+  resolveWorkspaceTabKey,
   type TilingClientRect,
+  type TilingWorkspaceTabKeyAction,
   type TilingWorkspaceTabTarget,
+  type TilingWorkspaceTabsOrientation,
 } from "./engine/workspace-tabs";
 export type { TilingWorkspacePlacement } from "./engine/types";
 

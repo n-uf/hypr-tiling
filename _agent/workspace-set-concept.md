@@ -868,6 +868,94 @@ S2 is the safety net: it puts DashAI on the engine's set ops behind unchanged
 export names, so S3 is a pure deletion plus renderer swap with the reducer
 behaviour already proven identical.
 
+### 8.5 Library half status — H1–H4 DONE on `feat/workspace-set` (2026-09-22, `26.10.0` unreleased)
+
+The library half landed as four commits on `feat/workspace-set` in the
+sequence the dispatch asked for (engine set → renderer prop → tab drop target
+→ headless tabs + release prep), which regroups the H1–H4 rows above: what
+the table calls H2's "renderer `workspaces` prop / per-workspace focus
+memory" is the landed H2; the table's H2 external-drag scope and H3 tabs are
+the landed H3 + H4; the table's H4 persisted envelope v2 did **not** land
+(see divergence 8 — DashAI persists the document, not the engine set).
+
+| Landed commit (`feat/workspace-set`) | Delivers | Tests |
+|---|---|---|
+| H1 `workspace set: engine types, pure ops, integrity walker and repair` | `engine/workspace-set.ts`; `TilingWorkspacePlacement`; `extractLeafNode` / `insertLeafInto` exported from `state.ts` | `__tests__/workspace-set.test.ts` (34: every §3.1 row, property checks over random sets → ops → `issues()` empty, `insertLeafInto` mirrors each mover) |
+| H2 `renderer workspaces prop, per-workspace focus/maximize scope, drag cancel on switch` | `TilingRendererWorkspaceSetProps`, `TilingRendererCommonProps`, `TilingRendererModeProps`; set-mode wrapper; `renderEmptyWorkspace` | `__tests__/workspace-set-renderer.test.ts` (7: DOM-node identity across a switch, empty shell, edit → next set, maximize scope + restore, controlled pass-through, drag cancelled on switch, single-layout unchanged) |
+| H3 `native workspace-tab drop target, tab hit-test, declinable external claim` | `TilingWorkspaceTabDragHover` / `TilingExternalDropHover` union; set-mode settle by `moveLeafToWorkspace`; `engine/workspace-tabs.ts` `resolveWorkspaceTabHover`; `onExternalDrop` 4th arg + `false` = decline; `ghostChip` `workspaceId` | `__tests__/workspace-tab-drop.test.ts` (9) |
+| H4 `headless TilingWorkspaceTabs, drag-hover resolver, 26.10.0 release prep` | `useTilingWorkspaceTabs` / `TilingWorkspaceTabs`; `resolveExternalDragHover` / `onExternalDragHoverChange` renderer props; `resolveWorkspaceTabKey`; theme tokens; README / CHANGELOG / API reports / version | `__tests__/workspace-tabs.test.ts` (8, incl. drag over tab → drop into an empty workspace end-to-end) |
+
+#### Divergences from the design above, and why
+
+1. **Set shape is `{ workspaces: [{ id, name, layout }], activeId }`, not
+   §2's `Record<id, layout>` + `order` + `pinned` table.** The dispatch
+   fixed this shape and it maps 1:1 onto DashAI's `WorkspaceLayout` /
+   `workspaces.ts` reducers (`addWorkspace`, `renameWorkspace`,
+   `removeWorkspace`, `switchWorkspace`, `moveItemToWorkspace`, `showItem`,
+   `hideItem` → `createWorkspace`, `renameWorkspace`, `deleteWorkspace`,
+   `switchWorkspace`, `moveLeafToWorkspace`, `showInWorkspace`,
+   `hideFromWorkspace`). §2's `pinned: "all" | list` becomes plain presence:
+   a leaf shown in several workspaces is one `leaf:{id,tileId}` node per
+   tree. §8.3's "multi-presence → list pins" is therefore identity, and
+   `"all"` (`stickyItemIds`) is host sugar (S3 loops `showInWorkspace` on
+   create). No `TilingLeafPin` type shipped.
+2. **Leaf-centric ops key on `leafId`, not `itemId`.** Every tree reducer is
+   leaf-keyed and DashAI mints `leaf:<itemId>` deterministically, so the
+   S2 mapping stays one-to-one (`toLeafId(itemId)`). The set invariant that
+   makes this sound is **one leaf id ↔ one tile id across the whole set**
+   (`leaf-tile-binding-mismatch`), on top of §2.1 I1–I5. `deleteWorkspace`
+   returns `removedTileIds` (tile ids, the host's item ids).
+3. **§3.5 placement is a public `TilingWorkspacePlacement`**
+   (`root` / `adjacent` / `split-container` / `group`) rather than only the
+   default root-second; `TILING_DEFAULT_WORKSPACE_PLACEMENT` is root-second
+   as designed. The existing movers were NOT recomposed on `insertLeafInto`
+   (§3.2): `insertLeafAdjacent` silently drops a missing target where
+   `insertLeafInto` falls back to root-second, so recomposition would have
+   changed a reducer's observable edge case; the shared halves are exported
+   and reused by the set ops only.
+4. **Renderer prop split is additive, not the §5.1 `Common & (Single |
+   Set)` rewrite.** `TilingRendererProps` keeps its exact 26.9.2 shape
+   (now `extends TilingRendererCommonProps`); the set alternative is
+   `TilingRendererWorkspaceSetProps`; the component accepts
+   `TilingRendererModeProps` (their union). No consumer type breaks.
+   `inactiveWorkspaces` (§5.1) did not ship — the stable pane pool already
+   keeps a shared leaf's instance across a switch, which is the property
+   the dispatch asked to prove; keep-mounted for *non*-shared panes is a
+   later knob.
+5. **No `DragResolvedTarget` external variant, no `TilingDragScope`, no
+   `useWorkspaceDropTarget` (§5.2 / §5.3).** The dispatch pinned the
+   26.9.2 claim-before-settle path instead: the hover union
+   (`kind: "workspace-tab"`) + `resolveExternalDragHover` (engine calls
+   the hit-test per frame and at release) + `onExternalDragHoverChange`
+   (feeds `isDropTarget` back) give the same "host writes no hit-test"
+   outcome with one FSM edge (`claimed`) and no new drag phase. §5.5
+   requirements 1–3 hold; §5.5's "settle-to-target fly-to-tab" animation
+   is not painted (claimed settle is instant, as in 26.9.2).
+6. **Focus / maximize memory lives in the set-mode wrapper (§5.3 /
+   Q9).** Uncontrolled only; the inner renderer is driven controlled from
+   that memory, sanitised against the active tree. A drag in flight is
+   **cancelled** (not scoped) when its source leaf leaves the controlled
+   tree — the general "host swapped the tree under a drag" rule, which a
+   workspace switch is one instance of.
+7. **Tabs keyboard model is manual activation by default (Enter / Space
+   activate; `activation: "automatic"` opt-in); F2 = rename, Delete =
+   close, both only when the affordance callback is wired; no reorder
+   chords / `onReorder`** (§5.4). `reorderWorkspaces` is not an engine op
+   in this release — DashAI has no reorder reducer to map.
+8. **No persisted envelope v2 / `createPersistedTilingWorkspaceSet` (§6,
+   table H4).** DashAI persists its own document and projects to the set
+   (S2 `toWorkspaceSet` / `applyWorkspaceSet`); the engine-side envelope
+   has no consumer yet. Reopen when a second host needs engine-owned
+   persistence.
+9. **`onExternalDrop` grew a 4th `hover` argument and may return `false`
+   to decline.** Needed so the set-mode wrapper can route a non-tab hover
+   to the host and a tab hover to `moveLeafToWorkspace` without a
+   render-time guess; additive for 3-argument `void` hosts.
+10. **The API reports regenerated in H4 also absorb the pane-collapse
+    surface that shipped in `main` after the 26.9.2 report was cut**
+    (`isCollapsed` / `onToggleCollapse` / `collapseEnabled`…); the
+    CHANGELOG folds that "Unreleased" block into `26.10.0`.
+
 ---
 
 ## 9. Open questions — each with a recommendation

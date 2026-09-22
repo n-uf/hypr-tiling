@@ -633,7 +633,7 @@ export interface TilingPaneSwitchingCapability {
    * the toggle is inert chrome. Suppressing the toggle hands content ownership to
    * the embedding: pane-content is treated as VISIBLE by default
    * (`isPaneContentVisible` initializes `true`) for ALL drag surfaces — in-tree
-   * panes, the source slot, the hop-in slot, and the portaled drag ghost (the overlay portal container, default `document.body`, see {@link TilingRendererProps.overlayPortalContainer}) — so the
+   * panes, the source slot, the hop-in slot, and the portaled drag ghost (the overlay portal container, default `document.body`, see {@link TilingRendererCommonProps.overlayPortalContainer}) — so the
    * ghost body matches the seated body. With no control rendered, the flag cannot
    * be flipped off, so this default holds for the lifetime of the embedding.
    * (Ghost-seat reservation slots still render empty — that is a drag mechanic
@@ -1450,7 +1450,7 @@ export const TILING_DEFAULT_COLLAPSED_EXTENT_PX: number = 40;
  * - `"pane"` — the seated in-tree pane (the normal, interactive case).
  * - `"drag-ghost"` — the floating, portaled pickup ghost that travels with the
  *   cursor during a drag (the overlay portal container, default
- *   `document.body`, see {@link TilingRendererProps.overlayPortalContainer}).
+ *   `document.body`, see {@link TilingRendererCommonProps.overlayPortalContainer}).
  *   `aria-hidden` + `pointer-events-none`: handlers are inert no-ops,
  *   capability display flags stay real.
  * - `"drag-cancel"` — the cancel fly-back overlay (the ghost gliding home after
@@ -1640,7 +1640,7 @@ export interface TilingRenderTileProps {
    * under a side-by-side parent) to the chrome extent (its body is hidden) so
    * its sibling reclaims the freed space; expand restores the pre-collapse
    * sizing. Emits via `onLayoutChange` (controlled) and fires
-   * {@link TilingRendererProps.onPaneCollapsedChange}.
+   * {@link TilingRendererCommonProps.onPaneCollapsedChange}.
    */
   onToggleCollapse: () => void;
   /** The resolved drop zone under the cursor for this pane, or `null`. */
@@ -2176,7 +2176,7 @@ export type TilingChromeFocusOutline = "suppress" | "native";
  *   the DOM parent changes. During a live drag the picked-up pane is parked in
  *   the pool (its slot shows the content-less seat; the single ghost paints
  *   the pane through the overlay portal container, default `document.body`,
- *   see {@link TilingRendererProps.overlayPortalContainer}) and reseats on
+ *   see {@link TilingRendererCommonProps.overlayPortalContainer}) and reseats on
  *   drop. Server render emits EMPTY slots (content is placed on the client),
  *   so hydration-time flash is the cost.
  * - `"auto"` (default) — `"stable"` on a client-only mount, `"slot"` when the
@@ -2189,7 +2189,7 @@ export type TilingPaneIdentityMode = "auto" | "stable" | "slot";
  * cursor, cancel fly-back). An element, `null` (fall back to `document.body`),
  * or a thunk evaluated every render so a late-mounted container (ref /
  * callback) is picked up without remounting the renderer. See
- * {@link TilingRendererProps.overlayPortalContainer} for the containing-block
+ * {@link TilingRendererCommonProps.overlayPortalContainer} for the containing-block
  * caveat, SSR `null`, and stacking-context z-index note.
  *
  * @public
@@ -2200,7 +2200,7 @@ export type TilingOverlayPortalContainer =
   | (() => HTMLElement | null);
 
 /**
- * The payload of {@link TilingRendererProps.onPaneCollapsedChange}: which leaf
+ * The payload of {@link TilingRendererCommonProps.onPaneCollapsedChange}: which leaf
  * changed collapse state and its NEW state. Emitted after the collapse edit is
  * reported via `onLayoutChange`, so a host reacting here (e.g. retitling the
  * pane) reads a consistent post-edit world.
@@ -2322,7 +2322,7 @@ export type TilingRendererModeProps =
  * - `"footprint"` (default) — today's tile-sized ghost, origin-offset from the
  *   pickup grab point. Unchanged behaviour.
  * - `"compact"` — always the small chip under the cursor.
- * - `"auto"` — `compact` while {@link TilingRendererProps.externalDragHover} is
+ * - `"auto"` — `compact` while {@link TilingRendererCommonProps.externalDragHover} is
  *   non-null, `footprint` otherwise. The 26.9.x forward-compatible subset of
  *   the WorkspaceSet drag scope (`_agent/workspace-set-concept.md` §5.5).
  */
@@ -2330,7 +2330,9 @@ export type TilingDragGhostMode = "footprint" | "compact" | "auto";
 
 /** Window-client point (CSS px) the host reports for an external hover / drop. */
 export interface TilingClientPoint {
+  /** Horizontal window-client coordinate (CSS px). */
   readonly x: number;
+  /** Vertical window-client coordinate (CSS px). */
   readonly y: number;
 }
 
@@ -2342,8 +2344,11 @@ export interface TilingClientPoint {
  * a bare `{ targetId, point }` literal is this variant.
  */
 export interface TilingExternalDropHover {
+  /** Discriminant; omitted on a bare literal. */
   readonly kind?: "external";
+  /** The host target's id (what `onExternalDrop` and the `ghostChip` slot receive). */
   readonly targetId: string;
+  /** Pointer position over the target (window-client CSS px). */
   readonly point: TilingClientPoint;
 }
 
@@ -2357,8 +2362,11 @@ export interface TilingExternalDropHover {
  * `targetId` is the tab's own id (what the `ghostChip` slot receives).
  */
 export interface TilingWorkspaceTabDragHover {
+  /** Discriminant. */
   readonly kind: "workspace-tab";
+  /** The tab's own id (what the `ghostChip` slot receives). */
   readonly targetId: string;
+  /** Pointer position over the tab (window-client CSS px). */
   readonly point: TilingClientPoint;
   /** The workspace the tab stands for — the `moveLeafToWorkspace` destination. */
   readonly workspaceId: string;
@@ -2383,16 +2391,20 @@ export type TilingExternalDragHover =
  * is set.
  */
 export interface TilingGhostChipContext {
+  /** The dragged leaf. */
   readonly leafId: string;
+  /** The dragged tile's title, when it has one. */
   readonly title?: string;
+  /** Where the chip is anchored (window-client CSS px). */
   readonly point: TilingClientPoint;
+  /** The external target under the pointer, when {@link TilingExternalDragHover} is set. */
   readonly targetId?: string;
   /** Present while the hover is a {@link TilingWorkspaceTabDragHover}: the destination workspace. */
   readonly workspaceId?: string;
 }
 
 /**
- * Fired on release while {@link TilingRendererProps.externalDragHover} is
+ * Fired on release while {@link TilingRendererCommonProps.externalDragHover} is
  * non-null, **before** the drag FSM settles, so the host can claim the leaf
  * synchronously and skip the cancel fly-back. Return `false` to DECLINE the
  * claim (the target refused the leaf): the release then settles through the
@@ -2402,7 +2414,20 @@ export type TilingOnExternalDrop = (
   leafId: string,
   targetId: string,
   point: TilingClientPoint,
+  hover: TilingExternalDragHover,
 ) => void | boolean;
+
+/**
+ * Engine-driven external hover resolution: called with the pointer's window-
+ * client position (once per processed drag frame and synchronously at
+ * release) while a leaf is being dragged; returns the external target under
+ * the pointer or `null`. Lets the renderer own the hit-test — the host's tab
+ * strip only registers rects (`useTilingWorkspaceTabs` supplies one).
+ */
+export type TilingExternalDragHoverResolver = (
+  point: TilingClientPoint,
+  leafId: string,
+) => TilingExternalDragHover | null;
 
 /**
  * The mode-independent {@link TilingRenderer} props — everything except the
@@ -2585,25 +2610,41 @@ export interface TilingRendererCommonProps {
   /**
    * Live-drag ghost presentation. Default `"footprint"` — the tile-sized
    * ghost, byte-identical to 26.9.1. `"compact"` always paints the chip;
-   * `"auto"` collapses to the chip while {@link externalDragHover} is
+   * `"auto"` collapses to the chip while {@link TilingRendererCommonProps.externalDragHover} is
    * non-null and expands back to the footprint when it clears.
    */
   dragGhostMode?: TilingDragGhostMode;
   /**
    * Host tells the engine the pointer is over an external drop target (and
    * where). In `"auto"` ghost mode this is what toggles compact ↔ footprint.
-   * On release, a non-null value plus {@link onExternalDrop} claims the
+   * On release, a non-null value plus {@link TilingRendererCommonProps.onExternalDrop} claims the
    * drag (no cancel fly-back).
    */
   externalDragHover?: TilingExternalDragHover | null;
   /**
    * Synchronous claim hook. Fired on `POINTER_UP` while
-   * {@link externalDragHover} is non-null, **before** the FSM settles, so
+   * {@link TilingRendererCommonProps.externalDragHover} is non-null, **before** the FSM settles, so
    * the host can take the leaf (move it off this tree) and the engine marks
    * the drag `claimed` — `DragCancelOverlay` is skipped. Absent → existing
-   * cancel / fly-back behaviour even when hover is set.
+   * cancel / fly-back behaviour even when hover is set. Return `false` to
+   * decline the claim.
    */
   onExternalDrop?: TilingOnExternalDrop;
+  /**
+   * Engine-driven alternative to {@link TilingRendererCommonProps.externalDragHover}: the renderer
+   * calls this with the pointer position on every processed drag frame (and
+   * synchronously at release) and treats the result as the external hover.
+   * A non-null `externalDragHover` prop takes precedence. The resolved
+   * hover clears when the drag settles.
+   */
+  resolveExternalDragHover?: TilingExternalDragHoverResolver;
+  /**
+   * Notified when the hover produced by {@link TilingRendererCommonProps.resolveExternalDragHover}
+   * changes identity (`kind` / `targetId` / `workspaceId`) — including
+   * `null` when the pointer leaves every target or the drag settles. Not
+   * fired for a host-supplied `externalDragHover`.
+   */
+  onExternalDragHoverChange?: (hover: TilingExternalDragHover | null) => void;
 }
 
 /**

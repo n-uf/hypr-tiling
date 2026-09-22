@@ -10,6 +10,9 @@ import * as React_2 from 'react';
 export function accentHue(accent: TilingTileAccent | undefined): TilingAccentHue;
 
 // @public
+export function activeWorkspace(set: TilingWorkspaceSet): TilingWorkspace | null;
+
+// @public
 export function assertLayoutIntegrity(node: TilingLayoutNode, options?: AssertLayoutIntegrityOptions): LayoutTileIntegrityReport;
 
 // @public
@@ -45,6 +48,9 @@ export function chordRequiresModifier(chord: ResolvedTilingKeyChord): boolean;
 export function clampCursorPointToViewport(point: DragCursorPoint, bounds: DragCursorViewportBounds, marginPx: number): DragCursorPoint;
 
 // @public
+export function clientRectContains(rect: TilingClientRect, point: TilingClientPoint): boolean;
+
+// @public
 export function collectGroups(node: TilingLayoutNode): ReadonlyArray<TilingGroupNode>;
 
 // @public
@@ -67,7 +73,30 @@ export interface CreatePersistedTilingLayoutOptions {
 }
 
 // @public
+export function createWorkspace(set: TilingWorkspaceSet, input: CreateWorkspaceInput): TilingWorkspaceSet;
+
+// @public
+export interface CreateWorkspaceInput {
+    readonly activate?: boolean;
+    readonly at?: number;
+    readonly id: TilingWorkspaceId;
+    readonly layout?: TilingLayoutNode | null;
+    readonly name: string;
+}
+
+// @public
+export function cycleWorkspace(set: TilingWorkspaceSet, direction: TilingPaneCycleDirection): TilingWorkspaceSet;
+
+// @public
 export function defaultKeyBindings(keymap: ResolvedTilingKeymap): ReadonlyArray<TilingKeyBinding>;
+
+// @public
+export function deleteWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingDeleteWorkspaceResult;
+
+// Warning: (ae-internal-missing-underscore) The name "diffCollapsedLeaves" should be prefixed with an underscore because the declaration is marked as @internal
+//
+// @internal
+export function diffCollapsedLeaves(before: TilingLayoutNode, after: TilingLayoutNode): ReadonlyArray<TilingPaneCollapsedChangeEvent>;
 
 // @public
 export type DragCursorKind = "grab" | "insert" | "swap" | "invalid";
@@ -105,10 +134,24 @@ export const EMPTY_FOCUS_HISTORY: FocusHistory;
 export function expectedTileIdsFromHostTiles(tiles: ReadonlyArray<TilingTile> | ReadonlyMap<string, TilingTile>): ReadonlyArray<string>;
 
 // @public
+export interface ExtractedLeafResult {
+    // (undocumented)
+    extractedLeaf: TilingLeafNode | null;
+    // (undocumented)
+    nextNode: TilingLayoutNode | null;
+}
+
+// @public
+export function extractLeafNode(node: TilingLayoutNode, leafId: string): ExtractedLeafResult;
+
+// @public
 export function findLeafByDirection(layout: TilingLayoutNode, fromLeafId: string, direction: TilingFocusDirection): string | null;
 
 // @public
 export function findLeafById(node: TilingLayoutNode, leafId: string): TilingLeafNode | null;
+
+// @public
+export function findWorkspaceById(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingWorkspace | null;
 
 // @public
 export interface FlexibleRatioChild {
@@ -137,13 +180,22 @@ export interface GroupLeavesOptions {
 export function hasAnyModifier(modifiers: ResolvedTilingKeyChordModifiers): boolean;
 
 // @public
+export function hideFromWorkspace(set: TilingWorkspaceSet, leafId: string, from: TilingWorkspaceId): TilingWorkspaceSet;
+
+// @public
 export function insertLeafAdjacent(layout: TilingLayoutNode, sourceLeafId: string, targetLeafId: string, placement: TilingMovePlacement, options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
+
+// @public
+export function insertLeafInto(tree: TilingLayoutNode | null, leaf: TilingLeafNode, placement?: TilingWorkspacePlacement, options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
 
 // @public
 export const INSTANT_DRAG_DURATION_MS: number;
 
 // @public
 export function isCssEasing(value: string): boolean;
+
+// @public
+export function isLeafCollapsed(node: TilingLayoutNode, leafId: string): boolean;
 
 // @public
 export function isResizeAxisEnabled(capability: TilingResizeCapability, splitAxis: TilingSplitAxis): boolean;
@@ -211,6 +263,9 @@ export function moveLeafToRoot(layout: TilingLayoutNode, sourceLeafId: string, p
 export function moveLeafToSplitContainer(layout: TilingLayoutNode, sourceLeafId: string, targetSplitId: string, placement: "first" | "second", options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
 
 // @public
+export function moveLeafToWorkspace(set: TilingWorkspaceSet, leafId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement): TilingWorkspaceSet;
+
+// @public
 export const MULTI_SELECT_GROUP_MIN_MEMBERS: number;
 
 // @public
@@ -229,6 +284,9 @@ export interface NormalizeLayoutOptions {
 export function normalizeStaticAxisFill(node: TilingLayoutNode): TilingLayoutNode;
 
 // @public
+export function normalizeWorkspaceName(name: string): string | null;
+
+// @public
 export interface PersistedTilingLayout {
     commit(layout: TilingLayoutNode): TilingLayoutNode;
     load(): TilingLayoutNode;
@@ -245,10 +303,19 @@ export function pruneMultiSelection(selection: ReadonlySet<string>, presentLeafI
 export function pushFocusHistory(history: FocusHistory, leafId: string, limit?: number): FocusHistory;
 
 // @public
+export function queryWorkspaceSet(set: TilingWorkspaceSet): TilingWorkspaceSetQuery;
+
+// @public
 export function readLeafNodeIds(node: TilingLayoutNode): ReadonlyArray<string>;
 
 // @public
+export function reassertCollapsedExtentPins(node: TilingLayoutNode, collapsedExtentPx: number): TilingLayoutNode;
+
+// @public
 export function removeLeafTile(layout: TilingLayoutNode, leafId: string): TilingLayoutNode;
+
+// @public
+export function renameWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId, name: string): TilingWorkspaceSet;
 
 // @public
 export function renormalizeFlexibleRatios(children: ReadonlyArray<FlexibleRatioChild>): number[];
@@ -258,6 +325,16 @@ export function repairLayout(node: TilingLayoutNode, options: RepairLayoutOption
 
 // @public
 export type RepairLayoutOptions = NormalizeLayoutOptions;
+
+// @public
+export function repairWorkspaceSet(set: TilingWorkspaceSet, options?: RepairWorkspaceSetOptions): TilingWorkspaceSetRepairResult;
+
+// @public
+export interface RepairWorkspaceSetOptions extends WorkspaceSetIntegrityOptions {
+    readonly mintLeafId?: (tileId: string) => string;
+    readonly orphanPlacement?: TilingWorkspacePlacement;
+    readonly orphanWorkspaceId?: TilingWorkspaceId;
+}
 
 // @public
 export function resolveDragCursorPresentation(resolvedTarget: DragResolvedTarget | null, sourceLeafId: string): DragCursorPresentation;
@@ -284,10 +361,25 @@ export function resolveMultiSelectGroupHost(selection: ReadonlySet<string>, clic
 export function resolveSizingMode(sizing: TilingPaneSizing | undefined, dimension: TilingDimension): TilingPaneSizingMode;
 
 // @public
+export function resolveWorkspaceTabHover(targets: ReadonlyArray<TilingWorkspaceTabTarget>, point: TilingClientPoint): TilingWorkspaceTabDragHover | null;
+
+// @public
+export function resolveWorkspaceTabKey(key: string, focusedIndex: number, count: number, orientation?: TilingWorkspaceTabsOrientation): TilingWorkspaceTabKeyAction | null;
+
+// @public
+export function setLeafCollapsed(node: TilingLayoutNode, leafId: string, collapsed: boolean, collapsedExtentPx: number): TilingLayoutNode;
+
+// @public
 export function setLeafSizing(node: TilingLayoutNode, leafId: string, sizing: TilingPaneSizing | undefined): TilingLayoutNode;
 
 // @public
+export function setWorkspaceLayout(set: TilingWorkspaceSet, id: TilingWorkspaceId, layout: TilingLayoutNode | null): TilingWorkspaceSet;
+
+// @public
 export function shouldRenderSplitDivider(input: SplitBoundaryStaticFlags): boolean;
+
+// @public
+export function showInWorkspace(set: TilingWorkspaceSet, leafId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement): TilingWorkspaceSet;
 
 // @public
 export function siblingSubtreeForLeaf(node: TilingLayoutNode, leafId: string): TilingLayoutNode | null;
@@ -303,13 +395,31 @@ export interface SplitBoundaryStaticFlags {
 export function swapLeafTiles(node: TilingLayoutNode, firstLeafId: string, secondLeafId: string): TilingLayoutNode;
 
 // @public
+export function switchWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingWorkspaceSet;
+
+// @public
 export function tileOrderByLeafId(node: TilingLayoutNode): ReadonlyArray<string>;
+
+// @public
+export const TILING_DEFAULT_WORKSPACE_PLACEMENT: TilingWorkspacePlacement;
 
 // @public
 export const TILING_DROP_INTENT_CONFIG: TilingDropIntentBaseConfig;
 
 // @public
 export const TILING_KEYMAP_DEFAULTS: ResolvedTilingKeymap;
+
+// @public
+export const TILING_MAIN_WORKSPACE_ID: TilingWorkspaceId;
+
+// @public
+export const TILING_MAIN_WORKSPACE_NAME: string;
+
+// @public
+export const TILING_WORKSPACE_NAME_MAX_CHARS: number;
+
+// @public
+export const TILING_WORKSPACES_MAX: number;
 
 // @public
 export interface TilingAccentHue {
@@ -326,6 +436,20 @@ export interface TilingAccentHue {
     readonly tabBorder: string;
     readonly text: string;
     readonly textStrong: string;
+}
+
+// @public
+export interface TilingClientRect {
+    readonly bottom: number;
+    readonly left: number;
+    readonly right: number;
+    readonly top: number;
+}
+
+// @public
+export interface TilingDeleteWorkspaceResult {
+    readonly removedTileIds: ReadonlyArray<string>;
+    readonly set: TilingWorkspaceSet;
 }
 
 // @public
@@ -457,6 +581,98 @@ export interface TilingPaneSwitcherState {
 }
 
 // @public
+export interface TilingWorkspace {
+    readonly id: TilingWorkspaceId;
+    readonly layout: TilingLayoutNode | null;
+    readonly name: string;
+}
+
+// @public
+export type TilingWorkspaceId = string;
+
+// @public
+export type TilingWorkspacePlacement = {
+    readonly kind: "root";
+    readonly side: "first" | "second";
+} | {
+    readonly kind: "adjacent";
+    readonly targetLeafId: string;
+    readonly placement: TilingMovePlacement;
+} | {
+    readonly kind: "split-container";
+    readonly splitId: string;
+    readonly side: "first" | "second";
+} | {
+    readonly kind: "group";
+    readonly groupId: string;
+};
+
+// @public
+export interface TilingWorkspaceSet {
+    readonly activeId: TilingWorkspaceId;
+    readonly workspaces: ReadonlyArray<TilingWorkspace>;
+}
+
+// @public
+export interface TilingWorkspaceSetIssue {
+    readonly kind: TilingWorkspaceSetIssueKind;
+    readonly leafId?: string;
+    readonly message: string;
+    readonly tileId?: string;
+    readonly workspaceId?: TilingWorkspaceId;
+}
+
+// @public
+export type TilingWorkspaceSetIssueKind = "no-workspaces" | "empty-workspace-id" | "duplicate-workspace-id" | "invalid-workspace-name" | "active-workspace-missing" | "invalid-tree" | "leaf-tile-binding-mismatch" | "orphan-tile" | "unknown-tile";
+
+// @public
+export interface TilingWorkspaceSetQuery {
+    readonly active: TilingWorkspace;
+    readonly leafCount: (workspaceId: TilingWorkspaceId) => number;
+    readonly leafIds: (workspaceId: TilingWorkspaceId) => ReadonlyArray<string>;
+    readonly neighbour: (workspaceId: TilingWorkspaceId, direction: TilingPaneCycleDirection) => TilingWorkspaceId | null;
+    readonly tileIds: (workspaceId: TilingWorkspaceId) => ReadonlyArray<string>;
+    readonly workspace: (id: TilingWorkspaceId) => TilingWorkspace | null;
+    readonly workspacesOfLeaf: (leafId: string) => ReadonlyArray<TilingWorkspaceId>;
+    readonly workspacesOfTile: (tileId: string) => ReadonlyArray<TilingWorkspaceId>;
+}
+
+// @public
+export type TilingWorkspaceSetRepairReason = "workspace-created" | "workspace-dropped" | "workspace-renamed" | "tree-rebuilt" | "leaf-rebound" | "leaf-removed" | "unknown-tile-pruned" | "orphan-seated" | "active-reset";
+
+// @public
+export interface TilingWorkspaceSetRepairResult {
+    readonly reasons: ReadonlyArray<TilingWorkspaceSetRepairReason>;
+    readonly set: TilingWorkspaceSet;
+}
+
+// @public
+export type TilingWorkspaceTabKeyAction = {
+    readonly kind: "focus";
+    readonly index: number;
+} | {
+    readonly kind: "activate";
+} | {
+    readonly kind: "rename";
+} | {
+    readonly kind: "close";
+};
+
+// @public
+export type TilingWorkspaceTabsOrientation = "horizontal" | "vertical";
+
+// @public
+export interface TilingWorkspaceTabTarget {
+    readonly placement?: TilingWorkspacePlacement;
+    readonly rect: TilingClientRect;
+    readonly targetId: string;
+    readonly workspaceId: string;
+}
+
+// @public
+export function toggleLeafCollapsed(node: TilingLayoutNode, leafId: string, collapsedExtentPx: number): TilingLayoutNode;
+
+// @public
 export function toggleLeafMultiSelection(selection: ReadonlySet<string>, leafId: string): Set<string>;
 
 // @public
@@ -467,6 +683,17 @@ export function ungroupNode(layout: TilingLayoutNode, groupId: string): TilingLa
 
 // @public
 export function updateSplitRatio(node: TilingLayoutNode, splitId: string, ratio: number): TilingLayoutNode;
+
+// @public
+export interface WorkspaceSetIntegrityOptions {
+    readonly expectedTileIds?: ReadonlyArray<string>;
+}
+
+// @public
+export function workspaceSetIssues(set: TilingWorkspaceSet, options?: WorkspaceSetIntegrityOptions): ReadonlyArray<TilingWorkspaceSetIssue>;
+
+// @public
+export function workspaceSetOfLayout(layout: TilingLayoutNode | null, id?: TilingWorkspaceId, name?: string): TilingWorkspaceSet;
 
 // (No @packageDocumentation comment for this package)
 
