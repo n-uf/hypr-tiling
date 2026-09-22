@@ -6,6 +6,29 @@ This package uses calendar-aligned versioning (`YY.M.R`), which cannot signal a
 SemVer "major" bump. **Read the per-release notes below for breaking changes** —
 the version number alone does not flag them.
 
+## 26.10.1 — 2026-09-22
+
+### Fixed
+
+- **`./engine` entry no longer pulls the React renderer chunk; safe to import
+  from server / react-server layers (Next route handlers).** In 26.10.0
+  `dist/engine.mjs` re-exported from the code-split chunk that also backs `.`
+  (the whole renderer — `createContext`, hooks, theme), and `engine.ts` itself
+  re-exported `accentHue`, `BASELINE_DRAG_HOP_DURATION_MS`, and
+  `INSTANT_DRAG_DURATION_MS` from `react/`. Importing
+  `@n-uf/hypr-tiling/engine` from a Next.js route handler therefore evaluated
+  React's `react-server` build and failed with
+  `TypeError: createContext is not a function`. The three demoted symbols now
+  live in the engine layer (`engine/accent-hues.ts`, `engine/drag-timing.ts`;
+  same names, same values, `.` exports unchanged), and `engine.ts` is built as
+  its own tsup configuration with code splitting off, so
+  `dist/engine.{mjs,cjs}` is a standalone bundle with no `react` /
+  `react-dom` import and no chunk shared with `.` / `./devtools`. Guarded by
+  `__tests__/engine-entry-react-free.test.ts` (`pnpm test:dist`, run in CI and
+  `prepublishOnly`) and by the `engine ↛ react` layering guardrail, which now
+  also scans the `engine.ts` entry file. No public API change (all three API
+  reports identical).
+
 ## 26.10.0 — 2026-09-22
 
 Engine-native workspace set (`_agent/workspace-set-concept.md`, library half
