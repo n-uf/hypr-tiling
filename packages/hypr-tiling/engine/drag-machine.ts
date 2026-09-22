@@ -2,6 +2,8 @@ import { addLeafToGroup, findGroupContainingLeaf, insertLeafAdjacent, removeLeaf
 import { PLACEMENT_BY_DROP_ZONE } from "./projected-layout";
 import type { TilingDropIntentState, TilingEdgeZone } from "./drop-intent-resolver";
 import type {
+  TilingDragGhostMode,
+  TilingExternalDragHover,
   TilingLayoutNode,
   TilingLeafDropZone,
   TilingPaneFootprint,
@@ -60,7 +62,51 @@ export interface DragMachinePoint {
  */
 export type DragResolvedTarget = TilingDropIntentState;
 
-export type DragSettleOutcome = "commit" | "cancel";
+/**
+ * Compact-chip offset from the host-reported pointer point (CSS px). The chip
+ * sits just under the cursor so it does not occlude the drop target.
+ */
+export const DRAG_GHOST_COMPACT_OFFSET_PX: number = 12;
+
+/** Max width of the compact chip (CSS px); content sizes below this. */
+export const DRAG_GHOST_COMPACT_MAX_WIDTH_PX: number = 220;
+
+/** Footprint ↔ compact scale/opacity transition (ms). Instant under reduced motion. */
+export const DRAG_GHOST_COMPACT_TRANSITION_MS: number = 140;
+
+/**
+ * The painted ghost shape. `"footprint"` is the tile-sized ghost; `"compact"`
+ * is the cursor-anchored chip. Resolved from `dragGhostMode` + external hover.
+ */
+export type DragGhostPresentation = "footprint" | "compact";
+
+/**
+ * Resolve the painted ghost shape. Default mode is `"footprint"` (today's
+ * behaviour). `"compact"` is always the chip; `"auto"` is the chip only while
+ * the host reports an external hover.
+ */
+export function resolveDragGhostPresentation(
+  mode: TilingDragGhostMode | undefined,
+  externalHover: TilingExternalDragHover | null | undefined,
+): DragGhostPresentation {
+  if (mode === "compact") {
+    return "compact";
+  }
+  if (mode === "auto" && externalHover != null) {
+    return "compact";
+  }
+  return "footprint";
+}
+
+/** Chip origin: host pointer + the fixed compact offset. */
+export function compactGhostOrigin(point: DragMachinePoint): DragMachinePoint {
+  return {
+    x: point.x + DRAG_GHOST_COMPACT_OFFSET_PX,
+    y: point.y + DRAG_GHOST_COMPACT_OFFSET_PX,
+  };
+}
+
+export type DragSettleOutcome = "commit" | "cancel" | "claimed";
 
 /**
  * The single discriminated-union drag-lifecycle state. One `useReducer` in the
@@ -74,8 +120,9 @@ export type DragSettleOutcome = "commit" | "cancel";
  * - `dragging` — threshold crossed; pointer is captured; the ghost follows the
  *   pointer and `resolvedTarget` tracks the hovered destination.
  * - `settling` — a terminal event fired; `outcome` says whether the renderer
- *   commits (`onLayoutChange`) or cancels (revert to the original layout +
- *   fly-back). Always transitions to `idle` on `SETTLE_DONE`.
+ *   commits (`onLayoutChange`), cancels (revert to the original layout +
+ *   fly-back), or was `claimed` by the host (`onExternalDrop` — no fly-back,
+ *   no in-tree commit). Always transitions to `idle` on `SETTLE_DONE`.
  */
 export type DragMachineState =
   | { phase: "idle" }
@@ -128,7 +175,7 @@ export type DragMachineEvent =
   | { type: "POINTER_MOVE"; pointerId: number; client: DragMachinePoint }
   | { type: "LONG_PRESS"; pointerId: number }
   | { type: "TARGET_RESOLVED"; pointerId: number; resolvedTarget: DragResolvedTarget | null }
-  | { type: "POINTER_UP"; pointerId: number }
+  | { type: "POINTER_UP"; pointerId: number; claimed?: boolean }
   | { type: "POINTER_CANCEL"; pointerId?: number }
   | { type: "ESCAPE" }
   | { type: "BLUR" }
@@ -729,6 +776,9 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
         case "TARGET_RESOLVED":
           return { ...state, resolvedTarget: event.resolvedTarget };
         case "POINTER_UP":
+          if (event.claimed === true) {
+            return settleFrom(state, "claimed");
+          }
           return settleFrom(state, isCommittableTarget(state.resolvedTarget, state.sourceLeafId) ? "commit" : "cancel");
         // Every interruption is an enumerated cancel edge → settling(cancel) →
         // idle. This is the structural elimination of "stuck on drag".

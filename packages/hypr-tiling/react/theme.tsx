@@ -4,6 +4,7 @@ import * as React from "react";
 
 import { cn } from "./cn";
 import type {
+  TilingGhostChipContext,
   TilingTileAccent,
   TilingTileAccentSwatch,
   TilingThemeId,
@@ -293,6 +294,13 @@ export interface TilingTheme {
    * `resolveDragChrome(theme)` to a pane-shell-inheriting default.
    */
   readonly dragChrome?: Partial<TilingThemeDragChromeTokens>;
+  /**
+   * Compact-ghost chip CONTENTS. The renderer wraps the return in the
+   * cursor-anchored chip shell (`data-drag-ghost-chip`); this slot paints
+   * the label. Default is a minimal neutral chip (tile title, else leaf id).
+   * Optional — omitted themes keep the built-in chip.
+   */
+  readonly ghostChip?: (ctx: TilingGhostChipContext) => React.ReactNode;
   /** Split-divider / gap handle tokens. */
   readonly divider: TilingThemeDividerTokens;
   /** Top-bar / tab-strip chrome tokens. */

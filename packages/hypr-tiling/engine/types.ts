@@ -2210,6 +2210,57 @@ export interface TilingPaneCollapsedChangeEvent {
  * @see {@link TilingRenderer}
  * @see {@link TilingInteractionCapabilities}
  */
+/**
+ * How the live-drag ghost paints while a leaf is carried.
+ *
+ * - `"footprint"` (default) — today's tile-sized ghost, origin-offset from the
+ *   pickup grab point. Unchanged behaviour.
+ * - `"compact"` — always the small chip under the cursor.
+ * - `"auto"` — `compact` while {@link TilingRendererProps.externalDragHover} is
+ *   non-null, `footprint` otherwise. The 26.9.x forward-compatible subset of
+ *   the WorkspaceSet drag scope (`_agent/workspace-set-concept.md` §5.5).
+ */
+export type TilingDragGhostMode = "footprint" | "compact" | "auto";
+
+/** Window-client point (CSS px) the host reports for an external hover / drop. */
+export interface TilingClientPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * Host-reported "pointer is over an external drop target" (a workspace tab,
+ * a chat panel — anything outside the tiling tree). The engine does not
+ * hit-test host chrome; the host drives this from its own `over` state.
+ */
+export interface TilingExternalDragHover {
+  readonly targetId: string;
+  readonly point: TilingClientPoint;
+}
+
+/**
+ * Arguments the theme `ghostChip` slot receives when the compact ghost is
+ * painted. `targetId` is present only while {@link TilingExternalDragHover}
+ * is set.
+ */
+export interface TilingGhostChipContext {
+  readonly leafId: string;
+  readonly title?: string;
+  readonly point: TilingClientPoint;
+  readonly targetId?: string;
+}
+
+/**
+ * Fired on release while {@link TilingRendererProps.externalDragHover} is
+ * non-null, **before** the drag FSM settles, so the host can claim the leaf
+ * synchronously and skip the cancel fly-back.
+ */
+export type TilingOnExternalDrop = (
+  leafId: string,
+  targetId: string,
+  point: TilingClientPoint,
+) => void;
+
 export interface TilingRendererProps {
   /** The controlled layout tree to render. Apply every reported edit back here. */
   layout: TilingLayoutNode;
@@ -2386,6 +2437,28 @@ export interface TilingRendererProps {
    * relative to the container's stacking context, not the document.
    */
   overlayPortalContainer?: TilingOverlayPortalContainer;
+  /**
+   * Live-drag ghost presentation. Default `"footprint"` — the tile-sized
+   * ghost, byte-identical to 26.9.1. `"compact"` always paints the chip;
+   * `"auto"` collapses to the chip while {@link externalDragHover} is
+   * non-null and expands back to the footprint when it clears.
+   */
+  dragGhostMode?: TilingDragGhostMode;
+  /**
+   * Host tells the engine the pointer is over an external drop target (and
+   * where). In `"auto"` ghost mode this is what toggles compact ↔ footprint.
+   * On release, a non-null value plus {@link onExternalDrop} claims the
+   * drag (no cancel fly-back).
+   */
+  externalDragHover?: TilingExternalDragHover | null;
+  /**
+   * Synchronous claim hook. Fired on `POINTER_UP` while
+   * {@link externalDragHover} is non-null, **before** the FSM settles, so
+   * the host can take the leaf (move it off this tree) and the engine marks
+   * the drag `claimed` — `DragCancelOverlay` is skipped. Absent → existing
+   * cancel / fly-back behaviour even when hover is set.
+   */
+  onExternalDrop?: TilingOnExternalDrop;
 }
 
 /**

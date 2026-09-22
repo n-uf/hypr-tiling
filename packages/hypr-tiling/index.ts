@@ -172,6 +172,11 @@ export type {
   TilingCommandHandle,
   // Renderer props / render-tile contract
   TilingRendererProps,
+  TilingDragGhostMode,
+  TilingClientPoint,
+  TilingExternalDragHover,
+  TilingGhostChipContext,
+  TilingOnExternalDrop,
   TilingPaneCollapsedChangeEvent,
   TilingChromeFocusOutline,
   TilingOverlayPortalContainer,
