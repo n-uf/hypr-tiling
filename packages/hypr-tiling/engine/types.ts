@@ -2271,6 +2271,10 @@ export interface TilingRendererProps extends TilingRendererCommonProps {
  * is cancelled. Pass `focusedLeafId` / `maximizedLeafId` to own that scoping
  * yourself.
  *
+ * A {@link TilingWorkspaceTabDragHover} in `externalDragHover` settles the drag
+ * natively: on release the renderer applies `moveLeafToWorkspace` and reports
+ * the next set — no host `onExternalDrop` needed for tab drops.
+ *
  * @example
  * ```tsx
  * const [set, setSet] = useState<TilingWorkspaceSet>(() => workspaceSetOfLayout(initialLayout));
@@ -2289,6 +2293,12 @@ export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonPro
   workspaces: TilingWorkspaceSet;
   /** Called with the next set whenever the renderer edits a tree or moves a leaf. */
   onWorkspacesChange: (workspaces: TilingWorkspaceSet) => void;
+  /**
+   * Notified after a drag settled on a workspace tab and the leaf was moved
+   * (the moved set has already been reported through `onWorkspacesChange`).
+   * `fromWorkspaceId` is the workspace that was active when the drag started.
+   */
+  onMoveLeaf?: (leafId: string, fromWorkspaceId: string, toWorkspaceId: string) => void;
   /**
    * Rendered inside the tiling root while the active workspace's `layout` is
    * `null` (empty workspace). Undefined → an empty root element.
@@ -2325,14 +2335,47 @@ export interface TilingClientPoint {
 }
 
 /**
- * Host-reported "pointer is over an external drop target" (a workspace tab,
- * a chat panel — anything outside the tiling tree). The engine does not
- * hit-test host chrome; the host drives this from its own `over` state.
+ * Host-reported "pointer is over an external drop target" the ENGINE cannot
+ * settle itself (a chat panel, a sidebar — anything outside the tiling tree
+ * that is not a workspace tab). The host claims the leaf on release through
+ * {@link TilingRendererCommonProps.onExternalDrop}. `kind` may be omitted —
+ * a bare `{ targetId, point }` literal is this variant.
  */
-export interface TilingExternalDragHover {
+export interface TilingExternalDropHover {
+  readonly kind?: "external";
   readonly targetId: string;
   readonly point: TilingClientPoint;
 }
+
+/**
+ * "Pointer is over a WORKSPACE TAB" — the engine-settled external target.
+ * In workspace-set mode the renderer applies `moveLeafToWorkspace(leafId,
+ * workspaceId, placement)` on release and reports the next set through
+ * `onWorkspacesChange` (claim-before-settle: no cancel fly-back, no host
+ * hit-test). In single-layout mode it behaves like
+ * {@link TilingExternalDropHover} — the host's `onExternalDrop` claims.
+ * `targetId` is the tab's own id (what the `ghostChip` slot receives).
+ */
+export interface TilingWorkspaceTabDragHover {
+  readonly kind: "workspace-tab";
+  readonly targetId: string;
+  readonly point: TilingClientPoint;
+  /** The workspace the tab stands for — the `moveLeafToWorkspace` destination. */
+  readonly workspaceId: string;
+  /** Where in the destination tree the leaf lands. Undefined → root, second side. */
+  readonly placement?: TilingWorkspacePlacement;
+}
+
+/**
+ * Host-reported "pointer is over an external drop target" (a workspace tab,
+ * a chat panel — anything outside the tiling tree). The engine does not
+ * hit-test host chrome; the host (or `useTilingWorkspaceTabs`) drives this
+ * from its own `over` state. Discriminated on `kind`; a plain
+ * `{ targetId, point }` literal is the {@link TilingExternalDropHover} variant.
+ */
+export type TilingExternalDragHover =
+  | TilingExternalDropHover
+  | TilingWorkspaceTabDragHover;
 
 /**
  * Arguments the theme `ghostChip` slot receives when the compact ghost is
@@ -2344,18 +2387,22 @@ export interface TilingGhostChipContext {
   readonly title?: string;
   readonly point: TilingClientPoint;
   readonly targetId?: string;
+  /** Present while the hover is a {@link TilingWorkspaceTabDragHover}: the destination workspace. */
+  readonly workspaceId?: string;
 }
 
 /**
  * Fired on release while {@link TilingRendererProps.externalDragHover} is
  * non-null, **before** the drag FSM settles, so the host can claim the leaf
- * synchronously and skip the cancel fly-back.
+ * synchronously and skip the cancel fly-back. Return `false` to DECLINE the
+ * claim (the target refused the leaf): the release then settles through the
+ * ordinary cancel fly-back. `void` / `true` claims.
  */
 export type TilingOnExternalDrop = (
   leafId: string,
   targetId: string,
   point: TilingClientPoint,
-) => void;
+) => void | boolean;
 
 /**
  * The mode-independent {@link TilingRenderer} props — everything except the

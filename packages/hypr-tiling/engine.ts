@@ -101,6 +101,12 @@ export {
   type TilingWorkspaceSetRepairResult,
   type WorkspaceSetIntegrityOptions,
 } from "./engine/workspace-set";
+export {
+  clientRectContains,
+  resolveWorkspaceTabHover,
+  type TilingClientRect,
+  type TilingWorkspaceTabTarget,
+} from "./engine/workspace-tabs";
 export type { TilingWorkspacePlacement } from "./engine/types";
 
 // ── Persisted-layout adapter (thin glue over the integrity APIs above) ────────

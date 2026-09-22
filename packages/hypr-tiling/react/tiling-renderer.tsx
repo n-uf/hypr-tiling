@@ -214,6 +214,7 @@ import {
 import type { StyleApplierPort } from "../engine/style-applier-port";
 import {
   activeWorkspace,
+  moveLeafToWorkspace,
   setWorkspaceLayout,
   type TilingWorkspace,
   type TilingWorkspaceSet,
@@ -233,6 +234,7 @@ import type {
   TilingDragCancelVisualState,
   TilingDragPaneSnapshot,
   TilingDragVisualState,
+  TilingClientPoint,
   TilingExternalDragHover,
   TilingGhostChipContext,
   TilingOnExternalDrop,
@@ -1706,6 +1708,7 @@ function DragPaneOverlay({
   ghostPresentation,
   compactPoint,
   compactTargetId,
+  compactWorkspaceId,
 }: {
   dragVisualState: TilingDragVisualState | null;
   dragHopDurationMs: number;
@@ -1745,6 +1748,7 @@ function DragPaneOverlay({
   compactPoint: DragMachinePoint | null;
   /** External target id while hovering one; omitted otherwise. */
   compactTargetId: string | undefined;
+  compactWorkspaceId: string | undefined;
 }): React.ReactElement | null {
   const theme: TilingTheme = useTilingTheme();
   const nodeRef = React.useRef<HTMLDivElement | null>(null);
@@ -2023,6 +2027,7 @@ function DragPaneOverlay({
       y: baseRect.top + dragVisualState.pointerAnchorOffsetY,
     },
     targetId: compactTargetId,
+    workspaceId: compactWorkspaceId,
   };
   const compactTransition: string = prefersReducedMotion
     ? "none"
@@ -2085,6 +2090,7 @@ function DragPaneOverlay({
         data-drag-ghost-chip
         data-drag-ghost-mode={ghostPresentation}
         data-drag-ghost-target={compactTargetId}
+        data-drag-ghost-workspace={compactWorkspaceId}
         aria-hidden
       >
         {theme.ghostChip != null
@@ -7582,13 +7588,17 @@ const TilingRendererComponent = React.forwardRef<
         onDrop != null &&
         claimState.phase === "dragging"
       ) {
-        onDrop(claimState.sourceLeafId, hover.targetId, hover.point);
-        dispatchDrag({
-          type: "POINTER_UP",
-          pointerId: owningPointerId,
-          claimed: true,
-        });
-        return;
+        const claimed: boolean =
+          onDrop(claimState.sourceLeafId, hover.targetId, hover.point) !==
+          false;
+        if (claimed) {
+          dispatchDrag({
+            type: "POINTER_UP",
+            pointerId: owningPointerId,
+            claimed: true,
+          });
+          return;
+        }
       }
       dispatchDrag({ type: "POINTER_UP", pointerId: owningPointerId });
     };
@@ -9300,6 +9310,11 @@ const TilingRendererComponent = React.forwardRef<
             ghostPresentation={ghostPresentation}
             compactPoint={compactGhostPoint}
             compactTargetId={externalDragHover?.targetId}
+            compactWorkspaceId={
+              externalDragHover?.kind === "workspace-tab"
+                ? externalDragHover.workspaceId
+                : undefined
+            }
           />
           {dragCursorEnabled ? (
             <DragCursorOverlay
@@ -9390,7 +9405,8 @@ function withRemembered(
  * Workspace-set mode of {@link TilingRenderer}: paints the active workspace's
  * tree through the single-layout renderer and folds every reported tree edit
  * back into the set (`setWorkspaceLayout`). Owns the per-workspace focus /
- * maximize memory for the uncontrolled case.
+ * maximize memory for the uncontrolled case and the native workspace-tab drop
+ * settle (`moveLeafToWorkspace` on a `kind: "workspace-tab"` hover).
  */
 const TilingWorkspaceSetRendererComponent = React.forwardRef<
   TilingCommandHandle,
@@ -9399,11 +9415,14 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
   {
     workspaces,
     onWorkspacesChange,
+    onMoveLeaf,
     renderEmptyWorkspace,
     focusedLeafId,
     onFocusedLeafChange,
     maximizedLeafId,
     onMaximizedLeafChange,
+    externalDragHover = null,
+    onExternalDrop,
     className,
     themeId,
     theme: themeProp,
@@ -9439,6 +9458,12 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
   workspacesRef.current = workspaces;
   const onWorkspacesChangeRef = React.useRef(onWorkspacesChange);
   onWorkspacesChangeRef.current = onWorkspacesChange;
+  const onMoveLeafRef = React.useRef(onMoveLeaf);
+  onMoveLeafRef.current = onMoveLeaf;
+  const externalDragHoverRef = React.useRef<TilingExternalDragHover | null>(
+    externalDragHover,
+  );
+  externalDragHoverRef.current = externalDragHover;
 
   const handleLayoutChange = React.useCallback(
     (nextLayout: TilingLayoutNode): void => {
@@ -9477,6 +9502,40 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
     [onMaximizedLeafChange],
   );
 
+  // Native workspace-tab settle (§5.5 claim-before-settle): the inner renderer
+  // fires this synchronously on release BEFORE the FSM settles `claimed`, so
+  // the moved set lands in the same tick and no cancel fly-back paints. Any
+  // other external hover is the host's to claim through its own callback.
+  const handleWorkspaceTabDrop: TilingOnExternalDrop = React.useCallback(
+    (leafId: string, targetId: string, point: TilingClientPoint): boolean => {
+      const hover: TilingExternalDragHover | null = externalDragHoverRef.current;
+      if (hover == null || hover.kind !== "workspace-tab") {
+        return onExternalDrop?.(leafId, targetId, point) !== false;
+      }
+      const current: TilingWorkspaceSet = workspacesRef.current;
+      const from: string = current.activeId;
+      const next: TilingWorkspaceSet = moveLeafToWorkspace(
+        current,
+        leafId,
+        hover.workspaceId,
+        hover.placement,
+      );
+      if (next === current) {
+        // Unknown destination workspace (or a no-op re-seat): decline the
+        // claim so the release settles through the ordinary cancel fly-back.
+        return false;
+      }
+      onWorkspacesChangeRef.current(next);
+      onMoveLeafRef.current?.(leafId, from, hover.workspaceId);
+      return true;
+    },
+    [onExternalDrop],
+  );
+  const effectiveOnExternalDrop: TilingOnExternalDrop | undefined =
+    externalDragHover?.kind === "workspace-tab"
+      ? handleWorkspaceTabDrop
+      : onExternalDrop;
+
   if (layout == null) {
     const theme: TilingTheme = themeProp ?? resolveTilingTheme(themeId);
     return (
@@ -9505,6 +9564,8 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       onFocusedLeafChange={handleFocusedLeafChange}
       maximizedLeafId={effectiveMaximizedLeafId}
       onMaximizedLeafChange={handleMaximizedLeafChange}
+      externalDragHover={externalDragHover}
+      onExternalDrop={effectiveOnExternalDrop}
     />
   );
 });

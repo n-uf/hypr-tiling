@@ -136,6 +136,12 @@ export {
   type TilingWorkspaceSetRepairResult,
   type WorkspaceSetIntegrityOptions,
 } from "./engine/workspace-set";
+export {
+  clientRectContains,
+  resolveWorkspaceTabHover,
+  type TilingClientRect,
+  type TilingWorkspaceTabTarget,
+} from "./engine/workspace-tabs";
 
 // ── Persisted-layout adapter ─────────────────────────────────────────────────
 // Optional glue that persists ONLY the layout tree (localStorage by default)
@@ -221,6 +227,8 @@ export type {
   TilingDragGhostMode,
   TilingClientPoint,
   TilingExternalDragHover,
+  TilingExternalDropHover,
+  TilingWorkspaceTabDragHover,
   TilingGhostChipContext,
   TilingOnExternalDrop,
   TilingPaneCollapsedChangeEvent,
