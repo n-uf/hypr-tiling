@@ -104,6 +104,7 @@ function gatesFromCapabilities(
     rearrangeEnabled: capabilities.rearrange,
     sizingEnabled: capabilities.paneTitleBarControls.sizing,
     acquireSpaceEnabled: capabilities.paneTitleBarControls.acquireSpace,
+    collapseEnabled: capabilities.paneTitleBarControls.collapse,
     resizeEnabled: capabilities.resize !== "none",
     layoutEnabled: capabilities.masterLayout,
     groupingEnabled: capabilities.grouping.enable,

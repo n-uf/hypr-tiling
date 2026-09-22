@@ -29,6 +29,7 @@ function gatesFor(interaction?: TilingInteractionCapabilities): TilingCommandGat
     rearrangeEnabled: caps.rearrange,
     sizingEnabled: caps.paneTitleBarControls.sizing,
     acquireSpaceEnabled: caps.paneTitleBarControls.acquireSpace,
+    collapseEnabled: caps.paneTitleBarControls.collapse,
     resizeEnabled: caps.resize !== "none",
     layoutEnabled: caps.masterLayout,
     groupingEnabled: caps.grouping.enable,
