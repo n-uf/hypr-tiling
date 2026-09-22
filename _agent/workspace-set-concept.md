@@ -584,8 +584,10 @@ second edge:
 1. **Claim before settle.** The callback must let the host mark the drop as
    handled synchronously (a returned verdict or an `accept()` on the event) so
    the FSM settles `commit` — source leaf stays removed, no fly-back — rather
-   than firing after a `cancel` has begun.
-   DashAI L0 (2026-09-21, `worker/dashai-drag-to-workspace`): **not met as an FSM claim** — 26.9.1 has no hook, so `POINTER_UP` still settles `cancel` and `DragCancelOverlay` still runs the 220 ms fly-back (`fromFootprint` → origin); the host records a claim on `pointerup` and hides `.dashai-tile[data-surface="drag-cancel"][data-drop-claimed]`. Residual only the hook closes: the FSM's seat fallback (`foldCommittableSeatFallback`, `SUSTAINED_NULL_SEAT_THRESHOLD = 2`) keeps the last in-tree seat through one null sample, so a release that reaches an external target on the next processed sample settles `commit` on that stale seat while the host also runs its drop.
+   than firing after a `cancel` has begun. The 26.9.x standalone
+   (`onExternalDrop` + `claimed` settle, below) meets this on the current
+   line.
+   DashAI L0 (2026-09-21, `worker/dashai-drag-to-workspace`, against 26.9.1): **not met as an FSM claim** — 26.9.1 has no hook, so `POINTER_UP` still settles `cancel` and `DragCancelOverlay` still runs the 220 ms fly-back (`fromFootprint` → origin); the host records a claim on `pointerup` and hides `.dashai-tile[data-surface="drag-cancel"][data-drop-claimed]`. Residual only the hook closes: the FSM's seat fallback (`foldCommittableSeatFallback`, `SUSTAINED_NULL_SEAT_THRESHOLD = 2`) keeps the last in-tree seat through one null sample, so a release that reaches an external target on the next processed sample settles `commit` on that stale seat while the host also runs its drop. Closed by the `claimed` settle once DashAI adopts `onExternalDrop`.
 2. **Identity + point.** The event carries `sourceLeafId`, `tileId`, and the
    client point (`{ x, y }`); the scope needs nothing else to hit-test.
    DashAI L0 (2026-09-21, `worker/dashai-drag-to-workspace`): **met app-side, not via the hook** — `TileDragSource` in the ghost publishes the item; window `pointerup` supplies `{ x, y }`. `sourceLeafId` / `tileId` are not delivered (no hook event).
@@ -597,6 +599,42 @@ second edge:
 
 DashAI ships drag-to-tab on L0 now (§8 PR S1); the cut-over (§8 PR S3) moves it
 to L3 and deletes the host-side hit-test.
+
+#### Ghost mode (26.9.x standalone, forward-compatible subset)
+
+The 26.9.x line ships the L0 claim-before-settle + compact-ghost subset
+without the WorkspaceSet types, `TilingDragScope`, or external
+`DragResolvedTarget`. Hosts (DashAI today) keep hit-testing their own
+chrome and drive the engine through three additive `TilingRenderer` props
+plus one optional theme slot. This is the forward-compatible subset of
+the WorkspaceSet drag scope — L1/L3 will consume the same claim edge and
+the same chip presentation; they add registry hit-test and
+`moveLeafToWorkspace`, they do not replace this API.
+
+- **Ghost mode** — `dragGhostMode?: "footprint" | "compact" | "auto"`
+  (default `"footprint"` = today's tile-sized ghost, origin-offset from
+  the pickup grab). `"compact"` always paints a small chip anchored at
+  the pointer + 12,12 px. `"auto"` is `compact` while
+  `externalDragHover` is non-null and `footprint` otherwise. Footprint ↔
+  compact transitions over ~140 ms scale/opacity; `prefers-reduced-motion`
+  is instant. Same `overlayPortalContainer` as the footprint ghost;
+  `pointer-events: none`.
+- **Chip via theme slot** — `TilingTheme.ghostChip?: (ctx: {
+  leafId, title?, point, targetId? }) => ReactNode`. Host paints the chip
+  contents; the renderer wraps them in the cursor-anchored shell
+  (`data-drag-ghost-chip`, max-width clamped). Default is a minimal
+  neutral chip (tile title, else leaf id).
+- **Claim-before-settle callback** — `onExternalDrop?: (leafId, targetId,
+  point) => void` fires on release while `externalDragHover` is non-null,
+  **before** the FSM settles. The reducer marks the drag `claimed`
+  (`DragSettleOutcome` gains `"claimed"`); `DragCancelOverlay` is skipped.
+  Absent callback → existing cancel + 220 ms fly-back, even if hover is
+  set. This is §5.5 requirement 1 on this line.
+
+```ts
+externalDragHover?: { targetId: string; point: { x: number; y: number } } | null
+onExternalDrop?: (leafId: string, targetId: string, point: { x: number; y: number }) => void
+```
 
 ---
 

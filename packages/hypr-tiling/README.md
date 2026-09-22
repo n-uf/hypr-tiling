@@ -301,6 +301,38 @@ with `transform`, `filter`, `backdrop-filter`, `perspective`,
 those. The overlays still use window-relative client coordinates; a
 containing-block ancestor reintroduces ghost↔seat drift.
 
+### External drop targets & compact ghost
+
+When a tile is dragged over host chrome outside the tiling tree (a
+workspace tab strip, a chat panel), the host reports that hover and the
+ghost can collapse from the tile footprint to a small chip under the
+cursor. On release the host claims the leaf **before** the drag FSM
+settles, so the cancel fly-back does not run. This is the 26.9.x
+standalone subset of the WorkspaceSet drag scope — see
+[`_agent/workspace-set-concept.md`](../../_agent/workspace-set-concept.md)
+§5.5 (ghost mode).
+
+```tsx
+<TilingRenderer
+  dragGhostMode="auto"
+  externalDragHover={
+    tabOver ? { targetId: tabOver.id, point: tabOver.point } : null
+  }
+  onExternalDrop={(leafId, targetId, point) => {
+    moveItemToTab(leafId, targetId, point); // synchronous claim
+  }}
+  theme={{
+    ...baseTheme,
+    ghostChip: ({ title, leafId }) => <span>{title ?? leafId}</span>,
+  }}
+  /* … */
+/>
+```
+
+`"footprint"` (default) is today's tile-sized ghost. `"compact"` is
+always the chip. `"auto"` toggles on `externalDragHover`. Omit
+`onExternalDrop` and release still cancels with the fly-back.
+
 ## Features
 
 - **Drag/drop rearrange** — Hyprland-style live drag; the move commits on

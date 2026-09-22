@@ -8,6 +8,26 @@ the version number alone does not flag them.
 
 ## Unreleased
 
+Compact drag ghost + external-drop claim (26.9.x standalone subset of the
+WorkspaceSet drag scope). Additive; default drag behaviour is unchanged.
+
+- **`TilingRendererProps.dragGhostMode`** — `"footprint"` (default, today's
+  tile-sized ghost) | `"compact"` (always the cursor-anchored chip) |
+  `"auto"` (chip while `externalDragHover` is set, footprint otherwise).
+  Footprint ↔ compact transitions over ~140 ms scale/opacity;
+  `prefers-reduced-motion` is instant. Same `overlayPortalContainer` as
+  the footprint ghost.
+- **`TilingRendererProps.externalDragHover`** — host-reported
+  `{ targetId, point }` while the pointer is over chrome outside the
+  tiling tree. The engine does not hit-test host chrome.
+- **`TilingRendererProps.onExternalDrop`** — `(leafId, targetId, point)`
+  fired on release while hover is set, **before** the FSM settles. Marks
+  the drag `claimed` and skips `DragCancelOverlay`. Absent → existing
+  cancel + fly-back.
+- **Theme slot `TilingTheme.ghostChip`** — `(ctx: { leafId, title?,
+  point, targetId? }) => ReactNode`. Host paints the chip contents;
+  default is a minimal neutral chip (title / leaf id).
+
 Titlebar-only pane collapse, chrome-aware resize floors, and collapse-state
 events. **Two default-only breakages** — read the first two bullets.
 

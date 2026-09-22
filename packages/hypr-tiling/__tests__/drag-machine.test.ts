@@ -12,11 +12,14 @@ import {
   type DragResolvedTarget,
   type FrameScheduler,
   type TouchArmedMoveResolution,
+  compactGhostOrigin,
   createFrameCoalescer,
   deriveCandidateTree,
   dragMachineReducer,
+  DRAG_GHOST_COMPACT_OFFSET_PX,
   ghostFootprintAt,
   hasCrossedPickupThreshold,
+  resolveDragGhostPresentation,
   DEFAULT_DRAG_RERESOLVE_DELTA_PX,
   DEFAULT_DRAG_SLOT_COMMITMENT_MODE,
   isCommittableTarget,
@@ -158,6 +161,35 @@ describe("drag-machine — pickup threshold + ghost geometry", (): void => {
   });
 });
 
+describe("drag-machine — compact ghost presentation", (): void => {
+  const hover: { targetId: string; point: { x: number; y: number } } = {
+    targetId: "ws:ops",
+    point: { x: 40, y: 12 },
+  };
+
+  it("defaults to footprint (undefined mode, no hover)", (): void => {
+    expect(resolveDragGhostPresentation(undefined, null)).toBe("footprint");
+    expect(resolveDragGhostPresentation("footprint", hover)).toBe("footprint");
+  });
+
+  it("compact mode is always compact, hover or not", (): void => {
+    expect(resolveDragGhostPresentation("compact", null)).toBe("compact");
+    expect(resolveDragGhostPresentation("compact", hover)).toBe("compact");
+  });
+
+  it("auto mode is compact only while external hover is set", (): void => {
+    expect(resolveDragGhostPresentation("auto", null)).toBe("footprint");
+    expect(resolveDragGhostPresentation("auto", hover)).toBe("compact");
+  });
+
+  it("anchors the chip at the pointer plus the fixed offset", (): void => {
+    expect(compactGhostOrigin({ x: 100, y: 80 })).toEqual({
+      x: 100 + DRAG_GHOST_COMPACT_OFFSET_PX,
+      y: 80 + DRAG_GHOST_COMPACT_OFFSET_PX,
+    });
+  });
+});
+
 describe("drag-machine — lifecycle transitions", (): void => {
   it("idle + POINTER_DOWN → armed (nothing mounted yet)", (): void => {
     const state: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, pointerDown());
@@ -222,6 +254,31 @@ describe("drag-machine — lifecycle transitions", (): void => {
       expect(state.outcome).toBe("cancel");
       expect(state.resolvedTarget).toBeNull();
     }
+  });
+
+  it("dragging + POINTER_UP claimed → settling(claimed), no in-tree target carried", (): void => {
+    let state: DragMachineState = toDragging();
+    state = dragMachineReducer(state, {
+      type: "TARGET_RESOLVED",
+      pointerId: 1,
+      resolvedTarget: makeTarget("C", "center", "swap"),
+    });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1, claimed: true });
+    expect(state.phase).toBe("settling");
+    if (state.phase === "settling") {
+      expect(state.outcome).toBe("claimed");
+      expect(state.resolvedTarget).toBeNull();
+    }
+  });
+
+  it("claimed settle + SETTLE_DONE → idle", (): void => {
+    let state: DragMachineState = dragMachineReducer(toDragging(), {
+      type: "POINTER_UP",
+      pointerId: 1,
+      claimed: true,
+    });
+    state = dragMachineReducer(state, { type: "SETTLE_DONE" });
+    expect(state.phase).toBe("idle");
   });
 
   it("dragging + POINTER_UP over a 'none'-action target → settling(cancel)", (): void => {
