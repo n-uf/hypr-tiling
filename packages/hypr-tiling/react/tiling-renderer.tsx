@@ -27,13 +27,18 @@ import {
 import {
   activeDragSourceLeafId,
   activeResolvedTarget,
+  compactGhostOrigin,
   createFrameCoalescer,
   deriveCandidateTree,
+  DRAG_GHOST_COMPACT_MAX_WIDTH_PX,
+  DRAG_GHOST_COMPACT_TRANSITION_MS,
   presentationDragSourceLeafId,
   presentationResolvedTarget,
   previousZoneSeed,
   resolveDragCommitFocusLeafId,
+  resolveDragGhostPresentation,
   resolveDragGhostSeatLeafId,
+  type DragGhostPresentation,
   type DragMachinePoint,
   type DragMachineState,
   type DragPointerType,
@@ -222,6 +227,9 @@ import type {
   TilingDragCancelVisualState,
   TilingDragPaneSnapshot,
   TilingDragVisualState,
+  TilingExternalDragHover,
+  TilingGhostChipContext,
+  TilingOnExternalDrop,
   TilingDropIntentDebugState,
   TilingFocusDirection,
   TilingGroupMemberView,
@@ -1687,6 +1695,9 @@ function DragPaneOverlay({
   renderTile,
   ghostPaneOrdinal,
   ghostCapabilityFlags,
+  ghostPresentation,
+  compactPoint,
+  compactTargetId,
 }: {
   dragVisualState: TilingDragVisualState | null;
   dragHopDurationMs: number;
@@ -1720,6 +1731,12 @@ function DragPaneOverlay({
    * vanish mid-drag.
    */
   ghostCapabilityFlags: GhostTileCapabilityFlags;
+  /** Painted ghost shape — footprint tile vs cursor-anchored compact chip. */
+  ghostPresentation: DragGhostPresentation;
+  /** Cursor (or host-reported hover) point the compact chip anchors to. */
+  compactPoint: DragMachinePoint | null;
+  /** External target id while hovering one; omitted otherwise. */
+  compactTargetId: string | undefined;
 }): React.ReactElement | null {
   const theme: TilingTheme = useTilingTheme();
   const nodeRef = React.useRef<HTMLDivElement | null>(null);
@@ -1983,8 +2000,28 @@ function DragPaneOverlay({
     "drag-ghost",
     ghostCapabilityFlags,
   );
+  const compact: boolean = ghostPresentation === "compact";
+  const chipPoint: DragMachinePoint = compactGhostOrigin(
+    compactPoint ?? {
+      x: baseRect.left + dragVisualState.pointerAnchorOffsetX,
+      y: baseRect.top + dragVisualState.pointerAnchorOffsetY,
+    },
+  );
+  const chipCtx: TilingGhostChipContext = {
+    leafId: dragVisualState.sourceLeafId,
+    title: snapshot.title,
+    point: compactPoint ?? {
+      x: baseRect.left + dragVisualState.pointerAnchorOffsetX,
+      y: baseRect.top + dragVisualState.pointerAnchorOffsetY,
+    },
+    targetId: compactTargetId,
+  };
+  const compactTransition: string = prefersReducedMotion
+    ? "none"
+    : `transform ${DRAG_GHOST_COMPACT_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity ${DRAG_GHOST_COMPACT_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`;
   return (
     <OverlayPortal>
+      <>
       <div
         ref={nodeRef}
         className="pointer-events-none fixed left-0 top-0"
@@ -1996,6 +2033,7 @@ function DragPaneOverlay({
           zIndex: DRAG_PANE_OVERLAY_Z_INDEX,
         }}
         data-drag-ghost
+        data-drag-ghost-mode={ghostPresentation}
         aria-hidden
       >
         <div
@@ -2003,20 +2041,64 @@ function DragPaneOverlay({
           // chrome (`dragChrome.ghostLifted` while free-following,
           // `ghostSeated` once seated in the hop-in slot); the pane shell
           // inside is `theme.ghost.surface` (default tile) or the host's own
-          // chrome (custom `renderTile`). No renderer-owned scale / shadow.
+          // chrome (custom `renderTile`). Compact collapse (scale/opacity)
+          // lives HERE so it does not fight the FLIP `transform` on the
+          // outer node.
           className={cn(
             "h-full w-full",
             lifted ? dragChrome.ghostLifted : dragChrome.ghostSeated,
             prefersReducedMotion ? "" : dragChrome.ghostTransition,
           )}
           data-drag-ghost-wrapper
+          style={{
+            opacity: compact ? 0 : 1,
+            transform: compact ? "scale(0.2)" : undefined,
+            transformOrigin: `${dragVisualState.pointerAnchorOffsetX}px ${dragVisualState.pointerAnchorOffsetY}px`,
+            transition: compactTransition,
+          }}
         >
           {renderTile == null
             ? renderDragPaneShell(snapshot, theme, isPaneContentVisible)
             : renderTile(ghostTileArgs)}
         </div>
       </div>
+      <div
+        className="pointer-events-none fixed left-0 top-0"
+        style={{
+          left: chipPoint.x,
+          top: chipPoint.y,
+          maxWidth: DRAG_GHOST_COMPACT_MAX_WIDTH_PX,
+          zIndex: DRAG_PANE_OVERLAY_Z_INDEX,
+          opacity: compact ? 1 : 0,
+          transform: compact ? "scale(1)" : "scale(0.85)",
+          transformOrigin: "0 0",
+          transition: compactTransition,
+        }}
+        data-drag-ghost-chip
+        data-drag-ghost-mode={ghostPresentation}
+        data-drag-ghost-target={compactTargetId}
+        aria-hidden
+      >
+        {theme.ghostChip != null
+          ? theme.ghostChip(chipCtx)
+          : <DefaultGhostChip leafId={chipCtx.leafId} title={chipCtx.title} />}
+      </div>
+      </>
     </OverlayPortal>
+  );
+}
+
+function DefaultGhostChip({
+  leafId,
+  title,
+}: {
+  leafId: string;
+  title?: string;
+}): React.ReactElement {
+  return (
+    <div className="truncate rounded-md border border-neutral-400/30 bg-neutral-900/90 px-2 py-1 text-xs text-neutral-100 shadow-md">
+      {title ?? leafId}
+    </div>
   );
 }
 
@@ -2364,6 +2446,7 @@ function DragCancelOverlay({
           zIndex: DRAG_CANCEL_OVERLAY_Z_INDEX,
         }}
         aria-hidden
+        data-drag-cancel
       >
         <div
           className={cn("h-full w-full", resolveDragChrome(theme).cancelFlyBack)}
@@ -4333,6 +4416,9 @@ const TilingRendererComponent = React.forwardRef<
     onDropIntentChange,
     onLiveHitLogChange,
     overlayPortalContainer,
+    dragGhostMode = "footprint",
+    externalDragHover = null,
+    onExternalDrop,
   }: TilingRendererProps & TilingRendererObservabilityProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
 ): React.ReactElement {
@@ -4347,6 +4433,14 @@ const TilingRendererComponent = React.forwardRef<
   onLayoutChangeRef.current = onLayoutChange;
   const onPaneCollapsedChangeRef = React.useRef(onPaneCollapsedChange);
   onPaneCollapsedChangeRef.current = onPaneCollapsedChange;
+  const externalDragHoverRef = React.useRef<TilingExternalDragHover | null>(
+    externalDragHover ?? null,
+  );
+  externalDragHoverRef.current = externalDragHover ?? null;
+  const onExternalDropRef = React.useRef<TilingOnExternalDrop | undefined>(
+    onExternalDrop,
+  );
+  onExternalDropRef.current = onExternalDrop;
 
   // Single choke point for every layout edit (HT-PANE-COLLAPSE-EVENTS): reports
   // the edit via `onLayoutChange`, THEN diffs the whole tree's collapse truth
@@ -4800,7 +4894,11 @@ const TilingRendererComponent = React.forwardRef<
   const presentationDropState: TilingDropState | null =
     presentationResolvedTarget(dragState);
   const dragSettlingOutcome: "commit" | "cancel" | null =
-    dragState.phase === "settling" ? dragState.outcome : null;
+    dragState.phase === "settling"
+      ? dragState.outcome === "claimed"
+        ? "cancel"
+        : dragState.outcome
+      : null;
   // A drag gesture is materially in flight whenever the FSM is NOT idle
   // (`armed` / `dragging` / `settling`). Drives the `select-none` gate on the
   // tiling root so the browser cannot run its native pointer-drag text
@@ -5144,10 +5242,20 @@ const TilingRendererComponent = React.forwardRef<
         dragState.resolvedTarget,
       );
     }, [dragState, layout, liveDragModeEnabled]);
+  // Claimed settle: hold the gap-closed tree (source already detached) so the
+  // leaf does not flash back while the host's synchronous `onExternalDrop`
+  // layout update lands. `removeLeafTile` is a no-op if the host already
+  // removed it in the same tick.
+  const settlingClaimedHold: TilingLayoutNode | null =
+    liveDragModeEnabled &&
+    dragState.phase === "settling" &&
+    dragState.outcome === "claimed"
+      ? removeLeafTile(layout, dragState.sourceLeafId)
+      : null;
   const displayLayout: TilingLayoutNode =
     liveDragModeEnabled && dragSourceLeafId != null
       ? liveCandidateDisplayLayout
-      : (settlingCommitCandidate ?? layout);
+      : (settlingCommitCandidate ?? settlingClaimedHold ?? layout);
   // During a live drag (and the brief cancel-settle glide tail) the structural
   // layout containers go `overflow-visible` so gliding survivors are not clipped
   // by their own slot mid-FLIP. Only flips the structural divs — the article
@@ -5172,6 +5280,21 @@ const TilingRendererComponent = React.forwardRef<
         snapshot: dragSnapshotRef.current,
       };
     }, [dragState, seatFootprint]);
+  const ghostPresentation: DragGhostPresentation = resolveDragGhostPresentation(
+    dragGhostMode,
+    externalDragHover,
+  );
+  const compactGhostPoint: DragMachinePoint | null =
+    dragVisualState == null
+      ? null
+      : (externalDragHover?.point ?? {
+          x:
+            dragVisualState.activeFootprint.left +
+            dragVisualState.pointerAnchorOffsetX,
+          y:
+            dragVisualState.activeFootprint.top +
+            dragVisualState.pointerAnchorOffsetY,
+        });
   // Custom drag cursor (tier "c"): a transform-pinned element that REPLACES the
   // OS cursor during a live drag. Gated on the public-API capability flag + live mode;
   // the presentation is derived from the SAME FSM-resolved target the ghost /
@@ -7438,6 +7561,27 @@ const TilingRendererComponent = React.forwardRef<
           true,
         );
       }
+      // §5.5 claim-before-settle: if the host has an external hover AND a
+      // claim callback, fire it synchronously then settle `claimed` so
+      // `DragCancelOverlay` never mounts. Absent callback → existing cancel.
+      const hover: TilingExternalDragHover | null =
+        externalDragHoverRef.current;
+      const onDrop: TilingOnExternalDrop | undefined =
+        onExternalDropRef.current;
+      const claimState: DragMachineState = dragStateRef.current;
+      if (
+        hover != null &&
+        onDrop != null &&
+        claimState.phase === "dragging"
+      ) {
+        onDrop(claimState.sourceLeafId, hover.targetId, hover.point);
+        dispatchDrag({
+          type: "POINTER_UP",
+          pointerId: owningPointerId,
+          claimed: true,
+        });
+        return;
+      }
       dispatchDrag({ type: "POINTER_UP", pointerId: owningPointerId });
     };
     const handlePointerCancel = (event: PointerEvent): void => {
@@ -7606,6 +7750,8 @@ const TilingRendererComponent = React.forwardRef<
       if (committedFocusLeafId != null) {
         setFocusedLeaf(committedFocusLeafId);
       }
+    } else if (dragState.outcome === "claimed") {
+      // Host claimed synchronously via `onExternalDrop`; skip the fly-back.
     } else if (dragSnapshotRef.current != null) {
       beginCancelFlyBackAnimation({
         sourceLeafId: dragState.sourceLeafId,
@@ -9124,6 +9270,9 @@ const TilingRendererComponent = React.forwardRef<
                 ? Math.max(1, leafIds.indexOf(dragVisualState.sourceLeafId) + 1)
                 : 1
             }
+            ghostPresentation={ghostPresentation}
+            compactPoint={compactGhostPoint}
+            compactTargetId={externalDragHover?.targetId}
           />
           {dragCursorEnabled ? (
             <DragCursorOverlay
