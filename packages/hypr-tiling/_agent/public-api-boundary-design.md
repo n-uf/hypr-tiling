@@ -96,6 +96,7 @@ packages/hypr-tiling/
 │   ├── drag-cursor.ts, interaction-capabilities.ts, drop-intent-resolver.ts,
 │   ├── drag-machine.ts, drag-recovery.ts, survivor-reflow.ts, ghost-transit.ts,
 │   ├── leaf-geometry.ts, drop-validity.ts, projected-layout.ts, drag-presentation.ts,
+│   ├── accent-hues.ts (accent palette + `accentHue`), drag-timing.ts (drag reference durations),
 │   └── controller.ts + *-port.ts (FSM driver + host ports — stay @internal)
 ├── react/          # renderer + host adapters (the React host layer)
 │   ├── tiling-renderer.tsx  (TilingRenderer, "use client")
@@ -107,9 +108,13 @@ packages/hypr-tiling/
 ```
 
 Dependency direction (enforced by the Stage-6 lint): `react/` → `engine/`;
-`index.ts`/`devtools.ts`/`engine.ts` → both; **`engine/` never imports
+`index.ts`/`devtools.ts` → both; **`engine.ts` and `engine/` never import
 `react/`**. The facade reaches React symbols only through `react/` (never a
-direct engine→react hop).
+direct engine→react hop). The `engine.ts` entry is part of the engine layer:
+26.10.0 re-exported `accentHue` / `BASELINE_DRAG_HOP_DURATION_MS` /
+`INSTANT_DRAG_DURATION_MS` from `react/`, which dragged the whole renderer into
+`dist/engine.mjs` and broke react-server consumers (26.10.1 moved that pure
+data to `engine/accent-hues.ts` + `engine/drag-timing.ts`).
 
 ---
 
@@ -123,14 +128,16 @@ Classification axis: **consumer-public** (stays/promoted on `.`), **engine**
 | Symbol | Source | Why consumer-grade |
 |---|---|---|
 | `TilingRenderer` | react/tiling-renderer | the renderer component |
-| `TilingThemeProvider`, `useTilingTheme`, `resolveTilingTheme`, `accentHue` | react/theme | theming API |
+| `TilingThemeProvider`, `useTilingTheme`, `resolveTilingTheme` | react/theme | theming API |
+| `accentHue` | engine/accent-hues | accent → hue atoms (pure; also on `./engine`) |
 | `DEFAULT_TILING_THEME_ID`, `TILING_THEMES`, `TILING_THEME_REGISTRY` | react/theme | theme catalog |
-| `DEFAULT_TILE_ACCENT`, `TILING_TILE_ACCENTS`, `TILING_TILE_ACCENT_SWATCHES`, `TILING_ACCENT_HUES` | react/theme | accent catalog |
+| `DEFAULT_TILE_ACCENT`, `TILING_TILE_ACCENTS`, `TILING_TILE_ACCENT_SWATCHES`, `TILING_ACCENT_HUES` | engine/accent-hues | accent catalog (pure data) |
 | `DEFAULT_TILING_LAYOUT_CONFIG` | react/tiling-renderer | config default (dogfooded) |
 | `TILING_DASHBOARD_PRESET`, `TILING_INTERACTION_CAPABILITY_DEFAULTS` | engine/interaction-capabilities | interaction presets/defaults |
 | `resolveInteractionCapabilities` | engine/interaction-capabilities | **PROMOTE** — resolve caps to read keymap/gates (dogfooded ×2) |
 | `DEFAULT_DRAG_HOP_EASING`, `DEFAULT_DRAG_REFLOW_EASING` | engine/drag-easing | drag-prop easing defaults (dogfooded) |
-| `DEFAULT_DRAG_ANIMATION_SPEED_PERCENT`, `DRAG_ANIMATION_SPEED_MIN_PERCENT`, `DRAG_ANIMATION_SPEED_MAX_PERCENT`, `BASELINE_DRAG_HOP_DURATION_MS`, `INSTANT_DRAG_DURATION_MS` | react/tiling-renderer | drag-prop tuning bounds/defaults |
+| `DEFAULT_DRAG_ANIMATION_SPEED_PERCENT`, `DRAG_ANIMATION_SPEED_MIN_PERCENT`, `DRAG_ANIMATION_SPEED_MAX_PERCENT` | react/tiling-renderer | drag-prop tuning bounds/defaults |
+| `BASELINE_DRAG_HOP_DURATION_MS`, `INSTANT_DRAG_DURATION_MS` | engine/drag-timing | drag reference durations (pure; on `./engine` only since the demotion) |
 | `isCommandEnabled` | engine/commands | **PROMOTE** — gate a command against caps (dogfooded) |
 | `resolveJumpedPaneId` | engine/pane-switching | **PROMOTE** — pane-number → leaf id (dogfooded) |
 | `isMultiSelectModifierActive` | engine/multi-selection | **PROMOTE** — Alt/Opt multi-select modifier test (dogfooded) |
@@ -260,10 +267,20 @@ deliberate power-user escape.
 
 ## 6. Multi-entry build & reports
 
-- **tsup**: 3 entries (`index`, `devtools`, `engine`), `format: [esm, cjs]`,
-  `dts: true`, `external: [react, react-dom]`. `"use client"` preserved on the
-  `.` and `/devtools` outputs (both re-export React host modules); `./engine`
-  stays server-safe (pure logic, no directive).
+- **tsup**: TWO build configurations (array export in `tsup.config.ts`), both
+  `format: [esm, cjs]`, `dts: true`, `external: [react, react-dom]`:
+  `{ entry: [index, devtools] }` with code splitting (they share the renderer
+  chunk), and `{ entry: [engine], splitting: false }` so `dist/engine.{mjs,cjs}`
+  is a standalone bundle that shares NO chunk with the React entries. A single
+  three-entry config let esbuild hoist the renderer (`createContext`, hooks,
+  theme) into a chunk `engine.mjs` imported at load — the 26.10.0
+  `createContext is not a function` failure in Next.js route handlers. Neither
+  config uses `clean: true` (they run concurrently; one clean would race the
+  other's output) — `pnpm build` is `rm -rf dist && tsup`. `"use client"`
+  preserved on the `.` and `/devtools` outputs (both re-export React host
+  modules); `./engine` stays server-safe (pure logic, no directive, no React
+  import). Built-artifact guard: `__tests__/engine-entry-react-free.test.ts`
+  (`pnpm test:dist`, runs after build in CI and in `prepublishOnly`).
 - **`package.json#exports`**: `.` / `./devtools` / `./engine`, each with
   `types` + `import` + `require`.
 - **API Extractor is single-entry** → 3 configs
@@ -302,8 +319,10 @@ invariants are enforced by a dependency-free
 is a deliberate deviation from the `import/no-restricted-paths` wording; the
 enforced invariants are identical.
 
-- **Layering (engine ↛ react)**: `engine/**` must not **value**-import
-  `react`/`react-dom` or reach into `react/`. Type-only imports
+- **Layering (engine ↛ react)**: `engine/**` AND the `engine.ts` entry file
+  must not **value**-import `react`/`react-dom` or reach into `react/` (the
+  entry was added to the scan in 26.10.1 after it re-exported three `react/`
+  symbols unnoticed). Type-only imports
   (`import type * as React` for `React.ReactNode` in a prop DTO — as in
   `engine/types.ts`) are **allowed**: they are erased at build and create no
   runtime framework edge, so the engine stays framework-free at runtime.
@@ -326,7 +345,9 @@ enforced invariants are identical.
 - **CI** (`.github/workflows/ci.yml`, extended not duplicated): the existing
   `api:check` step now runs all 3 entry configs; the `api:docs` drift gate is
   unchanged; a new **Architectural guardrails** step runs `check:guardrails`
-  after build (so the `dist/index.mjs` assertion has an artifact).
+  after build (so the `dist/index.mjs` assertion has an artifact); a
+  **Built-artifact tests** step runs `test:dist` (the `./engine` React-free
+  guard) against the same build.
 
 ---
 

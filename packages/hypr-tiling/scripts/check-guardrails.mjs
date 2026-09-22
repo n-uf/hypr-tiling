@@ -3,9 +3,11 @@
 // generate-api-docs.mjs). Enforces three invariants that the entry-point model
 // depends on and that a plain type/build gate cannot catch:
 //
-//   1. LAYERING (engine ↛ react): `engine/**` is the framework-free layer. It
-//      must never import React / react-dom or reach up into `react/`. The
-//      renderer depends on the engine, never the reverse.
+//   1. LAYERING (engine ↛ react): `engine/**` plus the `engine.ts` entry is the
+//      framework-free layer. It must never import React / react-dom or reach
+//      up into `react/`. The renderer depends on the engine, never the reverse.
+//      (The built-artifact side of the same invariant — `dist/engine.*` shares
+//      no chunk with the React entries — is `__tests__/engine-entry-react-free`.)
 //   2. NO DEEP CONSUMER IMPORTS: apps/packages that consume `@n-uf/hypr-tiling`
 //      must go through a published entry — `@n-uf/hypr-tiling`,
 //      `.../devtools`, or `.../engine` — never a deep path
@@ -80,8 +82,12 @@ function importSpecifiers(fileText) {
 }
 
 // ── Rule 1: engine ↛ react (framework-free engine layer) ──────────────────────
+// Covers `engine/**` AND the `engine.ts` entry file itself: the entry is what
+// `dist/engine.{mjs,cjs}` is built from, so a `react/` re-export there drags the
+// React renderer into the server-safe bundle (26.10.0 shipped exactly that).
 const engineDir = resolve(packageDir, "engine");
-for (const file of collectSources(engineDir)) {
+const engineEntry = resolve(packageDir, "engine.ts");
+for (const file of [engineEntry, ...collectSources(engineDir)]) {
   const text = readFileSync(file, "utf8");
   for (const { spec, typeOnly } of importSpecifiers(text)) {
     // Type-only imports (e.g. `import type * as React` for `React.ReactNode` in
@@ -99,7 +105,7 @@ for (const file of collectSources(engineDir)) {
       /(^|\/)\.\/react(\/|$)/.test(spec);
     if (reachesReact) {
       violations.push(
-        `layering: engine/ value-imports React/react-dom or reaches into react/ — ${relative(repoRoot, file)} imports "${spec}". The engine layer must stay framework-free at runtime (type-only imports are allowed).`,
+        `layering: engine layer value-imports React/react-dom or reaches into react/ — ${relative(repoRoot, file)} imports "${spec}". The engine layer (engine/** and the engine.ts entry) must stay framework-free at runtime (type-only imports are allowed).`,
       );
     }
   }

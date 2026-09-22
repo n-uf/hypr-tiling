@@ -10,15 +10,22 @@
  * (`@n-uf/hypr-tiling`) — reach for `./engine` only when the curated surface
  * genuinely cannot express what you need.
  *
- * The engine core is framework-free (no React, no DOM): the renderer lives on
- * `.`. The single exception is the small "demoted from `.`" group at the bottom
- * of this file — `accentHue` and the two drag-duration reference constants
- * (`BASELINE_DRAG_HOP_DURATION_MS`, `INSTANT_DRAG_DURATION_MS`). They were pulled
- * off the consumer `.` surface (custom-chrome / prop-less internal tuning, not
- * dogfooded by any renderer prop a consumer sets) and re-exported here for power
- * users who still want them. They live in the `react/` layer, so importing one
- * pulls React into your bundle; leave them unimported and tree-shaking drops the
- * edge, keeping the rest of `./engine` framework-free.
+ * This entry is framework-free (no React, no DOM) — in SOURCE and in the BUILT
+ * artifact. Every module reachable from here lives under `engine/`; the renderer
+ * lives on `.`. `dist/engine.{mjs,cjs}` is built as a standalone bundle that
+ * shares no chunk with `.` / `./devtools`, so importing it from a server or
+ * react-server layer (Next.js route handlers, RSC) never evaluates
+ * `react.createContext` or any hook. Guarded by
+ * `__tests__/engine-entry-react-free.test.ts` (`pnpm test:dist`) and the
+ * `engine ↛ react` layering rule in `scripts/check-guardrails.mjs`.
+ *
+ * The small "demoted from `.`" group at the bottom of this file — `accentHue`
+ * and the two drag-duration reference constants (`BASELINE_DRAG_HOP_DURATION_MS`,
+ * `INSTANT_DRAG_DURATION_MS`) — was pulled off the consumer `.` surface
+ * (custom-chrome / prop-less internal tuning, not dogfooded by any renderer prop
+ * a consumer sets) and is re-exported here for power users. It is pure data and
+ * lives in `engine/` (`accent-hues.ts`, `drag-timing.ts`); the React theme
+ * engine and renderer import it from there.
  *
  * @packageDocumentation
  */
@@ -213,16 +220,17 @@ export type {
   TilingPaneSwitcherState,
 } from "./engine/types";
 
-// ── Demoted from the `.` consumer surface (react/-backed; see @packageDocumentation) ─
+// ── Demoted from the `.` consumer surface (see @packageDocumentation) ──────────
 // Reachable here for power users, but off the curated consumer API and its docs.
 // `accentHue` resolves an accent to its Tailwind hue atoms (custom-chrome helper,
 // not dogfooded by any renderer prop). The two duration constants are the
 // prop-less internal reference values behind the drag-animation timing — the
 // consumer-facing knobs (`dragAnimationEnabled`, `ghostTransitSpeedPercent`,
 // `survivorReflowSpeedPercent`, and the `DRAG_ANIMATION_SPEED_*` percents) stay
-// on `.`.
-export { accentHue, type TilingAccentHue } from "./react/theme";
+// on `.`. Both modules are pure (no React) — this entry must never import from
+// `react/`.
+export { accentHue, type TilingAccentHue } from "./engine/accent-hues";
 export {
   BASELINE_DRAG_HOP_DURATION_MS,
   INSTANT_DRAG_DURATION_MS,
-} from "./react/tiling-renderer";
+} from "./engine/drag-timing";

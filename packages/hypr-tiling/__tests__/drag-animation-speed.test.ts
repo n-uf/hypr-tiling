@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
+import { BASELINE_DRAG_HOP_DURATION_MS } from "../engine/drag-timing";
 import {
-  BASELINE_DRAG_HOP_DURATION_MS,
   DRAG_ANIMATION_SPEED_MAX_PERCENT,
   DRAG_ANIMATION_SPEED_MIN_PERCENT,
   dragSpeedsAtParity,

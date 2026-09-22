@@ -4,6 +4,12 @@ module.exports = {
   testEnvironment: "node",
   roots: ["<rootDir>"],
   testMatch: ["**/__tests__/**/*.test.ts"],
+  // Built-artifact tests assert against `dist/` and belong to `pnpm test:dist`
+  // (jest.dist.config.js), which runs after `pnpm build`.
+  testPathIgnorePatterns: [
+    "/node_modules/",
+    "/__tests__/engine-entry-react-free\\.test\\.ts$",
+  ],
   transform: {
     "^.+\\.tsx?$": [
       "ts-jest",

@@ -44,6 +44,13 @@ jobs:
       - name: Architectural guardrails (layering + use-client)
         run: pnpm --filter @n-uf/hypr-tiling check:guardrails
 
+      # Built-artifact tests: the `./engine` entry (dist/engine.{mjs,cjs}) must
+      # stay React-free — no shared chunk with the React entries, no
+      # createContext / `from "react"` marker, importable in a bare Node process
+      # where `react` is unresolvable. Runs against the build above.
+      - name: Built-artifact tests (engine entry React-free)
+        run: pnpm --filter @n-uf/hypr-tiling test:dist
+
       # Generated API reference must not drift from the source TSDoc: regenerate
       # and fail on any diff to the committed snapshot.
       - name: API docs snapshot up to date

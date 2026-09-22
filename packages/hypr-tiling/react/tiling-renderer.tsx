@@ -284,9 +284,13 @@ import { cn } from "./cn";
 import { createDomMeasurementPort } from "./dom-measurement-port";
 import { createDomPointerCapturePort } from "./dom-pointer-capture-port";
 import { createDomStyleApplierPort } from "./dom-style-applier-port";
+import { TILING_TILE_ACCENT_SWATCHES } from "../engine/accent-hues";
+import {
+  BASELINE_DRAG_HOP_DURATION_MS,
+  INSTANT_DRAG_DURATION_MS,
+} from "../engine/drag-timing";
 import {
   TILING_THEMES,
-  TILING_TILE_ACCENT_SWATCHES,
   TilingThemeProvider,
   resolveDragChrome,
   resolvePaneDropAffordanceClasses,
@@ -411,8 +415,6 @@ export const DEFAULT_TILING_LAYOUT_CONFIG: TilingLayoutConfig = {
   handleSizePx: 4,
 };
 
-/** Baseline ghost-hop / survivor-reflow duration at `DEFAULT_DRAG_ANIMATION_SPEED_PERCENT`. */
-export const BASELINE_DRAG_HOP_DURATION_MS: number = 170;
 /** Default drag animation speed percent (`100` = the baseline duration). */
 export const DEFAULT_DRAG_ANIMATION_SPEED_PERCENT: number = 100;
 
@@ -446,9 +448,6 @@ export function resolveDragAnimationDurationMs(speedPercent: number): number {
  * are bridged to `requestFrame`/`cancelFrame` at the coalescer call-site.
  */
 const WINDOW_SCHEDULER_PORT: SchedulerPort = createWindowSchedulerPort();
-
-/** Duration the drag-motion timings collapse to when `dragAnimationEnabled` is `false`. */
-export const INSTANT_DRAG_DURATION_MS: number = 1;
 
 /**
  * Whether the ghost transit speed and the survivor reflow speed resolve to EQUAL

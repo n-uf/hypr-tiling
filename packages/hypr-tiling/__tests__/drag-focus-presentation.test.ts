@@ -12,9 +12,9 @@ import {
   type GhostTileCapabilityFlags,
 } from "../react/tiling-renderer";
 import { resolveDragCommitFocusLeafId } from "../engine/drag-machine";
+import { accentHue } from "../engine/accent-hues";
 import {
   TILING_THEME_REGISTRY,
-  accentHue,
   resolveDragChrome,
   resolvePaneDropAffordanceClasses,
   type PaneDropAffordanceFlags,

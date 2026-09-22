@@ -55,17 +55,19 @@ export {
 // ── Theming ──────────────────────────────────────────────────────────────────
 export {
   DEFAULT_TILE_ACCENT,
-  DEFAULT_TILING_THEME_ID,
   TILING_TILE_ACCENTS,
   TILING_TILE_ACCENT_SWATCHES,
   TILING_ACCENT_HUES,
+  type TilingAccentHue,
+} from "./engine/accent-hues";
+export {
+  DEFAULT_TILING_THEME_ID,
   TILING_THEMES,
   TILING_THEME_REGISTRY,
   TilingThemeProvider,
   resolveDragChrome,
   resolveTilingTheme,
   useTilingTheme,
-  type TilingAccentHue,
   type TilingTheme,
   type TilingThemeDividerTokens,
   type TilingThemeDragChromeTokens,

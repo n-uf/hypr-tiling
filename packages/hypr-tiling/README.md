@@ -35,6 +35,24 @@ yarn add @n-uf/hypr-tiling react react-dom
 
 `react` and `react-dom` are peer dependencies (version `^19`).
 
+## Entry points
+
+| Import | Contents | React |
+|---|---|---|
+| `@n-uf/hypr-tiling` | `TilingRenderer`, theming, the curated public API | yes — `"use client"` module |
+| `@n-uf/hypr-tiling/devtools` | observability panel and drag telemetry props | yes — `"use client"` module |
+| `@n-uf/hypr-tiling/engine` | the pure layout / workspace-set / keymap engine (`@beta`) | **no** |
+
+`./engine` is React-free and isomorphic: `dist/engine.{mjs,cjs}` is built as a
+standalone bundle that shares no chunk with the two React entries and never
+imports `react` / `react-dom`, so it is safe to import from server code and
+react-server layers (Next.js route handlers, Server Components, Node scripts).
+The invariant is guarded on every build by
+`__tests__/engine-entry-react-free.test.ts` (`pnpm test:dist`: static scan of
+the emitted bundle for `createContext` / `from "react"` markers plus a bare-Node
+import with `react` made unresolvable) and by the `engine ↛ react` layering rule
+in `scripts/check-guardrails.mjs`.
+
 ## Compatibility
 
 - React: `^19`
