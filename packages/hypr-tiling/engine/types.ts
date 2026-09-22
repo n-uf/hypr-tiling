@@ -1957,6 +1957,40 @@ export interface TilingLeafDropPreview {
   partnerLeafId: string;
 }
 
+/**
+ * Where a leaf is seated when it enters a tree — the placement vocabulary the
+ * workspace-set ops (`moveLeafToWorkspace`, `showInWorkspace`, orphan repair)
+ * and the engine's `insertLeafInto` share. Each variant maps onto one existing
+ * tree reducer's insert half:
+ *
+ * - `root` — a new root-level split on the current root's axis, the leaf on
+ *   `side` (`moveLeafToRoot`). The one placement that exists in every tree;
+ *   the default is `{ kind: "root", side: "second" }` (reading order: last).
+ * - `adjacent` — beside `targetLeafId` on `placement`'s side, wrapping both in
+ *   a new split (`insertLeafAdjacent`).
+ * - `split-container` — into the existing split `splitId` on `side`
+ *   (`moveLeafToSplitContainer`).
+ * - `group` — appended as the active member of group `groupId`
+ *   (`addLeafToGroup`).
+ *
+ * A placement whose target (leaf / split / group id) is absent from the
+ * destination tree falls back to `{ kind: "root", side: "second" }`; a `null`
+ * destination becomes the bare leaf.
+ */
+export type TilingWorkspacePlacement =
+  | { readonly kind: "root"; readonly side: "first" | "second" }
+  | {
+      readonly kind: "adjacent";
+      readonly targetLeafId: string;
+      readonly placement: TilingMovePlacement;
+    }
+  | {
+      readonly kind: "split-container";
+      readonly splitId: string;
+      readonly side: "first" | "second";
+    }
+  | { readonly kind: "group"; readonly groupId: string };
+
 /** Options controlling how `insertLeafAdjacent` places an inserted leaf. */
 export interface TilingInsertionOptions {
   /** When `true`, reuse the parent split's axis instead of the placement axis. */

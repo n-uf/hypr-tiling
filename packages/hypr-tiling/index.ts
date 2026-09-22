@@ -95,6 +95,46 @@ export {
 } from "./engine/multi-selection";
 export { queryTilingLayout, type TilingLayoutQuery } from "./engine/state";
 
+// ── Workspace set ────────────────────────────────────────────────────────────
+// Several layout trees over one tile pool, one active (`TilingWorkspaceSet`).
+// Pure ops a host drives from its own chrome (tabs, menus, chat tools) and
+// feeds back through `TilingRendererProps.workspaces` / `onWorkspacesChange`.
+// Also exported on `./engine` (server-safe alias, same symbols) — covered by
+// the `.` stability contract whichever entry imports them.
+export {
+  TILING_DEFAULT_WORKSPACE_PLACEMENT,
+  TILING_MAIN_WORKSPACE_ID,
+  TILING_MAIN_WORKSPACE_NAME,
+  TILING_WORKSPACES_MAX,
+  TILING_WORKSPACE_NAME_MAX_CHARS,
+  createWorkspace,
+  cycleWorkspace,
+  deleteWorkspace,
+  hideFromWorkspace,
+  moveLeafToWorkspace,
+  normalizeWorkspaceName,
+  queryWorkspaceSet,
+  renameWorkspace,
+  repairWorkspaceSet,
+  setWorkspaceLayout,
+  showInWorkspace,
+  switchWorkspace,
+  workspaceSetIssues,
+  workspaceSetOfLayout,
+  type CreateWorkspaceInput,
+  type RepairWorkspaceSetOptions,
+  type TilingDeleteWorkspaceResult,
+  type TilingWorkspace,
+  type TilingWorkspaceId,
+  type TilingWorkspaceSet,
+  type TilingWorkspaceSetIssue,
+  type TilingWorkspaceSetIssueKind,
+  type TilingWorkspaceSetQuery,
+  type TilingWorkspaceSetRepairReason,
+  type TilingWorkspaceSetRepairResult,
+  type WorkspaceSetIntegrityOptions,
+} from "./engine/workspace-set";
+
 // ── Persisted-layout adapter ─────────────────────────────────────────────────
 // Optional glue that persists ONLY the layout tree (localStorage by default)
 // and delegates every heal to the engine's first-class `assertLayoutIntegrity`
@@ -132,6 +172,7 @@ export type {
   TilingMovePlacement,
   TilingFocusDirection,
   TilingPaneCycleDirection,
+  TilingWorkspacePlacement,
   // Tiles & accents
   TilingTile,
   TilingTileAccent,

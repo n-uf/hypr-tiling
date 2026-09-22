@@ -20,6 +20,7 @@ import type {
   TilingPaneCollapsedChangeEvent,
   TilingPaneCycleDirection,
   TilingPaneSizing,
+  TilingWorkspacePlacement,
 } from "./types";
 
 /** Soft structural bounds for master-ratio nudges / insertion defaults. */
@@ -995,12 +996,25 @@ function resolveInsertionAxis(
   return parentSplit.axis;
 }
 
-interface ExtractedLeafResult {
+/**
+ * The result of {@link extractLeafNode}: the gap-closed remainder (`null` when
+ * the extracted leaf was the whole tree) and the leaf that was pulled out
+ * (`null` when `leafId` was absent — then `nextNode` is the input by reference).
+ */
+export interface ExtractedLeafResult {
   nextNode: TilingLayoutNode | null;
   extractedLeaf: TilingLeafNode | null;
 }
 
-function extractLeafNode(node: TilingLayoutNode, leafId: string): ExtractedLeafResult {
+/**
+ * Pull `leafId` out of the tree and collapse its parent (the sibling branch
+ * takes the parent's slot). A group member is pulled from its group, which
+ * collapses to its bare leaf at one member. The extract half every mover
+ * (`insertLeafAdjacent`, `moveLeafTo*`, `removeLeafTile`, `addLeafToGroup`)
+ * and the workspace-set ops share. Pure; does NOT run
+ * {@link normalizeStaticAxisFill} — the caller does once it has re-seated.
+ */
+export function extractLeafNode(node: TilingLayoutNode, leafId: string): ExtractedLeafResult {
   if (node.kind === "leaf") {
     if (node.id !== leafId) {
       return { nextNode: node, extractedLeaf: null };
@@ -1317,6 +1331,100 @@ export function moveLeafToSplitContainer(
       normalizedOptions,
     ),
   );
+}
+
+/** The fallback placement when a placement's target is absent from the tree. */
+const ROOT_SECOND_PLACEMENT: TilingWorkspacePlacement = { kind: "root", side: "second" };
+
+/**
+ * Seat an already-extracted `leaf` into `tree` at `placement` — the insert half
+ * of the movers, exposed so a cross-tree move (`moveLeafToWorkspace`) can pair
+ * {@link extractLeafNode} on one tree with this on another. Reuses the exact
+ * insert bodies of `moveLeafToRoot` (`root`), `insertLeafAdjacent`
+ * (`adjacent`), `moveLeafToSplitContainer` (`split-container`) and
+ * `addLeafToGroup` (`group`), including their split-id minting, so a same-tree
+ * extract + insert produces the tree the mover would.
+ *
+ * Total: a `null` tree becomes the bare leaf; a placement whose target id is
+ * absent falls back to `{ kind: "root", side: "second" }`. The result is passed
+ * through {@link normalizeStaticAxisFill}. `leaf.id` must not already be in
+ * `tree` (the caller extracted it, or it comes from another tree).
+ */
+export function insertLeafInto(
+  tree: TilingLayoutNode | null,
+  leaf: TilingLeafNode,
+  placement: TilingWorkspacePlacement = ROOT_SECOND_PLACEMENT,
+  options?: Partial<TilingInsertionOptions>,
+): TilingLayoutNode {
+  if (tree == null) {
+    return leaf;
+  }
+  const normalizedOptions: TilingInsertionOptions = normalizedInsertionOptions(options);
+  switch (placement.kind) {
+    case "root":
+      return normalizeStaticAxisFill({
+        kind: "split",
+        id: `root-move-${leaf.id}`,
+        axis: tree.kind === "split" ? tree.axis : "horizontal",
+        ratio: normalizedOptions.splitRatio,
+        first: placement.side === "first" ? leaf : tree,
+        second: placement.side === "first" ? tree : leaf,
+      });
+    case "adjacent": {
+      const target: TilingLeafNode | null = findLeafById(tree, placement.targetLeafId);
+      const targetGroup: TilingGroupNode | null =
+        target == null ? null : findGroupContainingLeaf(tree, placement.targetLeafId);
+      // `insertLeafAroundTarget` wraps a GROUP only when the target is its
+      // active member; any other member id would leave the leaf unseated.
+      const resolvable: boolean =
+        target != null &&
+        (targetGroup == null || targetGroup.activeMemberId === placement.targetLeafId);
+      if (!resolvable) {
+        return insertLeafInto(tree, leaf, ROOT_SECOND_PLACEMENT, options);
+      }
+      const axis: "horizontal" | "vertical" = resolveInsertionAxis(
+        tree,
+        placement.targetLeafId,
+        placement.placement,
+        normalizedOptions,
+      );
+      return normalizeStaticAxisFill(
+        insertLeafAroundTarget(
+          tree,
+          placement.targetLeafId,
+          leaf,
+          `split-${leaf.id}-${placement.targetLeafId}-${placement.placement}`,
+          axis,
+          placement.placement,
+          normalizedOptions.splitRatio,
+        ),
+      );
+    }
+    case "split-container": {
+      const split: TilingSplitNode | undefined = collectSplitNodes(tree).find(
+        (candidate: TilingSplitNode): boolean => candidate.id === placement.splitId,
+      );
+      if (split == null) {
+        return insertLeafInto(tree, leaf, ROOT_SECOND_PLACEMENT, options);
+      }
+      return normalizeStaticAxisFill(
+        insertLeafIntoSplitContainer(tree, placement.splitId, leaf, placement.side, normalizedOptions),
+      );
+    }
+    case "group": {
+      const group: TilingGroupNode | null = findGroupById(tree, placement.groupId);
+      if (group == null) {
+        return insertLeafInto(tree, leaf, ROOT_SECOND_PLACEMENT, options);
+      }
+      const member: TilingLeafNode = asGroupMember(leaf);
+      const nextGroup: TilingGroupNode = {
+        ...group,
+        members: [...group.members, member],
+        activeMemberId: member.id,
+      };
+      return normalizeStaticAxisFill(replaceNodeById(tree, group.id, nextGroup));
+    }
+  }
 }
 
 /**

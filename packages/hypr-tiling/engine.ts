@@ -25,6 +25,9 @@
 
 // ── Layout tree — reducers (pure; each returns a NEW tree) ────────────────────
 export {
+  extractLeafNode,
+  insertLeafInto,
+  type ExtractedLeafResult,
   insertLeafAdjacent,
   removeLeafTile,
   swapLeafTiles,
@@ -61,6 +64,42 @@ export {
   type NormalizeLayoutOptions,
   type RepairLayoutOptions,
 } from "./engine/layout-normalize";
+
+// ── Workspace set (server-safe alias of the `.` exports; same symbols) ────────
+export {
+  TILING_DEFAULT_WORKSPACE_PLACEMENT,
+  TILING_MAIN_WORKSPACE_ID,
+  TILING_MAIN_WORKSPACE_NAME,
+  TILING_WORKSPACES_MAX,
+  TILING_WORKSPACE_NAME_MAX_CHARS,
+  createWorkspace,
+  cycleWorkspace,
+  deleteWorkspace,
+  hideFromWorkspace,
+  moveLeafToWorkspace,
+  normalizeWorkspaceName,
+  queryWorkspaceSet,
+  renameWorkspace,
+  repairWorkspaceSet,
+  setWorkspaceLayout,
+  showInWorkspace,
+  switchWorkspace,
+  workspaceSetIssues,
+  workspaceSetOfLayout,
+  type CreateWorkspaceInput,
+  type RepairWorkspaceSetOptions,
+  type TilingDeleteWorkspaceResult,
+  type TilingWorkspace,
+  type TilingWorkspaceId,
+  type TilingWorkspaceSet,
+  type TilingWorkspaceSetIssue,
+  type TilingWorkspaceSetIssueKind,
+  type TilingWorkspaceSetQuery,
+  type TilingWorkspaceSetRepairReason,
+  type TilingWorkspaceSetRepairResult,
+  type WorkspaceSetIntegrityOptions,
+} from "./engine/workspace-set";
+export type { TilingWorkspacePlacement } from "./engine/types";
 
 // ── Persisted-layout adapter (thin glue over the integrity APIs above) ────────
 export {
