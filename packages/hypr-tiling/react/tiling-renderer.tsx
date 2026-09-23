@@ -218,8 +218,10 @@ import {
   cycleWorkspace,
   moveLeafToWorkspace,
   queryWorkspaceSet,
+  revealTile,
   setWorkspaceLayout,
   switchWorkspace,
+  type TilingRevealTileResult,
   type TilingWorkspace,
   type TilingWorkspaceSet,
 } from "../engine/workspace-set";
@@ -9522,49 +9524,6 @@ function withRemembered(
 }
 
 /**
- * Switch to a workspace showing `tileId` (prefer the active one), make the
- * leaf its group's active member if grouped, and return the leaf id to focus.
- * Same-reference `set` when the tile is already revealed.
- *
- * TODO(H5): replace with engine revealTile
- */
-function revealTileInWorkspaceSet(
-  set: TilingWorkspaceSet,
-  tileId: string,
-): { set: TilingWorkspaceSet; workspaceId: string; leafId: string } | null {
-  const query = queryWorkspaceSet(set);
-  const workspaceIds: ReadonlyArray<string> = query.workspacesOfTile(tileId);
-  if (workspaceIds.length === 0) {
-    return null;
-  }
-  const workspaceId: string = workspaceIds.includes(set.activeId)
-    ? set.activeId
-    : workspaceIds[0];
-  const tree: TilingLayoutNode | null = query.workspace(workspaceId)?.layout ?? null;
-  if (tree == null) {
-    return null;
-  }
-  const leafIds: ReadonlyArray<string> = query.leafIds(workspaceId);
-  const tileIds: ReadonlyArray<string> = query.tileIds(workspaceId);
-  const leafIndex: number = tileIds.indexOf(tileId);
-  if (leafIndex === -1) {
-    return null;
-  }
-  const leafId: string = leafIds[leafIndex];
-  let nextLayout: TilingLayoutNode = tree;
-  const group = findGroupContainingLeaf(tree, leafId);
-  if (group != null && group.activeMemberId !== leafId) {
-    nextLayout = setActiveGroupMember(tree, group.id, leafId);
-  }
-  let next: TilingWorkspaceSet = set;
-  if (nextLayout !== tree) {
-    next = setWorkspaceLayout(next, workspaceId, nextLayout);
-  }
-  next = switchWorkspace(next, workspaceId);
-  return { set: next, workspaceId, leafId };
-}
-
-/**
  * Workspace-set mode of {@link TilingRenderer}: paints the active workspace's
  * tree through the single-layout renderer and folds every reported tree edit
  * back into the set (`setWorkspaceLayout`). Owns the per-workspace focus /
@@ -9792,7 +9751,13 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
           break;
         }
         case "reveal-tile": {
-          const revealed = revealTileInWorkspaceSet(current, command.tileId);
+          // Engine `revealTile` prefers the active workspace when it shows the
+          // tile, else the first in tab order; activates a grouped member tab.
+          const revealed: TilingRevealTileResult | null = revealTile(
+            current,
+            command.tileId,
+            current.activeId,
+          );
           if (revealed == null) {
             return false;
           }

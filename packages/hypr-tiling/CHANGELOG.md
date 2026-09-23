@@ -28,7 +28,7 @@ the version number alone does not flag them.
 - `WORKSPACE_KEY_BINDINGS` — opt-in chord→command fragment (`Alt+Arrow` cycle, `Alt+1..9` switch by index, `Alt+Shift+Arrow` move+follow). Not merged into `TILING_KEYMAP_DEFAULTS`; hosts spread it into `interaction.keyBindings.bindings`.
 - Set-mode wrapper dispatches the four commands through the existing handle / `dispatchCommand` path and reports the next set on `onWorkspacesChange`.
 - `onWorkspaceSwitch?: (event: { from; to; via: "tab" | "key" | "command" | "swipe" | "spring-load" | "reveal" })` — fired beside `onWorkspacesChange` when `activeId` changes through the renderer (`"swipe"` / `"spring-load"` / `"tab"` reserved, not emitted yet).
-- `reveal-tile` is implemented locally in the wrapper (`workspacesOfTile` + `switchWorkspace` + group `activeMemberId`); swap to engine `revealTile` when H5 lands.
+- `reveal-tile` dispatches engine `revealTile(set, tileId, activeId)` (prefers the active workspace when it shows the tile), updates the wrapper's focus memory for the revealed leaf, and fires `onWorkspaceSwitch({ via: "reveal" })` when `activeId` changed.
 
 ## 26.9.3 — 2026-09-22
 
