@@ -51,6 +51,7 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   keyBindings: { bindings: [], replaceDefaults: false },
   masterLayout: true,
   grouping: { enable: true, showGroupTabStrip: true },
+  workspaces: { enable: true, followMovedLeaf: false },
 };
 
 describe("resolveInteractionCapabilities (defaulting)", (): void => {
@@ -562,6 +563,36 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       grouping: { enable: false, showGroupTabStrip: false },
     });
     expect(resolveInteractionCapabilities(once)).toEqual(once);
+  });
+
+  it("defaults workspaces to enabled with followMovedLeaf false", (): void => {
+    expect(resolveInteractionCapabilities(undefined).workspaces).toEqual({
+      enable: true,
+      followMovedLeaf: false,
+    });
+    expect(resolveInteractionCapabilities({}).workspaces).toEqual({
+      enable: true,
+      followMovedLeaf: false,
+    });
+  });
+
+  it("treats a bare workspaces boolean as shorthand for { enable }", (): void => {
+    expect(resolveInteractionCapabilities({ workspaces: true })).toEqual(RESOLVED_DEFAULTS);
+    expect(resolveInteractionCapabilities({ workspaces: false })).toEqual({
+      ...RESOLVED_DEFAULTS,
+      workspaces: { enable: false, followMovedLeaf: false },
+    });
+  });
+
+  it("merges a partial workspaces object field-by-field over the defaults", (): void => {
+    expect(resolveInteractionCapabilities({ workspaces: { followMovedLeaf: true } })).toEqual({
+      ...RESOLVED_DEFAULTS,
+      workspaces: { enable: true, followMovedLeaf: true },
+    });
+    expect(resolveInteractionCapabilities({ workspaces: { enable: false } })).toEqual({
+      ...RESOLVED_DEFAULTS,
+      workspaces: { enable: false, followMovedLeaf: false },
+    });
   });
 
   it("is idempotent when re-resolving a resolved object", (): void => {

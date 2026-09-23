@@ -43,6 +43,13 @@ export interface TilingCommandGates {
   layoutEnabled: boolean;
   /** Group / tabbed-stacking commands (HT-GROUP-TABBED-STACKING). */
   groupingEnabled: boolean;
+  /**
+   * Workspace-set navigation commands (`switch-workspace`, `cycle-workspace`,
+   * `move-leaf-to-workspace`, `reveal-tile`). The renderer sets this `false`
+   * in single-layout mode (no `workspaces` prop) so a dispatch there is a
+   * no-op, and `false` when `interaction.workspaces.enable` is `false`.
+   */
+  workspacesEnabled: boolean;
 }
 
 /**
@@ -96,8 +103,15 @@ export function commandRequiredCapability(command: TilingCommand): keyof TilingC
     case "group-tab-cycle":
     case "group-tab-jump":
       return "groupingEnabled";
-    default:
-      return null;
+    case "switch-workspace":
+    case "cycle-workspace":
+    case "move-leaf-to-workspace":
+    case "reveal-tile":
+      return "workspacesEnabled";
+    default: {
+      const exhaustive: never = command;
+      return exhaustive;
+    }
   }
 }
 
@@ -135,6 +149,7 @@ export function commandRequiredCapability(command: TilingCommand): keyof TilingC
  *     resizeEnabled: caps.resize !== "none",
  *     layoutEnabled: caps.masterLayout,
  *     groupingEnabled: caps.grouping.enable,
+ *     workspacesEnabled: caps.workspaces.enable,
  *   };
  * }
  *
@@ -156,6 +171,32 @@ export function isCommandEnabled(command: TilingCommand, gates: TilingCommandGat
     return true;
   }
   return gates[required];
+}
+
+/**
+ * Whether `command` is one of the four workspace-set navigation kinds
+ * (`switch-workspace`, `cycle-workspace`, `move-leaf-to-workspace`,
+ * `reveal-tile`). Used by the set-mode wrapper to intercept those kinds
+ * before they reach the single-layout router.
+ */
+export function isWorkspaceNavigationCommand(
+  command: TilingCommand,
+): command is Extract<
+  TilingCommand,
+  {
+    kind:
+      | "switch-workspace"
+      | "cycle-workspace"
+      | "move-leaf-to-workspace"
+      | "reveal-tile";
+  }
+> {
+  return (
+    command.kind === "switch-workspace" ||
+    command.kind === "cycle-workspace" ||
+    command.kind === "move-leaf-to-workspace" ||
+    command.kind === "reveal-tile"
+  );
 }
 
 /**

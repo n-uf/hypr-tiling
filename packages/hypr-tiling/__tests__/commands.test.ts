@@ -27,6 +27,7 @@ const ALL_ENABLED: TilingCommandGates = {
   resizeEnabled: true,
   layoutEnabled: true,
   groupingEnabled: true,
+  workspacesEnabled: true,
 };
 
 const ALL_DISABLED: TilingCommandGates = {
@@ -40,6 +41,7 @@ const ALL_DISABLED: TilingCommandGates = {
   resizeEnabled: false,
   layoutEnabled: false,
   groupingEnabled: false,
+  workspacesEnabled: false,
 };
 
 describe("commandRequiredCapability (command → capability gate map)", (): void => {
@@ -132,6 +134,33 @@ describe("isCommandEnabled (gate evaluation)", (): void => {
     expect(isCommandEnabled({ kind: "cycle-layout-mode" }, onlyLayout)).toBe(true);
     expect(isCommandEnabled({ kind: "adjust-master-ratio", delta: 0.05 }, onlyLayout)).toBe(true);
     expect(isCommandEnabled({ kind: "cycle-layout-mode" }, ALL_DISABLED)).toBe(false);
+  });
+});
+
+describe("workspace commands (H8 gate + kind map)", (): void => {
+  const workspaceCommands: ReadonlyArray<TilingCommand> = [
+    { kind: "switch-workspace", workspaceId: "ops" },
+    { kind: "switch-workspace", index: 2 },
+    { kind: "cycle-workspace", direction: "next" },
+    { kind: "move-leaf-to-workspace", workspaceId: "ops" },
+    { kind: "move-leaf-to-workspace", direction: "previous", follow: true },
+    { kind: "reveal-tile", tileId: "a" },
+  ];
+
+  it("maps every workspace command to workspacesEnabled", (): void => {
+    for (const command of workspaceCommands) {
+      expect(commandRequiredCapability(command)).toBe("workspacesEnabled");
+    }
+  });
+
+  it("is enabled in set mode (workspacesEnabled true) and a no-op in single-layout mode", (): void => {
+    const setMode: TilingCommandGates = { ...ALL_DISABLED, workspacesEnabled: true };
+    const singleMode: TilingCommandGates = { ...ALL_ENABLED, workspacesEnabled: false };
+    for (const command of workspaceCommands) {
+      expect(isCommandEnabled(command, setMode)).toBe(true);
+      expect(isCommandEnabled(command, singleMode)).toBe(false);
+      expect(isCommandEnabled(command, ALL_DISABLED)).toBe(false);
+    }
   });
 });
 
