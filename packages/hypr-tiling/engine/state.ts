@@ -1337,13 +1337,31 @@ export function moveLeafToSplitContainer(
 const ROOT_SECOND_PLACEMENT: TilingWorkspacePlacement = { kind: "root", side: "second" };
 
 /**
+ * Every leaf of a tree in reading order (group members in tab order) — the
+ * same flatten `queryWorkspaceSet(set).leafIds` returns. Used by `region`
+ * placement to pick the first / last neighbour.
+ */
+function collectLeavesReadingOrder(tree: TilingLayoutNode): ReadonlyArray<TilingLeafNode> {
+  if (tree.kind === "leaf") {
+    return [tree];
+  }
+  if (tree.kind === "group") {
+    return tree.members;
+  }
+  return [...collectLeavesReadingOrder(tree.first), ...collectLeavesReadingOrder(tree.second)];
+}
+
+/**
  * Seat an already-extracted `leaf` into `tree` at `placement` — the insert half
  * of the movers, exposed so a cross-tree move (`moveLeafToWorkspace`) can pair
  * {@link extractLeafNode} on one tree with this on another. Reuses the exact
  * insert bodies of `moveLeafToRoot` (`root`), `insertLeafAdjacent`
  * (`adjacent`), `moveLeafToSplitContainer` (`split-container`) and
  * `addLeafToGroup` (`group`), including their split-id minting, so a same-tree
- * extract + insert produces the tree the mover would.
+ * extract + insert produces the tree the mover would. `region` resolves to
+ * that `adjacent` path: `left` of the reading-order first leaf (`start`) or
+ * `right` of the last (`end`); a group-member neighbour seats beside the
+ * group (its `activeMemberId`), not inside it.
  *
  * Total: a `null` tree becomes the bare leaf; a placement whose target id is
  * absent falls back to `{ kind: "root", side: "second" }`. The result is passed
@@ -1423,6 +1441,28 @@ export function insertLeafInto(
         activeMemberId: member.id,
       };
       return normalizeStaticAxisFill(replaceNodeById(tree, group.id, nextGroup));
+    }
+    case "region": {
+      const leaves: ReadonlyArray<TilingLeafNode> = collectLeavesReadingOrder(tree);
+      const neighbour: TilingLeafNode | undefined =
+        placement.region === "start" ? leaves[0] : leaves[leaves.length - 1];
+      if (neighbour == null) {
+        return insertLeafInto(tree, leaf, ROOT_SECOND_PLACEMENT, options);
+      }
+      const neighbourGroup: TilingGroupNode | null = findGroupContainingLeaf(tree, neighbour.id);
+      // Seat beside the group node (its active member is the adjacent target
+      // `insertLeafAroundTarget` accepts), not inside the group.
+      const targetLeafId: string = neighbourGroup?.activeMemberId ?? neighbour.id;
+      return insertLeafInto(
+        tree,
+        leaf,
+        {
+          kind: "adjacent",
+          targetLeafId,
+          placement: placement.region === "start" ? "left" : "right",
+        },
+        options,
+      );
     }
   }
 }
