@@ -5,6 +5,7 @@ import type { RatioSafetyBounds } from "./pane-sizing";
 // coupling (see check-guardrails.mjs rule 1).
 import type { TilingTheme } from "../react/theme";
 import type { TilingWorkspace, TilingWorkspaceSet } from "./workspace-set";
+import type { TilingWorkspaceSwipeConfig } from "./workspace-navigation";
 
 /**
  * Orientation of a binary split. `"horizontal"` places its two children
@@ -586,10 +587,11 @@ export type TilingCommand =
   | { kind: "reveal-tile"; tileId: string };
 
 /**
- * How a workspace switch was initiated through the renderer. `"swipe"` and
- * `"spring-load"` are reserved for later navigation work items; the set-mode
- * wrapper does not emit them yet. `"tab"` is reserved for a host tab strip
- * that routes through the same dispatch path.
+ * How a workspace switch was initiated through the renderer. `"swipe"` is a
+ * trackpad / touch swipe (`interaction.workspaces.switch`). `"spring-load"` is
+ * reserved for the spring-loaded tab drop; the set-mode wrapper does not emit
+ * it yet. `"tab"` is reserved for a host tab strip that routes through the
+ * same dispatch path.
  */
 export type TilingWorkspaceSwitchVia =
   | "tab"
@@ -1089,6 +1091,39 @@ export interface TilingWorkspacesCapability {
    * `false` (default) leaves the current workspace active (`movetoworkspacesilent`).
    */
   followMovedLeaf?: boolean;
+  /**
+   * Gesture switching between neighbouring workspaces (N1). Both inputs are
+   * opt-in (default `false`); see {@link TilingWorkspaceSwitchCapability}.
+   */
+  switch?: TilingWorkspaceSwitchCapability;
+}
+
+/**
+ * Gesture switching, the `switch` slot of `interaction.workspaces`. A swipe
+ * ends as a `cycle-workspace` command through the ordinary dispatch path and
+ * reports `onWorkspaceSwitch({ via: "swipe" })`. While either input is on the
+ * renderer root carries `overscroll-behavior-x: contain`; with `touchSwipe`
+ * also `touch-action: pan-y`.
+ */
+export interface TilingWorkspaceSwitchCapability {
+  /**
+   * Trackpad / horizontal-wheel swipe. `true` uses
+   * `TILING_WORKSPACE_SWIPE_DEFAULTS`; an object overrides individual
+   * {@link TilingWorkspaceSwipeConfig} fields (shared with touch). Default `false`.
+   */
+  wheelSwipe?: boolean | Partial<TilingWorkspaceSwipeConfig>;
+  /** One-finger horizontal pan on the viewport. Default `false`. */
+  touchSwipe?: boolean;
+}
+
+/** Resolved {@link TilingWorkspaceSwitchCapability} (no optional fields). */
+export interface ResolvedTilingWorkspaceSwitchCapability {
+  /** Wheel swipe is on. */
+  wheelSwipe: boolean;
+  /** Touch swipe is on. */
+  touchSwipe: boolean;
+  /** The swipe FSM config both inputs run with. */
+  swipe: TilingWorkspaceSwipeConfig;
 }
 
 /** Resolved workspace-set navigation capability (no optional fields). */
@@ -1097,6 +1132,8 @@ export interface ResolvedTilingWorkspacesCapability {
   enable: boolean;
   /** Default `follow` for `move-leaf-to-workspace` when the command omits it. */
   followMovedLeaf: boolean;
+  /** Gesture switching (both inputs default off). */
+  switch: ResolvedTilingWorkspaceSwitchCapability;
 }
 
 /**
@@ -2410,8 +2447,9 @@ export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonPro
    * Fired beside {@link TilingRendererWorkspaceSetProps.onWorkspacesChange}
    * whenever `activeId` changes through the renderer. `via` is `"tab"` for a
    * tab strip, `"key"` for a keymap binding, `"command"` for an imperative
-   * `dispatch`, `"reveal"` for `reveal-tile`. `"swipe"` and `"spring-load"`
-   * are reserved and are not emitted yet.
+   * `dispatch`, `"reveal"` for `reveal-tile`, `"swipe"` for a trackpad /
+   * touch swipe (`interaction.workspaces.switch`). `"spring-load"` is
+   * reserved and is not emitted yet.
    */
   onWorkspaceSwitch?: (event: TilingWorkspaceSwitchEvent) => void;
 }

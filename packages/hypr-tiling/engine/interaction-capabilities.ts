@@ -11,6 +11,11 @@ import {
 import { DEFAULT_GHOST_PICKUP_SCALE_PERCENT, clampGhostPickupScalePercent } from "./ghost-transit";
 import { TILING_DROP_INTENT_CONFIG } from "./drop-intent-resolver";
 import { TILING_KEYMAP_DEFAULTS, resolveKeymap } from "./pane-switching";
+import {
+  TILING_WORKSPACE_SWIPE_DEFAULTS,
+  resolveWorkspaceSwipeConfig,
+  type TilingWorkspaceSwipeConfig,
+} from "./workspace-navigation";
 import type {
   TilingSplitAxis,
   ResolvedTilingGroupingCapability,
@@ -22,7 +27,9 @@ import type {
   TilingPaneSwitchingCapability,
   TilingResizeCapability,
   TilingWorkspacesCapability,
+  TilingWorkspaceSwitchCapability,
   ResolvedTilingWorkspacesCapability,
+  ResolvedTilingWorkspaceSwitchCapability,
 } from "./types";
 
 /**
@@ -89,7 +96,14 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
   keyBindings: { bindings: [], replaceDefaults: false },
   masterLayout: true,
   grouping: { enable: true, showGroupTabStrip: true },
-  workspaces: { enable: true, followMovedLeaf: false },
+  // Gesture switching is opt-IN (like `showContentToggle` / `collapse`): a
+  // horizontal wheel over the viewport must keep scrolling inner content
+  // unless the host asked for swipe navigation.
+  workspaces: {
+    enable: true,
+    followMovedLeaf: false,
+    switch: { wheelSwipe: false, touchSwipe: false, swipe: TILING_WORKSPACE_SWIPE_DEFAULTS },
+  },
 };
 
 /**
@@ -289,9 +303,9 @@ function resolveGroupingCapability(
 
 /**
  * Resolve the `workspaces` capability. A bare boolean is shorthand for
- * `{ enable }` (`followMovedLeaf` keeps its default `false`); the object form
- * merges field-by-field over the defaults via nullish coalescing, so an
- * explicit `false` on either field is preserved.
+ * `{ enable }` (`followMovedLeaf` keeps its default `false`, `switch` its
+ * all-off default); the object form merges field-by-field over the defaults
+ * via nullish coalescing, so an explicit `false` on any field is preserved.
  */
 function resolveWorkspacesCapability(
   workspaces: boolean | TilingWorkspacesCapability | undefined,
@@ -300,6 +314,7 @@ function resolveWorkspacesCapability(
     return {
       enable: workspaces,
       followMovedLeaf: TILING_INTERACTION_CAPABILITY_DEFAULTS.workspaces.followMovedLeaf,
+      switch: TILING_INTERACTION_CAPABILITY_DEFAULTS.workspaces.switch,
     };
   }
   return {
@@ -307,7 +322,30 @@ function resolveWorkspacesCapability(
     followMovedLeaf:
       workspaces?.followMovedLeaf
       ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.workspaces.followMovedLeaf,
+    switch: resolveWorkspaceSwitchCapability(workspaces?.switch),
   };
+}
+
+/**
+ * Resolve the `workspaces.switch` gesture capability. `wheelSwipe: true` runs
+ * the FSM on {@link TILING_WORKSPACE_SWIPE_DEFAULTS}; an object form enables
+ * wheel swipe AND overrides the named config fields (touch swipe shares that
+ * config). Both inputs default to off.
+ */
+export function resolveWorkspaceSwitchCapability(
+  capability: TilingWorkspaceSwitchCapability | undefined,
+): ResolvedTilingWorkspaceSwitchCapability {
+  const defaults: ResolvedTilingWorkspaceSwitchCapability =
+    TILING_INTERACTION_CAPABILITY_DEFAULTS.workspaces.switch;
+  const wheelSwipe: boolean | Partial<TilingWorkspaceSwipeConfig> | undefined = capability?.wheelSwipe;
+  const wheelEnabled: boolean =
+    typeof wheelSwipe === "boolean" ? wheelSwipe : wheelSwipe != null ? true : defaults.wheelSwipe;
+  const touchSwipe: boolean = capability?.touchSwipe ?? defaults.touchSwipe;
+  const swipe: TilingWorkspaceSwipeConfig =
+    typeof wheelSwipe === "object" && wheelSwipe != null
+      ? resolveWorkspaceSwipeConfig(wheelSwipe)
+      : defaults.swipe;
+  return { wheelSwipe: wheelEnabled, touchSwipe, swipe };
 }
 
 /**
