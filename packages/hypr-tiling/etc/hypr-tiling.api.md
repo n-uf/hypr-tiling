@@ -116,6 +116,11 @@ export function isCommandEnabled(command: TilingCommand, gates: TilingCommandGat
 export function isMultiSelectModifierActive(event: MultiSelectModifierState): boolean;
 
 // @public
+export function isWorkspaceNavigationCommand(command: TilingCommand): command is Extract<TilingCommand, {
+    kind: "switch-workspace" | "cycle-workspace" | "move-leaf-to-workspace" | "reveal-tile";
+}>;
+
+// @public
 export function moveLeafToWorkspace(set: TilingWorkspaceSet, leafId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement): TilingWorkspaceSet;
 
 // @public
@@ -213,6 +218,7 @@ export interface ResolvedTilingInteractionCapabilities {
     slotCommitment: ResolvedTilingSlotCommitmentCapability;
     slotHopInEnabled: boolean;
     touchDrag: ResolvedTilingTouchDragCapability;
+    workspaces: ResolvedTilingWorkspacesCapability;
 }
 
 // @public
@@ -294,6 +300,12 @@ export interface ResolvedTilingSlotCommitmentCapability {
 export interface ResolvedTilingTouchDragCapability {
     enable: boolean;
     longPressMs: number;
+}
+
+// @public
+export interface ResolvedTilingWorkspacesCapability {
+    enable: boolean;
+    followMovedLeaf: boolean;
 }
 
 // @public
@@ -518,6 +530,42 @@ export type TilingCommand = {
     kind: "group-tab-jump";
     groupId?: string;
     memberNumber: number;
+} | {
+    kind: "switch-workspace";
+    workspaceId: string;
+}
+/**
+* Switch to the 1-based n-th workspace in tab order (`Alt+1` → `index: 1`).
+* Bindable without a set at key-binding construction time; the wrapper
+* resolves `index` against the live `workspaces` array at dispatch.
+*/
+| {
+    kind: "switch-workspace";
+    index: number;
+} | {
+    kind: "cycle-workspace";
+    direction: TilingPaneCycleDirection;
+} | {
+    kind: "move-leaf-to-workspace";
+    leafId?: string;
+    workspaceId: string;
+    placement?: TilingWorkspacePlacement;
+    follow?: boolean;
+}
+/**
+* Move the focused (or explicit) leaf to the previous / next workspace in
+* tab order. Neighbour is resolved at dispatch so the binding stays valid
+* after `activeId` changes (unlike a bind-time `workspaceId`).
+*/
+| {
+    kind: "move-leaf-to-workspace";
+    leafId?: string;
+    direction: TilingPaneCycleDirection;
+    placement?: TilingWorkspacePlacement;
+    follow?: boolean;
+} | {
+    kind: "reveal-tile";
+    tileId: string;
 };
 
 // @public
@@ -532,6 +580,7 @@ export interface TilingCommandGates {
     rearrangeEnabled: boolean;
     resizeEnabled: boolean;
     sizingEnabled: boolean;
+    workspacesEnabled: boolean;
 }
 
 // @public
@@ -659,6 +708,7 @@ export interface TilingInteractionCapabilities {
     slotCommitment?: TilingSlotCommitmentCapability;
     slotHopInEnabled?: boolean;
     touchDrag?: TilingTouchDragCapability;
+    workspaces?: boolean | TilingWorkspacesCapability;
 }
 
 // @public
@@ -931,6 +981,7 @@ export interface TilingRendererProps extends TilingRendererCommonProps {
 export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonProps {
     onMoveLeaf?: (leafId: string, fromWorkspaceId: string, toWorkspaceId: string) => void;
     onWorkspacesChange: (workspaces: TilingWorkspaceSet) => void;
+    onWorkspaceSwitch?: (event: TilingWorkspaceSwitchEvent) => void;
     renderEmptyWorkspace?: (workspace: TilingWorkspace) => React_2.ReactNode;
     workspaces: TilingWorkspaceSet;
 }
@@ -1207,6 +1258,12 @@ export type TilingWorkspacePlacement = {
 };
 
 // @public
+export interface TilingWorkspacesCapability {
+    enable?: boolean;
+    followMovedLeaf?: boolean;
+}
+
+// @public
 export interface TilingWorkspaceSet {
     readonly activeId: TilingWorkspaceId;
     readonly workspaces: ReadonlyArray<TilingWorkspace>;
@@ -1272,6 +1329,16 @@ export interface TilingWorkspaceSetRepairResult {
     readonly reasons: ReadonlyArray<TilingWorkspaceSetRepairReason>;
     readonly set: TilingWorkspaceSet;
 }
+
+// @public
+export interface TilingWorkspaceSwitchEvent {
+    from: string;
+    to: string;
+    via: TilingWorkspaceSwitchVia;
+}
+
+// @public
+export type TilingWorkspaceSwitchVia = "tab" | "key" | "command" | "swipe" | "spring-load" | "reveal";
 
 // @public
 export interface TilingWorkspaceTab {
@@ -1402,6 +1469,9 @@ export interface UseTilingWorkspaceTabsResult {
 
 // @public
 export function viewedWorkspaceSet(value: TilingWorkspaceSet, localTrees: TilingWorkspaceTreeMap, localActiveId?: TilingWorkspaceId | null): TilingWorkspaceSet;
+
+// @public
+export const WORKSPACE_KEY_BINDINGS: ReadonlyArray<TilingKeyBinding>;
 
 // @public
 export interface WorkspaceSetIntegrityOptions {
