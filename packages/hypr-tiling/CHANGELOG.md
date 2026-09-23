@@ -8,6 +8,18 @@ the version number alone does not flag them.
 
 ## Unreleased
 
+### Workspace set
+
+- **`TilingWorkspacePlacement` `region`** — `{ kind: "region"; region: "start" | "end" }` seats the leaf `left` of the reading-order first leaf / `right` of the last, via `insertLeafInto`'s `adjacent` path. A group-member neighbour seats beside the group node, not inside it. A `null` destination becomes the bare leaf. `TILING_DEFAULT_WORKSPACE_PLACEMENT` stays root-second.
+- **`moveTileToWorkspace(set, tileId, to, placement?, options?)`** — tile-keyed `moveLeafToWorkspace`. A tile seated nowhere is seated only when `options.leaf.id` is given (the engine never invents leaf ids); otherwise the set is unchanged.
+- **`MoveTileToWorkspaceOptions`** — `{ leaf?: { id } }` mint id for `moveTileToWorkspace` when the tile has no seat.
+- **`showTileInWorkspace(set, tileId, to, placement?)`** — tile-keyed `showInWorkspace`. Unchanged when the tile is unknown, already shown in `to`, or `to` is unknown.
+- **`hideTileFromWorkspace(set, tileId, from)`** — tile-keyed hide; returns `{ set, orphaned }`. `orphaned` is `true` when the tile now has no seat anywhere.
+- **`TilingHideTileResult`** — `{ set, orphaned }` return of `hideTileFromWorkspace`.
+- **`removeTile(set, tileId)`** — drop every seat of the tile. Unchanged when the tile is seated nowhere.
+- **`revealTile(set, tileId, prefer?)`** — pick `prefer` when it shows the tile, else the first workspace in tab order that does; switch `activeId` and activate a group member tab as needed. Returns `null` when the tile is seated nowhere; same set reference when `changed` is `"none"`.
+- **`TilingRevealTileResult`** / **`TilingRevealTileChanged`** — `{ set, workspaceId, leafId, changed: "none" | "tab" | "workspace" | "both" }` return of `revealTile`.
+
 ### Workspace navigation
 
 - **BREAKING (type): `TilingCommand` gains four kinds — exhaustive switches with a `never` guard fail typecheck**: `switch-workspace` (`workspaceId` or 1-based `index`), `cycle-workspace`, `move-leaf-to-workspace` (`workspaceId` or neighbour `direction`; omitted `leafId` → focused leaf; `follow` defaults from `interaction.workspaces.followMovedLeaf`), `reveal-tile`.

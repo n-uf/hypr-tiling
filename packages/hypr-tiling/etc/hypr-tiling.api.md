@@ -74,6 +74,9 @@ export function findWorkspaceById(set: TilingWorkspaceSet, id: TilingWorkspaceId
 export function hideFromWorkspace(set: TilingWorkspaceSet, leafId: string, from: TilingWorkspaceId): TilingWorkspaceSet;
 
 // @public
+export function hideTileFromWorkspace(set: TilingWorkspaceSet, tileId: string, from: TilingWorkspaceId): TilingHideTileResult;
+
+// @public
 export function isCommandEnabled(command: TilingCommand, gates: TilingCommandGates): boolean;
 
 // @public
@@ -86,6 +89,16 @@ export function isWorkspaceNavigationCommand(command: TilingCommand): command is
 
 // @public
 export function moveLeafToWorkspace(set: TilingWorkspaceSet, leafId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement): TilingWorkspaceSet;
+
+// @public
+export function moveTileToWorkspace(set: TilingWorkspaceSet, tileId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement, options?: MoveTileToWorkspaceOptions): TilingWorkspaceSet;
+
+// @public
+export interface MoveTileToWorkspaceOptions {
+    readonly leaf?: {
+        readonly id: string;
+    };
+}
 
 // @public
 export interface MultiSelectModifierState {
@@ -107,6 +120,9 @@ export function queryTilingLayout(layout: TilingLayoutNode): TilingLayoutQuery;
 
 // @public
 export function queryWorkspaceSet(set: TilingWorkspaceSet): TilingWorkspaceSetQuery;
+
+// @public
+export function removeTile(set: TilingWorkspaceSet, tileId: string): TilingWorkspaceSet;
 
 // @public
 export function renameWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId, name: string): TilingWorkspaceSet;
@@ -275,10 +291,16 @@ export function resolveWorkspaceTabHover(targets: ReadonlyArray<TilingWorkspaceT
 export function resolveWorkspaceTabKey(key: string, focusedIndex: number, count: number, orientation?: TilingWorkspaceTabsOrientation): TilingWorkspaceTabKeyAction | null;
 
 // @public
+export function revealTile(set: TilingWorkspaceSet, tileId: string, prefer?: TilingWorkspaceId): TilingRevealTileResult | null;
+
+// @public
 export function setWorkspaceLayout(set: TilingWorkspaceSet, id: TilingWorkspaceId, layout: TilingLayoutNode | null): TilingWorkspaceSet;
 
 // @public
 export function showInWorkspace(set: TilingWorkspaceSet, leafId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement): TilingWorkspaceSet;
+
+// @public
+export function showTileInWorkspace(set: TilingWorkspaceSet, tileId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement): TilingWorkspaceSet;
 
 // @public
 export function switchWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingWorkspaceSet;
@@ -623,6 +645,12 @@ export interface TilingGroupNode {
     kind: "group";
     members: ReadonlyArray<TilingLeafNode>;
     sizing?: TilingPaneSizing;
+}
+
+// @public
+export interface TilingHideTileResult {
+    readonly orphaned: boolean;
+    readonly set: TilingWorkspaceSet;
 }
 
 // @public
@@ -989,6 +1017,17 @@ export type TilingResizeCapability = "both" | "horizontal" | "vertical" | "none"
 export type TilingResizeFloor = "body" | "chrome";
 
 // @public
+export type TilingRevealTileChanged = "none" | "tab" | "workspace" | "both";
+
+// @public
+export interface TilingRevealTileResult {
+    readonly changed: TilingRevealTileChanged;
+    readonly leafId: string;
+    readonly set: TilingWorkspaceSet;
+    readonly workspaceId: TilingWorkspaceId;
+}
+
+// @public
 export interface TilingSlotCommitmentCapability {
     mode?: TilingSlotCommitmentMode;
     reresolveDeltaPx?: number;
@@ -1180,6 +1219,9 @@ export type TilingWorkspacePlacement = {
 } | {
     readonly kind: "group";
     readonly groupId: string;
+} | {
+    readonly kind: "region";
+    readonly region: "start" | "end";
 };
 
 // @public

@@ -2067,10 +2067,17 @@ export interface TilingLeafDropPreview {
  *   (`moveLeafToSplitContainer`).
  * - `group` — appended as the active member of group `groupId`
  *   (`addLeafToGroup`).
+ * - `region` — beside the reading-order first (`start`) or last (`end`) leaf
+ *   of the destination tree: `left` of the first / `right` of the last, via
+ *   the same path `adjacent` uses (`insertLeafAdjacent`). Reading order is
+ *   the flatten `queryWorkspaceSet(set).leafIds(workspaceId)` returns (group
+ *   members in tab order). When that neighbour is a group member, the group
+ *   itself is the seat neighbour — wrap the group, do not enter it.
  *
  * A placement whose target (leaf / split / group id) is absent from the
  * destination tree falls back to `{ kind: "root", side: "second" }`; a `null`
- * destination becomes the bare leaf.
+ * destination becomes the bare leaf. `TILING_DEFAULT_WORKSPACE_PLACEMENT`
+ * stays `{ kind: "root", side: "second" }`.
  */
 export type TilingWorkspacePlacement =
   | { readonly kind: "root"; readonly side: "first" | "second" }
@@ -2084,7 +2091,8 @@ export type TilingWorkspacePlacement =
       readonly splitId: string;
       readonly side: "first" | "second";
     }
-  | { readonly kind: "group"; readonly groupId: string };
+  | { readonly kind: "group"; readonly groupId: string }
+  | { readonly kind: "region"; readonly region: "start" | "end" };
 
 /** Options controlling how `insertLeafAdjacent` places an inserted leaf. */
 export interface TilingInsertionOptions {
