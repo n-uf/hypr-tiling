@@ -10,6 +10,30 @@ import * as React_2 from 'react';
 export function activeWorkspace(set: TilingWorkspaceSet): TilingWorkspace | null;
 
 // @public
+export function adoptIncomingWorkspaceTrees(input: AdoptIncomingWorkspaceTreesInput): AdoptIncomingWorkspaceTreesResult;
+
+// @public
+export interface AdoptIncomingWorkspaceTreesInput {
+    readonly dropMissingWorkspaces?: boolean;
+    readonly incoming: TilingWorkspaceSet;
+    readonly lastCommitted: TilingWorkspaceTreeMap;
+    readonly localTrees: TilingWorkspaceTreeMap;
+    readonly pending: TilingWorkspaceTreeMap;
+}
+
+// @public
+export interface AdoptIncomingWorkspaceTreesResult {
+    readonly droppedPending: boolean;
+    readonly lastCommitted: Map<TilingWorkspaceId, TilingLayoutNode | null>;
+    readonly localTrees: Map<TilingWorkspaceId, TilingLayoutNode | null>;
+    readonly localTreesChanged: boolean;
+    readonly pending: Map<TilingWorkspaceId, TilingLayoutNode | null>;
+}
+
+// @public
+export function classifyIncomingWorkspaceSet(incoming: TilingWorkspaceSet, lastCommitted: TilingWorkspaceSet, ahead: boolean): IncomingWorkspaceSetKind;
+
+// @public
 export function clientRectContains(rect: TilingClientRect, point: TilingClientPoint): boolean;
 
 // @public
@@ -62,6 +86,9 @@ export const DEFAULT_TILING_THEME_ID: TilingThemeId;
 export function deleteWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingDeleteWorkspaceResult;
 
 // @public
+export function diffWorkspaceTreeLayouts(current: TilingWorkspaceSet, next: TilingWorkspaceSet): ReadonlyArray<TilingWorkspaceTreeDiff>;
+
+// @public
 export const DRAG_ANIMATION_SPEED_MAX_PERCENT: number;
 
 // @public
@@ -71,10 +98,16 @@ export const DRAG_ANIMATION_SPEED_MIN_PERCENT: number;
 export function findWorkspaceById(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingWorkspace | null;
 
 // @public
+export function foldPendingTrees(set: TilingWorkspaceSet, pending: TilingWorkspaceTreeMap): TilingWorkspaceSet;
+
+// @public
 export function hideFromWorkspace(set: TilingWorkspaceSet, leafId: string, from: TilingWorkspaceId): TilingWorkspaceSet;
 
 // @public
 export function hideTileFromWorkspace(set: TilingWorkspaceSet, tileId: string, from: TilingWorkspaceId): TilingHideTileResult;
+
+// @public
+export type IncomingWorkspaceSetKind = "echo" | "stale" | "authoritative";
 
 // @public
 export function isCommandEnabled(command: TilingCommand, gates: TilingCommandGates): boolean;
@@ -1180,6 +1213,34 @@ export interface TilingWorkspaceSet {
 }
 
 // @public
+export type TilingWorkspaceSetCommitReason = "tree" | "lifecycle" | "move" | "reveal";
+
+// @public
+export interface TilingWorkspaceSetController {
+    readonly create: () => TilingWorkspaceId | null;
+    readonly flush: () => void;
+    readonly moveTile: (tileId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement) => void;
+    readonly onWorkspacesChange: (next: TilingWorkspaceSet) => void;
+    readonly pending: boolean;
+    readonly remove: (id: TilingWorkspaceId) => ReadonlyArray<string>;
+    readonly rename: (id: TilingWorkspaceId, name: string) => void;
+    readonly reveal: (tileId: string) => TilingRevealTileResult | null;
+    readonly set: TilingWorkspaceSet;
+    readonly switch: (id: TilingWorkspaceId) => void;
+}
+
+// @public
+export interface TilingWorkspaceSetControllerOptions {
+    readonly maxWorkspaces?: number;
+    readonly mintWorkspaceId: () => string;
+    readonly nextWorkspaceName: (existing: ReadonlyArray<TilingWorkspace>) => string;
+    readonly onCommit: (next: TilingWorkspaceSet, reason: TilingWorkspaceSetCommitReason) => void;
+    readonly readOnly?: boolean;
+    readonly treeDebounceMs?: number;
+    readonly value: TilingWorkspaceSet;
+}
+
+// @public
 export interface TilingWorkspaceSetIssue {
     readonly kind: TilingWorkspaceSetIssueKind;
     readonly leafId?: string;
@@ -1294,7 +1355,19 @@ export interface TilingWorkspaceTabTarget {
 }
 
 // @public
+export interface TilingWorkspaceTreeDiff {
+    readonly layout: TilingLayoutNode | null;
+    readonly workspaceId: TilingWorkspaceId;
+}
+
+// @public
+export type TilingWorkspaceTreeMap = ReadonlyMap<TilingWorkspaceId, TilingLayoutNode | null>;
+
+// @public
 export function useTilingTheme(): TilingTheme;
+
+// @public
+export function useTilingWorkspaceSetController(options: TilingWorkspaceSetControllerOptions): TilingWorkspaceSetController;
 
 // @public
 export function useTilingWorkspaceTabs(options: UseTilingWorkspaceTabsOptions): UseTilingWorkspaceTabsResult;
@@ -1328,6 +1401,9 @@ export interface UseTilingWorkspaceTabsResult {
 }
 
 // @public
+export function viewedWorkspaceSet(value: TilingWorkspaceSet, localTrees: TilingWorkspaceTreeMap, localActiveId?: TilingWorkspaceId | null): TilingWorkspaceSet;
+
+// @public
 export interface WorkspaceSetIntegrityOptions {
     readonly expectedTileIds?: ReadonlyArray<string>;
 }
@@ -1336,7 +1412,13 @@ export interface WorkspaceSetIntegrityOptions {
 export function workspaceSetIssues(set: TilingWorkspaceSet, options?: WorkspaceSetIntegrityOptions): ReadonlyArray<TilingWorkspaceSetIssue>;
 
 // @public
+export function workspaceSetLayoutMap(set: TilingWorkspaceSet): Map<TilingWorkspaceId, TilingLayoutNode | null>;
+
+// @public
 export function workspaceSetOfLayout(layout: TilingLayoutNode | null, id?: TilingWorkspaceId, name?: string): TilingWorkspaceSet;
+
+// @public
+export function workspaceSetsAlign(left: TilingWorkspaceSet, right: TilingWorkspaceSet): boolean;
 
 // (No @packageDocumentation comment for this package)
 

@@ -13,6 +13,27 @@ export function accentHue(accent: TilingTileAccent | undefined): TilingAccentHue
 export function activeWorkspace(set: TilingWorkspaceSet): TilingWorkspace | null;
 
 // @public
+export function adoptIncomingWorkspaceTrees(input: AdoptIncomingWorkspaceTreesInput): AdoptIncomingWorkspaceTreesResult;
+
+// @public
+export interface AdoptIncomingWorkspaceTreesInput {
+    readonly dropMissingWorkspaces?: boolean;
+    readonly incoming: TilingWorkspaceSet;
+    readonly lastCommitted: TilingWorkspaceTreeMap;
+    readonly localTrees: TilingWorkspaceTreeMap;
+    readonly pending: TilingWorkspaceTreeMap;
+}
+
+// @public
+export interface AdoptIncomingWorkspaceTreesResult {
+    readonly droppedPending: boolean;
+    readonly lastCommitted: Map<TilingWorkspaceId, TilingLayoutNode | null>;
+    readonly localTrees: Map<TilingWorkspaceId, TilingLayoutNode | null>;
+    readonly localTreesChanged: boolean;
+    readonly pending: Map<TilingWorkspaceId, TilingLayoutNode | null>;
+}
+
+// @public
 export function assertLayoutIntegrity(node: TilingLayoutNode, options?: AssertLayoutIntegrityOptions): LayoutTileIntegrityReport;
 
 // @public
@@ -46,6 +67,9 @@ export function chordRequiresModifier(chord: ResolvedTilingKeyChord): boolean;
 
 // @public
 export function clampCursorPointToViewport(point: DragCursorPoint, bounds: DragCursorViewportBounds, marginPx: number): DragCursorPoint;
+
+// @public
+export function classifyIncomingWorkspaceSet(incoming: TilingWorkspaceSet, lastCommitted: TilingWorkspaceSet, ahead: boolean): IncomingWorkspaceSetKind;
 
 // @public
 export function clientRectContains(rect: TilingClientRect, point: TilingClientPoint): boolean;
@@ -97,6 +121,9 @@ export function deleteWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId):
 //
 // @internal
 export function diffCollapsedLeaves(before: TilingLayoutNode, after: TilingLayoutNode): ReadonlyArray<TilingPaneCollapsedChangeEvent>;
+
+// @public
+export function diffWorkspaceTreeLayouts(current: TilingWorkspaceSet, next: TilingWorkspaceSet): ReadonlyArray<TilingWorkspaceTreeDiff>;
 
 // @public
 export type DragCursorKind = "grab" | "insert" | "swap" | "invalid";
@@ -168,6 +195,9 @@ export interface FocusHistory {
 }
 
 // @public
+export function foldPendingTrees(set: TilingWorkspaceSet, pending: TilingWorkspaceTreeMap): TilingWorkspaceSet;
+
+// @public
 export function groupLeaves(layout: TilingLayoutNode, leafIds: ReadonlyArray<string>, options?: GroupLeavesOptions): TilingLayoutNode;
 
 // @public
@@ -184,6 +214,9 @@ export function hideFromWorkspace(set: TilingWorkspaceSet, leafId: string, from:
 
 // @public
 export function hideTileFromWorkspace(set: TilingWorkspaceSet, tileId: string, from: TilingWorkspaceId): TilingHideTileResult;
+
+// @public
+export type IncomingWorkspaceSetKind = "echo" | "stale" | "authoritative";
 
 // @public
 export function insertLeafAdjacent(layout: TilingLayoutNode, sourceLeafId: string, targetLeafId: string, placement: TilingMovePlacement, options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
@@ -712,6 +745,15 @@ export interface TilingWorkspaceTabTarget {
 }
 
 // @public
+export interface TilingWorkspaceTreeDiff {
+    readonly layout: TilingLayoutNode | null;
+    readonly workspaceId: TilingWorkspaceId;
+}
+
+// @public
+export type TilingWorkspaceTreeMap = ReadonlyMap<TilingWorkspaceId, TilingLayoutNode | null>;
+
+// @public
 export function toggleLeafCollapsed(node: TilingLayoutNode, leafId: string, collapsedExtentPx: number): TilingLayoutNode;
 
 // @public
@@ -727,6 +769,9 @@ export function ungroupNode(layout: TilingLayoutNode, groupId: string): TilingLa
 export function updateSplitRatio(node: TilingLayoutNode, splitId: string, ratio: number): TilingLayoutNode;
 
 // @public
+export function viewedWorkspaceSet(value: TilingWorkspaceSet, localTrees: TilingWorkspaceTreeMap, localActiveId?: TilingWorkspaceId | null): TilingWorkspaceSet;
+
+// @public
 export interface WorkspaceSetIntegrityOptions {
     readonly expectedTileIds?: ReadonlyArray<string>;
 }
@@ -735,7 +780,13 @@ export interface WorkspaceSetIntegrityOptions {
 export function workspaceSetIssues(set: TilingWorkspaceSet, options?: WorkspaceSetIntegrityOptions): ReadonlyArray<TilingWorkspaceSetIssue>;
 
 // @public
+export function workspaceSetLayoutMap(set: TilingWorkspaceSet): Map<TilingWorkspaceId, TilingLayoutNode | null>;
+
+// @public
 export function workspaceSetOfLayout(layout: TilingLayoutNode | null, id?: TilingWorkspaceId, name?: string): TilingWorkspaceSet;
+
+// @public
+export function workspaceSetsAlign(left: TilingWorkspaceSet, right: TilingWorkspaceSet): boolean;
 
 // (No @packageDocumentation comment for this package)
 

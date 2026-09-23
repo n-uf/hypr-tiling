@@ -19,6 +19,9 @@ the version number alone does not flag them.
 - **`removeTile(set, tileId)`** — drop every seat of the tile. Unchanged when the tile is seated nowhere.
 - **`revealTile(set, tileId, prefer?)`** — pick `prefer` when it shows the tile, else the first workspace in tab order that does; switch `activeId` and activate a group member tab as needed. Returns `null` when the tile is seated nowhere; same set reference when `changed` is `"none"`.
 - **`TilingRevealTileResult`** / **`TilingRevealTileChanged`** — `{ set, workspaceId, leafId, changed: "none" | "tab" | "workspace" | "both" }` return of `revealTile`.
+- **`useTilingWorkspaceSetController`** — host-agnostic session over a persisted `TilingWorkspaceSet`: tree edits (divider, rearrange, tab activation, in-tree drop) coalesce for `treeDebounceMs` (default 400) and commit once with reason `"tree"`; `create` / `rename` / `remove` / `switch` commit immediately as `"lifecycle"`; `moveTile` as `"move"`; `reveal` as `"reveal"` when `changed !== "none"`. Every mutation folds pending trees first so a lifecycle commit never drops an in-flight tree edit. `readOnly` keeps switches local and commits nothing. Pending trees flush synchronously on unmount. Replaces the `localTrees` / `pendingRef` / `lastPersistedRef` block a set host (DashAI `dashboard-renderer.tsx`) keeps by hand.
+- **`TilingWorkspaceSetCommitReason`** — `"tree" | "lifecycle" | "move" | "reveal"`.
+- **`foldPendingTrees` / `viewedWorkspaceSet` / `diffWorkspaceTreeLayouts` / `adoptIncomingWorkspaceTrees` / `classifyIncomingWorkspaceSet`** — framework-free helpers the hook uses (also on `./engine`).
 
 ## 26.9.3 — 2026-09-22
 
