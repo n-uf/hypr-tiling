@@ -271,3 +271,21 @@ export type {
   TilingWorkspaceSwitchEvent,
   TilingWorkspaceSwitchVia,
 } from "./engine/types";
+
+// N2 — workspace transition (pure; the React stage lives on `.`)
+export {
+  DEFAULT_WORKSPACE_TRANSITION_CONFIG,
+  DEFAULT_WORKSPACE_TRANSITION_DURATION_MS,
+  DEFAULT_WORKSPACE_TRANSITION_EASING,
+  clampUnitProgress,
+  resolveTransitionMode,
+  sampleTransitionEase,
+  transitionTransform,
+  unitProgressFromSigned,
+  type ResolveTransitionModeFlags,
+  type TilingWorkspaceTransitionConfig,
+  type TilingWorkspaceTransitionDirection,
+  type TilingWorkspaceTransitionLayerStyle,
+  type TilingWorkspaceTransitionMode,
+  type TilingWorkspaceTransitionTransform,
+} from "./engine/workspace-transition";
