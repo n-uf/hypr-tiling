@@ -31,6 +31,18 @@ export interface AdoptIncomingWorkspaceTreesResult {
 }
 
 // @public
+export interface CapturedViewClone {
+    readonly degraded: boolean;
+    readonly node: HTMLElement;
+}
+
+// @public
+export function captureViewClone(root: HTMLElement): CapturedViewClone;
+
+// @public
+export function clampUnitProgress(progress: number): number;
+
+// @public
 export function classifyIncomingWorkspaceSet(incoming: TilingWorkspaceSet, lastCommitted: TilingWorkspaceSet, ahead: boolean): IncomingWorkspaceSetKind;
 
 // @public
@@ -81,6 +93,15 @@ export const DEFAULT_TILING_LAYOUT_CONFIG: TilingLayoutConfig;
 
 // @public
 export const DEFAULT_TILING_THEME_ID: TilingThemeId;
+
+// @public
+export const DEFAULT_WORKSPACE_TRANSITION_CONFIG: TilingWorkspaceTransitionConfig;
+
+// @public
+export const DEFAULT_WORKSPACE_TRANSITION_DURATION_MS: number;
+
+// @public
+export const DEFAULT_WORKSPACE_TRANSITION_EASING: string;
 
 // @public
 export function deleteWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingDeleteWorkspaceResult;
@@ -318,13 +339,28 @@ export function resolveJumpedPaneId(leafIds: ReadonlyArray<string>, paneNumber: 
 export function resolveTilingTheme(themeId: TilingThemeId | undefined): TilingTheme;
 
 // @public
+export function resolveTransitionMode(requested: TilingWorkspaceTransitionMode, flags: ResolveTransitionModeFlags): TilingWorkspaceTransitionMode;
+
+// @public
+export interface ResolveTransitionModeFlags {
+    readonly degraded: boolean;
+    readonly reducedMotion: boolean;
+}
+
+// @public
 export function resolveWorkspaceTabHover(targets: ReadonlyArray<TilingWorkspaceTabTarget>, point: TilingClientPoint): TilingWorkspaceTabDragHover | null;
 
 // @public
 export function resolveWorkspaceTabKey(key: string, focusedIndex: number, count: number, orientation?: TilingWorkspaceTabsOrientation): TilingWorkspaceTabKeyAction | null;
 
 // @public
+export function resolveWorkspaceTransition(theme: TilingTheme): TilingThemeWorkspaceTransitionTokens;
+
+// @public
 export function revealTile(set: TilingWorkspaceSet, tileId: string, prefer?: TilingWorkspaceId): TilingRevealTileResult | null;
+
+// @public
+export function sampleTransitionEase(t: number): number;
 
 // @public
 export function setWorkspaceLayout(set: TilingWorkspaceSet, id: TilingWorkspaceId, layout: TilingLayoutNode | null): TilingWorkspaceSet;
@@ -1108,6 +1144,7 @@ export interface TilingTheme {
     readonly workspaceTabActive?: string;
     readonly workspaceTabDropTarget?: string;
     readonly workspaceTabs?: string;
+    readonly workspaceTransition?: Partial<TilingThemeWorkspaceTransitionTokens>;
 }
 
 // @public
@@ -1187,6 +1224,12 @@ export interface TilingThemeTopBarTokens {
     readonly tabBase: string;
     readonly tabInactive: string;
     readonly titleText: string;
+}
+
+// @public
+export interface TilingThemeWorkspaceTransitionTokens {
+    readonly durationMs: number;
+    readonly easing: string;
 }
 
 // @public
@@ -1422,6 +1465,31 @@ export interface TilingWorkspaceTabTarget {
 }
 
 // @public
+export interface TilingWorkspaceTransitionConfig {
+    readonly durationMs: number;
+    readonly easing: string;
+    readonly mode: TilingWorkspaceTransitionMode;
+}
+
+// @public
+export type TilingWorkspaceTransitionDirection = "prev" | "next";
+
+// @public
+export interface TilingWorkspaceTransitionLayerStyle {
+    readonly opacity: number;
+    readonly transform: string;
+}
+
+// @public
+export type TilingWorkspaceTransitionMode = "none" | "slide" | "fade";
+
+// @public
+export interface TilingWorkspaceTransitionTransform {
+    readonly incoming: TilingWorkspaceTransitionLayerStyle;
+    readonly outgoing: TilingWorkspaceTransitionLayerStyle;
+}
+
+// @public
 export interface TilingWorkspaceTreeDiff {
     readonly layout: TilingLayoutNode | null;
     readonly workspaceId: TilingWorkspaceId;
@@ -1429,6 +1497,12 @@ export interface TilingWorkspaceTreeDiff {
 
 // @public
 export type TilingWorkspaceTreeMap = ReadonlyMap<TilingWorkspaceId, TilingLayoutNode | null>;
+
+// @public
+export function transitionTransform(progress: number, direction: TilingWorkspaceTransitionDirection, mode: TilingWorkspaceTransitionMode): TilingWorkspaceTransitionTransform;
+
+// @public
+export function unitProgressFromSigned(signed: number, direction: TilingWorkspaceTransitionDirection): number;
 
 // @public
 export function useTilingTheme(): TilingTheme;
@@ -1468,6 +1542,39 @@ export interface UseTilingWorkspaceTabsResult {
 }
 
 // @public
+export function useWorkspaceTransition(options: UseWorkspaceTransitionOptions): UseWorkspaceTransitionResult;
+
+// @public
+export interface UseWorkspaceTransitionOptions {
+    readonly durationMs?: number;
+    readonly easing?: string;
+    readonly mode?: TilingWorkspaceTransitionMode;
+    readonly onSettled?: (kind: WorkspaceTransitionSettleKind) => void;
+    readonly reducedMotion?: boolean;
+    readonly viewportRef: React_2.RefObject<HTMLElement | null>;
+}
+
+// @public
+export interface UseWorkspaceTransitionResult {
+    readonly activeMode: TilingWorkspaceTransitionMode;
+    readonly begin: (input: {
+        direction: TilingWorkspaceTransitionDirection;
+        mode?: TilingWorkspaceTransitionMode;
+    }) => void;
+    readonly direction: TilingWorkspaceTransitionDirection | null;
+    readonly finish: (kind: WorkspaceTransitionSettleKind) => void;
+    readonly incomingStyle: React_2.CSSProperties;
+    readonly outgoingNode: HTMLElement | null;
+    readonly outgoingStyle: React_2.CSSProperties;
+    readonly phase: WorkspaceTransitionPhase;
+    readonly scrub: (progress: number) => void;
+    readonly unitProgress: number;
+}
+
+// @public
+export const VIEW_CAPTURE_CANVAS_PIXEL_BUDGET: number;
+
+// @public
 export function viewedWorkspaceSet(value: TilingWorkspaceSet, localTrees: TilingWorkspaceTreeMap, localActiveId?: TilingWorkspaceId | null): TilingWorkspaceSet;
 
 // @public
@@ -1489,6 +1596,28 @@ export function workspaceSetOfLayout(layout: TilingLayoutNode | null, id?: Tilin
 
 // @public
 export function workspaceSetsAlign(left: TilingWorkspaceSet, right: TilingWorkspaceSet): boolean;
+
+// @public
+export type WorkspaceTransitionPhase = "idle" | "scrubbing" | "settling";
+
+// @public
+export type WorkspaceTransitionSettleKind = "commit" | "cancel";
+
+// @public
+export const WorkspaceTransitionStage: React_2.ForwardRefExoticComponent<WorkspaceTransitionStageProps & React_2.RefAttributes<UseWorkspaceTransitionResult>>;
+
+// @public
+export interface WorkspaceTransitionStageProps {
+    readonly children?: React_2.ReactNode;
+    readonly className?: string;
+    readonly durationMs?: number;
+    readonly easing?: string;
+    readonly mode?: TilingWorkspaceTransitionMode;
+    readonly onSettled?: (kind: WorkspaceTransitionSettleKind) => void;
+    readonly progress?: number | null;
+    readonly reducedMotion?: boolean;
+    readonly viewportRef: React_2.RefObject<HTMLElement | null>;
+}
 
 // (No @packageDocumentation comment for this package)
 

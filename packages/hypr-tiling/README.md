@@ -476,6 +476,51 @@ function Dashboard({ persisted, persist, readOnly, tiles }) {
 }
 ```
 
+### Workspace switch transition
+
+When the set-mode wrapper switches `activeId`, the outgoing tree unmounts
+(inactive workspace trees are not mounted — `inactiveWorkspaces` did not
+ship). `<WorkspaceTransitionStage>` / `useWorkspaceTransition` freeze the
+outgoing viewport as a DOM clone (`captureViewClone`) and slide or fade
+that clone against the live incoming tree.
+
+Call `begin` **before** updating `activeId`. Feed N1 swipe `progress`
+(`−1..1`) while tracking; call `finish("commit" | "cancel")` to run the
+timed curve and drop the clone.
+
+```tsx
+import {
+  useWorkspaceTransition,
+  WorkspaceTransitionStage,
+} from "@n-uf/hypr-tiling";
+
+const viewportRef = useRef<HTMLDivElement>(null);
+const transition = useWorkspaceTransition({
+  viewportRef,
+  mode: "slide",
+  onSettled: (kind) => {
+    void kind;
+  },
+});
+
+// BEFORE setWorkspaces(switchWorkspace(...)):
+transition.begin({ direction: "next" });
+// N1 swipe: transition.scrub(progress)
+// then:
+transition.finish("commit");
+```
+
+The viewport root needs `position: relative; overflow: hidden` so the
+overlay shares its box. `prefers-reduced-motion: reduce` resolves to
+`"none"` (instant, no clone). A tainted or oversized `<canvas>` capture
+falls `"slide"` → `"fade"`.
+
+Capability `interaction.workspaces.switch.transition?: "none" | "slide" |
+"fade"` (default `"none"`) is **planned** — the set-mode wrapper does not
+read it yet (follow-up after N1). Pass `mode` into the hook until then.
+Theme token `workspaceTransition` (`durationMs`, `easing`) supplies the
+timed curve (default 200 ms, drag-hop easing).
+
 ## Features
 
 - **Drag/drop rearrange** — Hyprland-style live drag; the move commits on

@@ -32,6 +32,15 @@ the version number alone does not flag them.
 - Set-mode wrapper dispatches the four commands through the existing handle / `dispatchCommand` path and reports the next set on `onWorkspacesChange`.
 - `onWorkspaceSwitch?: (event: { from; to; via: "tab" | "key" | "command" | "swipe" | "spring-load" | "reveal" })` — fired beside `onWorkspacesChange` when `activeId` changes through the renderer (`"swipe"` / `"spring-load"` / `"tab"` reserved, not emitted yet).
 - `reveal-tile` is implemented locally in the wrapper (`workspacesOfTile` + `switchWorkspace` + group `activeMemberId`); swap to engine `revealTile` when H5 lands.
+- **`TilingWorkspaceTransitionMode`** — `"none" | "slide" | "fade"`. Default `"none"`.
+- **`TilingWorkspaceTransitionDirection`** — `"prev" | "next"`.
+- **`TilingWorkspaceTransitionConfig`** / **`DEFAULT_WORKSPACE_TRANSITION_CONFIG`** — `{ mode: "none", durationMs: 200, easing }` (easing is the drag-hop curve).
+- **`resolveTransitionMode(requested, { reducedMotion, degraded })`** — reduced motion → `"none"`; a degraded canvas capture falls `"slide"` → `"fade"`.
+- **`transitionTransform(progress, direction, mode)`** — compositor-friendly `translateX` / opacity for the outgoing clone and the live incoming tree. Slide: next −100 % / +100 %, prev the reverse. Fade: clone opacity `1 → 0`.
+- **`captureViewClone(root)`** — `cloneNode(true)` of the viewport; copies `<canvas>` bitmaps via `drawImage`; strips `id` and renderer hit-test `data-*` (`data-leaf-id`, `data-hpt-pane`, …); sets `pointer-events: none`, `aria-hidden`, `inert`. `degraded: true` on tainted / oversized canvases (16 M pixel budget).
+- **`WorkspaceTransitionStage`** / **`useWorkspaceTransition`** — self-contained stage + imperative `begin({ direction, mode })` / `scrub(progress)` / `finish("commit" | "cancel")`. Progress-driven while N1 swipe `progress` is non-null; timed curve when `finish` runs. A second `begin` mid-flight replaces the clone. Not wired into the set-mode wrapper yet (N1 owns `tiling-renderer.tsx`).
+- **`theme.workspaceTransition?: { durationMs; easing }`** — optional motion tokens; `resolveWorkspaceTransition` fills 200 ms + drag-hop easing.
+- Planned capability **`interaction.workspaces.switch.transition?: "none" | "slide" | "fade"`** (default `"none"`) — the wrapper does not read it yet; pass `mode` into the hook until that follow-up.
 
 ## 26.9.3 — 2026-09-22
 

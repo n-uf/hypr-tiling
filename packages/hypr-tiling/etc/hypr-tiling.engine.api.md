@@ -69,6 +69,9 @@ export function chordRequiresModifier(chord: ResolvedTilingKeyChord): boolean;
 export function clampCursorPointToViewport(point: DragCursorPoint, bounds: DragCursorViewportBounds, marginPx: number): DragCursorPoint;
 
 // @public
+export function clampUnitProgress(progress: number): number;
+
+// @public
 export function classifyIncomingWorkspaceSet(incoming: TilingWorkspaceSet, lastCommitted: TilingWorkspaceSet, ahead: boolean): IncomingWorkspaceSetKind;
 
 // @public
@@ -110,6 +113,15 @@ export interface CreateWorkspaceInput {
 
 // @public
 export function cycleWorkspace(set: TilingWorkspaceSet, direction: TilingPaneCycleDirection): TilingWorkspaceSet;
+
+// @public
+export const DEFAULT_WORKSPACE_TRANSITION_CONFIG: TilingWorkspaceTransitionConfig;
+
+// @public
+export const DEFAULT_WORKSPACE_TRANSITION_DURATION_MS: number;
+
+// @public
+export const DEFAULT_WORKSPACE_TRANSITION_EASING: string;
 
 // @public
 export function defaultKeyBindings(keymap: ResolvedTilingKeymap): ReadonlyArray<TilingKeyBinding>;
@@ -421,6 +433,15 @@ export function resolveMultiSelectGroupHost(selection: ReadonlySet<string>, clic
 export function resolveSizingMode(sizing: TilingPaneSizing | undefined, dimension: TilingDimension): TilingPaneSizingMode;
 
 // @public
+export function resolveTransitionMode(requested: TilingWorkspaceTransitionMode, flags: ResolveTransitionModeFlags): TilingWorkspaceTransitionMode;
+
+// @public
+export interface ResolveTransitionModeFlags {
+    readonly degraded: boolean;
+    readonly reducedMotion: boolean;
+}
+
+// @public
 export function resolveWorkspaceTabHover(targets: ReadonlyArray<TilingWorkspaceTabTarget>, point: TilingClientPoint): TilingWorkspaceTabDragHover | null;
 
 // @public
@@ -428,6 +449,9 @@ export function resolveWorkspaceTabKey(key: string, focusedIndex: number, count:
 
 // @public
 export function revealTile(set: TilingWorkspaceSet, tileId: string, prefer?: TilingWorkspaceId): TilingRevealTileResult | null;
+
+// @public
+export function sampleTransitionEase(t: number): number;
 
 // @public
 export function setLeafCollapsed(node: TilingLayoutNode, leafId: string, collapsed: boolean, collapsedExtentPx: number): TilingLayoutNode;
@@ -772,6 +796,31 @@ export interface TilingWorkspaceTabTarget {
 }
 
 // @public
+export interface TilingWorkspaceTransitionConfig {
+    readonly durationMs: number;
+    readonly easing: string;
+    readonly mode: TilingWorkspaceTransitionMode;
+}
+
+// @public
+export type TilingWorkspaceTransitionDirection = "prev" | "next";
+
+// @public
+export interface TilingWorkspaceTransitionLayerStyle {
+    readonly opacity: number;
+    readonly transform: string;
+}
+
+// @public
+export type TilingWorkspaceTransitionMode = "none" | "slide" | "fade";
+
+// @public
+export interface TilingWorkspaceTransitionTransform {
+    readonly incoming: TilingWorkspaceTransitionLayerStyle;
+    readonly outgoing: TilingWorkspaceTransitionLayerStyle;
+}
+
+// @public
 export interface TilingWorkspaceTreeDiff {
     readonly layout: TilingLayoutNode | null;
     readonly workspaceId: TilingWorkspaceId;
@@ -790,7 +839,13 @@ export function toggleLeafMultiSelection(selection: ReadonlySet<string>, leafId:
 export function toggleSplitAxis(node: TilingLayoutNode, splitId: string): TilingLayoutNode;
 
 // @public
+export function transitionTransform(progress: number, direction: TilingWorkspaceTransitionDirection, mode: TilingWorkspaceTransitionMode): TilingWorkspaceTransitionTransform;
+
+// @public
 export function ungroupNode(layout: TilingLayoutNode, groupId: string): TilingLayoutNode;
+
+// @public
+export function unitProgressFromSigned(signed: number, direction: TilingWorkspaceTransitionDirection): number;
 
 // @public
 export function updateSplitRatio(node: TilingLayoutNode, splitId: string, ratio: number): TilingLayoutNode;
