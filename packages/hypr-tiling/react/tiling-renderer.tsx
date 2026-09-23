@@ -4,6 +4,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import {
   isCommandEnabled,
+  isWorkspaceNavigationCommand,
   keyboardActionToCommand,
   tabDoubleClickMaximizeCommand,
   type TilingCommandGates,
@@ -214,8 +215,11 @@ import {
 import type { StyleApplierPort } from "../engine/style-applier-port";
 import {
   activeWorkspace,
+  cycleWorkspace,
   moveLeafToWorkspace,
+  queryWorkspaceSet,
   setWorkspaceLayout,
+  switchWorkspace,
   type TilingWorkspace,
   type TilingWorkspaceSet,
 } from "../engine/workspace-set";
@@ -271,6 +275,7 @@ import type {
   TilingRendererObservabilityProps,
   TilingRendererProps,
   TilingRendererWorkspaceSetProps,
+  TilingWorkspaceSwitchVia,
   TilingSplitAxis,
   TilingSplitNode,
   TilingSplitResizeState,
@@ -4403,9 +4408,40 @@ function MovePaneAffordance({
  * @see {@link TilingInteractionCapabilities}
  * @see {@link TilingCommandHandle}
  */
+/** How a workspace command reached the inner router (imperative vs keymap). */
+type TilingWorkspaceCommandDispatchVia = "key" | "command";
+
+/**
+ * Internal bridge the set-mode wrapper uses so workspace commands share the
+ * same `dispatchCommand` path as the keyboard layer and the public handle.
+ * Not part of the public renderer prop surface.
+ */
+interface TilingWorkspaceCommandBridge {
+  /** `true` only when the wrapper mounted this inner renderer in set mode. */
+  workspaceCommandsEnabled?: boolean;
+  /** Apply a gated workspace command against the wrapper's set. */
+  onWorkspaceCommand?: (
+    command: Extract<
+      TilingCommand,
+      {
+        kind:
+          | "switch-workspace"
+          | "cycle-workspace"
+          | "move-leaf-to-workspace"
+          | "reveal-tile";
+      }
+    >,
+    via: TilingWorkspaceCommandDispatchVia,
+  ) => boolean;
+}
+
+type TilingSingleLayoutRendererProps = TilingRendererProps &
+  TilingRendererObservabilityProps &
+  TilingWorkspaceCommandBridge;
+
 const TilingRendererComponent = React.forwardRef<
   TilingCommandHandle,
-  TilingRendererProps & TilingRendererObservabilityProps
+  TilingSingleLayoutRendererProps
 >(function TilingRenderer(
   {
     layout,
@@ -4451,7 +4487,9 @@ const TilingRendererComponent = React.forwardRef<
     onExternalDrop,
     resolveExternalDragHover,
     onExternalDragHoverChange,
-  }: TilingRendererProps & TilingRendererObservabilityProps,
+    workspaceCommandsEnabled = false,
+    onWorkspaceCommand,
+  }: TilingSingleLayoutRendererProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
 ): React.ReactElement {
   // Refs for the layout-edit choke point — declared before any handler so
@@ -4770,6 +4808,8 @@ const TilingRendererComponent = React.forwardRef<
       resizeEnabled: isResizeEnabled,
       layoutEnabled: interactionCapabilities.masterLayout,
       groupingEnabled: isGroupingEnabled,
+      workspacesEnabled:
+        workspaceCommandsEnabled && interactionCapabilities.workspaces.enable,
     }),
     [
       isMaximizeEnabled,
@@ -4782,6 +4822,8 @@ const TilingRendererComponent = React.forwardRef<
       isResizeEnabled,
       interactionCapabilities.masterLayout,
       isGroupingEnabled,
+      workspaceCommandsEnabled,
+      interactionCapabilities.workspaces.enable,
     ],
   );
   const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -6419,9 +6461,15 @@ const TilingRendererComponent = React.forwardRef<
   // `runTilingKeyDown`; a direct `focus-cycle` dispatch always activates
   // immediately (correct programmatic semantics).
   const dispatchCommand = React.useCallback(
-    (command: TilingCommand): boolean => {
+    (
+      command: TilingCommand,
+      via: TilingWorkspaceCommandDispatchVia = "command",
+    ): boolean => {
       if (!isCommandEnabled(command, commandGates)) {
         return false;
+      }
+      if (isWorkspaceNavigationCommand(command)) {
+        return onWorkspaceCommand?.(command, via) ?? false;
       }
       switch (command.kind) {
         case "focus-pane": {
@@ -6843,6 +6891,7 @@ const TilingRendererComponent = React.forwardRef<
       focusLeafElement,
       isLeafRearrangeEligible,
       layout,
+      onWorkspaceCommand,
       commitLayoutChange,
       setFocusedLeaf,
       setLeafSizingFromBbox,
@@ -7019,7 +7068,7 @@ const TilingRendererComponent = React.forwardRef<
         interactionCapabilities.keyBindings.bindings,
       );
       if (customCommand != null) {
-        if (dispatchCommand(customCommand)) {
+        if (dispatchCommand(customCommand, "key")) {
           preventDefault();
         }
         return;
@@ -7135,7 +7184,7 @@ const TilingRendererComponent = React.forwardRef<
       // the SAME router (no duplicated action logic). `preventDefault` only
       // fires when the command produced an effect, preserving browser-grace for
       // a no-op (e.g. restore with nothing maximized, focus-direction at an edge).
-      if (dispatchCommand(keyboardActionToCommand(action))) {
+      if (dispatchCommand(keyboardActionToCommand(action), "key")) {
         preventDefault();
       }
     },
@@ -9439,9 +9488,7 @@ const TilingRendererComponent = React.forwardRef<
 /** The single-layout renderer, typed to also accept the observability props. */
 const TilingSingleLayoutRenderer =
   TilingRendererComponent as React.ForwardRefExoticComponent<
-    TilingRendererProps &
-      TilingRendererObservabilityProps &
-      React.RefAttributes<TilingCommandHandle>
+    TilingSingleLayoutRendererProps & React.RefAttributes<TilingCommandHandle>
   >;
 
 /** A leaf id remembered per workspace, dropped once the leaf leaves that tree. */
@@ -9475,11 +9522,57 @@ function withRemembered(
 }
 
 /**
+ * Switch to a workspace showing `tileId` (prefer the active one), make the
+ * leaf its group's active member if grouped, and return the leaf id to focus.
+ * Same-reference `set` when the tile is already revealed.
+ *
+ * TODO(H5): replace with engine revealTile
+ */
+function revealTileInWorkspaceSet(
+  set: TilingWorkspaceSet,
+  tileId: string,
+): { set: TilingWorkspaceSet; workspaceId: string; leafId: string } | null {
+  const query = queryWorkspaceSet(set);
+  const workspaceIds: ReadonlyArray<string> = query.workspacesOfTile(tileId);
+  if (workspaceIds.length === 0) {
+    return null;
+  }
+  const workspaceId: string = workspaceIds.includes(set.activeId)
+    ? set.activeId
+    : workspaceIds[0];
+  const tree: TilingLayoutNode | null = query.workspace(workspaceId)?.layout ?? null;
+  if (tree == null) {
+    return null;
+  }
+  const leafIds: ReadonlyArray<string> = query.leafIds(workspaceId);
+  const tileIds: ReadonlyArray<string> = query.tileIds(workspaceId);
+  const leafIndex: number = tileIds.indexOf(tileId);
+  if (leafIndex === -1) {
+    return null;
+  }
+  const leafId: string = leafIds[leafIndex];
+  let nextLayout: TilingLayoutNode = tree;
+  const group = findGroupContainingLeaf(tree, leafId);
+  if (group != null && group.activeMemberId !== leafId) {
+    nextLayout = setActiveGroupMember(tree, group.id, leafId);
+  }
+  let next: TilingWorkspaceSet = set;
+  if (nextLayout !== tree) {
+    next = setWorkspaceLayout(next, workspaceId, nextLayout);
+  }
+  next = switchWorkspace(next, workspaceId);
+  return { set: next, workspaceId, leafId };
+}
+
+/**
  * Workspace-set mode of {@link TilingRenderer}: paints the active workspace's
  * tree through the single-layout renderer and folds every reported tree edit
  * back into the set (`setWorkspaceLayout`). Owns the per-workspace focus /
  * maximize memory for the uncontrolled case and the native workspace-tab drop
- * settle (`moveLeafToWorkspace` on a `kind: "workspace-tab"` hover).
+ * settle (`moveLeafToWorkspace` on a `kind: "workspace-tab"` hover). Dispatches
+ * the four workspace commands through the same inner `dispatchCommand` router
+ * (empty-workspace fallback applies them locally when no inner renderer is
+ * mounted).
  */
 const TilingWorkspaceSetRendererComponent = React.forwardRef<
   TilingCommandHandle,
@@ -9489,6 +9582,7 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
     workspaces,
     onWorkspacesChange,
     onMoveLeaf,
+    onWorkspaceSwitch,
     renderEmptyWorkspace,
     focusedLeafId,
     onFocusedLeafChange,
@@ -9532,6 +9626,19 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
   onWorkspacesChangeRef.current = onWorkspacesChange;
   const onMoveLeafRef = React.useRef(onMoveLeaf);
   onMoveLeafRef.current = onMoveLeaf;
+  const onWorkspaceSwitchRef = React.useRef(onWorkspaceSwitch);
+  onWorkspaceSwitchRef.current = onWorkspaceSwitch;
+  const innerHandleRef = React.useRef<TilingCommandHandle | null>(null);
+  const interactionCapabilities: ResolvedTilingInteractionCapabilities =
+    resolveInteractionCapabilities(rest.interaction);
+  const workspacesEnabled: boolean = interactionCapabilities.workspaces.enable;
+  const followMovedLeaf: boolean = interactionCapabilities.workspaces.followMovedLeaf;
+  const workspacesEnabledRef = React.useRef<boolean>(workspacesEnabled);
+  workspacesEnabledRef.current = workspacesEnabled;
+  const followMovedLeafRef = React.useRef<boolean>(followMovedLeaf);
+  followMovedLeafRef.current = followMovedLeaf;
+  const focusedLeafRef = React.useRef<string | null>(effectiveFocusedLeafId ?? null);
+  focusedLeafRef.current = effectiveFocusedLeafId ?? null;
 
   const handleLayoutChange = React.useCallback(
     (nextLayout: TilingLayoutNode): void => {
@@ -9609,6 +9716,138 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
     [onExternalDrop],
   );
 
+  const applyWorkspaceCommand = React.useCallback(
+    (
+      command: Extract<
+        TilingCommand,
+        {
+          kind:
+            | "switch-workspace"
+            | "cycle-workspace"
+            | "move-leaf-to-workspace"
+            | "reveal-tile";
+        }
+      >,
+      via: TilingWorkspaceCommandDispatchVia,
+    ): boolean => {
+      if (!workspacesEnabledRef.current) {
+        return false;
+      }
+      const current: TilingWorkspaceSet = workspacesRef.current;
+      const from: string = current.activeId;
+      const switchVia: TilingWorkspaceSwitchVia =
+        command.kind === "reveal-tile" ? "reveal" : via;
+      let next: TilingWorkspaceSet = current;
+      let revealLeafId: string | null = null;
+      let revealWorkspaceId: string | null = null;
+
+      switch (command.kind) {
+        case "switch-workspace": {
+          const workspaceId: string | undefined =
+            "index" in command
+              ? current.workspaces[command.index - 1]?.id
+              : command.workspaceId;
+          if (workspaceId == null) {
+            return false;
+          }
+          next = switchWorkspace(current, workspaceId);
+          break;
+        }
+        case "cycle-workspace": {
+          next = cycleWorkspace(current, command.direction);
+          break;
+        }
+        case "move-leaf-to-workspace": {
+          const leafId: string | null = command.leafId ?? focusedLeafRef.current;
+          if (leafId == null) {
+            return false;
+          }
+          const targetId: string | null =
+            "workspaceId" in command
+              ? command.workspaceId
+              : queryWorkspaceSet(current).neighbour(
+                  current.activeId,
+                  command.direction,
+                );
+          if (targetId == null) {
+            return false;
+          }
+          const moved: TilingWorkspaceSet = moveLeafToWorkspace(
+            current,
+            leafId,
+            targetId,
+            command.placement,
+          );
+          if (moved === current) {
+            return false;
+          }
+          const follow: boolean = command.follow ?? followMovedLeafRef.current;
+          next = follow ? switchWorkspace(moved, targetId) : moved;
+          if (follow) {
+            setFocusMemory(
+              (memory: ReadonlyMap<string, string>): ReadonlyMap<string, string> =>
+                withRemembered(memory, targetId, leafId),
+            );
+          }
+          break;
+        }
+        case "reveal-tile": {
+          const revealed = revealTileInWorkspaceSet(current, command.tileId);
+          if (revealed == null) {
+            return false;
+          }
+          next = revealed.set;
+          revealLeafId = revealed.leafId;
+          revealWorkspaceId = revealed.workspaceId;
+          break;
+        }
+      }
+
+      const focusAlready: boolean =
+        revealLeafId != null &&
+        focusedLeafRef.current === revealLeafId &&
+        current.activeId === revealWorkspaceId;
+      if (next === current && (revealLeafId == null || focusAlready)) {
+        return false;
+      }
+      if (next !== current) {
+        onWorkspacesChangeRef.current(next);
+      }
+      if (next.activeId !== from) {
+        onWorkspaceSwitchRef.current?.({
+          from,
+          to: next.activeId,
+          via: switchVia,
+        });
+      }
+      if (revealLeafId != null && revealWorkspaceId != null) {
+        setFocusMemory(
+          (memory: ReadonlyMap<string, string>): ReadonlyMap<string, string> =>
+            withRemembered(memory, revealWorkspaceId, revealLeafId),
+        );
+        onFocusedLeafChange?.(revealLeafId);
+      }
+      return true;
+    },
+    [onFocusedLeafChange],
+  );
+
+  React.useImperativeHandle(
+    ref,
+    (): TilingCommandHandle => ({
+      dispatch: (command: TilingCommand): void => {
+        if (innerHandleRef.current != null) {
+          innerHandleRef.current.dispatch(command);
+          return;
+        }
+        if (isWorkspaceNavigationCommand(command)) {
+          applyWorkspaceCommand(command, "command");
+        }
+      },
+    }),
+    [applyWorkspaceCommand],
+  );
+
   if (layout == null) {
     const theme: TilingTheme = themeProp ?? resolveTilingTheme(themeId);
     return (
@@ -9627,7 +9866,7 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
   return (
     <TilingSingleLayoutRenderer
       {...rest}
-      ref={ref}
+      ref={innerHandleRef}
       className={className}
       themeId={themeId}
       theme={themeProp}
@@ -9638,6 +9877,8 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       maximizedLeafId={effectiveMaximizedLeafId}
       onMaximizedLeafChange={handleMaximizedLeafChange}
       onExternalDrop={handleExternalDrop}
+      workspaceCommandsEnabled
+      onWorkspaceCommand={applyWorkspaceCommand}
     />
   );
 });
