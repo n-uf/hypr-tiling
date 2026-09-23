@@ -10,6 +10,30 @@ import * as React_2 from 'react';
 export function activeWorkspace(set: TilingWorkspaceSet): TilingWorkspace | null;
 
 // @public
+export function adoptIncomingWorkspaceTrees(input: AdoptIncomingWorkspaceTreesInput): AdoptIncomingWorkspaceTreesResult;
+
+// @public
+export interface AdoptIncomingWorkspaceTreesInput {
+    readonly dropMissingWorkspaces?: boolean;
+    readonly incoming: TilingWorkspaceSet;
+    readonly lastCommitted: TilingWorkspaceTreeMap;
+    readonly localTrees: TilingWorkspaceTreeMap;
+    readonly pending: TilingWorkspaceTreeMap;
+}
+
+// @public
+export interface AdoptIncomingWorkspaceTreesResult {
+    readonly droppedPending: boolean;
+    readonly lastCommitted: Map<TilingWorkspaceId, TilingLayoutNode | null>;
+    readonly localTrees: Map<TilingWorkspaceId, TilingLayoutNode | null>;
+    readonly localTreesChanged: boolean;
+    readonly pending: Map<TilingWorkspaceId, TilingLayoutNode | null>;
+}
+
+// @public
+export function classifyIncomingWorkspaceSet(incoming: TilingWorkspaceSet, lastCommitted: TilingWorkspaceSet, ahead: boolean): IncomingWorkspaceSetKind;
+
+// @public
 export function clientRectContains(rect: TilingClientRect, point: TilingClientPoint): boolean;
 
 // @public
@@ -62,6 +86,9 @@ export const DEFAULT_TILING_THEME_ID: TilingThemeId;
 export function deleteWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingDeleteWorkspaceResult;
 
 // @public
+export function diffWorkspaceTreeLayouts(current: TilingWorkspaceSet, next: TilingWorkspaceSet): ReadonlyArray<TilingWorkspaceTreeDiff>;
+
+// @public
 export const DRAG_ANIMATION_SPEED_MAX_PERCENT: number;
 
 // @public
@@ -71,21 +98,22 @@ export const DRAG_ANIMATION_SPEED_MIN_PERCENT: number;
 export function findWorkspaceById(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingWorkspace | null;
 
 // @public
+export function foldPendingTrees(set: TilingWorkspaceSet, pending: TilingWorkspaceTreeMap): TilingWorkspaceSet;
+
+// @public
 export function hideFromWorkspace(set: TilingWorkspaceSet, leafId: string, from: TilingWorkspaceId): TilingWorkspaceSet;
 
 // @public
 export function hideTileFromWorkspace(set: TilingWorkspaceSet, tileId: string, from: TilingWorkspaceId): TilingHideTileResult;
 
 // @public
+export type IncomingWorkspaceSetKind = "echo" | "stale" | "authoritative";
+
+// @public
 export function isCommandEnabled(command: TilingCommand, gates: TilingCommandGates): boolean;
 
 // @public
 export function isMultiSelectModifierActive(event: MultiSelectModifierState): boolean;
-
-// @public
-export function isWorkspaceNavigationCommand(command: TilingCommand): command is Extract<TilingCommand, {
-    kind: "switch-workspace" | "cycle-workspace" | "move-leaf-to-workspace" | "reveal-tile";
-}>;
 
 // @public
 export function moveLeafToWorkspace(set: TilingWorkspaceSet, leafId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement): TilingWorkspaceSet;
@@ -185,7 +213,6 @@ export interface ResolvedTilingInteractionCapabilities {
     slotCommitment: ResolvedTilingSlotCommitmentCapability;
     slotHopInEnabled: boolean;
     touchDrag: ResolvedTilingTouchDragCapability;
-    workspaces: ResolvedTilingWorkspacesCapability;
 }
 
 // @public
@@ -267,12 +294,6 @@ export interface ResolvedTilingSlotCommitmentCapability {
 export interface ResolvedTilingTouchDragCapability {
     enable: boolean;
     longPressMs: number;
-}
-
-// @public
-export interface ResolvedTilingWorkspacesCapability {
-    enable: boolean;
-    followMovedLeaf: boolean;
 }
 
 // @public
@@ -497,42 +518,6 @@ export type TilingCommand = {
     kind: "group-tab-jump";
     groupId?: string;
     memberNumber: number;
-} | {
-    kind: "switch-workspace";
-    workspaceId: string;
-}
-/**
-* Switch to the 1-based n-th workspace in tab order (`Alt+1` → `index: 1`).
-* Bindable without a set at key-binding construction time; the wrapper
-* resolves `index` against the live `workspaces` array at dispatch.
-*/
-| {
-    kind: "switch-workspace";
-    index: number;
-} | {
-    kind: "cycle-workspace";
-    direction: TilingPaneCycleDirection;
-} | {
-    kind: "move-leaf-to-workspace";
-    leafId?: string;
-    workspaceId: string;
-    placement?: TilingWorkspacePlacement;
-    follow?: boolean;
-}
-/**
-* Move the focused (or explicit) leaf to the previous / next workspace in
-* tab order. Neighbour is resolved at dispatch so the binding stays valid
-* after `activeId` changes (unlike a bind-time `workspaceId`).
-*/
-| {
-    kind: "move-leaf-to-workspace";
-    leafId?: string;
-    direction: TilingPaneCycleDirection;
-    placement?: TilingWorkspacePlacement;
-    follow?: boolean;
-} | {
-    kind: "reveal-tile";
-    tileId: string;
 };
 
 // @public
@@ -547,7 +532,6 @@ export interface TilingCommandGates {
     rearrangeEnabled: boolean;
     resizeEnabled: boolean;
     sizingEnabled: boolean;
-    workspacesEnabled: boolean;
 }
 
 // @public
@@ -675,7 +659,6 @@ export interface TilingInteractionCapabilities {
     slotCommitment?: TilingSlotCommitmentCapability;
     slotHopInEnabled?: boolean;
     touchDrag?: TilingTouchDragCapability;
-    workspaces?: boolean | TilingWorkspacesCapability;
 }
 
 // @public
@@ -948,7 +931,6 @@ export interface TilingRendererProps extends TilingRendererCommonProps {
 export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonProps {
     onMoveLeaf?: (leafId: string, fromWorkspaceId: string, toWorkspaceId: string) => void;
     onWorkspacesChange: (workspaces: TilingWorkspaceSet) => void;
-    onWorkspaceSwitch?: (event: TilingWorkspaceSwitchEvent) => void;
     renderEmptyWorkspace?: (workspace: TilingWorkspace) => React_2.ReactNode;
     workspaces: TilingWorkspaceSet;
 }
@@ -1225,15 +1207,37 @@ export type TilingWorkspacePlacement = {
 };
 
 // @public
-export interface TilingWorkspacesCapability {
-    enable?: boolean;
-    followMovedLeaf?: boolean;
-}
-
-// @public
 export interface TilingWorkspaceSet {
     readonly activeId: TilingWorkspaceId;
     readonly workspaces: ReadonlyArray<TilingWorkspace>;
+}
+
+// @public
+export type TilingWorkspaceSetCommitReason = "tree" | "lifecycle" | "move" | "reveal";
+
+// @public
+export interface TilingWorkspaceSetController {
+    readonly create: () => TilingWorkspaceId | null;
+    readonly flush: () => void;
+    readonly moveTile: (tileId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement) => void;
+    readonly onWorkspacesChange: (next: TilingWorkspaceSet) => void;
+    readonly pending: boolean;
+    readonly remove: (id: TilingWorkspaceId) => ReadonlyArray<string>;
+    readonly rename: (id: TilingWorkspaceId, name: string) => void;
+    readonly reveal: (tileId: string) => TilingRevealTileResult | null;
+    readonly set: TilingWorkspaceSet;
+    readonly switch: (id: TilingWorkspaceId) => void;
+}
+
+// @public
+export interface TilingWorkspaceSetControllerOptions {
+    readonly maxWorkspaces?: number;
+    readonly mintWorkspaceId: () => string;
+    readonly nextWorkspaceName: (existing: ReadonlyArray<TilingWorkspace>) => string;
+    readonly onCommit: (next: TilingWorkspaceSet, reason: TilingWorkspaceSetCommitReason) => void;
+    readonly readOnly?: boolean;
+    readonly treeDebounceMs?: number;
+    readonly value: TilingWorkspaceSet;
 }
 
 // @public
@@ -1268,16 +1272,6 @@ export interface TilingWorkspaceSetRepairResult {
     readonly reasons: ReadonlyArray<TilingWorkspaceSetRepairReason>;
     readonly set: TilingWorkspaceSet;
 }
-
-// @public
-export interface TilingWorkspaceSwitchEvent {
-    from: string;
-    to: string;
-    via: TilingWorkspaceSwitchVia;
-}
-
-// @public
-export type TilingWorkspaceSwitchVia = "tab" | "key" | "command" | "swipe" | "spring-load" | "reveal";
 
 // @public
 export interface TilingWorkspaceTab {
@@ -1361,7 +1355,19 @@ export interface TilingWorkspaceTabTarget {
 }
 
 // @public
+export interface TilingWorkspaceTreeDiff {
+    readonly layout: TilingLayoutNode | null;
+    readonly workspaceId: TilingWorkspaceId;
+}
+
+// @public
+export type TilingWorkspaceTreeMap = ReadonlyMap<TilingWorkspaceId, TilingLayoutNode | null>;
+
+// @public
 export function useTilingTheme(): TilingTheme;
+
+// @public
+export function useTilingWorkspaceSetController(options: TilingWorkspaceSetControllerOptions): TilingWorkspaceSetController;
 
 // @public
 export function useTilingWorkspaceTabs(options: UseTilingWorkspaceTabsOptions): UseTilingWorkspaceTabsResult;
@@ -1395,7 +1401,7 @@ export interface UseTilingWorkspaceTabsResult {
 }
 
 // @public
-export const WORKSPACE_KEY_BINDINGS: ReadonlyArray<TilingKeyBinding>;
+export function viewedWorkspaceSet(value: TilingWorkspaceSet, localTrees: TilingWorkspaceTreeMap, localActiveId?: TilingWorkspaceId | null): TilingWorkspaceSet;
 
 // @public
 export interface WorkspaceSetIntegrityOptions {
@@ -1406,7 +1412,13 @@ export interface WorkspaceSetIntegrityOptions {
 export function workspaceSetIssues(set: TilingWorkspaceSet, options?: WorkspaceSetIntegrityOptions): ReadonlyArray<TilingWorkspaceSetIssue>;
 
 // @public
+export function workspaceSetLayoutMap(set: TilingWorkspaceSet): Map<TilingWorkspaceId, TilingLayoutNode | null>;
+
+// @public
 export function workspaceSetOfLayout(layout: TilingLayoutNode | null, id?: TilingWorkspaceId, name?: string): TilingWorkspaceSet;
+
+// @public
+export function workspaceSetsAlign(left: TilingWorkspaceSet, right: TilingWorkspaceSet): boolean;
 
 // (No @packageDocumentation comment for this package)
 

@@ -426,6 +426,56 @@ function Dashboard() {
   supplies `workspaceTabs` / `workspaceTab` / `workspaceTabActive` /
   `workspaceTabDropTarget`.
 
+### Workspace set controller
+
+A persisted document (`value` / `onCommit`) plus in-flight tree overlays.
+Tree edits coalesce for `treeDebounceMs` (default 400); create / rename /
+delete / switch commit at once; `readOnly` keeps switches local. Pass
+`ctl.set` and `ctl.onWorkspacesChange` to both the renderer and the tab
+strip.
+
+```tsx
+import {
+  TilingRenderer,
+  useTilingWorkspaceSetController,
+  useTilingWorkspaceTabs,
+} from "@n-uf/hypr-tiling";
+
+function Dashboard({ persisted, persist, readOnly, tiles }) {
+  const ctl = useTilingWorkspaceSetController({
+    value: persisted,
+    onCommit: (next, reason) => persist(next, reason),
+    readOnly,
+    mintWorkspaceId: () => crypto.randomUUID(),
+    nextWorkspaceName: (existing) => `Workspace ${existing.length + 1}`,
+  });
+  const tabs = useTilingWorkspaceTabs({
+    workspaces: ctl.set,
+    onWorkspacesChange: ctl.onWorkspacesChange,
+    onRenameRequest: (ws) => ctl.rename(ws.id, window.prompt("Name", ws.name) ?? ws.name),
+    onCloseRequest: (ws) => ctl.remove(ws.id),
+  });
+  return (
+    <>
+      <div {...tabs.tablistProps}>
+        {tabs.tabs.map((tab) => (
+          <button key={tab.workspace.id} {...tab.tabProps}>
+            {tab.workspace.name}
+          </button>
+        ))}
+        <button onClick={() => ctl.create()}>+</button>
+      </div>
+      <TilingRenderer
+        workspaces={ctl.set}
+        onWorkspacesChange={ctl.onWorkspacesChange}
+        tiles={tiles}
+        {...tabs.rendererProps}
+      />
+    </>
+  );
+}
+```
+
 ## Features
 
 - **Drag/drop rearrange** — Hyprland-style live drag; the move commits on
