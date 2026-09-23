@@ -553,7 +553,61 @@ export type TilingCommand =
   | { kind: "add-to-group"; groupId: string; sourceLeafId: string }
   | { kind: "remove-from-group"; groupId: string; memberId: string }
   | { kind: "group-tab-cycle"; groupId?: string; direction: TilingPaneCycleDirection }
-  | { kind: "group-tab-jump"; groupId?: string; memberNumber: number };
+  | { kind: "group-tab-jump"; groupId?: string; memberNumber: number }
+  // Workspace-set navigation (H8). Gated by `TilingCommandGates.workspacesEnabled`
+  // — false in single-layout mode so a dispatch is a no-op there.
+  | { kind: "switch-workspace"; workspaceId: string }
+  /**
+   * Switch to the 1-based n-th workspace in tab order (`Alt+1` → `index: 1`).
+   * Bindable without a set at key-binding construction time; the wrapper
+   * resolves `index` against the live `workspaces` array at dispatch.
+   */
+  | { kind: "switch-workspace"; index: number }
+  | { kind: "cycle-workspace"; direction: TilingPaneCycleDirection }
+  | {
+      kind: "move-leaf-to-workspace";
+      leafId?: string;
+      workspaceId: string;
+      placement?: TilingWorkspacePlacement;
+      follow?: boolean;
+    }
+  /**
+   * Move the focused (or explicit) leaf to the previous / next workspace in
+   * tab order. Neighbour is resolved at dispatch so the binding stays valid
+   * after `activeId` changes (unlike a bind-time `workspaceId`).
+   */
+  | {
+      kind: "move-leaf-to-workspace";
+      leafId?: string;
+      direction: TilingPaneCycleDirection;
+      placement?: TilingWorkspacePlacement;
+      follow?: boolean;
+    }
+  | { kind: "reveal-tile"; tileId: string };
+
+/**
+ * How a workspace switch was initiated through the renderer. `"swipe"` and
+ * `"spring-load"` are reserved for later navigation work items; the set-mode
+ * wrapper does not emit them yet. `"tab"` is reserved for a host tab strip
+ * that routes through the same dispatch path.
+ */
+export type TilingWorkspaceSwitchVia =
+  | "tab"
+  | "key"
+  | "command"
+  | "swipe"
+  | "spring-load"
+  | "reveal";
+
+/** Semantic event beside `onWorkspacesChange` when `activeId` changes. */
+export interface TilingWorkspaceSwitchEvent {
+  /** Workspace id that was active before the switch. */
+  from: string;
+  /** Workspace id that is active after the switch. */
+  to: string;
+  /** Which renderer surface initiated the switch. */
+  via: TilingWorkspaceSwitchVia;
+}
 
 /**
  * The imperative handle exposed via `ref` on `TilingRenderer`. A consumer
@@ -1005,6 +1059,44 @@ export interface TilingInteractionCapabilities {
    * rendered).
    */
   grouping?: boolean | TilingGroupingCapability;
+  /**
+   * Workspace-set navigation commands (`switch-workspace`, `cycle-workspace`,
+   * `move-leaf-to-workspace`, `reveal-tile`). A bare boolean is shorthand for
+   * `{ enable }`. Default `enable: true` (like the other capabilities); the
+   * renderer still forces the command gate off in single-layout mode (no
+   * `workspaces` prop), so a dispatch there is a no-op. `followMovedLeaf`
+   * is the default `follow` on `move-leaf-to-workspace` when the command
+   * omits it (Hyprland `movetoworkspace` vs `movetoworkspacesilent`); default
+   * `false`.
+   */
+  workspaces?: boolean | TilingWorkspacesCapability;
+}
+
+/**
+ * Workspace-set navigation capability, the object form of `interaction.workspaces`.
+ * A bare boolean at the `workspaces` slot is shorthand for `{ enable }`.
+ */
+export interface TilingWorkspacesCapability {
+  /**
+   * Enable the workspace commands. When `true` (default) AND the renderer is
+   * in set mode (`workspaces` prop present), `TilingCommandGates.workspacesEnabled`
+   * is `true`. When `false`, those commands are no-ops even in set mode.
+   */
+  enable?: boolean;
+  /**
+   * Default `follow` for `move-leaf-to-workspace` when the command omits it.
+   * `true` moves `activeId` with the leaf (Hyprland `movetoworkspace`);
+   * `false` (default) leaves the current workspace active (`movetoworkspacesilent`).
+   */
+  followMovedLeaf?: boolean;
+}
+
+/** Resolved workspace-set navigation capability (no optional fields). */
+export interface ResolvedTilingWorkspacesCapability {
+  /** Whether workspace commands are enabled (still gated off in single-layout mode). */
+  enable: boolean;
+  /** Default `follow` for `move-leaf-to-workspace` when the command omits it. */
+  followMovedLeaf: boolean;
 }
 
 /**
@@ -1095,6 +1187,8 @@ export interface ResolvedTilingInteractionCapabilities {
   masterLayout: boolean;
   /** Resolved group / tabbed-stacking capability. */
   grouping: ResolvedTilingGroupingCapability;
+  /** Resolved workspace-set navigation capability. */
+  workspaces: ResolvedTilingWorkspacesCapability;
 }
 
 /** Fully-resolved key-binding registry (no optional fields). */
@@ -2304,6 +2398,14 @@ export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonPro
    * `null` (empty workspace). Undefined → an empty root element.
    */
   renderEmptyWorkspace?: (workspace: TilingWorkspace) => React.ReactNode;
+  /**
+   * Fired beside {@link TilingRendererWorkspaceSetProps.onWorkspacesChange}
+   * whenever `activeId` changes through the renderer. `via` is `"tab"` for a
+   * tab strip, `"key"` for a keymap binding, `"command"` for an imperative
+   * `dispatch`, `"reveal"` for `reveal-tile`. `"swipe"` and `"spring-load"`
+   * are reserved and are not emitted yet.
+   */
+  onWorkspaceSwitch?: (event: TilingWorkspaceSwitchEvent) => void;
 }
 
 /**

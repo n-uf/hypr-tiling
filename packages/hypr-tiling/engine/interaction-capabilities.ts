@@ -21,6 +21,8 @@ import type {
   TilingMaximizeCapability,
   TilingPaneSwitchingCapability,
   TilingResizeCapability,
+  TilingWorkspacesCapability,
+  ResolvedTilingWorkspacesCapability,
 } from "./types";
 
 /**
@@ -87,6 +89,7 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
   keyBindings: { bindings: [], replaceDefaults: false },
   masterLayout: true,
   grouping: { enable: true, showGroupTabStrip: true },
+  workspaces: { enable: true, followMovedLeaf: false },
 };
 
 /**
@@ -257,6 +260,7 @@ export function resolveInteractionCapabilities(
     },
     masterLayout: capabilities?.masterLayout ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.masterLayout,
     grouping: resolveGroupingCapability(capabilities?.grouping),
+    workspaces: resolveWorkspacesCapability(capabilities?.workspaces),
   };
 }
 
@@ -280,6 +284,29 @@ function resolveGroupingCapability(
     showGroupTabStrip:
       grouping?.showGroupTabStrip
       ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.grouping.showGroupTabStrip,
+  };
+}
+
+/**
+ * Resolve the `workspaces` capability. A bare boolean is shorthand for
+ * `{ enable }` (`followMovedLeaf` keeps its default `false`); the object form
+ * merges field-by-field over the defaults via nullish coalescing, so an
+ * explicit `false` on either field is preserved.
+ */
+function resolveWorkspacesCapability(
+  workspaces: boolean | TilingWorkspacesCapability | undefined,
+): ResolvedTilingWorkspacesCapability {
+  if (typeof workspaces === "boolean") {
+    return {
+      enable: workspaces,
+      followMovedLeaf: TILING_INTERACTION_CAPABILITY_DEFAULTS.workspaces.followMovedLeaf,
+    };
+  }
+  return {
+    enable: workspaces?.enable ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.workspaces.enable,
+    followMovedLeaf:
+      workspaces?.followMovedLeaf
+      ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.workspaces.followMovedLeaf,
   };
 }
 

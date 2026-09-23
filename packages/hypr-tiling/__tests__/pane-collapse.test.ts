@@ -72,6 +72,7 @@ const ALL_ENABLED_GATES: TilingCommandGates = {
   resizeEnabled: true,
   layoutEnabled: true,
   groupingEnabled: true,
+  workspacesEnabled: true,
 };
 
 describe("setLeafCollapsed — leaf state", (): void => {

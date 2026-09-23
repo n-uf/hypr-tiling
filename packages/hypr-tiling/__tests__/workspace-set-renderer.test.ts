@@ -21,12 +21,14 @@ import {
 } from "../engine/workspace-set";
 import type {
   TilingCommandHandle,
+  TilingGroupNode,
   TilingLayoutNode,
   TilingLeafNode,
   TilingRenderTileProps,
   TilingRendererWorkspaceSetProps,
   TilingSplitNode,
   TilingTile,
+  TilingWorkspaceSwitchEvent,
 } from "../engine/types";
 
 const PANE_RECT: DOMRect = {
@@ -487,6 +489,213 @@ describe("TilingRenderer workspace-set mode — drag in flight across a switch",
   });
 });
 
+describe("TilingRenderer workspace-set mode — workspace command dispatch (H8)", (): void => {
+  it("dispatches switch-workspace through the handle and fires onWorkspaceSwitch via command", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onWorkspaceSwitch = jest.fn((_event: TilingWorkspaceSwitchEvent): void => {});
+    const handleRef: React.RefObject<TilingCommandHandle | null> = React.createRef<TilingCommandHandle>();
+    render(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("main"),
+        onWorkspacesChange,
+        onWorkspaceSwitch,
+        handleRef,
+      }),
+    );
+    act((): void => {
+      handleRef.current?.dispatch({ kind: "switch-workspace", workspaceId: "ops" });
+    });
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+    expect(onWorkspacesChange.mock.calls[0][0].activeId).toBe("ops");
+    expect(onWorkspaceSwitch).toHaveBeenCalledWith({ from: "main", to: "ops", via: "command" });
+  });
+
+  it("dispatches cycle-workspace next/previous and reports via command", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onWorkspaceSwitch = jest.fn((_event: TilingWorkspaceSwitchEvent): void => {});
+    const handleRef: React.RefObject<TilingCommandHandle | null> = React.createRef<TilingCommandHandle>();
+    render(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("main"),
+        onWorkspacesChange,
+        onWorkspaceSwitch,
+        handleRef,
+      }),
+    );
+    act((): void => {
+      handleRef.current?.dispatch({ kind: "cycle-workspace", direction: "next" });
+    });
+    expect(onWorkspacesChange.mock.calls[0][0].activeId).toBe("ops");
+    expect(onWorkspaceSwitch).toHaveBeenLastCalledWith({ from: "main", to: "ops", via: "command" });
+    act((): void => {
+      handleRef.current?.dispatch({ kind: "cycle-workspace", direction: "previous" });
+    });
+    expect(onWorkspaceSwitch).toHaveBeenLastCalledWith({ from: "main", to: "spare", via: "command" });
+  });
+
+  it("dispatches switch-workspace by 1-based tab index", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const handleRef: React.RefObject<TilingCommandHandle | null> = React.createRef<TilingCommandHandle>();
+    render(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("main"),
+        onWorkspacesChange,
+        handleRef,
+      }),
+    );
+    act((): void => {
+      handleRef.current?.dispatch({ kind: "switch-workspace", index: 2 });
+    });
+    expect(onWorkspacesChange.mock.calls[0][0].activeId).toBe("ops");
+  });
+
+  it("moves a leaf without follow (activeId stays) and with follow (activeId travels)", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onWorkspaceSwitch = jest.fn((_event: TilingWorkspaceSwitchEvent): void => {});
+    const handleRef: React.RefObject<TilingCommandHandle | null> = React.createRef<TilingCommandHandle>();
+    const set: TilingWorkspaceSet = threeWorkspaces("main");
+    const view = render(
+      React.createElement(Harness, {
+        workspaces: set,
+        onWorkspacesChange,
+        onWorkspaceSwitch,
+        handleRef,
+      }),
+    );
+    act((): void => {
+      handleRef.current?.dispatch({
+        kind: "move-leaf-to-workspace",
+        leafId: "leaf:b",
+        workspaceId: "ops",
+        follow: false,
+      });
+    });
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+    const silent: TilingWorkspaceSet = onWorkspacesChange.mock.calls[0][0];
+    expect(silent.activeId).toBe("main");
+    expect(onWorkspaceSwitch).not.toHaveBeenCalled();
+    expect(silent.workspaces[0].layout?.kind === "leaf" ? silent.workspaces[0].layout.id : null).toBe(
+      "leaf:a",
+    );
+
+    view.rerender(
+      React.createElement(Harness, {
+        workspaces: silent,
+        onWorkspacesChange,
+        onWorkspaceSwitch,
+        handleRef,
+      }),
+    );
+    act((): void => {
+      handleRef.current?.dispatch({
+        kind: "move-leaf-to-workspace",
+        leafId: "leaf:a",
+        workspaceId: "spare",
+        follow: true,
+      });
+    });
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(2);
+    const followed: TilingWorkspaceSet = onWorkspacesChange.mock.calls[1][0];
+    expect(followed.activeId).toBe("spare");
+    expect(onWorkspaceSwitch).toHaveBeenCalledWith({ from: "main", to: "spare", via: "command" });
+  });
+
+  it("reveal-tile switches to a workspace showing the tile and fires via reveal", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onWorkspaceSwitch = jest.fn((_event: TilingWorkspaceSwitchEvent): void => {});
+    const handleRef: React.RefObject<TilingCommandHandle | null> = React.createRef<TilingCommandHandle>();
+    render(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("main"),
+        onWorkspacesChange,
+        onWorkspaceSwitch,
+        handleRef,
+      }),
+    );
+    act((): void => {
+      handleRef.current?.dispatch({ kind: "reveal-tile", tileId: "c" });
+    });
+    expect(onWorkspacesChange.mock.calls[0][0].activeId).toBe("ops");
+    expect(onWorkspaceSwitch).toHaveBeenCalledWith({ from: "main", to: "ops", via: "reveal" });
+  });
+
+  it("reveal-tile prefers the active workspace and activates a grouped member", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onWorkspaceSwitch = jest.fn((_event: TilingWorkspaceSwitchEvent): void => {});
+    const handleRef: React.RefObject<TilingCommandHandle | null> = React.createRef<TilingCommandHandle>();
+    const grouped: TilingGroupNode = {
+      kind: "group",
+      id: "g1",
+      members: [leaf("b"), leaf("d")],
+      activeMemberId: "leaf:b",
+    };
+    const set: TilingWorkspaceSet = {
+      workspaces: [
+        { id: "main", name: "Main", layout: grouped },
+        { id: "ops", name: "Ops", layout: leaf("d") },
+      ],
+      activeId: "main",
+    };
+    render(
+      React.createElement(Harness, {
+        workspaces: set,
+        onWorkspacesChange,
+        onWorkspaceSwitch,
+        handleRef,
+      }),
+    );
+    act((): void => {
+      handleRef.current?.dispatch({ kind: "reveal-tile", tileId: "d" });
+    });
+    expect(onWorkspaceSwitch).not.toHaveBeenCalled();
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+    const nextLayout: TilingLayoutNode | null = onWorkspacesChange.mock.calls[0][0].workspaces[0].layout;
+    expect(nextLayout?.kind === "group" ? nextLayout.activeMemberId : null).toBe("leaf:d");
+    expect(onWorkspacesChange.mock.calls[0][0].activeId).toBe("main");
+  });
+
+  it("workspace commands are a no-op when interaction.workspaces is disabled", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const handleRef: React.RefObject<TilingCommandHandle | null> = React.createRef<TilingCommandHandle>();
+    render(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("main"),
+        onWorkspacesChange,
+        handleRef,
+        interaction: {
+          workspaces: false,
+          dragRecovery: { enable: false },
+          paneSwitching: { showTabStrip: false, showSwitcherOverlay: false },
+        },
+      }),
+    );
+    act((): void => {
+      handleRef.current?.dispatch({ kind: "switch-workspace", workspaceId: "ops" });
+      handleRef.current?.dispatch({ kind: "cycle-workspace", direction: "next" });
+    });
+    expect(onWorkspacesChange).not.toHaveBeenCalled();
+  });
+
+  it("switches away from an empty workspace through the handle", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onWorkspaceSwitch = jest.fn((_event: TilingWorkspaceSwitchEvent): void => {});
+    const handleRef: React.RefObject<TilingCommandHandle | null> = React.createRef<TilingCommandHandle>();
+    render(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("spare"),
+        onWorkspacesChange,
+        onWorkspaceSwitch,
+        handleRef,
+      }),
+    );
+    act((): void => {
+      handleRef.current?.dispatch({ kind: "switch-workspace", workspaceId: "main" });
+    });
+    expect(onWorkspacesChange.mock.calls[0][0].activeId).toBe("main");
+    expect(onWorkspaceSwitch).toHaveBeenCalledWith({ from: "spare", to: "main", via: "command" });
+  });
+});
+
 describe("TilingRenderer single-layout mode is unchanged", (): void => {
   it("renders a controlled layout and reports edits through onLayoutChange", (): void => {
     const onLayoutChange = jest.fn((_next: TilingLayoutNode): void => {});
@@ -517,5 +726,11 @@ describe("TilingRenderer single-layout mode is unchanged", (): void => {
     expect(onLayoutChange).toHaveBeenCalledTimes(1);
     const next: TilingLayoutNode = onLayoutChange.mock.calls[0][0];
     expect(next.kind === "split" ? next.ratio : null).toBeCloseTo(0.3);
+    act((): void => {
+      handleRef.current?.dispatch({ kind: "switch-workspace", workspaceId: "ops" });
+      handleRef.current?.dispatch({ kind: "cycle-workspace", direction: "next" });
+      handleRef.current?.dispatch({ kind: "reveal-tile", tileId: "a" });
+    });
+    expect(onLayoutChange).toHaveBeenCalledTimes(1);
   });
 });

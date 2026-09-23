@@ -97,3 +97,86 @@ export function defaultKeyBindings(keymap: ResolvedTilingKeymap): ReadonlyArray<
     { chord: keymap.groupTabPrevious, command: { kind: "group-tab-cycle", direction: "previous" } },
   ];
 }
+
+const WORKSPACE_ALT_MODIFIERS: Omit<TilingKeyChord, "code"> = {
+  alt: true,
+  ctrl: false,
+  meta: false,
+  shift: false,
+};
+
+const WORKSPACE_ALT_SHIFT_MODIFIERS: Omit<TilingKeyChord, "code"> = {
+  alt: true,
+  ctrl: false,
+  meta: false,
+  shift: true,
+};
+
+/**
+ * Optional workspace-navigation key-binding fragment. Hosts merge it into
+ * `interaction.keyBindings.bindings` — it is **not** part of
+ * `defaultKeyBindings` / `TILING_KEYMAP_DEFAULTS` (no default chords;
+ * hosts opt in). `switch-workspace` uses 1-based `index` (and)
+ * `move-leaf-to-workspace` uses `direction`) so the fragment does not need a
+ * live workspace set at construction time; the set-mode wrapper resolves
+ * those against the current tab order at dispatch.
+ *
+ * - `Alt+ArrowLeft` / `Alt+ArrowRight` → `cycle-workspace` previous / next
+ * - `Alt+Digit1`..`Alt+Digit9` → `switch-workspace` to the n-th workspace
+ * - `Alt+Shift+ArrowLeft` / `Alt+Shift+ArrowRight` → `move-leaf-to-workspace`
+ *   previous / next with `follow: true`
+ */
+export const WORKSPACE_KEY_BINDINGS: ReadonlyArray<TilingKeyBinding> = [
+  {
+    chord: { ...WORKSPACE_ALT_MODIFIERS, code: "ArrowLeft" },
+    command: { kind: "cycle-workspace", direction: "previous" },
+  },
+  {
+    chord: { ...WORKSPACE_ALT_MODIFIERS, code: "ArrowRight" },
+    command: { kind: "cycle-workspace", direction: "next" },
+  },
+  {
+    chord: { ...WORKSPACE_ALT_MODIFIERS, code: "Digit1" },
+    command: { kind: "switch-workspace", index: 1 },
+  },
+  {
+    chord: { ...WORKSPACE_ALT_MODIFIERS, code: "Digit2" },
+    command: { kind: "switch-workspace", index: 2 },
+  },
+  {
+    chord: { ...WORKSPACE_ALT_MODIFIERS, code: "Digit3" },
+    command: { kind: "switch-workspace", index: 3 },
+  },
+  {
+    chord: { ...WORKSPACE_ALT_MODIFIERS, code: "Digit4" },
+    command: { kind: "switch-workspace", index: 4 },
+  },
+  {
+    chord: { ...WORKSPACE_ALT_MODIFIERS, code: "Digit5" },
+    command: { kind: "switch-workspace", index: 5 },
+  },
+  {
+    chord: { ...WORKSPACE_ALT_MODIFIERS, code: "Digit6" },
+    command: { kind: "switch-workspace", index: 6 },
+  },
+  {
+    chord: { ...WORKSPACE_ALT_MODIFIERS, code: "Digit7" },
+    command: { kind: "switch-workspace", index: 7 },
+  },
+  {
+    chord: { ...WORKSPACE_ALT_MODIFIERS, code: "Digit8" },
+    command: { kind: "switch-workspace", index: 8 },
+  },
+  {
+    chord: { ...WORKSPACE_ALT_MODIFIERS, code: "Digit9" },
+    command: { kind: "switch-workspace", index: 9 },
+  },
+  {
+    chord: { ...WORKSPACE_ALT_SHIFT_MODIFIERS, code: "ArrowLeft" },
+    command: { kind: "move-leaf-to-workspace", direction: "previous", follow: true },
+  },
+  {
+    chord: { ...WORKSPACE_ALT_SHIFT_MODIFIERS, code: "ArrowRight" },
+    command: { kind: "move-leaf-to-workspace", direction: "next", follow: true },
+  },
+];

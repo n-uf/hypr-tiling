@@ -6,6 +6,18 @@ This package uses calendar-aligned versioning (`YY.M.R`), which cannot signal a
 SemVer "major" bump. **Read the per-release notes below for breaking changes** —
 the version number alone does not flag them.
 
+## Unreleased
+
+### Workspace navigation
+
+- **BREAKING (type): `TilingCommand` gains four kinds — exhaustive switches with a `never` guard fail typecheck**: `switch-workspace` (`workspaceId` or 1-based `index`), `cycle-workspace`, `move-leaf-to-workspace` (`workspaceId` or neighbour `direction`; omitted `leafId` → focused leaf; `follow` defaults from `interaction.workspaces.followMovedLeaf`), `reveal-tile`.
+- **BREAKING (type): `TilingCommandGates` gains `workspacesEnabled`**: `false` in single-layout mode and when `interaction.workspaces.enable` is `false`; those commands are then a no-op.
+- `interaction.workspaces?: boolean | { enable?; followMovedLeaf? }` — default `enable: true`, `followMovedLeaf: false`. Resolved as `ResolvedTilingWorkspacesCapability`.
+- `WORKSPACE_KEY_BINDINGS` — opt-in chord→command fragment (`Alt+Arrow` cycle, `Alt+1..9` switch by index, `Alt+Shift+Arrow` move+follow). Not merged into `TILING_KEYMAP_DEFAULTS`; hosts spread it into `interaction.keyBindings.bindings`.
+- Set-mode wrapper dispatches the four commands through the existing handle / `dispatchCommand` path and reports the next set on `onWorkspacesChange`.
+- `onWorkspaceSwitch?: (event: { from; to; via: "tab" | "key" | "command" | "swipe" | "spring-load" | "reveal" })` — fired beside `onWorkspacesChange` when `activeId` changes through the renderer (`"swipe"` / `"spring-load"` / `"tab"` reserved, not emitted yet).
+- `reveal-tile` is implemented locally in the wrapper (`workspacesOfTile` + `switchWorkspace` + group `activeMemberId`); swap to engine `revealTile` when H5 lands.
+
 ## 26.9.3 — 2026-09-22
 
 Engine-native workspace set (`_agent/workspace-set-concept.md`, library half

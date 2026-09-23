@@ -234,3 +234,13 @@ export {
   BASELINE_DRAG_HOP_DURATION_MS,
   INSTANT_DRAG_DURATION_MS,
 } from "./engine/drag-timing";
+
+// H8 — workspace commands, gate, keymap fragment
+export { isWorkspaceNavigationCommand } from "./engine/commands";
+export { WORKSPACE_KEY_BINDINGS } from "./engine/keybindings";
+export type {
+  ResolvedTilingWorkspacesCapability,
+  TilingWorkspacesCapability,
+  TilingWorkspaceSwitchEvent,
+  TilingWorkspaceSwitchVia,
+} from "./engine/types";
