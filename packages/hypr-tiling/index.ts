@@ -67,6 +67,7 @@ export {
   TilingThemeProvider,
   resolveDragChrome,
   resolveTilingTheme,
+  resolveWorkspaceTransition,
   useTilingTheme,
   type TilingTheme,
   type TilingThemeDividerTokens,
@@ -77,6 +78,7 @@ export {
   type TilingThemePaneShellTokens,
   type TilingThemeRootTokens,
   type TilingThemeTopBarTokens,
+  type TilingThemeWorkspaceTransitionTokens,
 } from "./react/theme";
 
 // ── Interaction capabilities ─────────────────────────────────────────────────
@@ -309,3 +311,35 @@ export type {
   TilingWorkspaceSwitchEvent,
   TilingWorkspaceSwitchVia,
 } from "./engine/types";
+
+// N2 — workspace transition stage
+export {
+  DEFAULT_WORKSPACE_TRANSITION_CONFIG,
+  DEFAULT_WORKSPACE_TRANSITION_DURATION_MS,
+  DEFAULT_WORKSPACE_TRANSITION_EASING,
+  clampUnitProgress,
+  resolveTransitionMode,
+  sampleTransitionEase,
+  transitionTransform,
+  unitProgressFromSigned,
+  type ResolveTransitionModeFlags,
+  type TilingWorkspaceTransitionConfig,
+  type TilingWorkspaceTransitionDirection,
+  type TilingWorkspaceTransitionLayerStyle,
+  type TilingWorkspaceTransitionMode,
+  type TilingWorkspaceTransitionTransform,
+} from "./engine/workspace-transition";
+export {
+  WorkspaceTransitionStage,
+  useWorkspaceTransition,
+  type UseWorkspaceTransitionOptions,
+  type UseWorkspaceTransitionResult,
+  type WorkspaceTransitionPhase,
+  type WorkspaceTransitionSettleKind,
+  type WorkspaceTransitionStageProps,
+} from "./react/workspace-transition";
+export {
+  VIEW_CAPTURE_CANVAS_PIXEL_BUDGET,
+  captureViewClone,
+  type CapturedViewClone,
+} from "./react/dom-view-capture";

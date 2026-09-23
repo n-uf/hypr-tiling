@@ -13,6 +13,10 @@ import type {
   TilingTileAccent,
   TilingThemeId,
 } from "../engine/types";
+import {
+  DEFAULT_WORKSPACE_TRANSITION_DURATION_MS,
+  DEFAULT_WORKSPACE_TRANSITION_EASING,
+} from "../engine/workspace-transition";
 
 /**
  * hypr-tiling theme engine.
@@ -195,6 +199,19 @@ export interface TilingThemeDragChromeTokens {
   readonly resolveSeatFrame: (accent: TilingTileAccent | undefined) => string;
 }
 
+/**
+ * Workspace-switch motion tokens (N2). Optional + partial — omitted fields
+ * resolve through {@link resolveWorkspaceTransition} to the library defaults
+ * (200 ms, drag-hop easing). Same additive slot pattern as `dragChrome` /
+ * `ghostChip`.
+ */
+export interface TilingThemeWorkspaceTransitionTokens {
+  /** Timed commit / cancel duration in milliseconds. Default 200. */
+  readonly durationMs: number;
+  /** CSS `<easing-function>` for the timed curve. */
+  readonly easing: string;
+}
+
 /** Split-divider / gap handle chrome across visible + hidden states. */
 export interface TilingThemeDividerTokens {
   /**
@@ -269,6 +286,12 @@ export interface TilingTheme {
    * Optional — omitted themes keep the built-in chip.
    */
   readonly ghostChip?: (ctx: TilingGhostChipContext) => React.ReactNode;
+  /**
+   * Workspace-switch slide / fade timing. Optional + partial — omitted
+   * tokens resolve through `resolveWorkspaceTransition` to 200 ms and the
+   * drag-hop easing. Built-in themes omit the slot (library defaults).
+   */
+  readonly workspaceTransition?: Partial<TilingThemeWorkspaceTransitionTokens>;
   /**
    * Workspace tab-strip `tablist` element classes, consumed by the headless
    * `useTilingWorkspaceTabs` / `TilingWorkspaceTabs` (`tablistProps.className`).
@@ -687,6 +710,23 @@ export function resolveDragChrome(
       overrides.cursorBadgeNeutral ??
       "border-slate-300/70 bg-slate-900/70 text-slate-100 shadow-[0_4px_12px_rgba(2,6,23,0.55)]",
     resolveSeatFrame: overrides.resolveSeatFrame ?? theme.resolveFocusFrame,
+  };
+}
+
+/**
+ * Resolve a theme's workspace-switch motion tokens. Omitted fields fall
+ * back to 200 ms and the drag-hop easing so a theme that passes nothing
+ * never invents a look it did not author. Pure.
+ */
+export function resolveWorkspaceTransition(
+  theme: TilingTheme,
+): TilingThemeWorkspaceTransitionTokens {
+  const overrides: Partial<TilingThemeWorkspaceTransitionTokens> =
+    theme.workspaceTransition ?? {};
+  return {
+    durationMs:
+      overrides.durationMs ?? DEFAULT_WORKSPACE_TRANSITION_DURATION_MS,
+    easing: overrides.easing ?? DEFAULT_WORKSPACE_TRANSITION_EASING,
   };
 }
 
