@@ -108,6 +108,18 @@ export {
   type TilingWorkspaceSetRepairResult,
   type WorkspaceSetIntegrityOptions,
 } from "./engine/workspace-set";
+// H5 — tile-keyed set ops, region placement, revealTile
+export {
+  hideTileFromWorkspace,
+  moveTileToWorkspace,
+  removeTile,
+  revealTile,
+  showTileInWorkspace,
+  type MoveTileToWorkspaceOptions,
+  type TilingHideTileResult,
+  type TilingRevealTileChanged,
+  type TilingRevealTileResult,
+} from "./engine/workspace-set";
 export {
   clientRectContains,
   resolveWorkspaceTabHover,

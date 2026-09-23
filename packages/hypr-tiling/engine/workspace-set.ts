@@ -13,10 +13,12 @@
  */
 import {
   extractLeafNode,
+  findGroupContainingLeaf,
   findLeafById,
   insertLeafInto,
   isStructurallyValidLayout,
   normalizeStaticAxisFill,
+  setActiveGroupMember,
   type ExtractedLeafResult,
 } from "./state";
 import type {
@@ -434,6 +436,205 @@ export function hideFromWorkspace(
     return set;
   }
   return replaceLayoutAt(set, from, removeLeafFromTree(source.layout, leafId));
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Tile-keyed seating (H5) — resolve leaf via workspacesOfTile + the leaf id
+// found in that tree. Set invariant: one leaf id ↔ one tile id across the set.
+// ───────────────────────────────────────────────────────────────────────────
+
+/** The leaf id bound to `tileId` in the first workspace (tab order) that shows it. */
+function leafIdOfTile(set: TilingWorkspaceSet, tileId: string): string | null {
+  for (const workspace of set.workspaces) {
+    const found: TilingLeafNode | undefined = collectLeaves(workspace.layout).find(
+      (leaf: TilingLeafNode): boolean => leaf.tileId === tileId,
+    );
+    if (found != null) {
+      return found.id;
+    }
+  }
+  return null;
+}
+
+/**
+ * Options for {@link moveTileToWorkspace}. The engine never invents leaf ids:
+ * a tile seated nowhere is seated only when `leaf.id` is given.
+ */
+export interface MoveTileToWorkspaceOptions {
+  /**
+   * Leaf id to mint when `tileId` is seated nowhere. Ignored when the tile
+   * already has a seat (the existing binding wins). Empty / already-used ids
+   * are refused (the set is returned unchanged).
+   */
+  readonly leaf?: {
+    readonly id: string;
+  };
+}
+
+/**
+ * Move a tile to workspace `to` at `placement`: it leaves EVERY workspace that
+ * shows it and is seated once in `to`. Resolves the leaf through
+ * {@link queryWorkspaceSet}.`workspacesOfTile` (one leaf id ↔ one tile id).
+ * When the tile is seated nowhere it is seated only if `options.leaf.id` is
+ * given (a fresh `{ kind: "leaf", id, tileId }`); otherwise the set is
+ * unchanged. Unchanged when `to` is unknown, the minted leaf id is empty or
+ * already used, or the tile is unknown and no mint id is given.
+ */
+export function moveTileToWorkspace(
+  set: TilingWorkspaceSet,
+  tileId: string,
+  to: TilingWorkspaceId,
+  placement: TilingWorkspacePlacement = TILING_DEFAULT_WORKSPACE_PLACEMENT,
+  options?: MoveTileToWorkspaceOptions,
+): TilingWorkspaceSet {
+  const leafId: string | null = leafIdOfTile(set, tileId);
+  if (leafId != null) {
+    return moveLeafToWorkspace(set, leafId, to, placement);
+  }
+  const mintedId: string | undefined = options?.leaf?.id;
+  if (mintedId == null || mintedId.length === 0 || workspaceById(set, to) == null) {
+    return set;
+  }
+  if (primarySeat(set, mintedId) != null) {
+    return set;
+  }
+  const target: TilingWorkspace | null = workspaceById(set, to);
+  if (target == null) {
+    return set;
+  }
+  const fresh: TilingLeafNode = { kind: "leaf", id: mintedId, tileId };
+  return replaceLayoutAt(set, to, insertLeafInto(target.layout, fresh, placement));
+}
+
+/**
+ * Seat a tile that is already in the set in ANOTHER workspace too (shown in
+ * both). Unchanged when the tile is unknown, `to` is unknown, or `to` already
+ * shows it. Never mints a leaf id — a tile seated nowhere stays seated nowhere.
+ */
+export function showTileInWorkspace(
+  set: TilingWorkspaceSet,
+  tileId: string,
+  to: TilingWorkspaceId,
+  placement: TilingWorkspacePlacement = TILING_DEFAULT_WORKSPACE_PLACEMENT,
+): TilingWorkspaceSet {
+  const leafId: string | null = leafIdOfTile(set, tileId);
+  if (leafId == null) {
+    return set;
+  }
+  return showInWorkspace(set, leafId, to, placement);
+}
+
+/** The result of {@link hideTileFromWorkspace}. */
+export interface TilingHideTileResult {
+  /** The set without that seat (the input by reference when refused). */
+  readonly set: TilingWorkspaceSet;
+  /** `true` when the tile now has no seat in any workspace. */
+  readonly orphaned: boolean;
+}
+
+/**
+ * Remove a tile's seat from workspace `from`. `orphaned` is `true` when the
+ * tile now has no seat anywhere (including when it was already seated nowhere).
+ * Unchanged (same set reference) when `from` does not show the tile.
+ */
+export function hideTileFromWorkspace(
+  set: TilingWorkspaceSet,
+  tileId: string,
+  from: TilingWorkspaceId,
+): TilingHideTileResult {
+  const leafId: string | null = leafIdOfTile(set, tileId);
+  if (leafId == null) {
+    return { set, orphaned: true };
+  }
+  const next: TilingWorkspaceSet = hideFromWorkspace(set, leafId, from);
+  return { set: next, orphaned: leafIdOfTile(next, tileId) == null };
+}
+
+/**
+ * Remove every seat of `tileId`. Unchanged when the tile is seated nowhere.
+ */
+export function removeTile(set: TilingWorkspaceSet, tileId: string): TilingWorkspaceSet {
+  const leafId: string | null = leafIdOfTile(set, tileId);
+  if (leafId == null) {
+    return set;
+  }
+  let next: TilingWorkspaceSet = set;
+  for (const workspace of set.workspaces) {
+    next = hideFromWorkspace(next, leafId, workspace.id);
+  }
+  return next;
+}
+
+/**
+ * What {@link revealTile} changed: nothing, only the group tab, only the
+ * active workspace, or both.
+ */
+export type TilingRevealTileChanged = "none" | "tab" | "workspace" | "both";
+
+/** The result of {@link revealTile} when the tile is seated in at least one workspace. */
+export interface TilingRevealTileResult {
+  /** The set after the reveal (the input by reference when `changed` is `"none"`). */
+  readonly set: TilingWorkspaceSet;
+  /** The workspace the tile was revealed in. */
+  readonly workspaceId: TilingWorkspaceId;
+  /** The leaf id bound to the tile (set-unique). */
+  readonly leafId: string;
+  /** Whether the active workspace and/or a group tab changed. */
+  readonly changed: TilingRevealTileChanged;
+}
+
+/**
+ * Reveal a tile: pick `prefer` when that workspace shows it, else the first
+ * workspace in tab order that does. Switch `activeId` if needed (`changed`
+ * includes `"workspace"`); if the leaf is a group member that is not the
+ * group's `activeMemberId`, make it active (`changed` includes `"tab"`).
+ * Returns `null` when the tile is seated nowhere. Same set reference when
+ * `changed` is `"none"`.
+ */
+export function revealTile(
+  set: TilingWorkspaceSet,
+  tileId: string,
+  prefer?: TilingWorkspaceId,
+): TilingRevealTileResult | null {
+  const seats: ReadonlyArray<TilingWorkspaceId> = queryWorkspaceSet(set).workspacesOfTile(tileId);
+  if (seats.length === 0) {
+    return null;
+  }
+  const workspaceId: TilingWorkspaceId =
+    prefer != null && seats.includes(prefer) ? prefer : seats[0];
+  const leafId: string | null = leafIdOfTile(set, tileId);
+  if (leafId == null) {
+    return null;
+  }
+  let next: TilingWorkspaceSet = set;
+  let workspaceChanged: boolean = false;
+  let tabChanged: boolean = false;
+  if (set.activeId !== workspaceId) {
+    next = switchWorkspace(next, workspaceId);
+    workspaceChanged = true;
+  }
+  const dest: TilingWorkspace | null = workspaceById(next, workspaceId);
+  if (dest?.layout != null) {
+    const group: TilingGroupNode | null = findGroupContainingLeaf(dest.layout, leafId);
+    if (group != null && group.activeMemberId !== leafId) {
+      next = replaceLayoutAt(next, workspaceId, setActiveGroupMember(dest.layout, group.id, leafId));
+      tabChanged = true;
+    }
+  }
+  const changed: TilingRevealTileChanged =
+    workspaceChanged && tabChanged
+      ? "both"
+      : workspaceChanged
+        ? "workspace"
+        : tabChanged
+          ? "tab"
+          : "none";
+  return {
+    set: changed === "none" ? set : next,
+    workspaceId,
+    leafId,
+    changed,
+  };
 }
 
 // ───────────────────────────────────────────────────────────────────────────

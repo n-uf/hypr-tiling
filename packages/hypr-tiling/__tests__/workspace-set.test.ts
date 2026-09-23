@@ -14,16 +14,23 @@ import {
   cycleWorkspace,
   deleteWorkspace,
   hideFromWorkspace,
+  hideTileFromWorkspace,
   moveLeafToWorkspace,
+  moveTileToWorkspace,
   normalizeWorkspaceName,
   queryWorkspaceSet,
+  removeTile,
   renameWorkspace,
   repairWorkspaceSet,
+  revealTile,
   setWorkspaceLayout,
   showInWorkspace,
+  showTileInWorkspace,
   switchWorkspace,
   workspaceSetIssues,
   workspaceSetOfLayout,
+  type TilingHideTileResult,
+  type TilingRevealTileResult,
   type TilingWorkspace,
   type TilingWorkspaceSet,
   type TilingWorkspaceSetIssue,
@@ -319,6 +326,141 @@ describe("workspace set — showInWorkspace / hideFromWorkspace", (): void => {
   });
 });
 
+describe("workspace set — tile-keyed movers", (): void => {
+  it("moveTileToWorkspace unseats every seat and seats once in `to`", (): void => {
+    const set: TilingWorkspaceSet = twoWorkspaces();
+    const moved: TilingWorkspaceSet = moveTileToWorkspace(set, "c", "ops");
+    expect(moved).toEqual(moveLeafToWorkspace(set, "leaf:c", "ops"));
+    expect(tileIdsOf(moved)).toEqual([["a", "b"], ["d", "c"]]);
+    expect(workspaceSetIssues(moved)).toEqual([]);
+    const region: TilingWorkspaceSet = moveTileToWorkspace(set, "a", "ops", { kind: "region", region: "start" });
+    expect(tileIdsOf(region)[1][0]).toBe("a");
+  });
+
+  it("moveTileToWorkspace is unchanged for an unknown tile (no mint) or unknown workspace", (): void => {
+    const set: TilingWorkspaceSet = twoWorkspaces();
+    expect(moveTileToWorkspace(set, "zzz", "ops")).toBe(set);
+    expect(moveTileToWorkspace(set, "a", "nope")).toBe(set);
+    expect(moveTileToWorkspace(set, "zzz", "ops", undefined, { leaf: { id: "" } })).toBe(set);
+  });
+
+  it("moveTileToWorkspace mints a fresh leaf only when the tile is seated nowhere and leaf.id is given", (): void => {
+    const set: TilingWorkspaceSet = twoWorkspaces();
+    const minted: TilingWorkspaceSet = moveTileToWorkspace(set, "z", "ops", { kind: "region", region: "end" }, {
+      leaf: { id: "leaf:z" },
+    });
+    expect(tileIdsOf(minted)).toEqual([["a", "b", "c"], ["c", "d", "z"]]);
+    expect(queryWorkspaceSet(minted).workspacesOfTile("z")).toEqual(["ops"]);
+    expect(workspaceSetIssues(minted)).toEqual([]);
+    const empty: TilingWorkspaceSet = createWorkspace(workspaceSetOfLayout(leaf("a")), { id: "ops", name: "Ops" });
+    const intoNull: TilingWorkspaceSet = moveTileToWorkspace(empty, "z", "ops", undefined, { leaf: { id: "leaf:z" } });
+    expect(intoNull.workspaces[1].layout).toEqual(leaf("z"));
+    expect(moveTileToWorkspace(set, "z", "ops", undefined, { leaf: { id: "leaf:a" } })).toBe(set);
+  });
+
+  it("showTileInWorkspace adds a seat; unchanged if already shown, tile unknown, or workspace unknown", (): void => {
+    const set: TilingWorkspaceSet = twoWorkspaces();
+    const shown: TilingWorkspaceSet = showTileInWorkspace(set, "a", "ops");
+    expect(shown).toEqual(showInWorkspace(set, "leaf:a", "ops"));
+    expect(tileIdsOf(shown)).toEqual([["a", "b", "c"], ["c", "d", "a"]]);
+    expect(showTileInWorkspace(shown, "a", "ops")).toBe(shown);
+    expect(showTileInWorkspace(set, "zzz", "ops")).toBe(set);
+    expect(showTileInWorkspace(set, "a", "nope")).toBe(set);
+    expect(workspaceSetIssues(shown)).toEqual([]);
+  });
+
+  it("hideTileFromWorkspace reports orphaned true/false; same-reference when the seat is absent", (): void => {
+    const set: TilingWorkspaceSet = twoWorkspaces();
+    const hidden: TilingHideTileResult = hideTileFromWorkspace(set, "c", "main");
+    expect(tileIdsOf(hidden.set)).toEqual([["a", "b"], ["c", "d"]]);
+    expect(hidden.orphaned).toBe(false);
+    const last: TilingHideTileResult = hideTileFromWorkspace(hidden.set, "c", "ops");
+    expect(last.orphaned).toBe(true);
+    expect(queryWorkspaceSet(last.set).workspacesOfTile("c")).toEqual([]);
+    expect(hideTileFromWorkspace(set, "a", "ops")).toEqual({ set, orphaned: false });
+    expect(hideTileFromWorkspace(set, "a", "ops").set).toBe(set);
+    expect(hideTileFromWorkspace(set, "zzz", "main")).toEqual({ set, orphaned: true });
+    expect(hideTileFromWorkspace(set, "zzz", "main").set).toBe(set);
+    expect(hideTileFromWorkspace(set, "a", "nope").set).toBe(set);
+  });
+
+  it("removeTile drops every seat; unchanged when the tile is unknown", (): void => {
+    const set: TilingWorkspaceSet = twoWorkspaces();
+    const gone: TilingWorkspaceSet = removeTile(set, "c");
+    expect(tileIdsOf(gone)).toEqual([["a", "b"], ["d"]]);
+    expect(queryWorkspaceSet(gone).workspacesOfTile("c")).toEqual([]);
+    expect(workspaceSetIssues(gone)).toEqual([]);
+    expect(removeTile(set, "zzz")).toBe(set);
+    expect(removeTile(removeTile(set, "a"), "a")).toEqual(removeTile(set, "a"));
+  });
+});
+
+describe("workspace set — revealTile", (): void => {
+  it("returns null when the tile is seated nowhere", (): void => {
+    expect(revealTile(twoWorkspaces(), "zzz")).toBeNull();
+    expect(revealTile(workspaceSetOfLayout(null), "a")).toBeNull();
+  });
+
+  it("returns the same set when the tile is already revealed (changed none)", (): void => {
+    const set: TilingWorkspaceSet = twoWorkspaces();
+    const revealed: TilingRevealTileResult | null = revealTile(set, "a");
+    expect(revealed).toEqual({ set, workspaceId: "main", leafId: "leaf:a", changed: "none" });
+    expect(revealed?.set).toBe(set);
+  });
+
+  it("switches activeId when the tile lives only in another workspace", (): void => {
+    const set: TilingWorkspaceSet = twoWorkspaces();
+    const revealed: TilingRevealTileResult | null = revealTile(set, "d");
+    expect(revealed?.workspaceId).toBe("ops");
+    expect(revealed?.leafId).toBe("leaf:d");
+    expect(revealed?.changed).toBe("workspace");
+    expect(revealed?.set.activeId).toBe("ops");
+    expect(revealed?.set.workspaces).toBe(set.workspaces);
+    expect(workspaceSetIssues(revealed?.set as TilingWorkspaceSet)).toEqual([]);
+  });
+
+  it("honours prefer when that workspace shows the tile and ignores it otherwise", (): void => {
+    const set: TilingWorkspaceSet = twoWorkspaces();
+    const honoured: TilingRevealTileResult | null = revealTile(set, "c", "ops");
+    expect(honoured?.workspaceId).toBe("ops");
+    expect(honoured?.changed).toBe("workspace");
+    const ignored: TilingRevealTileResult | null = revealTile(set, "d", "main");
+    expect(ignored?.workspaceId).toBe("ops");
+    expect(ignored?.changed).toBe("workspace");
+    const unknownPrefer: TilingRevealTileResult | null = revealTile(set, "a", "nope");
+    expect(unknownPrefer?.workspaceId).toBe("main");
+    expect(unknownPrefer?.changed).toBe("none");
+    expect(unknownPrefer?.set).toBe(set);
+  });
+
+  it("activates a group member that is not the group's activeMemberId (tab / both)", (): void => {
+    const grouped: TilingWorkspaceSet = {
+      workspaces: [
+        { id: "main", name: "Main", layout: split("root", "horizontal", group("g", ["a", "b"], "a"), leaf("c")) },
+        { id: "ops", name: "Ops", layout: split("root", "horizontal", group("g2", ["d", "e"], "d"), leaf("f")) },
+      ],
+      activeId: "main",
+    };
+    const tab: TilingRevealTileResult | null = revealTile(grouped, "b");
+    expect(tab?.changed).toBe("tab");
+    expect(tab?.workspaceId).toBe("main");
+    expect(tab?.leafId).toBe("leaf:b");
+    const mainGroup: TilingGroupNode = (tab?.set.workspaces[0].layout as TilingSplitNode).first as TilingGroupNode;
+    expect(mainGroup.activeMemberId).toBe("leaf:b");
+    expect(tab?.set.workspaces[1]).toBe(grouped.workspaces[1]);
+    const both: TilingRevealTileResult | null = revealTile(grouped, "e");
+    expect(both?.changed).toBe("both");
+    expect(both?.workspaceId).toBe("ops");
+    expect(both?.set.activeId).toBe("ops");
+    const opsGroup: TilingGroupNode = (both?.set.workspaces[1].layout as TilingSplitNode).first as TilingGroupNode;
+    expect(opsGroup.activeMemberId).toBe("leaf:e");
+    expect(revealTile(tab?.set as TilingWorkspaceSet, "b")?.changed).toBe("none");
+    expect(revealTile(tab?.set as TilingWorkspaceSet, "b")?.set).toBe(tab?.set);
+    expect(workspaceSetIssues(tab?.set as TilingWorkspaceSet)).toEqual([]);
+    expect(workspaceSetIssues(both?.set as TilingWorkspaceSet)).toEqual([]);
+  });
+});
+
 describe("workspace set — query", (): void => {
   it("exposes active, seats, counts and neighbours", (): void => {
     const query = queryWorkspaceSet(twoWorkspaces());
@@ -490,11 +632,14 @@ function randomPlacement(random: () => number, set: TilingWorkspaceSet, workspac
   const query = queryWorkspaceSet(set);
   const leafIds: ReadonlyArray<string> = query.leafIds(workspaceId);
   const roll: number = random();
-  if (roll < 0.4 || leafIds.length === 0) {
+  if (roll < 0.3 || leafIds.length === 0) {
     return { kind: "root", side: random() < 0.5 ? "first" : "second" };
   }
-  if (roll < 0.8) {
+  if (roll < 0.55) {
     return { kind: "adjacent", targetLeafId: pick(random, leafIds), placement: pick(random, ["left", "right", "top", "bottom"] as const) };
+  }
+  if (roll < 0.8) {
+    return { kind: "region", region: random() < 0.5 ? "start" : "end" };
   }
   return { kind: "split-container", splitId: random() < 0.5 ? "root-move-leaf:a" : "nope", side: "first" };
 }
@@ -520,11 +665,21 @@ function randomOp(random: () => number, set: TilingWorkspaceSet): TilingWorkspac
   }
   const leafId: string = pick(random, [...leafIds, "leaf:zzz"]);
   const to: string = pick(random, [...workspaceIds, "nope"]);
-  if (roll < 0.65) {
+  if (roll < 0.55) {
     return moveLeafToWorkspace(set, leafId, to, randomPlacement(random, set, to));
   }
-  if (roll < 0.85) {
+  if (roll < 0.7) {
     return showInWorkspace(set, leafId, to, randomPlacement(random, set, to));
+  }
+  if (roll < 0.8) {
+    const tileId: string = leafId.startsWith("leaf:") ? leafId.slice("leaf:".length) : pick(random, TILE_POOL);
+    return moveTileToWorkspace(set, tileId, to, randomPlacement(random, set, to), {
+      leaf: { id: `leaf:${tileId}` },
+    });
+  }
+  if (roll < 0.9) {
+    const tileId: string = leafId.startsWith("leaf:") ? leafId.slice("leaf:".length) : pick(random, TILE_POOL);
+    return showTileInWorkspace(set, tileId, to, randomPlacement(random, set, to));
   }
   return hideFromWorkspace(set, leafId, to);
 }
@@ -548,6 +703,72 @@ describe("workspace set — properties", (): void => {
         }
         expect(set.workspaces.length).toBeGreaterThanOrEqual(1);
         expect(set.workspaces.length).toBeLessThanOrEqual(TILING_WORKSPACES_MAX);
+      }
+    }
+  });
+
+  it("tile-keyed ops and revealTile keep random sets sound; same-reference when they report no change", (): void => {
+    for (let seed = 400; seed < 480; seed += 1) {
+      const random: () => number = prng(seed);
+      const set: TilingWorkspaceSet = randomSoundSet(random);
+      const query = queryWorkspaceSet(set);
+      const workspaceIds: ReadonlyArray<string> = set.workspaces.map(
+        (workspace: TilingWorkspace): string => workspace.id,
+      );
+      const seatedTiles: ReadonlyArray<string> = [
+        ...new Set<string>(
+          set.workspaces.flatMap((workspace: TilingWorkspace): ReadonlyArray<string> => query.tileIds(workspace.id)),
+        ),
+      ];
+      const tileId: string = pick(random, [...seatedTiles, "zzz"]);
+      const to: string = pick(random, [...workspaceIds, "nope"]);
+      const placement: TilingWorkspacePlacement = randomPlacement(random, set, to);
+      const knownWorkspace: boolean = query.workspace(to) != null;
+      const seats: ReadonlyArray<string> = query.workspacesOfTile(tileId);
+      const seated: boolean = seats.length > 0;
+
+      const moved: TilingWorkspaceSet = moveTileToWorkspace(set, tileId, to, placement, {
+        leaf: { id: `leaf:${tileId}` },
+      });
+      if (workspaceSetIssues(moved).length > 0) {
+        throw new Error(`seed ${seed} moveTileToWorkspace: ${JSON.stringify(workspaceSetIssues(moved))}`);
+      }
+      if (!knownWorkspace || (!seated && allLeafIds(set).includes(`leaf:${tileId}`))) {
+        expect(moved).toBe(set);
+      }
+
+      const shown: TilingWorkspaceSet = showTileInWorkspace(set, tileId, to, placement);
+      expect(workspaceSetIssues(shown)).toEqual([]);
+      if (!seated || !knownWorkspace || seats.includes(to)) {
+        expect(shown).toBe(set);
+      }
+
+      const hidden: TilingHideTileResult = hideTileFromWorkspace(set, tileId, to);
+      expect(workspaceSetIssues(hidden.set)).toEqual([]);
+      if (!seats.includes(to)) {
+        expect(hidden.set).toBe(set);
+      }
+      expect(hidden.orphaned).toBe(queryWorkspaceSet(hidden.set).workspacesOfTile(tileId).length === 0);
+
+      const removed: TilingWorkspaceSet = removeTile(set, tileId);
+      expect(workspaceSetIssues(removed)).toEqual([]);
+      if (!seated) {
+        expect(removed).toBe(set);
+      }
+
+      const revealed: TilingRevealTileResult | null = revealTile(
+        set,
+        tileId,
+        pick(random, [...workspaceIds, "nope"]),
+      );
+      if (!seated) {
+        expect(revealed).toBeNull();
+      } else {
+        expect(revealed).not.toBeNull();
+        expect(workspaceSetIssues(revealed?.set as TilingWorkspaceSet)).toEqual([]);
+        if (revealed?.changed === "none") {
+          expect(revealed.set).toBe(set);
+        }
       }
     }
   });
@@ -664,5 +885,39 @@ describe("state — insertLeafInto mirrors the movers' insert halves", (): void 
     const fallback: TilingLayoutNode = insertLeafInto(base, leaf("z"), { kind: "split-container", splitId: "nope", side: "first" });
     expect(fallback).toEqual(insertLeafInto(base, leaf("z"), TILING_DEFAULT_WORKSPACE_PLACEMENT));
     expect((fallback as TilingSplitNode).second).toEqual(leaf("z"));
+  });
+
+  it("region start / end equals adjacent left-of-first / right-of-last; null is the bare leaf", (): void => {
+    const start: TilingLayoutNode = insertLeafInto(base, leaf("z"), { kind: "region", region: "start" });
+    expect(start).toEqual(
+      insertLeafInto(base, leaf("z"), { kind: "adjacent", targetLeafId: "leaf:a", placement: "left" }),
+    );
+    expect(queryLeafIds(start)).toEqual(["leaf:z", "leaf:a", "leaf:b", "leaf:c"]);
+    const end: TilingLayoutNode = insertLeafInto(base, leaf("z"), { kind: "region", region: "end" });
+    expect(end).toEqual(
+      insertLeafInto(base, leaf("z"), { kind: "adjacent", targetLeafId: "leaf:c", placement: "right" }),
+    );
+    expect(queryLeafIds(end)).toEqual(["leaf:a", "leaf:b", "leaf:c", "leaf:z"]);
+    expect(insertLeafInto(null, leaf("z"), { kind: "region", region: "start" })).toEqual(leaf("z"));
+    expect(insertLeafInto(null, leaf("z"), { kind: "region", region: "end" })).toEqual(leaf("z"));
+  });
+
+  it("region seats beside a group node, not inside it, even when the neighbour is a non-active member", (): void => {
+    const grouped: TilingLayoutNode = split("root", "horizontal", group("g", ["a", "b"], "b"), leaf("c"));
+    const start: TilingLayoutNode = insertLeafInto(grouped, leaf("z"), { kind: "region", region: "start" });
+    expect(start).toEqual(
+      insertLeafInto(grouped, leaf("z"), { kind: "adjacent", targetLeafId: "leaf:b", placement: "left" }),
+    );
+    const startWrap: TilingSplitNode = (start as TilingSplitNode).first as TilingSplitNode;
+    expect(startWrap.first).toEqual(leaf("z"));
+    expect(startWrap.second).toEqual(group("g", ["a", "b"], "b"));
+    const endGrouped: TilingLayoutNode = split("root", "horizontal", leaf("c"), group("g", ["a", "b"], "a"));
+    const end: TilingLayoutNode = insertLeafInto(endGrouped, leaf("z"), { kind: "region", region: "end" });
+    expect(end).toEqual(
+      insertLeafInto(endGrouped, leaf("z"), { kind: "adjacent", targetLeafId: "leaf:a", placement: "right" }),
+    );
+    const endWrap: TilingSplitNode = (end as TilingSplitNode).second as TilingSplitNode;
+    expect(endWrap.first).toEqual(group("g", ["a", "b"], "a"));
+    expect(endWrap.second).toEqual(leaf("z"));
   });
 });
