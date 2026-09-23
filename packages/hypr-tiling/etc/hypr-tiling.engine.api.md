@@ -213,6 +213,11 @@ export function isStaticOnCrossAxis(node: TilingLayoutNode, axis: TilingSplitAxi
 export function isStructurallyValidLayout(node: TilingLayoutNode): boolean;
 
 // @public
+export function isWorkspaceNavigationCommand(command: TilingCommand): command is Extract<TilingCommand, {
+    kind: "switch-workspace" | "cycle-workspace" | "move-leaf-to-workspace" | "reveal-tile";
+}>;
+
+// @public
 export function keyboardActionToCommand(action: TilingKeyboardAction): TilingCommand;
 
 // @public
@@ -341,6 +346,12 @@ export function resolveDragCursorPresentation(resolvedTarget: DragResolvedTarget
 
 // @public
 export function resolveDragEasing(value: string | undefined | null, fallback: string): string;
+
+// @public
+export interface ResolvedTilingWorkspacesCapability {
+    enable: boolean;
+    followMovedLeaf: boolean;
+}
 
 // @public
 export function resolveFocusCurrentOrLast(history: FocusHistory, currentLeafId: string | null): string | null;
@@ -608,6 +619,12 @@ export type TilingWorkspacePlacement = {
 };
 
 // @public
+export interface TilingWorkspacesCapability {
+    enable?: boolean;
+    followMovedLeaf?: boolean;
+}
+
+// @public
 export interface TilingWorkspaceSet {
     readonly activeId: TilingWorkspaceId;
     readonly workspaces: ReadonlyArray<TilingWorkspace>;
@@ -647,6 +664,16 @@ export interface TilingWorkspaceSetRepairResult {
 }
 
 // @public
+export interface TilingWorkspaceSwitchEvent {
+    from: string;
+    to: string;
+    via: TilingWorkspaceSwitchVia;
+}
+
+// @public
+export type TilingWorkspaceSwitchVia = "tab" | "key" | "command" | "swipe" | "spring-load" | "reveal";
+
+// @public
 export type TilingWorkspaceTabKeyAction = {
     readonly kind: "focus";
     readonly index: number;
@@ -683,6 +710,9 @@ export function ungroupNode(layout: TilingLayoutNode, groupId: string): TilingLa
 
 // @public
 export function updateSplitRatio(node: TilingLayoutNode, splitId: string, ratio: number): TilingLayoutNode;
+
+// @public
+export const WORKSPACE_KEY_BINDINGS: ReadonlyArray<TilingKeyBinding>;
 
 // @public
 export interface WorkspaceSetIntegrityOptions {

@@ -266,3 +266,13 @@ export type {
   TilingLeafPreviewRole,
   TilingDropAction,
 } from "./engine/types";
+
+// H8 — workspace commands, gate, keymap fragment
+export { isWorkspaceNavigationCommand } from "./engine/commands";
+export { WORKSPACE_KEY_BINDINGS } from "./engine/keybindings";
+export type {
+  ResolvedTilingWorkspacesCapability,
+  TilingWorkspacesCapability,
+  TilingWorkspaceSwitchEvent,
+  TilingWorkspaceSwitchVia,
+} from "./engine/types";
