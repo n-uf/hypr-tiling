@@ -130,6 +130,21 @@ export {
   type TilingWorkspaceTabsOrientation,
 } from "./engine/workspace-tabs";
 export type { TilingWorkspacePlacement } from "./engine/types";
+// H7 — workspace set controller helpers (framework-free; the hook lives on `.`)
+export {
+  adoptIncomingWorkspaceTrees,
+  classifyIncomingWorkspaceSet,
+  diffWorkspaceTreeLayouts,
+  foldPendingTrees,
+  viewedWorkspaceSet,
+  workspaceSetLayoutMap,
+  workspaceSetsAlign,
+  type AdoptIncomingWorkspaceTreesInput,
+  type AdoptIncomingWorkspaceTreesResult,
+  type IncomingWorkspaceSetKind,
+  type TilingWorkspaceTreeDiff,
+  type TilingWorkspaceTreeMap,
+} from "./engine/workspace-set-controller";
 
 // ── Persisted-layout adapter (thin glue over the integrity APIs above) ────────
 export {

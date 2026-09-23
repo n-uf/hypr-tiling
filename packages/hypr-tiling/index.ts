@@ -172,6 +172,27 @@ export {
   type UseTilingWorkspaceTabsOptions,
   type UseTilingWorkspaceTabsResult,
 } from "./react/workspace-tabs";
+// H7 — workspace set controller
+export {
+  adoptIncomingWorkspaceTrees,
+  classifyIncomingWorkspaceSet,
+  diffWorkspaceTreeLayouts,
+  foldPendingTrees,
+  viewedWorkspaceSet,
+  workspaceSetLayoutMap,
+  workspaceSetsAlign,
+  type AdoptIncomingWorkspaceTreesInput,
+  type AdoptIncomingWorkspaceTreesResult,
+  type IncomingWorkspaceSetKind,
+  type TilingWorkspaceTreeDiff,
+  type TilingWorkspaceTreeMap,
+} from "./engine/workspace-set-controller";
+export {
+  useTilingWorkspaceSetController,
+  type TilingWorkspaceSetCommitReason,
+  type TilingWorkspaceSetController,
+  type TilingWorkspaceSetControllerOptions,
+} from "./react/use-tiling-workspace-set-controller";
 
 // ── Persisted-layout adapter ─────────────────────────────────────────────────
 // Optional glue that persists ONLY the layout tree (localStorage by default)
