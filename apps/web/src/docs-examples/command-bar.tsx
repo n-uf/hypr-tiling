@@ -33,6 +33,7 @@ function gatesFor(interaction?: TilingInteractionCapabilities): TilingCommandGat
     resizeEnabled: caps.resize !== "none",
     layoutEnabled: caps.masterLayout,
     groupingEnabled: caps.grouping.enable,
+    workspacesEnabled: caps.workspaces.enable,
   };
 }
 

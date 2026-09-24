@@ -18,6 +18,7 @@ import customChromeSource from "./custom-chrome.tsx?raw";
 import themingSource from "./theming.tsx?raw";
 import capabilitiesSource from "./capabilities.tsx?raw";
 import saveRestoreSource from "./save-restore.tsx?raw";
+import workspacesSource from "./workspaces.tsx?raw";
 import commandsSource from "./commands.tsx?raw";
 import commandBarSource from "./command-bar.tsx?raw";
 import groupSplitMaximizeSource from "./group-split-maximize.tsx?raw";
@@ -34,6 +35,7 @@ export const EXAMPLE_SOURCES = {
   theming: themingSource,
   capabilities: capabilitiesSource,
   "save-restore": saveRestoreSource,
+  workspaces: workspacesSource,
   commands: commandsSource,
   "command-bar": commandBarSource,
   "group-split-maximize": groupSplitMaximizeSource,

@@ -725,6 +725,13 @@ export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
       "The layout is plain JSON you own, so persistence is just save/load: write it to storage in onLayoutChange, read it back on mount with a default fallback. No library-specific serializer.",
   },
   {
+    id: "howto-workspaces",
+    title: "Run multiple workspaces over one tile pool",
+    section: "howto",
+    summary:
+      "Swap layout + onLayoutChange for workspaces + onWorkspacesChange (TilingWorkspaceSet): one active tree at a time, the whole tile pool in tiles, useTilingWorkspaceTabs for tablist semantics and tab drop targets, optional WORKSPACE_KEY_BINDINGS, interaction.workspaces for swipe / slide transition / springLoad, and useTilingWorkspaceSetController when the set is persisted with debounced tree commits.",
+  },
+  {
     id: "howto-commands",
     title: "Trigger actions from your own buttons",
     section: "howto",

@@ -410,9 +410,11 @@ function Dashboard() {
   `deleteWorkspace` (refuses the last; returns `removedTileIds` shown only
   there), `switchWorkspace`, `cycleWorkspace`, `setWorkspaceLayout`,
   `moveLeafToWorkspace(set, leafId, to, placement?)`, `showInWorkspace`,
-  `hideFromWorkspace`, `queryWorkspaceSet`, `workspaceSetIssues`,
-  `repairWorkspaceSet`. Limits: `TILING_WORKSPACES_MAX` (12),
-  `TILING_WORKSPACE_NAME_MAX_CHARS` (40).
+  `hideFromWorkspace`, tile-keyed `moveTileToWorkspace`, `showTileInWorkspace`,
+  `hideTileFromWorkspace`, `removeTile`, `revealTile`, `queryWorkspaceSet`,
+  `workspaceSetIssues`, `repairWorkspaceSet`. `TilingWorkspacePlacement` adds
+  `{ kind: "region"; region: "start" | "end" }` for reading-order ends.
+  Limits: `TILING_WORKSPACES_MAX` (12), `TILING_WORKSPACE_NAME_MAX_CHARS` (40).
 - **Renderer** — `workspaces` + `onWorkspacesChange` replace `layout` +
   `onLayoutChange`. Uncontrolled focus / maximize are remembered per
   workspace; a drag in flight is cancelled when the active workspace
@@ -501,6 +503,35 @@ function Dashboard({ persisted, persist, readOnly, tiles }) {
   );
 }
 ```
+
+### Workspace commands & keymap
+
+Workspace navigation is typed `TilingCommand` surface — same handle as layout
+commands. Opt in to default chords with `WORKSPACE_KEY_BINDINGS` spread into
+`interaction.keyBindings.bindings` (`Alt+Arrow` cycle, `Alt+1..9` switch by
+index, `Alt+Shift+Arrow` move focused leaf + follow). Gate dead controls with
+`TilingCommandGates.workspacesEnabled` (`false` in single-layout mode).
+
+```tsx
+import { TilingRenderer, WORKSPACE_KEY_BINDINGS } from "@n-uf/hypr-tiling";
+
+<TilingRenderer
+  workspaces={set}
+  onWorkspacesChange={setSet}
+  onWorkspaceSwitch={({ from, to, via }) => …}
+  interaction={{
+    keyBindings: { bindings: [...WORKSPACE_KEY_BINDINGS] },
+    workspaces: { followMovedLeaf: true },
+  }}
+  commandRef={commandRef}
+  /* … */
+/>;
+```
+
+Dispatch from app code: `commandRef.current?.dispatch({ kind: "switch-workspace", workspaceId })`,
+`{ kind: "cycle-workspace", direction: "next" }`, `{ kind: "move-leaf-to-workspace", … }`,
+`{ kind: "reveal-tile", tileId }`. `reveal-tile` prefers the active workspace when
+it already shows the tile.
 
 ### Workspace switch transition
 

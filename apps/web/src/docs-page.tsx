@@ -1335,6 +1335,54 @@ export function DocsPage({
             />
 
             <HowTo
+              id="howto-workspaces"
+              title="Run multiple workspaces over one tile pool"
+              goal={
+                <>
+                  Switch between several saved arrangements that share the same
+                  tiles — like a tiling window manager — without remounting panes
+                  that exist in both workspaces.
+                </>
+              }
+              exampleId="workspaces"
+              knobs={
+                <>
+                  Pass <Code>workspaces</Code> +{" "}
+                  <Code>onWorkspacesChange</Code> instead of{" "}
+                  <Code>layout</Code> + <Code>onLayoutChange</Code>.{" "}
+                  <Code>tiles</Code> is the whole pool (every tile any workspace
+                  seats). Pair with <Code>useTilingWorkspaceTabs</Code> for
+                  tablist ARIA, keyboard, and native tab drop targets (
+                  <Code>tabs.rendererProps</Code>). Spread{" "}
+                  <Code>WORKSPACE_KEY_BINDINGS</Code> into{" "}
+                  <Code>interaction.keyBindings.bindings</Code> for default
+                  chords; dispatch <Code>switch-workspace</Code>,{" "}
+                  <Code>cycle-workspace</Code>,{" "}
+                  <Code>move-leaf-to-workspace</Code>, and{" "}
+                  <Code>reveal-tile</Code> through a{" "}
+                  <Code>TilingCommandHandle</Code> ref. Opt into trackpad swipe,
+                  slide/fade transition, and spring-loaded tab drop via{" "}
+                  <Code>interaction.workspaces</Code> (
+                  <Code>switch.wheelSwipe</Code>,{" "}
+                  <Code>switch.transition</Code>,{" "}
+                  <Code>springLoad</Code>). For a persisted document use{" "}
+                  <Code>useTilingWorkspaceSetController</Code> (
+                  <Code>value</Code> / <Code>onCommit</Code>, debounced tree
+                  edits). Set-wide orphan handling:{" "}
+                  <Code>orphanTiles</Code> + <Code>onIntegrityIssues</Code>.
+                </>
+              }
+              symbols={[
+                "TilingWorkspaceSet",
+                "useTilingWorkspaceTabs",
+                "WORKSPACE_KEY_BINDINGS",
+                "useTilingWorkspaceSetController",
+                "useWorkspaceSwipe",
+                "TilingCommandGates",
+              ]}
+            />
+
+            <HowTo
               id="howto-commands"
               title="Trigger actions from your own buttons"
               goal={

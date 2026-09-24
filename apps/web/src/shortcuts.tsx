@@ -108,6 +108,7 @@ function gatesFromCapabilities(
     resizeEnabled: capabilities.resize !== "none",
     layoutEnabled: capabilities.masterLayout,
     groupingEnabled: capabilities.grouping.enable,
+    workspacesEnabled: capabilities.workspaces.enable,
   };
 }
 
