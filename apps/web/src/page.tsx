@@ -32,7 +32,7 @@ import { EditorialTile } from "./editorial-tile";
 import { EditorialPaneContent } from "./content-editorial";
 import { CanvasTile } from "./canvas-tile";
 import { CanvasPaneContent } from "./content-canvas";
-import { CANVAS_THEME, CANVAS_TICKS } from "./canvas-theme";
+import { CANVAS_THEME, CANVAS_TICKS, HOME_GROUP_TAB_STRIP } from "./canvas-theme";
 import { HomeShortcuts } from "./shortcuts";
 import { HomeWorkspaceTabStrip } from "./home-workspace-tabs";
 import {
@@ -710,18 +710,24 @@ export function HomePage({
   );
 
   // Interaction: the homepage keeps the library's own pane tab strip OFF (the
-  // top chrome bar owns workspace switching) and the per-group tab strip OFF
-  // (`grouping.showGroupTabStrip: false` — every skin paints its OWN
-  // grouped-stack representation from `args.group`) for every skin. The two
-  // light skins (Editorial, Canvas) additionally hide the resize handles so the
-  // airy gutters carry the separation (drag resize still works through the
-  // invisible hit area). Workspace navigation is on: swipe, slide, spring-load,
-  // and `WORKSPACE_KEY_BINDINGS` (Alt+1..9 / Alt+arrows) merged into the
-  // default keymap — colliding chords (Alt+1..9) become workspace switches.
+  // top chrome bar owns workspace switching). Group tabs use the built-in
+  // strip, themed per skin (`HOME_GROUP_TAB_STRIP`), placed above the header.
+  // The two light skins (Editorial, Canvas) additionally hide the resize
+  // handles so the airy gutters carry the separation (drag resize still works
+  // through the invisible hit area). Workspace navigation is on: swipe, slide,
+  // spring-load, and `WORKSPACE_KEY_BINDINGS` (Alt+1..9 / Alt+arrows) merged
+  // into the default keymap — colliding chords (Alt+1..9) become workspace
+  // switches.
   const interaction: TilingInteractionCapabilities = React.useMemo(
     (): TilingInteractionCapabilities => ({
       paneSwitching: { showTabStrip: false },
-      grouping: { showGroupTabStrip: false },
+      grouping: {
+        showGroupTabStrip: true,
+        groupTabStrip: {
+          placement: "top",
+          theme: HOME_GROUP_TAB_STRIP[skin],
+        },
+      },
       resizeHandlesVisible: skin === "mosaic",
       keyBindings: { bindings: [...WORKSPACE_KEY_BINDINGS] },
       workspaces: {

@@ -4,8 +4,6 @@ import {
   TilingDragHandle,
   TilingPaneAction,
   TilingPaneBody,
-  type TilingGroupMemberView,
-  type TilingRenderTileGroupContext,
   type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
 import { CANVAS_THEME } from "./canvas-theme";
@@ -156,76 +154,6 @@ const MAXIMIZE_LIGHT_ACTIVE: string =
 // Body field — flat neutral panel; text tokens from the consumer theme.
 const PANEL_BODY: string = CANVAS_THEME.paneShell.bodyText;
 
-// The Canvas grouped-stack representation: a row of squared LEDs in the pane
-// FOOTER, one per group member, with the active member's LED lit in its hue +
-// glow (the rest dim slate). Consumes the library's `args.group` context
-// directly: click an LED → `group.activateMember`; hover a member LED → a
-// small squared "×" reveals to eject it (`group.removeMember`); a trailing
-// "ungroup" key dissolves the whole group (`group.ungroup`). This replaces the
-// library's suppressed default group tab strip for the Canvas skin. Only
-// renders for a group's active member (the one pane that renders).
-function CanvasGroupLeds({
-  group,
-  dropTargetRef,
-}: {
-  group: TilingRenderTileGroupContext;
-  dropTargetRef: React.RefCallback<HTMLElement | null>;
-}): React.ReactElement {
-  return (
-    <span
-      ref={dropTargetRef}
-      className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden"
-    >
-      <span
-        aria-hidden
-        className="shrink-0 font-mono text-[9px] uppercase tracking-[0.18em] text-slate-400"
-      >
-        grp
-      </span>
-      <span className="flex shrink items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {group.members.map((member: TilingGroupMemberView): React.ReactElement => {
-          const memberLed: CanvasLed = paneLed(member.memberNumber);
-          const title: string = member.tile?.title ?? member.tileId;
-          return (
-            <span
-              key={member.leafId}
-              className="group/led relative flex shrink-0 items-center"
-            >
-              <TilingPaneAction
-                onClick={(): void => group.activateMember(member.memberNumber)}
-                aria-label={`activate ${title}`}
-                aria-pressed={member.isActive}
-                title={title}
-                className={`h-3 w-3 rounded-[1px] border transition-all ${
-                  member.isActive
-                    ? `border-transparent ${memberLed.bar} ${memberLed.litGlow}`
-                    : "border-slate-300 bg-slate-200 hover:bg-slate-300"
-                }`}
-              />
-              <TilingPaneAction
-                onClick={(): void => group.removeMember(member.leafId)}
-                aria-label={`remove ${title} from group`}
-                title={`remove ${title} from group`}
-                className="absolute -right-1.5 -top-1.5 hidden h-3 w-3 items-center justify-center rounded-[1px] border border-slate-300 bg-white font-mono text-[9px] leading-none text-slate-500 transition-colors hover:border-rose-400 hover:text-rose-500 group-hover/led:flex"
-              >
-                <span aria-hidden>{"\u00d7"}</span>
-              </TilingPaneAction>
-            </span>
-          );
-        })}
-      </span>
-      <TilingPaneAction
-        onClick={(): void => group.ungroup()}
-        aria-label={`ungroup ${group.groupId}`}
-        title="ungroup this stack"
-        className="shrink-0 rounded-[1px] border border-slate-300 bg-white px-1 py-0.5 font-mono text-[8px] uppercase leading-none tracking-[0.14em] text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-800"
-      >
-        ungroup
-      </TilingPaneAction>
-    </span>
-  );
-}
-
 export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
   const led: CanvasLed = paneLed(args.paneOrdinal);
   const dropRing: string = dropStateRing(args);
@@ -350,9 +278,6 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
             {index}
           </span>
         </span>
-        {args.group != null ? (
-          <CanvasGroupLeds group={args.group} dropTargetRef={args.groupDropTargetRef} />
-        ) : null}
         {metrics != null ? (
           <span
             aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(

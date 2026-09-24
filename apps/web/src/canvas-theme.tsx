@@ -2,6 +2,7 @@ import {
   DEFAULT_TILE_ACCENT,
   TILING_ACCENT_HUES,
   type TilingAccentHue,
+  type TilingGroupTabStripTheme,
   type TilingTheme,
   type TilingTileAccent,
 } from "@n-uf/hypr-tiling";
@@ -120,4 +121,65 @@ export const CANVAS_THEME: TilingTheme = {
     "flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-500 outline-none transition-colors hover:border-slate-300 hover:text-slate-800",
   workspaceTabActive: "border-cyan-300 bg-cyan-50 text-cyan-700",
   workspaceTabDropTarget: "border-cyan-400 bg-cyan-100 text-cyan-800",
+};
+
+/**
+ * Built-in group tab strip tokens per docs-home skin. CSS values, applied by
+ * the library strip (`grouping.groupTabStrip.theme`).
+ */
+export const HOME_GROUP_TAB_STRIP: Record<
+  "mosaic" | "editorial" | "canvas",
+  TilingGroupTabStripTheme
+> = {
+  mosaic: {
+    background: "#0c0d10",
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    tabColor: "rgb(120, 113, 108)",
+    tabActiveColor: "rgb(255, 251, 235)",
+    tabBackground: "transparent",
+    tabActiveBackground: "rgba(252, 211, 77, 0.14)",
+    accent: "rgb(252, 211, 77)",
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontSize: "10px",
+    letterSpacing: "0.08em",
+    radius: "0px",
+    gap: "0px",
+    paddingX: "8px",
+    controlColor: "rgb(168, 162, 158)",
+    controlHoverColor: "rgb(254, 243, 199)",
+  },
+  editorial: {
+    background: "#f7f3ea",
+    borderColor: "#ece4d2",
+    tabColor: "#9c8f77",
+    tabActiveColor: "#241f17",
+    tabBackground: "transparent",
+    tabActiveBackground: "transparent",
+    accent: "#241f17",
+    fontFamily: "Fraunces, ui-serif, Georgia, serif",
+    fontSize: "13px",
+    letterSpacing: "0em",
+    radius: "0px",
+    gap: "4px",
+    paddingX: "10px",
+    controlColor: "#9c8f77",
+    controlHoverColor: "#241f17",
+  },
+  canvas: {
+    background: "rgb(248, 250, 252)",
+    borderColor: "rgb(226, 232, 240)",
+    tabColor: "rgb(100, 116, 139)",
+    tabActiveColor: "rgb(14, 116, 144)",
+    tabBackground: "#ffffff",
+    tabActiveBackground: "rgb(236, 254, 255)",
+    accent: "rgb(34, 211, 238)",
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontSize: "9px",
+    letterSpacing: "0.12em",
+    radius: "4px",
+    gap: "4px",
+    paddingX: "6px",
+    controlColor: "rgb(100, 116, 139)",
+    controlHoverColor: "rgb(14, 116, 144)",
+  },
 };

@@ -4,8 +4,6 @@ import {
   TilingDragHandle,
   TilingPaneAction,
   TilingPaneBody,
-  type TilingGroupMemberView,
-  type TilingRenderTileGroupContext,
   type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
 import { GroupTitleActions } from "./group-title-actions";
@@ -55,77 +53,6 @@ function dropStateRing(args: TilingRenderTileProps): string {
     return DROP_ELIGIBLE_RING;
   }
   return "";
-}
-
-// The Editorial grouped-stack representation: a printed folio-run of member
-// entries in the pane FOOTER — a "NN title" per member in the paper/ink
-// vocabulary, the active member set in ink with an ink underline, the rest in
-// quiet clay. Replaces the library's suppressed default group tab strip for the
-// Editorial skin. Consumes the library's `args.group` context directly: click
-// an entry → `group.activateMember`; a hover-revealed "×" ejects a member
-// (`group.removeMember`); a trailing "ungroup" dissolves the group
-// (`group.ungroup`).
-function EditorialGroupSwitcher({
-  group,
-  dropTargetRef,
-}: {
-  group: TilingRenderTileGroupContext;
-  dropTargetRef: React.RefCallback<HTMLElement | null>;
-}): React.ReactElement {
-  return (
-    <span
-      ref={dropTargetRef}
-      className="flex min-w-0 shrink items-baseline gap-2 overflow-hidden font-mono text-[10px] uppercase tracking-[0.14em]"
-    >
-      <span aria-hidden className="shrink-0 text-[#b0a487]">
-        grp
-      </span>
-      <span className="flex shrink items-baseline gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {group.members.map((member: TilingGroupMemberView): React.ReactElement => {
-          const title: string = member.tile?.title ?? member.tileId;
-          return (
-            <span
-              key={member.leafId}
-              className="group/folio flex shrink-0 items-baseline gap-1"
-            >
-              <TilingPaneAction
-                onClick={(): void => group.activateMember(member.memberNumber)}
-                aria-label={`activate ${title}`}
-                aria-pressed={member.isActive}
-                title={title}
-                className={`flex items-baseline gap-1 transition-colors ${
-                  member.isActive
-                    ? "text-[#241f17] underline decoration-[#241f17] underline-offset-[3px]"
-                    : "text-[#9c8f77] hover:text-[#241f17]"
-                }`}
-              >
-                <span className="tabular-nums text-[#b0a487]">
-                  {String(member.memberNumber).padStart(2, "0")}
-                </span>
-                <span className="max-w-[9ch] truncate">{title}</span>
-              </TilingPaneAction>
-              <TilingPaneAction
-                onClick={(): void => group.removeMember(member.leafId)}
-                aria-label={`remove ${title} from group`}
-                title={`remove ${title} from group`}
-                className="hidden text-[#a89c83] transition-colors hover:text-[#a8543a] group-hover/folio:inline"
-              >
-                <span aria-hidden>{"\u00d7"}</span>
-              </TilingPaneAction>
-            </span>
-          );
-        })}
-      </span>
-      <TilingPaneAction
-        onClick={(): void => group.ungroup()}
-        aria-label={`ungroup ${group.groupId}`}
-        title="ungroup this stack"
-        className="shrink-0 text-[#9c8f77] underline decoration-transparent underline-offset-[3px] transition-colors hover:text-[#241f17] hover:decoration-[#241f17]"
-      >
-        ungroup
-      </TilingPaneAction>
-    </span>
-  );
 }
 
 export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
@@ -211,12 +138,6 @@ export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
           {"\u2116 "}
           {folio}
         </span>
-        {args.group != null ? (
-          <EditorialGroupSwitcher
-            group={args.group}
-            dropTargetRef={args.groupDropTargetRef}
-          />
-        ) : null}
         {metrics != null ? (
           <span
             aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(

@@ -1,9 +1,6 @@
 import * as React from "react";
 import {
   isMultiSelectModifierActive,
-  TilingPaneAction,
-  type TilingGroupMemberView,
-  type TilingRenderTileGroupContext,
   type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
 import { GroupTitleActions } from "./group-title-actions";
@@ -43,79 +40,6 @@ function dropStateRing(args: TilingRenderTileProps): string {
     return "ring-1 ring-dashed ring-amber-300/25";
   }
   return "";
-}
-
-// The Mosaic grouped-stack representation: a compact row of member chips in the
-// pane FOOTER (mono smallcaps ordinal + truncated title, gold-lit when active),
-// replacing the library's suppressed default group tab strip for this skin.
-// Consumes the library's `args.group` context directly: click a chip →
-// `group.activateMember`; a hover-revealed "×" per chip ejects it
-// (`group.removeMember`); a trailing "ungroup" chip dissolves the group
-// (`group.ungroup`). Only the group's active member renders, so this shows once.
-function MosaicGroupSwitcher({
-  group,
-  dropTargetRef,
-}: {
-  group: TilingRenderTileGroupContext;
-  dropTargetRef: React.RefCallback<HTMLElement | null>;
-}): React.ReactElement {
-  return (
-    <span
-      ref={dropTargetRef}
-      className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden"
-    >
-      <span
-        aria-hidden
-        className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-stone-600"
-      >
-        grp
-      </span>
-      <span className="flex shrink items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {group.members.map((member: TilingGroupMemberView): React.ReactElement => {
-          const title: string = member.tile?.title ?? member.tileId;
-          return (
-            <span
-              key={member.leafId}
-              className="group/tab flex shrink-0 items-center"
-            >
-              <TilingPaneAction
-                onClick={(): void => group.activateMember(member.memberNumber)}
-                aria-label={`activate ${title}`}
-                aria-pressed={member.isActive}
-                title={title}
-                className={`flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] transition-colors ${
-                  member.isActive
-                    ? "border-amber-300/55 bg-amber-300/10 text-amber-100"
-                    : "border-white/[0.08] bg-white/[0.02] text-stone-400 hover:border-white/20 hover:text-stone-100"
-                }`}
-              >
-                <span className="font-semibold tabular-nums opacity-70">
-                  {String(member.memberNumber).padStart(2, "0")}
-                </span>
-                <span className="max-w-[9ch] truncate">{title}</span>
-              </TilingPaneAction>
-              <TilingPaneAction
-                onClick={(): void => group.removeMember(member.leafId)}
-                aria-label={`remove ${title} from group`}
-                title={`remove ${title} from group`}
-                className="ml-0.5 hidden rounded border border-white/10 px-1 py-0.5 font-mono text-[9px] leading-none text-stone-500 transition-colors hover:border-rose-400/50 hover:text-rose-200 group-hover/tab:inline-flex"
-              >
-                <span aria-hidden>{"\u00d7"}</span>
-              </TilingPaneAction>
-            </span>
-          );
-        })}
-      </span>
-      <TilingPaneAction
-        onClick={(): void => group.ungroup()}
-        aria-label={`ungroup ${group.groupId}`}
-        title="ungroup this stack"
-        className="shrink-0 rounded border border-white/[0.08] bg-white/[0.02] px-1 py-0.5 font-mono text-[9px] uppercase leading-none tracking-[0.12em] text-stone-400 transition-colors hover:border-amber-300/40 hover:text-amber-100"
-      >
-        ungroup
-      </TilingPaneAction>
-    </span>
-  );
 }
 
 export function DocTile(args: TilingRenderTileProps): React.ReactElement {
@@ -225,9 +149,6 @@ export function DocTile(args: TilingRenderTileProps): React.ReactElement {
         >
           {ordinal}
         </span>
-        {args.group != null ? (
-          <MosaicGroupSwitcher group={args.group} dropTargetRef={args.groupDropTargetRef} />
-        ) : null}
         {metrics != null ? (
           <span
             aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(
