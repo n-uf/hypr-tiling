@@ -8,6 +8,7 @@ import {
   type TilingRenderTileGroupContext,
   type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
+import { GroupTitleActions } from "./group-title-actions";
 import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
 
 // The EDITORIAL skin's pane chrome — the "paper & ink" counterpart to the
@@ -179,25 +180,7 @@ export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
           ) : null}
         </span>
         <span className="flex shrink-0 items-center gap-3">
-          {args.isMultiSelected ? (
-            <span
-              aria-label={`pane ${args.leafId} selected`}
-              title="selected (Alt/Opt+click to deselect)"
-              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[2px] border border-[#241f17]/55 font-mono text-[10px] leading-none text-[#241f17]"
-            >
-              <span aria-hidden>{"\u2713"}</span>
-            </span>
-          ) : null}
-          {args.isMultiSelected && args.canGroupMultiSelection ? (
-            <TilingPaneAction
-              onClick={(): void => args.onGroupMultiSelection(args.leafId)}
-              aria-label={`group ${args.leafId} with the selected panes`}
-              title="group selected panes into a tabbed group"
-              className="shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-[#8c8069] underline decoration-transparent underline-offset-[3px] transition-colors hover:text-[#241f17] hover:decoration-[#241f17]"
-            >
-              Group
-            </TilingPaneAction>
-          ) : null}
+          <GroupTitleActions pane={args} skin="editorial" />
           {args.isMaximizeEnabled ? (
             <TilingPaneAction
               onClick={(): void => args.onToggleMaximize()}

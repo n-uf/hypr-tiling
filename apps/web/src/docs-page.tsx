@@ -1346,9 +1346,11 @@ export function DocsPage({
                   <Code>onFocus</Code>, <Code>onPointerMove</Code>,{" "}
                   <Code>onPointerLeave</Code>. Put <Code>onHandlePointerDown</Code>{" "}
                   on your header, expose <Code>onToggleMaximize</Code>, and add
-                  Alt/Opt+click grouping via <Code>onToggleMultiSelect</Code> +{" "}
-                  <Code>onGroupMultiSelection</Code> (gate with{" "}
-                  <Code>isMultiSelectModifierActive</Code>). Style from the state
+                  grouping via a title-bar group icon, Alt/Opt+click (
+                  <Code>onToggleMultiSelect</Code> +{" "}
+                  <Code>onGroupMultiSelection</Code>, gate the click with{" "}
+                  <Code>isMultiSelectModifierActive</Code>), or drag a header onto
+                  a title bar (<Code>groupDropTargetRef</Code>). Style from the state
                   flags (<Code>isFocused</Code>, <Code>isMaximized</Code>,{" "}
                   <Code>isDragSource</Code>) and compose with theme tokens from{" "}
                   <Code>useTilingTheme()</Code> (<Code>resolveAccentText</Code>,{" "}
@@ -1603,8 +1605,10 @@ export function DocsPage({
               demo={<GroupSplitMaximizeExample />}
               knobs={
                 <>
-                  Users can Alt/Opt+G to group, drag a header to split, and
-                  Alt+Enter to maximize out of the box. From code, dispatch{" "}
+                  Users can group with the title-bar group icon, Alt/Opt+click,
+                  Alt/Opt+G, or by dragging a header onto a title bar; drag a
+                  header to split, and Alt+Enter to maximize out of the box. From
+                  code, dispatch{" "}
                   <Code>group-leaves</Code>, <Code>insert-adjacent</Code>, and{" "}
                   <Code>toggle-maximize</Code>. For custom multi-select affordances,{" "}
                   <Code>isMultiSelectModifierActive</Code> reports whether the

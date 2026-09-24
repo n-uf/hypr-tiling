@@ -19,7 +19,10 @@ import {
 // state flag the renderer computes. That means you can own the ENTIRE pane
 // look-and-feel (your own frame, header, buttons, focus/drag affordances), not
 // just `tile.content`, while the renderer keeps running layout, resize, drag,
-// grouping, focus and keyboard control underneath.
+// grouping, focus and keyboard control underneath. Grouping gestures to wire:
+// a title-bar group icon (onToggleMultiSelect / onGroupMultiSelection /
+// onClearMultiSelection / group.ungroup), Alt/Opt+click, and drag a header
+// onto a title bar (groupDropTargetRef). Alt+G stays on the library keymap.
 //
 // There are two ways to write a custom pane, shown side by side below:
 //

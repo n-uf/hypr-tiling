@@ -9,6 +9,7 @@ import {
   type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
 import { CANVAS_THEME } from "./canvas-theme";
+import { GroupTitleActions } from "./group-title-actions";
 import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
 
 // The CANVAS skin's pane chrome — an ENGINEERING INSTRUMENT panel, LED-lit.
@@ -24,18 +25,13 @@ import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
 // Three exact bands, each an instrument readout — not a header + body:
 //
 //   1. HEADER RAIL — a compact control-panel row. On the LEFT, a SINGLE squared
-//      control cluster of two instrument keys (fullscreen/maximize, then
-//      select-for-grouping) — squared right angles (engineering, not round
-//      macOS discs), SOLID saturated hue fills with a soft hue glow at rest and
-//      DEEPENED to a brighter, wider glow when the key's state is active
-//      (maximized / selected). Their colors are
-//      semantically mapped: emerald (go/activate) for maximize, sky (selection
-//      blue) for select-for-grouping. Then a hairline column rule and a short
-//      monospace label — the header carries NO second square block (the per-pane
-//      status LED lives in the footer, not the header). On the RIGHT, a tabular
-//      pane index and — only while a groupable multi-selection exists — the
-//      squared LED-keycap Group action. This is the drag surface and owns the
-//      Alt/Opt+click multi-select toggle via `TilingDragHandle`.
+//      control cluster: the emerald fullscreen/maximize key, then the shared
+//      title-bar group icon (select / add / remove / ungroup, plus Group and
+//      Cancel when the selection can fold). Then a hairline column rule and a
+//      short monospace label — the header carries NO second square block (the
+//      per-pane status LED lives in the footer, not the header). On the RIGHT,
+//      a tabular pane index. This is the drag surface and owns the Alt/Opt+click
+//      multi-select toggle via `TilingDragHandle`.
 //   2. BODY — a flat neutral panel field (no card rounding, no shadow) that
 //      renders `tile.content` through `TilingPaneBody` so the drag ghost reuses
 //      the same render path.
@@ -52,9 +48,9 @@ import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
 // readout footer. In full color the bright LED row is its defining trait.
 //
 // Fully interactive — drag (header rail), resize (renderer dividers), maximize
-// (the left fullscreen key), select-for-grouping (the left select key),
-// group (right LED keycap), focus (pane root lights its LED), multi-select
-// (Alt/Opt+click header rail too) — built on ONLY the public
+// (the left fullscreen key), grouping (the title-bar group icon beside it),
+// focus (pane root lights its LED), multi-select (Alt/Opt+click header rail
+// too) — built on ONLY the public
 // `@n-uf/hypr-tiling` `.` API + the four helper primitives. Neutral interactive
 // tokens (invalid-drop ring, drag-source fade, selected badge, body text) come
 // from the consumer-authored `CANVAS_THEME`; the LED accent language is
@@ -144,41 +140,19 @@ const PANEL_SHELL: string =
 const HEADER_RAIL: string =
   "grid shrink-0 cursor-grab touch-none select-none grid-cols-[auto_1fr_auto] items-center gap-2.5 border-b border-slate-200 bg-slate-50 px-3 py-1.5 active:cursor-grabbing";
 
-// A squared LED-keycap control (the Group action) in the instrument idiom.
-const LED_KEYCAP: string =
-  "flex h-[18px] shrink-0 items-center justify-center rounded-[1px] border border-slate-300 bg-white px-1.5 font-mono text-[9px] uppercase leading-none tracking-[0.14em] text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-800";
-
-// The two squared control keys on the header LEFT (fullscreen · select) — the
-// pane's SINGLE squared control cluster (the macOS titlebar analog, but squared
-// for the engineering aesthetic, not round). This is the header's only block of
-// squares: the standalone per-pane status LED has been dropped from the header
-// so there is no second square block — the LED-color identity now lives solely
-// in the footer LED-identity dot and the footer group LEDs.
+// The squared maximize key on the header LEFT — the pane's control cluster
+// (the macOS titlebar analog, but squared). Grouping sits beside it via
+// `GroupTitleActions`. The standalone per-pane status LED lives in the footer.
 //
-// Both keys wear the SOLID saturated-hue chip treatment (the look the reference
-// footer LED reads best in): a squared chip filled with its FULL saturated hue
-// at all times — never a translucent/outline wash — with a soft hue glow, so it
-// reads as a lit indicator, not a hollow toggle. Rest and active stay distinct
-// by intensity, not by fill vs no-fill: at REST the chip is solid but slightly
-// CALMER (emerald/sky-400 fill, gentler glow); when the key's state is ACTIVE
-// (maximized / selected) the same chip DEEPENS to the -500 hue with a brighter,
-// wider glow. Colors are semantically mapped, not arbitrary: maximize is EMERALD
-// (a go/expand "activate" green that echoes the reference LED glow),
-// select-for-grouping is SKY (the conventional selection blue), so the two
-// controls read as purposeful rather than a random palette pair. The tiny glyph
-// stays hidden on the solid field at rest and reveals (white) on hover or when
-// active, mirroring the macOS "glyphs appear on hover" idiom.
+// Maximize wears the SOLID saturated-hue chip: emerald at rest, deepened when
+// active. The glyph stays hidden on the solid field at rest and reveals
+// (white) on hover or when active.
 const CONTROL_SQUARE_BASE: string =
   "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[1px] border font-mono text-[8px] leading-none transition-all";
 const MAXIMIZE_LIGHT_REST: string =
   "border-emerald-500 bg-emerald-400 text-transparent shadow-[0_0_5px_0_rgba(52,211,153,0.6)] hover:bg-emerald-500 hover:text-white hover:shadow-[0_0_7px_0_rgba(52,211,153,0.85)]";
 const MAXIMIZE_LIGHT_ACTIVE: string =
   "border-emerald-600 bg-emerald-500 text-white shadow-[0_0_8px_1px_rgba(52,211,153,0.95)]";
-const SELECT_LIGHT_REST: string =
-  "border-sky-500 bg-sky-400 text-transparent shadow-[0_0_5px_0_rgba(56,189,248,0.6)] hover:bg-sky-500 hover:text-white hover:shadow-[0_0_7px_0_rgba(56,189,248,0.85)]";
-const SELECT_LIGHT_ACTIVE: string =
-  "border-sky-600 bg-sky-500 text-white shadow-[0_0_8px_1px_rgba(56,189,248,0.95)]";
-
 // Body field — flat neutral panel; text tokens from the consumer theme.
 const PANEL_BODY: string = CANVAS_THEME.paneShell.bodyText;
 
@@ -317,29 +291,7 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
                   <span aria-hidden>{args.isMaximized ? "\u2013" : "\u2922"}</span>
                 </TilingPaneAction>
               ) : null}
-              {args.isMultiSelectGroupingEnabled ? (
-                <TilingPaneAction
-                  onClick={(): void => args.onToggleMultiSelect()}
-                  aria-label={
-                    args.isMultiSelected
-                      ? `deselect pane ${args.leafId}`
-                      : `select pane ${args.leafId} for grouping`
-                  }
-                  aria-pressed={args.isMultiSelected}
-                  title={
-                    args.isMultiSelected
-                      ? "selected — click to deselect (Alt/Opt+click also toggles)"
-                      : "select for grouping"
-                  }
-                  className={`${CONTROL_SQUARE_BASE} ${
-                    args.isMultiSelected
-                      ? SELECT_LIGHT_ACTIVE
-                      : SELECT_LIGHT_REST
-                  }`}
-                >
-                  <span aria-hidden>{args.isMultiSelected ? "\u2713" : "\u25a1"}</span>
-                </TilingPaneAction>
-              ) : null}
+              <GroupTitleActions pane={args} skin="canvas" />
             </span>
           ) : null}
           {hasControls ? (
@@ -357,9 +309,8 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
         {/* Spacer column keeps the label left and the readout/controls right. */}
         <span aria-hidden />
 
-        {/* Right: tabular index + transient move state + the Group action
-            (only while a groupable multi-selection exists; the LEFT select key
-            is the selection toggle that feeds it). */}
+        {/* Right: tabular index + transient move state. Group / Cancel sit in
+            the left cluster, beside maximize. */}
         <span className="flex shrink-0 items-center justify-end gap-2 justify-self-end">
           {args.isMoveSource ? (
             <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-slate-400">
@@ -374,16 +325,6 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
           >
             {index}
           </span>
-          {args.isMultiSelected && args.canGroupMultiSelection ? (
-            <TilingPaneAction
-              onClick={(): void => args.onGroupMultiSelection(args.leafId)}
-              aria-label={`group ${args.leafId} with the selected panes`}
-              title="group selected panes into a tabbed group"
-              className={LED_KEYCAP}
-            >
-              Group
-            </TilingPaneAction>
-          ) : null}
         </span>
       </TilingDragHandle>
 

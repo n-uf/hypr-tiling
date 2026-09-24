@@ -696,7 +696,7 @@ export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
     title: "Render your own pane frame & header",
     section: "howto",
     summary:
-      "renderTile is a FULL-PANE render prop, not a content slot — it returns the whole pane (frame + header + body) and receives every handle and state flag, so you can own the ENTIRE pane look-and-feel. Take the easy path with the optional helper primitives (TilingPaneRoot, TilingDragHandle, TilingPaneAction, TilingPaneBody), which encode the wiring rules so they can't be gotten wrong, or wire the raw DOM by hand: root on article[data-leaf-id]; wire onHandlePointerDown on your header (drag), onToggleMaximize, onFocus, and onToggleMultiSelect + onGroupMultiSelection (Alt/Opt+click grouping); style from isFocused / isMaximized / isDragSource and compose with theme tokens from useTilingTheme (resolveAccentText, resolveFocusFrame). Render the body only when paneBodyRenderMode is render-content so the drag ghost stays in sync. The ghost mounts on the overlay portal container (default document.body, see overlayPortalContainer).",
+      "renderTile is a FULL-PANE render prop, not a content slot — it returns the whole pane (frame + header + body) and receives every handle and state flag, so you can own the ENTIRE pane look-and-feel. Take the easy path with the optional helper primitives (TilingPaneRoot, TilingDragHandle, TilingPaneAction, TilingPaneBody), which encode the wiring rules so they can't be gotten wrong, or wire the raw DOM by hand: root on article[data-leaf-id]; wire onHandlePointerDown on your header (drag), onToggleMaximize, onFocus, and onToggleMultiSelect + onGroupMultiSelection + onClearMultiSelection (title-bar group icon, Alt/Opt+click, or drag a header onto a title bar via groupDropTargetRef); style from isFocused / isMaximized / isDragSource and compose with theme tokens from useTilingTheme (resolveAccentText, resolveFocusFrame). Render the body only when paneBodyRenderMode is render-content so the drag ghost stays in sync. The ghost mounts on the overlay portal container (default document.body, see overlayPortalContainer).",
   },
   {
     id: "howto-theming",
@@ -745,7 +745,7 @@ export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
     title: "Group, split & maximize panes",
     section: "howto",
     summary:
-      "Grouping (Alt/Opt+G), splitting (drag a header), and maximizing (Alt+Enter) are built-in, and you can also drive them from code: dispatch group-leaves to fold leaves into a tabbed group, insert-adjacent to split, and toggle-maximize to maximize/restore a leaf. isMultiSelectModifierActive detects the platform multi-select modifier for your own affordances.",
+      "Grouping (title-bar group icon, Alt/Opt+click, Alt/Opt+G, or drag a header onto a title bar), splitting (drag a header), and maximizing (Alt+Enter) are built-in, and you can also drive them from code: dispatch group-leaves to fold leaves into a tabbed group, insert-adjacent to split, and toggle-maximize to maximize/restore a leaf. isMultiSelectModifierActive detects the platform multi-select modifier for your own affordances.",
   },
   {
     id: "concepts",

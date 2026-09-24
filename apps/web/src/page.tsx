@@ -479,9 +479,15 @@ function HomeBottomBar({
         />
       )}
       {isCoarsePointer ? null : (
-        <span className="ml-auto hidden shrink-0 items-center gap-2 sm:flex">
-          <span className={tokens.hintKbd}>drag pane to tab</span>
-          <span className={tokens.hintText}>to move</span>
+        <span className="ml-auto hidden shrink-0 items-center gap-3 sm:flex">
+          <span className="flex items-center gap-2">
+            <span className={tokens.hintKbd}>drag pane to tab</span>
+            <span className={tokens.hintText}>to move</span>
+          </span>
+          <span className="flex items-center gap-2">
+            <span className={tokens.hintKbd}>drag header onto a title bar</span>
+            <span className={tokens.hintText}>to group</span>
+          </span>
         </span>
       )}
     </div>

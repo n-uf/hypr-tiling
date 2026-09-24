@@ -6,6 +6,7 @@ import {
   type TilingRenderTileGroupContext,
   type TilingRenderTileProps,
 } from "@n-uf/hypr-tiling";
+import { GroupTitleActions } from "./group-title-actions";
 import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
 
 // Custom pane renderer for the homepage ("mosaic" identity) — a worked example
@@ -187,34 +188,7 @@ export function DocTile(args: TilingRenderTileProps): React.ReactElement {
           ) : null}
         </span>
         <span className="flex shrink-0 items-center gap-1.5">
-          {args.isMultiSelected ? (
-            <span
-              aria-label={`pane ${args.leafId} selected`}
-              title="selected (Alt/Opt+click to deselect)"
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-stone-300/45 bg-stone-300/[0.08] font-mono text-[11px] leading-none text-stone-200"
-            >
-              <span aria-hidden>{"\u2713"}</span>
-            </span>
-          ) : null}
-          {args.isMultiSelected && args.canGroupMultiSelection ? (
-            <button
-              type="button"
-              onPointerDown={(
-                event: React.PointerEvent<HTMLButtonElement>,
-              ): void => {
-                event.stopPropagation();
-              }}
-              onClick={(event: React.MouseEvent<HTMLButtonElement>): void => {
-                event.stopPropagation();
-                args.onGroupMultiSelection(args.leafId);
-              }}
-              aria-label={`group ${args.leafId} with the selected panes`}
-              title="group selected panes into a tabbed group"
-              className="flex h-6 shrink-0 items-center justify-center rounded-md border border-amber-300/45 bg-amber-300/10 px-2 font-mono text-[10px] uppercase leading-none tracking-[0.12em] text-amber-100 transition-colors hover:border-amber-300/70 hover:bg-amber-300/20"
-            >
-              Group
-            </button>
-          ) : null}
+          <GroupTitleActions pane={args} skin="mosaic" />
           {args.isMaximizeEnabled ? (
             <button
               type="button"
