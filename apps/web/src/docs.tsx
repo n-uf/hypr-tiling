@@ -363,6 +363,13 @@ export const INSTALL_INTRO_PARAGRAPH: DocParagraph = [
 export const INSTALL_CONTROLLED_PARAGRAPH: DocParagraph = [
   "You own the tree; apply every edit from your app.",
 ];
+export const INSTALL_VERSIONING_PARAGRAPH: DocParagraph = [
+  "Versions follow calendar alignment, ",
+  { code: "YY.M.R" },
+  " (year, month, release). The number does not carry SemVer major semantics. The library is in active development; any release may break backward compatibility. Pin an exact version in your manifest and read the per-release notes in the ",
+  { link: "changelog", href: "/docs#changelog" },
+  " before you upgrade.",
+];
 
 export const WORKSPACES_HEADING: string = "Workspaces";
 export const WORKSPACES_LEAD: DocParagraph = [
@@ -535,11 +542,15 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     title: "install",
     accent: "amber",
     summary:
-      "Install with pnpm add @n-uf/hypr-tiling react react-dom. React 19 peer deps. Render TilingRenderer with controlled layout state.",
+      "Install with pnpm add @n-uf/hypr-tiling react react-dom. Calendar YY.M.R versioning — pin exact releases and read the changelog before upgrading. React 19 peer deps. Render TilingRenderer with controlled layout state.",
     content: (
       <div className="flex flex-col gap-4">
         <SectionHeading>Install</SectionHeading>
         <Pre>{INSTALL_SNIPPET}</Pre>
+        <SectionHeading>Versioning</SectionHeading>
+        <SectionLead>
+          <MosaicInline paragraph={INSTALL_VERSIONING_PARAGRAPH} />
+        </SectionLead>
         <Pre>{INTEGRATION_EXAMPLE}</Pre>
         <SectionLead>
           <MosaicInline paragraph={INSTALL_INTRO_PARAGRAPH} />

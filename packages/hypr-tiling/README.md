@@ -34,6 +34,14 @@ yarn add @n-uf/hypr-tiling react react-dom
 
 `react` and `react-dom` are peer dependencies (version `^19`).
 
+## Versioning
+
+The package uses calendar-aligned versioning, `YY.M.R` (year, month, release).
+That scheme cannot signal a SemVer major bump. The library is in active
+development, and backward compatibility may break between releases. Pin an
+exact version in your manifest and read the per-release notes in
+[`CHANGELOG.md`](./CHANGELOG.md) before upgrading.
+
 ## Entry points
 
 | Import | Contents | React |

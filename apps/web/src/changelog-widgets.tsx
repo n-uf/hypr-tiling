@@ -324,6 +324,11 @@ function VersionInstallWidget({
       <pre className={tokens.pre}>
         <code>{INSTALL_SNIPPET}</code>
       </pre>
+      <p className={tokens.lead}>
+        Calendar{" "}
+        <span className={tokens.mono}>YY.M.R</span> — not a SemVer major signal.
+        Active development: breaking changes can ship in any release.
+      </p>
       <div className="flex flex-wrap gap-x-3 gap-y-1">
         <a href={LIBRARY_NPM_URL} className={tokens.link} target="_blank" rel="noopener noreferrer">
           npm

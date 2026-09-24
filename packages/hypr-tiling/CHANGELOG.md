@@ -3,12 +3,15 @@
 All notable changes to `@n-uf/hypr-tiling` are documented here.
 
 This package uses calendar-aligned versioning (`YY.M.R`), which cannot signal a
-SemVer "major" bump. **Read the per-release notes below for breaking changes** —
+SemVer "major" bump. The library is in active development, and any release may
+include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
 ## Unreleased
 
-Nothing pending.
+### Docs
+
+- README, CHANGELOG intro and the docs home state the calendar-versioning contract: active development, releases may break compatibility, pin exact versions.
 
 ## 26.9.7 — 2026-09-24
 
