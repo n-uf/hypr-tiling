@@ -180,6 +180,9 @@ export interface GroupLeavesOptions {
 export function hasAnyModifier(modifiers: ResolvedTilingKeyChordModifiers): boolean;
 
 // @public
+export function hasSwipeNeighbour(context: TilingWorkspaceSwipeContext, target: TilingWorkspaceSwipeTarget, wrap: boolean): boolean;
+
+// @public
 export function hideFromWorkspace(set: TilingWorkspaceSet, leafId: string, from: TilingWorkspaceId): TilingWorkspaceSet;
 
 // @public
@@ -367,6 +370,14 @@ export function resolveDragEasing(value: string | undefined | null, fallback: st
 export interface ResolvedTilingWorkspacesCapability {
     enable: boolean;
     followMovedLeaf: boolean;
+    switch: ResolvedTilingWorkspaceSwitchCapability;
+}
+
+// @public
+export interface ResolvedTilingWorkspaceSwitchCapability {
+    swipe: TilingWorkspaceSwipeConfig;
+    touchSwipe: boolean;
+    wheelSwipe: boolean;
 }
 
 // @public
@@ -388,6 +399,22 @@ export function resolveMultiSelectGroupHost(selection: ReadonlySet<string>, clic
 export function resolveSizingMode(sizing: TilingPaneSizing | undefined, dimension: TilingDimension): TilingPaneSizingMode;
 
 // @public
+export function resolveSwipeArming(params: {
+    context: TilingWorkspaceSwipeContext;
+    dx: number;
+    dy: number;
+    ctrlKey: boolean;
+    canScrollFurther: boolean;
+    wrap: boolean;
+}): TilingWorkspaceSwipeTarget | null;
+
+// @public
+export function resolveWorkspaceSwipeConfig(config?: Partial<TilingWorkspaceSwipeConfig> | null): TilingWorkspaceSwipeConfig;
+
+// @public
+export function resolveWorkspaceSwitchCapability(capability: TilingWorkspaceSwitchCapability | undefined): ResolvedTilingWorkspaceSwitchCapability;
+
+// @public
 export function resolveWorkspaceTabHover(targets: ReadonlyArray<TilingWorkspaceTabTarget>, point: TilingClientPoint): TilingWorkspaceTabDragHover | null;
 
 // @public
@@ -397,6 +424,17 @@ export function resolveWorkspaceTabKey(key: string, focusedIndex: number, count:
 export function revealTile(set: TilingWorkspaceSet, tileId: string, prefer?: TilingWorkspaceId): TilingRevealTileResult | null;
 
 // @public
+export type ScrollChainAxis = "x" | "y";
+
+// @public
+export type ScrollChainDirection = -1 | 1;
+
+// @public
+export interface ScrollChainPort<TElement = unknown> {
+    canScrollFurther(element: TElement | null, axis: ScrollChainAxis, direction: ScrollChainDirection): boolean;
+}
+
+// @public
 export function setLeafCollapsed(node: TilingLayoutNode, leafId: string, collapsed: boolean, collapsedExtentPx: number): TilingLayoutNode;
 
 // @public
@@ -404,6 +442,14 @@ export function setLeafSizing(node: TilingLayoutNode, leafId: string, sizing: Ti
 
 // @public
 export function setWorkspaceLayout(set: TilingWorkspaceSet, id: TilingWorkspaceId, layout: TilingLayoutNode | null): TilingWorkspaceSet;
+
+// @public
+export function shouldCommitSwipe(params: {
+    progress: number;
+    target: TilingWorkspaceSwipeTarget | null;
+    peakVelocityPxMs: number;
+    config: TilingWorkspaceSwipeConfig;
+}): boolean;
 
 // @public
 export function shouldRenderSplitDivider(input: SplitBoundaryStaticFlags): boolean;
@@ -428,6 +474,15 @@ export interface SplitBoundaryStaticFlags {
 export function swapLeafTiles(node: TilingLayoutNode, firstLeafId: string, secondLeafId: string): TilingLayoutNode;
 
 // @public
+export function swipeCommitCommand(target: TilingWorkspaceSwipeTarget): TilingCommand;
+
+// @public
+export function swipeProgressOfTravel(travelPx: number, widthPx: number, context: TilingWorkspaceSwipeContext, wrap: boolean): number;
+
+// @public
+export function swipeTargetOfTravel(travelPx: number): TilingWorkspaceSwipeTarget | null;
+
+// @public
 export function switchWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingWorkspaceSet;
 
 // @public
@@ -450,6 +505,18 @@ export const TILING_MAIN_WORKSPACE_NAME: string;
 
 // @public
 export const TILING_WORKSPACE_NAME_MAX_CHARS: number;
+
+// @public
+export const TILING_WORKSPACE_SWIPE_DEFAULTS: TilingWorkspaceSwipeConfig;
+
+// @public
+export const TILING_WORKSPACE_SWIPE_EMPTY_CONTEXT: TilingWorkspaceSwipeContext;
+
+// @public
+export const TILING_WORKSPACE_SWIPE_IDLE_SNAPSHOT: TilingWorkspaceSwipeSnapshot;
+
+// @public
+export const TILING_WORKSPACE_SWIPE_INITIAL_STATE: TilingWorkspaceSwipeState;
 
 // @public
 export const TILING_WORKSPACES_MAX: number;
@@ -664,6 +731,7 @@ export type TilingWorkspacePlacement = {
 export interface TilingWorkspacesCapability {
     enable?: boolean;
     followMovedLeaf?: boolean;
+    switch?: TilingWorkspaceSwitchCapability;
 }
 
 // @public
@@ -703,6 +771,130 @@ export type TilingWorkspaceSetRepairReason = "workspace-created" | "workspace-dr
 export interface TilingWorkspaceSetRepairResult {
     readonly reasons: ReadonlyArray<TilingWorkspaceSetRepairReason>;
     readonly set: TilingWorkspaceSet;
+}
+
+// @public
+export interface TilingWorkspaceSwipeConfig {
+    commitFraction: number;
+    commitVelocityPxMs: number;
+    lockoutMs: number;
+    thresholdPx: number;
+    wheelIdleMs: number;
+    widthPx: number;
+    wrap: boolean;
+}
+
+// @public
+export interface TilingWorkspaceSwipeContext {
+    dragActive: boolean;
+    hasNext: boolean;
+    hasPrev: boolean;
+    widthPx: number | null;
+}
+
+// @public
+export type TilingWorkspaceSwipeEvent = {
+    type: "WHEEL";
+    dx: number;
+    dy: number;
+    ctrlKey: boolean;
+    ts: number;
+    canScrollFurther?: boolean;
+    widthPx?: number;
+} | {
+    type: "TOUCH_START";
+    x: number;
+    y: number;
+    ts: number;
+    widthPx?: number;
+} | {
+    type: "TOUCH_MOVE";
+    x: number;
+    y: number;
+    ts: number;
+    canScrollFurther?: boolean;
+    widthPx?: number;
+} | {
+    type: "TOUCH_END";
+    ts: number;
+} | {
+    type: "DRAG_ACTIVE";
+    active: boolean;
+} | {
+    type: "IDLE_TICK";
+    ts: number;
+} | {
+    type: "SETTLE_DONE";
+} | {
+    type: "CANCEL";
+} | {
+    type: "SET_CONTEXT";
+    hasPrev: boolean;
+    hasNext: boolean;
+    widthPx?: number;
+};
+
+// @public
+export type TilingWorkspaceSwipeInput = "wheel" | "touch";
+
+// @public
+export type TilingWorkspaceSwipeOutcome = "commit" | "cancel";
+
+// @public
+export type TilingWorkspaceSwipePhase = "idle" | "armed" | "tracking" | "settling" | "lockout";
+
+// @public
+export interface TilingWorkspaceSwipeSnapshot {
+    phase: TilingWorkspaceSwipePhase;
+    progress: number;
+    target: TilingWorkspaceSwipeTarget | null;
+}
+
+// @public
+export type TilingWorkspaceSwipeState = (SwipeStateBase & {
+    phase: "idle";
+    progress: 0;
+    target: null;
+    command: null;
+}) | (SwipeStateBase & {
+    phase: "armed";
+    input: TilingWorkspaceSwipeInput;
+    originX: number;
+    originY: number;
+    travelPx: number;
+    lastTs: number;
+    progress: 0;
+    target: null;
+    command: null;
+}) | (SwipeStateBase & {
+    phase: "tracking";
+    input: TilingWorkspaceSwipeInput;
+    originX: number;
+    originY: number;
+    travelPx: number;
+    lastTs: number;
+    peakVelocityPxMs: number;
+    command: null;
+}) | (SwipeStateBase & {
+    phase: "settling";
+    input: TilingWorkspaceSwipeInput;
+    outcome: TilingWorkspaceSwipeOutcome;
+    endedTs: number;
+}) | (SwipeStateBase & {
+    phase: "lockout";
+    until: number;
+    progress: 0;
+    target: null;
+    command: null;
+});
+
+// @public
+export type TilingWorkspaceSwipeTarget = "prev" | "next";
+
+// @public
+export interface TilingWorkspaceSwitchCapability {
+    touchSwipe?: boolean;
+    wheelSwipe?: boolean | Partial<TilingWorkspaceSwipeConfig>;
 }
 
 // @public
@@ -748,10 +940,43 @@ export function toggleLeafMultiSelection(selection: ReadonlySet<string>, leafId:
 export function toggleSplitAxis(node: TilingLayoutNode, splitId: string): TilingLayoutNode;
 
 // @public
+export interface TouchInputSample {
+    canScrollFurther: boolean;
+    ts: number;
+    widthPx: number | null;
+    x: number;
+    y: number;
+}
+
+// @public
 export function ungroupNode(layout: TilingLayoutNode, groupId: string): TilingLayoutNode;
 
 // @public
 export function updateSplitRatio(node: TilingLayoutNode, splitId: string, ratio: number): TilingLayoutNode;
+
+// @public
+export interface WheelInputSample {
+    canScrollFurther: boolean;
+    ctrlKey: boolean;
+    dx: number;
+    dy: number;
+    ts: number;
+    widthPx: number | null;
+}
+
+// @public
+export interface WheelTouchInputListener {
+    onTouchEnd(ts: number): void;
+    onTouchMove(sample: TouchInputSample): void;
+    onTouchStart(sample: TouchInputSample): void;
+    onWheel(sample: WheelInputSample): void;
+}
+
+// @public
+export interface WheelTouchInputPort {
+    setTracking(tracking: boolean): void;
+    subscribe(listener: WheelTouchInputListener): () => void;
+}
 
 // @public
 export const WORKSPACE_KEY_BINDINGS: ReadonlyArray<TilingKeyBinding>;
@@ -766,6 +991,12 @@ export function workspaceSetIssues(set: TilingWorkspaceSet, options?: WorkspaceS
 
 // @public
 export function workspaceSetOfLayout(layout: TilingLayoutNode | null, id?: TilingWorkspaceId, name?: string): TilingWorkspaceSet;
+
+// @public
+export function workspaceSwipeReducer(state: TilingWorkspaceSwipeState, event: TilingWorkspaceSwipeEvent, config?: TilingWorkspaceSwipeConfig): TilingWorkspaceSwipeState;
+
+// @public
+export function workspaceSwipeSnapshot(state: TilingWorkspaceSwipeState): TilingWorkspaceSwipeSnapshot;
 
 // (No @packageDocumentation comment for this package)
 

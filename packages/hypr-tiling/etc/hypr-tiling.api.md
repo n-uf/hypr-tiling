@@ -10,7 +10,18 @@ import * as React_2 from 'react';
 export function activeWorkspace(set: TilingWorkspaceSet): TilingWorkspace | null;
 
 // @public
+export function canElementScrollFurther(element: HTMLElement, axis: ScrollChainAxis, direction: ScrollChainDirection): boolean;
+
+// @public
 export function clientRectContains(rect: TilingClientRect, point: TilingClientPoint): boolean;
+
+// Warning: (ae-forgotten-export) The symbol "ElementRef" needs to be exported by the entry point index.d.ts
+//
+// @public
+export function createDomScrollChainPort(rootRef: ElementRef<HTMLElement | null>): ScrollChainPort<EventTarget>;
+
+// @public
+export function createDomWheelTouchPort(element: HTMLElement, options: DomWheelTouchPortOptions): WheelTouchInputPort;
 
 // @public
 export function createPersistedTilingLayout(options: CreatePersistedTilingLayoutOptions): PersistedTilingLayout;
@@ -62,6 +73,14 @@ export const DEFAULT_TILING_THEME_ID: TilingThemeId;
 export function deleteWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId): TilingDeleteWorkspaceResult;
 
 // @public
+export interface DomWheelTouchPortOptions {
+    now?: () => number;
+    scrollChain: ScrollChainPort<EventTarget>;
+    touch: boolean;
+    wheel: boolean;
+}
+
+// @public
 export const DRAG_ANIMATION_SPEED_MAX_PERCENT: number;
 
 // @public
@@ -104,6 +123,12 @@ export interface MoveTileToWorkspaceOptions {
 export interface MultiSelectModifierState {
     readonly altKey: boolean;
 }
+
+// @public
+export function normaliseWheelDelta(event: WheelEvent, clientWidth: number): {
+    dx: number;
+    dy: number;
+};
 
 // @public
 export function normalizeWorkspaceName(name: string): string | null;
@@ -273,6 +298,14 @@ export interface ResolvedTilingTouchDragCapability {
 export interface ResolvedTilingWorkspacesCapability {
     enable: boolean;
     followMovedLeaf: boolean;
+    switch: ResolvedTilingWorkspaceSwitchCapability;
+}
+
+// @public
+export interface ResolvedTilingWorkspaceSwitchCapability {
+    swipe: TilingWorkspaceSwipeConfig;
+    touchSwipe: boolean;
+    wheelSwipe: boolean;
 }
 
 // @public
@@ -292,6 +325,17 @@ export function resolveWorkspaceTabKey(key: string, focusedIndex: number, count:
 
 // @public
 export function revealTile(set: TilingWorkspaceSet, tileId: string, prefer?: TilingWorkspaceId): TilingRevealTileResult | null;
+
+// @public
+export type ScrollChainAxis = "x" | "y";
+
+// @public
+export type ScrollChainDirection = -1 | 1;
+
+// @public
+export interface ScrollChainPort<TElement = unknown> {
+    canScrollFurther(element: TElement | null, axis: ScrollChainAxis, direction: ScrollChainDirection): boolean;
+}
 
 // @public
 export function setWorkspaceLayout(set: TilingWorkspaceSet, id: TilingWorkspaceId, layout: TilingLayoutNode | null): TilingWorkspaceSet;
@@ -340,6 +384,9 @@ export const TILING_TILE_ACCENTS: readonly TilingTileAccent[];
 
 // @public
 export const TILING_WORKSPACE_NAME_MAX_CHARS: number;
+
+// @public
+export const TILING_WORKSPACE_SWIPE_DEFAULTS: TilingWorkspaceSwipeConfig;
 
 // @public
 export const TILING_WORKSPACES_MAX: number;
@@ -1228,6 +1275,7 @@ export type TilingWorkspacePlacement = {
 export interface TilingWorkspacesCapability {
     enable?: boolean;
     followMovedLeaf?: boolean;
+    switch?: TilingWorkspaceSwitchCapability;
 }
 
 // @public
@@ -1267,6 +1315,41 @@ export type TilingWorkspaceSetRepairReason = "workspace-created" | "workspace-dr
 export interface TilingWorkspaceSetRepairResult {
     readonly reasons: ReadonlyArray<TilingWorkspaceSetRepairReason>;
     readonly set: TilingWorkspaceSet;
+}
+
+// @public
+export interface TilingWorkspaceSwipeConfig {
+    commitFraction: number;
+    commitVelocityPxMs: number;
+    lockoutMs: number;
+    thresholdPx: number;
+    wheelIdleMs: number;
+    widthPx: number;
+    wrap: boolean;
+}
+
+// @public
+export type TilingWorkspaceSwipePhase = "idle" | "armed" | "tracking" | "settling" | "lockout";
+
+// @public
+export function TilingWorkspaceSwipeScope(input: {
+    children?: React_2.ReactNode;
+}): React_2.ReactElement;
+
+// @public
+export interface TilingWorkspaceSwipeSnapshot {
+    phase: TilingWorkspaceSwipePhase;
+    progress: number;
+    target: TilingWorkspaceSwipeTarget | null;
+}
+
+// @public
+export type TilingWorkspaceSwipeTarget = "prev" | "next";
+
+// @public
+export interface TilingWorkspaceSwitchCapability {
+    touchSwipe?: boolean;
+    wheelSwipe?: boolean | Partial<TilingWorkspaceSwipeConfig>;
 }
 
 // @public
@@ -1361,6 +1444,15 @@ export interface TilingWorkspaceTabTarget {
 }
 
 // @public
+export interface TouchInputSample {
+    canScrollFurther: boolean;
+    ts: number;
+    widthPx: number | null;
+    x: number;
+    y: number;
+}
+
+// @public
 export function useTilingTheme(): TilingTheme;
 
 // @public
@@ -1392,6 +1484,33 @@ export interface UseTilingWorkspaceTabsResult {
     };
     readonly tablistProps: TilingWorkspaceTablistElementProps;
     readonly tabs: ReadonlyArray<TilingWorkspaceTab>;
+}
+
+// @public
+export function useWorkspaceSwipe(): TilingWorkspaceSwipeSnapshot;
+
+// @public
+export interface WheelInputSample {
+    canScrollFurther: boolean;
+    ctrlKey: boolean;
+    dx: number;
+    dy: number;
+    ts: number;
+    widthPx: number | null;
+}
+
+// @public
+export interface WheelTouchInputListener {
+    onTouchEnd(ts: number): void;
+    onTouchMove(sample: TouchInputSample): void;
+    onTouchStart(sample: TouchInputSample): void;
+    onWheel(sample: WheelInputSample): void;
+}
+
+// @public
+export interface WheelTouchInputPort {
+    setTracking(tracking: boolean): void;
+    subscribe(listener: WheelTouchInputListener): () => void;
 }
 
 // @public

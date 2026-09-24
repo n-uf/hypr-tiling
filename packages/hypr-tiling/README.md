@@ -426,6 +426,42 @@ function Dashboard() {
   supplies `workspaceTabs` / `workspaceTab` / `workspaceTabActive` /
   `workspaceTabDropTarget`.
 
+### Swipe between workspaces
+
+Opt in per input with `interaction.workspaces.switch` (both off by default):
+a horizontal trackpad / wheel burst or a one-finger touch swipe on the
+renderer cycles to the neighbouring workspace through the same command path
+as the keymap (`onWorkspacesChange` + `onWorkspaceSwitch({ via: "swipe" })`).
+The gesture never arms while a pane drag is in flight, while `Ctrl` is held
+(pinch-zoom), for a mostly vertical delta, or while an inner element under
+the pointer can still scroll horizontally; the first / last workspace has no
+neighbour on that side unless `wrap: true`. When enabled the root gets
+`overscroll-behavior-x: contain` (and `touch-action: pan-y` for touch).
+
+```tsx
+<TilingWorkspaceSwipeScope>
+  <TabStrip />   {/* const { progress, target, phase } = useWorkspaceSwipe(); */}
+  <TilingRenderer
+    workspaces={set}
+    onWorkspacesChange={setSet}
+    interaction={{
+      workspaces: {
+        switch: { wheelSwipe: { commitFraction: 0.3 }, touchSwipe: true },
+      },
+    }}
+    /* … */
+  />
+</TilingWorkspaceSwipeScope>
+```
+
+`wheelSwipe` takes `true` or a partial `TilingWorkspaceSwipeConfig`
+(`thresholdPx` 24, `commitFraction` 0.35, `commitVelocityPxMs` 0.6,
+`wheelIdleMs` 120, `lockoutMs` 350, `wrap` false). `useWorkspaceSwipe()` is
+headless — `progress` is `-1..1` (negative = towards the previous workspace)
+so a tab indicator can follow the finger; it reads the idle snapshot outside
+a `TilingWorkspaceSwipeScope`. The pure FSM (`workspaceSwipeReducer`) and the
+port contracts ship on `@n-uf/hypr-tiling/engine`.
+
 ## Features
 
 - **Drag/drop rearrange** — Hyprland-style live drag; the move commits on
