@@ -257,3 +257,30 @@ hypr-tiling **21–26**. S4 3–4 · S5 1 · regression 1 → DashAI **5–6**. 
   (api-extractor `ae-missing-release-tag` / docs generator read them).
 - Final report to the coordinator: commit hashes with subjects, files
   touched, new public symbols, test counts, anything left for the next wave.
+
+## Status — 2026-09-23
+
+Programme baseline landed on `integration/workspace-nav` @ `4c59025` (prep for
+calendar release `26.9.4`; R1 release note + version bump on `worker/r1-release`,
+not yet merged to `main`). Final gate on integration head: **63 test suites / 1311
+tests** (`pnpm --filter @n-uf/hypr-tiling test`).
+
+| Item | Landed on `integration/workspace-nav` | Worker / tip commit |
+| --- | --- | --- |
+| **H5** engine set ops | merge `7da46e8` | `5f2fdce` api reports + changelog for H5 |
+| **H8** commands + keymap | merge `26307ff` | `dc0e836` api reports + changelog for H8 |
+| **H7** set controller | merge `b74b6da` | `b5f796c` api reports + readme + changelog for H7 |
+| **H6** pool renderer | merge `7671156` | `4fbb938` api reports + readme + changelog for H6 |
+| **N1** swipe FSM | merge `017fec3` | `7a36ab3` api reports + readme + changelog for N1 |
+| **N2** switch transition | first-parent `67343b0`, `71f9a9e`, … | `67343b0` on `worker/n2-transition` |
+| **N3** spring-load engine | `275fedf`, `3e6ef9f`, `70c4cbc` | `275fedf` api reports + changelog for N3 engine half |
+| **N3** spring-load wiring | `fd9488c`, `1a46134`, `0fccefd`, `4c59025` | `4c59025` docs + api reports (N3 wiring) |
+| **R1** release `26.9.4` | in progress (`worker/r1-release`) | changelog + readme + docs site + `package.json` bump |
+
+**Operator steps remaining:** push `integration/workspace-nav` and landed
+`worker/*` branches; fast-forward `main` from integration; from
+`packages/hypr-tiling` run `pnpm release` (publish `@n-uf/hypr-tiling@26.9.4`);
+then **S4** (DashAI bump + `useTilingWorkspaceSetController` + pool `tiles` +
+delete hand-rolled set ops) and **S5** (enable swipe / slide / spring-load,
+`useWorkspaceSwipe` tab indicator, terminal chords, `reveal-tile`) in
+`starpay-app`.
