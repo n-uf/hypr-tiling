@@ -25,7 +25,6 @@ import {
   resetWorkspaceSet,
   revealTile,
   switchWorkspace,
-  workspaceSetEquals,
   TILING_WORKSPACES_MAX,
   type TilingDeleteWorkspaceResult,
   type TilingRevealTileResult,
@@ -105,8 +104,9 @@ export interface TilingWorkspaceSetController {
    */
   readonly reset: (scope: "workspace" | "all", workspaceId?: string) => boolean;
   /**
-   * `true` when the viewed set is structurally equal to `defaults`.
-   * `false` when `defaults` is omitted.
+   * `true` when `reset("all")` would change nothing: every workspace matches
+   * `defaults`, regardless of which one is active. `false` when `defaults`
+   * is omitted.
    */
   readonly atDefaults: boolean;
   /** Commit pending trees now (reason `"tree"`). */
@@ -490,7 +490,7 @@ export function useTilingWorkspaceSetController(
   );
 
   const atDefaults: boolean =
-    defaults != null && workspaceSetEquals(viewed, defaults);
+    defaults != null && resetWorkspaceSet(viewed, defaults) === viewed;
 
   const flush = React.useCallback((): void => {
     const original: TilingWorkspaceSet = baseSetRef.current;

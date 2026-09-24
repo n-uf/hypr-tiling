@@ -534,8 +534,9 @@ the controller.
 - Controller: `ctl.reset("workspace" | "all", workspaceId?)` commits
   immediately (same path as `switch`, not tree-debounced) and returns
   `false` when nothing changed or `defaults` is omitted. `ctl.atDefaults`
-  is `true` when `workspaceSetEquals(ctl.set, defaults)` (`false` with no
-  defaults). No default key bindings — host opt-in only.
+  is `true` when `reset("all")` would change nothing — every workspace
+  matches the seed, whichever one is active (`false` with no defaults). No
+  default key bindings — host opt-in only.
 
 ```tsx
 const ctl = useTilingWorkspaceSetController({

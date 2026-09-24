@@ -27,7 +27,8 @@ Additive. No default key bindings; hosts opt in.
   `onWorkspacesChange`; never fire `onWorkspaceSwitch`.
 - `TilingRenderer` set-mode prop `workspaceDefaults?: TilingWorkspaceSet`.
 - Controller `defaults` option, `reset("workspace" | "all", workspaceId?)`,
-  and `atDefaults`.
+  and `atDefaults` (`true` when `reset("all")` would change nothing, whichever
+  workspace is active).
 
 ### Docs
 

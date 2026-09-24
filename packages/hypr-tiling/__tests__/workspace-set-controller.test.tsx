@@ -482,7 +482,13 @@ describe("useTilingWorkspaceSetController", (): void => {
     expect(rendered.onCommit).toHaveBeenCalledTimes(2);
     expect(rendered.result.current.set.activeId).toBe("ops");
     expect(rendered.result.current.set.workspaces[0].layout).toEqual(seed.workspaces[0].layout);
-    expect(rendered.result.current.atDefaults).toBe(false);
+    // Every workspace matches the seed; the active id is irrelevant to atDefaults.
+    expect(rendered.result.current.atDefaults).toBe(true);
+    act((): void => {
+      changed = rendered.result.current.reset("all");
+    });
+    expect(changed).toBe(false);
+    expect(rendered.onCommit).toHaveBeenCalledTimes(2);
     const atSeed: RenderedController = renderController({ value: seed, defaults: seed });
     expect(atSeed.result.current.atDefaults).toBe(true);
     act((): void => {
