@@ -4,8 +4,13 @@ import type { RatioSafetyBounds } from "./pane-sizing";
 // contract surfaced on `TilingRendererProps.theme`. No runtime engine→react
 // coupling (see check-guardrails.mjs rule 1).
 import type { TilingTheme } from "../react/theme";
-import type { TilingWorkspace, TilingWorkspaceSet } from "./workspace-set";
+import type {
+  TilingWorkspace,
+  TilingWorkspaceSet,
+  TilingWorkspaceSetIssue,
+} from "./workspace-set";
 import type { TilingWorkspaceSwipeConfig } from "./workspace-navigation";
+import type { TilingWorkspaceTransitionMode } from "./workspace-transition";
 
 /**
  * Orientation of a binary split. `"horizontal"` places its two children
@@ -1114,6 +1119,18 @@ export interface TilingWorkspaceSwitchCapability {
   wheelSwipe?: boolean | Partial<TilingWorkspaceSwipeConfig>;
   /** One-finger horizontal pan on the viewport. Default `false`. */
   touchSwipe?: boolean;
+  /**
+   * Visual transition played by the set-mode renderer on every `activeId`
+   * change (tab, keymap, `dispatch`, `reveal-tile`, swipe, or a host that
+   * sets `workspaces.activeId` directly): `"slide"` (outgoing clone slides out
+   * while the incoming tree slides in), `"fade"` (cross-fade), or `"none"`
+   * (default — no stage is mounted, the tree swaps in place). While a swipe is
+   * tracking the stage follows the finger (`progress` scrub) and settles with
+   * the swipe's commit / cancel. Downgraded to `"none"` under
+   * `prefers-reduced-motion: reduce` and when the outgoing view cannot be
+   * captured (see `resolveTransitionMode`).
+   */
+  transition?: TilingWorkspaceTransitionMode;
 }
 
 /** Resolved {@link TilingWorkspaceSwitchCapability} (no optional fields). */
@@ -1124,6 +1141,8 @@ export interface ResolvedTilingWorkspaceSwitchCapability {
   touchSwipe: boolean;
   /** The swipe FSM config both inputs run with. */
   swipe: TilingWorkspaceSwipeConfig;
+  /** The requested switch transition (`"none"` mounts no stage). */
+  transition: TilingWorkspaceTransitionMode;
 }
 
 /** Resolved workspace-set navigation capability (no optional fields). */
@@ -1687,6 +1706,20 @@ export interface TilingRenderTileProps {
   tile: TilingTile;
   /** 1-based pane ordinal in current tab order (for generic pane labels). */
   paneOrdinal: number;
+  /**
+   * Id of the workspace whose tree seats this leaf. In single-layout mode this
+   * is always `TILING_MAIN_WORKSPACE_ID` (`"main"`); in set mode it is the
+   * active workspace's id — or, for a pane kept alive by
+   * `inactiveWorkspaces: "keep-mounted"`, the (first, in tab order) inactive
+   * workspace that seats the tile.
+   */
+  workspaceId: string;
+  /**
+   * How many workspaces in the set seat this leaf's `tile.id` (a tile may be
+   * seated in several trees at once). `1` in single-layout mode. A pane can
+   * use this to show a "shared" affordance or to gate per-workspace state.
+   */
+  seatCount: number;
   /** Current pane viewport width in pixels (for responsive header/control density). */
   paneWidthPx: number;
   /**
@@ -2452,7 +2485,66 @@ export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonPro
    * reserved and is not emitted yet.
    */
   onWorkspaceSwitch?: (event: TilingWorkspaceSwitchEvent) => void;
+  /**
+   * What the renderer does with a pool tile that no workspace seats (and with
+   * a seated tile the pool no longer contains). In set mode
+   * {@link TilingRendererCommonProps.tiles} is the WHOLE tile pool and coverage
+   * is judged set-wide — the active tree only heals the tiles it seats itself,
+   * so a tile seated only in an inactive workspace is never pulled into the
+   * active tree. Default `"report"`.
+   *
+   * - `"report"` — no mutation; the current issue list is delivered through
+   *   {@link TilingRendererWorkspaceSetProps.onIntegrityIssues} whenever it
+   *   changes.
+   * - `"seat-in-active"` — orphan tiles are seated in the active workspace
+   *   (`TILING_DEFAULT_WORKSPACE_PLACEMENT`, leaf id from
+   *   {@link TilingRendererWorkspaceSetProps.mintLeafId}) and unknown tiles
+   *   are pruned; the repaired set is emitted once through
+   *   `onWorkspacesChange`. Issues are still reported.
+   * - `"ignore"` — nothing happens; the set is rendered as given.
+   */
+  orphanTiles?: TilingOrphanTilePolicy;
+  /**
+   * Leaf id for a tile seated by `orphanTiles: "seat-in-active"`. Default
+   * `` `leaf:${tileId}` ``. Must be unique across the whole set.
+   */
+  mintLeafId?: (tileId: string) => string;
+  /**
+   * Set-wide integrity report (`workspaceSetIssues(workspaces, { expectedTileIds:
+   * pool })`). Fired after commit whenever the issue fingerprint changes —
+   * including the transition back to an empty list — under `orphanTiles:
+   * "report"` and `"seat-in-active"`; never under `"ignore"`. Not fired on
+   * mount when the set is already clean.
+   */
+  onIntegrityIssues?: (issues: ReadonlyArray<TilingWorkspaceSetIssue>) => void;
+  /**
+   * Whether panes seated only in inactive workspaces stay mounted. Default
+   * `"unmount"`: only the active tree's panes exist; switching away unmounts a
+   * pane (its host state is lost unless the tile is also seated in the new
+   * active tree — the stable pane pool keeps that instance).
+   * `"keep-mounted"`: every pool tile seated anywhere in the set keeps its
+   * pane instance in the hidden stable pool while inactive, so host data
+   * hooks, subscriptions and scroll positions survive a round trip. Cost:
+   * hidden panes keep rendering and running effects; a tile is mounted lazily
+   * the first time its workspace is shown (never-shown tiles are not
+   * pre-mounted). Requires `paneIdentity: "stable"` (the `"auto"` default on a
+   * client mount); a `"slot"` renderer ignores it. Switching to an EMPTY
+   * workspace (`layout: null`) unmounts the tree — and with it the pool.
+   */
+  inactiveWorkspaces?: TilingInactiveWorkspacesMode;
 }
+
+/**
+ * Orphan-tile policy for the set-mode renderer — see
+ * {@link TilingRendererWorkspaceSetProps.orphanTiles}.
+ */
+export type TilingOrphanTilePolicy = "seat-in-active" | "ignore" | "report";
+
+/**
+ * Mount policy for panes seated only in inactive workspaces — see
+ * {@link TilingRendererWorkspaceSetProps.inactiveWorkspaces}.
+ */
+export type TilingInactiveWorkspacesMode = "unmount" | "keep-mounted";
 
 /**
  * Either prop shape {@link TilingRenderer} accepts: the single controlled

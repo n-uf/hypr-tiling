@@ -319,6 +319,11 @@ export type {
   ResolvedTilingWorkspaceSwitchCapability,
   TilingWorkspaceSwitchCapability,
 } from "./engine/types";
+// H6 — pool-aware set renderer (types only; the wrapper logic is React-side on `.`)
+export type {
+  TilingInactiveWorkspacesMode,
+  TilingOrphanTilePolicy,
+} from "./engine/types";
 export type {
   ScrollChainAxis,
   ScrollChainDirection,

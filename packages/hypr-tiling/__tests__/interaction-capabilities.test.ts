@@ -66,6 +66,7 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
         wrap: false,
         widthPx: 800,
       },
+      transition: "none",
     },
   },
 };
@@ -588,6 +589,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       wheelSwipe: false,
       touchSwipe: false,
       swipe: RESOLVED_DEFAULTS.workspaces.switch.swipe,
+      transition: "none",
     });
   });
 
@@ -613,7 +615,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
   it("resolves workspaces.switch: booleans, a partial swipe config, and touch independently", (): void => {
     const swipeDefaults = RESOLVED_DEFAULTS.workspaces.switch.swipe;
     expect(resolveInteractionCapabilities({ workspaces: { switch: { wheelSwipe: true } } }).workspaces.switch)
-      .toEqual({ wheelSwipe: true, touchSwipe: false, swipe: swipeDefaults });
+      .toEqual({ wheelSwipe: true, touchSwipe: false, swipe: swipeDefaults, transition: "none" });
     expect(
       resolveInteractionCapabilities({
         workspaces: { switch: { wheelSwipe: { commitFraction: 0.5, wrap: true }, touchSwipe: true } },
@@ -622,11 +624,21 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       wheelSwipe: true,
       touchSwipe: true,
       swipe: { ...swipeDefaults, commitFraction: 0.5, wrap: true },
+      transition: "none",
     });
     expect(resolveInteractionCapabilities({ workspaces: { switch: { touchSwipe: true } } }).workspaces.switch)
-      .toEqual({ wheelSwipe: false, touchSwipe: true, swipe: swipeDefaults });
+      .toEqual({ wheelSwipe: false, touchSwipe: true, swipe: swipeDefaults, transition: "none" });
     expect(resolveInteractionCapabilities({ workspaces: { switch: { wheelSwipe: false } } }).workspaces.switch)
       .toEqual(RESOLVED_DEFAULTS.workspaces.switch);
+  });
+
+  it("resolves workspaces.switch.transition (H6 / N2): default none, slide / fade pass through", (): void => {
+    expect(resolveInteractionCapabilities({ workspaces: { switch: { transition: "slide" } } }).workspaces.switch)
+      .toEqual({ ...RESOLVED_DEFAULTS.workspaces.switch, transition: "slide" });
+    expect(resolveInteractionCapabilities({ workspaces: { switch: { transition: "fade", wheelSwipe: true } } }).workspaces.switch)
+      .toEqual({ ...RESOLVED_DEFAULTS.workspaces.switch, wheelSwipe: true, transition: "fade" });
+    expect(resolveInteractionCapabilities({ workspaces: { switch: { transition: undefined } } }).workspaces.switch.transition)
+      .toBe("none");
   });
 
   it("is idempotent when re-resolving a resolved object", (): void => {

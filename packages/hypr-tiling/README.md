@@ -417,6 +417,32 @@ function Dashboard() {
   `onLayoutChange`. Uncontrolled focus / maximize are remembered per
   workspace; a drag in flight is cancelled when the active workspace
   changes; an empty workspace renders `renderEmptyWorkspace(workspace)`.
+- **`tiles` is the whole pool** — pass every tile any workspace seats.
+  Coverage is checked **per tree**: the active layout is healed against the
+  tiles *it* seats (no empty leaves, no duplicate seats, no seat for a tile
+  missing from the pool); a pool tile shown only elsewhere is never forced
+  into the active tree. Set-wide integrity is the wrapper's job:
+  - `orphanTiles?: "seat-in-active" | "ignore" | "report"` (default
+    `"report"`) — a pool tile no workspace seats / a seat whose tile is not
+    in the pool. `"report"` leaves the set alone and calls
+    `onIntegrityIssues(issues)` whenever the issue fingerprint changes
+    (once more with `[]` when it clears); `"seat-in-active"` runs
+    `repairWorkspaceSet` once per set identity (orphans seated in the
+    active tree with `TILING_DEFAULT_WORKSPACE_PLACEMENT`, unknown seats
+    pruned), emits the repaired set on `onWorkspacesChange`, and reports
+    what it repaired; `"ignore"` does neither. `mintLeafId?: (tileId) =>
+    string` names a minted seat (default `` `leaf:${tileId}` ``).
+  - `inactiveWorkspaces?: "unmount" | "keep-mounted"` (default
+    `"unmount"`) — with `paneIdentity: "stable"`, `"keep-mounted"` parks a
+    pane whose tile is seated only in an inactive workspace in the hidden
+    pool (`display: none`) instead of unmounting it, so an iframe / video /
+    editor survives a round trip. Cost: every retained pane's DOM and React
+    subtree stays alive (memory, hidden-subtree effects). A pane is
+    retained only after its first paint; an empty active workspace still
+    unmounts everything; no-op under `paneIdentity: "slot"`.
+  - `renderTile` receives `workspaceId` (the workspace the pane is painted
+    in) and `seatCount` (how many workspaces seat the tile) — single-layout
+    mode reports `TILING_MAIN_WORKSPACE_ID` / `1`.
 - **Drop on a tab** — a `kind: "workspace-tab"` `externalDragHover` (what
   `tabs.rendererProps` resolves for you) settles by `moveLeafToWorkspace`
   with no host claim; `onMoveLeaf(leafId, from, to)` reports it.
@@ -478,48 +504,41 @@ function Dashboard({ persisted, persist, readOnly, tiles }) {
 
 ### Workspace switch transition
 
-When the set-mode wrapper switches `activeId`, the outgoing tree unmounts
-(inactive workspace trees are not mounted — `inactiveWorkspaces` did not
-ship). `<WorkspaceTransitionStage>` / `useWorkspaceTransition` freeze the
-outgoing viewport as a DOM clone (`captureViewClone`) and slide or fade
-that clone against the live incoming tree.
-
-Call `begin` **before** updating `activeId`. Feed N1 swipe `progress`
-(`−1..1`) while tracking; call `finish("commit" | "cancel")` to run the
-timed curve and drop the clone.
+Opt in with `interaction.workspaces.switch.transition: "slide" | "fade"`
+(default `"none"`). The set-mode wrapper then mounts
+`<WorkspaceTransitionStage>` inside its viewport around the live tree and
+drives it: the outgoing viewport is frozen as a DOM clone
+(`captureViewClone`) **before** the tree swaps — for renderer-driven
+switches (command, key, tab, reveal, swipe) and for a host-driven
+`activeId` change alike — and slid or faded against the live incoming
+tree, then dropped. A tracking swipe scrubs the stage from its `progress`;
+releasing short of the commit threshold settles it back; a committed swipe
+keeps its capture. `cycle-workspace` keeps its own direction across a
+wrap-around; other switches derive `prev` / `next` from tab order.
 
 ```tsx
-import {
-  useWorkspaceTransition,
-  WorkspaceTransitionStage,
-} from "@n-uf/hypr-tiling";
-
-const viewportRef = useRef<HTMLDivElement>(null);
-const transition = useWorkspaceTransition({
-  viewportRef,
-  mode: "slide",
-  onSettled: (kind) => {
-    void kind;
-  },
-});
-
-// BEFORE setWorkspaces(switchWorkspace(...)):
-transition.begin({ direction: "next" });
-// N1 swipe: transition.scrub(progress)
-// then:
-transition.finish("commit");
+<TilingRenderer
+  workspaces={set}
+  onWorkspacesChange={setSet}
+  interaction={{
+    workspaces: { switch: { transition: "slide", wheelSwipe: true } },
+  }}
+  /* … */
+/>
 ```
 
-The viewport root needs `position: relative; overflow: hidden` so the
-overlay shares its box. `prefers-reduced-motion: reduce` resolves to
-`"none"` (instant, no clone). A tainted or oversized `<canvas>` capture
-falls `"slide"` → `"fade"`.
+`prefers-reduced-motion: reduce` resolves to `"none"` (instant, no clone).
+A tainted or oversized `<canvas>` capture falls `"slide"` → `"fade"`. Theme
+token `workspaceTransition` (`durationMs`, `easing`) supplies the timed
+curve (default 200 ms, drag-hop easing). Because the clone is a snapshot,
+`inactiveWorkspaces: "keep-mounted"` is not needed for the animation — it
+only matters for panes whose live state must survive the switch.
 
-Capability `interaction.workspaces.switch.transition?: "none" | "slide" |
-"fade"` (default `"none"`) is **planned** — the set-mode wrapper does not
-read it yet (follow-up after N1). Pass `mode` into the hook until then.
-Theme token `workspaceTransition` (`durationMs`, `easing`) supplies the
-timed curve (default 200 ms, drag-hop easing).
+`useWorkspaceTransition` / `WorkspaceTransitionStage` stay exported for a
+host that animates its own viewport (call `begin` before updating
+`activeId`, `scrub(progress)` while tracking, `finish("commit" | "cancel")`
+to settle; the viewport needs `position: relative; overflow: hidden`).
+
 ### Swipe between workspaces
 
 Opt in per input with `interaction.workspaces.switch` (both off by default):

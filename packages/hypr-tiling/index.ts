@@ -359,6 +359,15 @@ export type {
   ResolvedTilingWorkspaceSwitchCapability,
   TilingWorkspaceSwitchCapability,
 } from "./engine/types";
+// H6 — pool-aware set renderer
+// Set mode takes the WHOLE tile pool in `tiles`; the wrapper seats / reports
+// tiles no workspace shows (`orphanTiles`), keeps inactive workspaces' panes
+// mounted on request (`inactiveWorkspaces`), and stamps `workspaceId` /
+// `seatCount` on every `renderTile` call.
+export type {
+  TilingInactiveWorkspacesMode,
+  TilingOrphanTilePolicy,
+} from "./engine/types";
 export {
   canElementScrollFurther,
   createDomScrollChainPort,
