@@ -5,10 +5,10 @@ import type {
 } from "@n-uf/hypr-tiling";
 
 // Seed workspace set for the docs homepage. Workspace 1 (Home) is active on
-// SSR / first paint. Home is four columns: intro, features, and install at
-// full height, then the use-case / SEO tab group. Column widths are tuned so
-// 1440×900 shows every seated tile without a scroll except a short remainder
-// in features. Workspaces seats the workspaces copy (left, wider) beside the
+// SSR / first paint. Home is four columns: intro over discoverability in the
+// left stack, then features, install, and use cases at full height. Column
+// widths are tuned for the four-column home grid at 1440×900; the left stack
+// seats discoverability under intro (~70/30). Workspaces seats the workspaces copy (left, wider) beside the
 // set-inspector / swipe-meter dogfood pair. Changelog is a four-widget
 // dashboard: tall release timeline beside latest / breaking / version. Doc
 // tile ids match `DOC_PANES`; widget tile ids live in `changelog-widgets.tsx`.
@@ -19,9 +19,9 @@ import type {
 // instead of replaying a previous Home tree.
 
 export const HOME_WORKSPACE_STORAGE_KEY: string =
-  "hypr-tiling-home-workspaces-v4";
+  "hypr-tiling-home-workspaces-v5";
 
-export const HOME_WORKSPACE_STORAGE_VERSION: number = 4;
+export const HOME_WORKSPACE_STORAGE_VERSION: number = 5;
 
 export const HOME_WORKSPACE_ID_HOME: string = "ws-home";
 export const HOME_WORKSPACE_ID_WORKSPACES: string = "ws-workspaces";
@@ -31,15 +31,26 @@ export const HOME_WORKSPACE_NAME_HOME: string = "Home";
 export const HOME_WORKSPACE_NAME_WORKSPACES: string = "Workspaces";
 export const HOME_WORKSPACE_NAME_CHANGELOG: string = "Changelog";
 
-// Root fractions: intro 0.23, features 0.31 (0.40 of the remaining 0.77),
-// install 0.30, use-case group 0.16. All four are full height. At 1440×900
-// the features body is 90px past the pane; intro, install, and use cases fit.
+// Root fractions: left column 0.23 (intro ~0.70 / discoverability ~0.30 of that
+// column), features 0.31 (0.40 of the remaining 0.77), install 0.30, use cases
+// 0.16.
 const HOME_LAYOUT: TilingLayoutNode = {
   kind: "split",
   id: "home-root",
   axis: "horizontal",
   ratio: 0.23,
-  first: { kind: "leaf", id: "intro", tileId: "intro" },
+  first: {
+    kind: "split",
+    id: "home-intro-stack",
+    axis: "vertical",
+    ratio: 0.70,
+    first: { kind: "leaf", id: "intro", tileId: "intro" },
+    second: {
+      kind: "leaf",
+      id: "discoverability",
+      tileId: "discoverability",
+    },
+  },
   second: {
     kind: "split",
     id: "home-features-rest",
@@ -52,15 +63,7 @@ const HOME_LAYOUT: TilingLayoutNode = {
       axis: "horizontal",
       ratio: 0.66,
       first: { kind: "leaf", id: "install", tileId: "install" },
-      second: {
-        kind: "group",
-        id: "home-use-group",
-        activeMemberId: "usecases",
-        members: [
-          { kind: "leaf", id: "usecases", tileId: "usecases" },
-          { kind: "leaf", id: "discoverability", tileId: "discoverability" },
-        ],
-      },
+      second: { kind: "leaf", id: "usecases", tileId: "usecases" },
     },
   },
 };
