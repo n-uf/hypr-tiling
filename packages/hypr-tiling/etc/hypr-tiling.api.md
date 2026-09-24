@@ -1014,7 +1014,7 @@ export interface TilingLeafNode {
 }
 
 // @public
-export type TilingLeafPreviewMode = "swap" | "edge-insert";
+export type TilingLeafPreviewMode = "swap" | "edge-insert" | "group-merge";
 
 // @public
 export type TilingLeafPreviewRole = "drag-source-landing-shadow" | "drop-target-result-shadow";
@@ -1219,6 +1219,7 @@ export interface TilingRenderTileProps {
     isTitleBarSizingEnabled: boolean;
     leafId: string;
     moveTargetPlacement: TilingMovePlacement | null;
+    readonly multiSelectionCount: number;
     onAcquireSpace: (direction: TilingFocusDirection) => void;
     readonly onClearMultiSelection: () => void;
     onFocus: (event?: React_2.SyntheticEvent<HTMLElement>) => void;

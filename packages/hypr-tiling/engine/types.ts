@@ -2057,7 +2057,7 @@ export interface TilingRenderTileProps {
    * set is empty. The same count is reported on every pane of that workspace,
    * including panes that are not themselves selected, so a host can show a
    * Cancel control when the count is `1` (the Group control stays hidden until
-   * {@link canGroupMultiSelection} is true). Inactive retained panes and the
+   * `canGroupMultiSelection` is true). Inactive retained panes and the
    * drag-ghost / drag-cancel surfaces report `0`.
    */
   readonly multiSelectionCount: number;

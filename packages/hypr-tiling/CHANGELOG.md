@@ -9,6 +9,10 @@ the version number alone does not flag them.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.9.9 — 2026-09-24
+
 ### Tab groups — built-in strip is the canonical rendering
 
 `showGroupTabStrip` already defaults to `true` (no default flip). Hosts that
