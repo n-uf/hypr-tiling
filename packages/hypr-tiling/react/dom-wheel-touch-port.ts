@@ -82,6 +82,9 @@ export function createDomWheelTouchPort(
       dx,
       dy,
       ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      altKey: event.altKey,
+      shiftKey: event.shiftKey,
       ts: now(),
       canScrollFurther:
         dx === 0 ? false : options.scrollChain.canScrollFurther(event.target, "x", direction),

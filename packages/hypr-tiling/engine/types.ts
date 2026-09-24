@@ -1132,7 +1132,8 @@ export interface TilingWorkspaceSwitchCapability {
   /**
    * Trackpad / horizontal-wheel swipe. `true` uses
    * `TILING_WORKSPACE_SWIPE_DEFAULTS`; an object overrides individual
-   * {@link TilingWorkspaceSwipeConfig} fields (shared with touch). Default `false`.
+   * {@link TilingWorkspaceSwipeConfig} fields (shared with touch), including
+   * optional `modifier`. Default `false`.
    */
   wheelSwipe?: boolean | Partial<TilingWorkspaceSwipeConfig>;
   /** One-finger horizontal pan on the viewport. Default `false`. */

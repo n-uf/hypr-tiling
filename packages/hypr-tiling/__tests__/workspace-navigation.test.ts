@@ -61,7 +61,17 @@ function wheel(
   ts: number,
   extra: Partial<Extract<TilingWorkspaceSwipeEvent, { type: "WHEEL" }>> = {},
 ): TilingWorkspaceSwipeEvent {
-  return { type: "WHEEL", dx, dy: 0, ctrlKey: false, ts, ...extra };
+  return {
+    type: "WHEEL",
+    dx,
+    dy: 0,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    ts,
+    ...extra,
+  };
 }
 
 /** A slow burst that reaches `travel` px in `steps` samples (sub-flick velocity). */
@@ -83,11 +93,13 @@ describe("workspace swipe FSM — config", (): void => {
       lockoutMs: 350,
       wrap: false,
       widthPx: 800,
+      modifier: null,
     });
-    expect(resolveWorkspaceSwipeConfig({ commitFraction: 0.5, wrap: true })).toEqual({
+    expect(resolveWorkspaceSwipeConfig({ commitFraction: 0.5, wrap: true, modifier: "meta" })).toEqual({
       ...TILING_WORKSPACE_SWIPE_DEFAULTS,
       commitFraction: 0.5,
       wrap: true,
+      modifier: "meta",
     });
     expect(resolveWorkspaceSwipeConfig(null)).toEqual(TILING_WORKSPACE_SWIPE_DEFAULTS);
     // Nonsensical values are clamped, never propagated.
@@ -323,10 +335,15 @@ describe("workspace swipe FSM — commit and cancel", (): void => {
     expect(run(ready(), [wheel(10, 0), { type: "DRAG_ACTIVE", active: true }]).phase).toBe("idle");
   });
 
-  it("swallows wheel samples while settling", (): void => {
+  it("swallows wheel samples while settling (phase and outcome stay put)", (): void => {
     const settling: TilingWorkspaceSwipeState = run(ready(), [wheel(400, 0), { type: "IDLE_TICK", ts: 200 }]);
     const after: TilingWorkspaceSwipeState = run(settling, [wheel(200, 210), wheel(200, 220)]);
-    expect(after).toBe(settling);
+    expect(after.phase).toBe("settling");
+    expect(after.phase === "settling" ? after.outcome : null).toBe(
+      settling.phase === "settling" ? settling.outcome : null,
+    );
+    expect(after.progress).toBe(settling.progress);
+    expect(after.command).toEqual(settling.command);
   });
 });
 
@@ -351,11 +368,17 @@ describe("workspace swipe FSM — lockout", (): void => {
     expect(momentum.command).toBeNull();
   });
 
-  it("expires on the clock and the next sample starts a fresh gesture", (): void => {
-    // The expiring sample itself is swallowed (it is still momentum).
+  it("expires on the clock; a gap after the last wheel starts a fresh gesture", (): void => {
+    // The expiring sample itself is swallowed (it is still momentum) and
+    // claims the run: the next sample 10 ms later is the same run.
     const expired: TilingWorkspaceSwipeState = run(committed, [wheel(80, 550)]);
     expect(expired.phase).toBe("idle");
-    expect(run(expired, [wheel(80, 560)]).phase).toBe("tracking");
+    expect(expired.phase === "idle" ? expired.runClaimedByScroll : false).toBe(true);
+    expect(run(expired, [wheel(80, 560)]).phase).toBe("idle");
+    // After wheelIdleMs from the last sample the run is fresh and can arm.
+    expect(run(expired, [wheel(80, 550 + TILING_WORKSPACE_SWIPE_DEFAULTS.wheelIdleMs)]).phase).toBe(
+      "tracking",
+    );
     // An idle tick past the lockout also releases it (no wheel needed).
     expect(run(committed, [{ type: "IDLE_TICK", ts: 549 }]).phase).toBe("lockout");
     expect(run(committed, [{ type: "IDLE_TICK", ts: 550 }]).phase).toBe("idle");
@@ -464,5 +487,226 @@ describe("workspace swipe FSM — context and snapshot", (): void => {
     expect(run(idle, [{ type: "IDLE_TICK", ts: 5 }])).toBe(idle);
     expect(run(idle, [{ type: "TOUCH_END", ts: 5 }])).toBe(idle);
     expect(run(idle, [{ type: "DRAG_ACTIVE", active: false }])).toBe(idle);
+  });
+});
+
+const META_CONFIG: TilingWorkspaceSwipeConfig = { ...TILING_WORKSPACE_SWIPE_DEFAULTS, modifier: "meta" };
+
+function isWellFormed(state: TilingWorkspaceSwipeState): boolean {
+  const phases: ReadonlyArray<TilingWorkspaceSwipeState["phase"]> = [
+    "idle",
+    "armed",
+    "tracking",
+    "settling",
+    "lockout",
+  ];
+  if (!phases.includes(state.phase)) {
+    return false;
+  }
+  if (state.phase === "idle") {
+    return (
+      state.progress === 0 &&
+      state.target === null &&
+      state.command === null &&
+      typeof state.runClaimedByScroll === "boolean" &&
+      (state.lastWheelTs === null || typeof state.lastWheelTs === "number")
+    );
+  }
+  if (state.phase === "armed") {
+    return state.progress === 0 && state.target === null && state.command === null;
+  }
+  if (state.phase === "tracking") {
+    return state.command === null;
+  }
+  if (state.phase === "lockout") {
+    return state.progress === 0 && state.target === null && state.command === null;
+  }
+  return state.phase === "settling";
+}
+
+describe("workspace swipe FSM — modifier gate", (): void => {
+  it("arms when the configured modifier is held and stays idle when it is absent", (): void => {
+    expect(run(ready(), [wheel(40, 0, { metaKey: true })], META_CONFIG).phase).toBe("tracking");
+    expect(run(ready(), [wheel(40, 0)], META_CONFIG).phase).toBe("idle");
+    expect(run(ready(), [wheel(40, 0, { altKey: true })], META_CONFIG).phase).toBe("idle");
+    expect(
+      resolveSwipeArming({
+        context: CONTEXT,
+        dx: 30,
+        dy: 0,
+        ctrlKey: false,
+        canScrollFurther: false,
+        wrap: false,
+        modifier: "meta",
+        metaKey: true,
+      }),
+    ).toBe("next");
+    expect(
+      resolveSwipeArming({
+        context: CONTEXT,
+        dx: 30,
+        dy: 0,
+        ctrlKey: false,
+        canScrollFurther: false,
+        wrap: false,
+        modifier: "meta",
+        metaKey: false,
+      }),
+    ).toBeNull();
+  });
+
+  it("continues tracking after the modifier is released mid-swipe", (): void => {
+    const tracking: TilingWorkspaceSwipeState = run(
+      ready(),
+      [wheel(40, 0, { metaKey: true })],
+      META_CONFIG,
+    );
+    expect(tracking.phase).toBe("tracking");
+    const continued: TilingWorkspaceSwipeState = run(
+      tracking,
+      [wheel(40, 10, { metaKey: false })],
+      META_CONFIG,
+    );
+    expect(continued.phase).toBe("tracking");
+    expect(continued.progress).toBeCloseTo(80 / WIDTH);
+  });
+
+  it("still rejects ctrl-wheel (pinch-zoom) when the modifier is held", (): void => {
+    expect(
+      resolveSwipeArming({
+        context: CONTEXT,
+        dx: 30,
+        dy: 0,
+        ctrlKey: true,
+        canScrollFurther: false,
+        wrap: false,
+        modifier: "meta",
+        metaKey: true,
+      }),
+    ).toBeNull();
+    expect(run(ready(), [wheel(40, 0, { ctrlKey: true, metaKey: true })], META_CONFIG).phase).toBe(
+      "idle",
+    );
+  });
+
+  it("does not apply the modifier to a touch swipe", (): void => {
+    const tracking: TilingWorkspaceSwipeState = run(
+      ready(),
+      [
+        { type: "TOUCH_START", x: 500, y: 300, ts: 0 },
+        { type: "TOUCH_MOVE", x: 400, y: 300, ts: 16 },
+      ],
+      META_CONFIG,
+    );
+    expect(tracking.phase).toBe("tracking");
+    expect(tracking.target).toBe("next");
+  });
+});
+
+describe("workspace swipe FSM — sequence-start gating", (): void => {
+  it("a vertical run that later drifts horizontal never arms", (): void => {
+    const claimed: TilingWorkspaceSwipeState = run(ready(), [wheel(10, 0, { dy: 40 })]);
+    expect(claimed.phase).toBe("idle");
+    expect(claimed.phase === "idle" ? claimed.runClaimedByScroll : false).toBe(true);
+    const later: TilingWorkspaceSwipeState = run(claimed, [wheel(40, 10), wheel(40, 20)]);
+    expect(later.phase).toBe("idle");
+    expect(later.phase === "idle" ? later.runClaimedByScroll : false).toBe(true);
+  });
+
+  it("a horizontal run still arms", (): void => {
+    expect(run(ready(), [wheel(10, 0), wheel(20, 10)]).phase).toBe("tracking");
+  });
+
+  it("an idle gap starts a fresh run that can arm", (): void => {
+    const claimed: TilingWorkspaceSwipeState = run(ready(), [wheel(10, 0, { dy: 40 })]);
+    const fresh: TilingWorkspaceSwipeState = run(claimed, [
+      wheel(40, TILING_WORKSPACE_SWIPE_DEFAULTS.wheelIdleMs),
+    ]);
+    expect(fresh.phase).toBe("tracking");
+  });
+
+  it("momentum continuation after lockout does not arm", (): void => {
+    const committed: TilingWorkspaceSwipeState = run(ready(), [
+      wheel(400, 0),
+      { type: "IDLE_TICK", ts: 200 },
+      { type: "SETTLE_DONE" },
+    ]);
+    const tail: TilingWorkspaceSwipeState = run(committed, [
+      wheel(80, 220),
+      wheel(60, 300),
+      wheel(40, 550),
+      wheel(40, 560),
+    ]);
+    expect(tail.phase).toBe("idle");
+    expect(tail.phase === "idle" ? tail.runClaimedByScroll : false).toBe(true);
+    expect(run(tail, [wheel(80, 560 + TILING_WORKSPACE_SWIPE_DEFAULTS.wheelIdleMs)]).phase).toBe(
+      "tracking",
+    );
+  });
+});
+
+describe("workspace swipe FSM — whole-window horizontal lock", (): void => {
+  it("rejects a gradually diagonal gesture before the threshold", (): void => {
+    // Each sample is per-sample horizontal-dominant (20>10, 15>10) but the
+    // accumulated window becomes vertical: travel (5, 10), |10| > |5|/2.
+    const rejected: TilingWorkspaceSwipeState = run(ready(), [
+      wheel(20, 0, { dy: 5 }),
+      wheel(-15, 10, { dy: 5 }),
+    ]);
+    expect(rejected.phase).toBe("idle");
+    expect(rejected.phase === "idle" ? rejected.runClaimedByScroll : false).toBe(true);
+    expect(run(rejected, [wheel(40, 20)]).phase).toBe("idle");
+  });
+
+  it("tolerates vertical drift after tracking", (): void => {
+    const tracking: TilingWorkspaceSwipeState = run(ready(), [wheel(40, 0)]);
+    expect(tracking.phase).toBe("tracking");
+    const drifted: TilingWorkspaceSwipeState = run(tracking, [wheel(10, 10, { dy: 80 })]);
+    expect(drifted.phase).toBe("tracking");
+    expect(drifted.progress).toBeCloseTo(50 / WIDTH);
+  });
+});
+
+describe("workspace swipe FSM — totality", (): void => {
+  it("every event in every phase yields a well-formed state", (): void => {
+    const armed: TilingWorkspaceSwipeState = run(ready(), [wheel(10, 0)]);
+    const tracking: TilingWorkspaceSwipeState = run(ready(), [wheel(40, 0)]);
+    const settling: TilingWorkspaceSwipeState = run(tracking, [{ type: "IDLE_TICK", ts: 200 }]);
+    const lockout: TilingWorkspaceSwipeState = run(settling, [{ type: "SETTLE_DONE" }]);
+    const claimed: TilingWorkspaceSwipeState = run(ready(), [wheel(4, 0, { dy: 20 })]);
+    const phases: ReadonlyArray<TilingWorkspaceSwipeState> = [
+      TILING_WORKSPACE_SWIPE_INITIAL_STATE,
+      ready(),
+      armed,
+      tracking,
+      settling,
+      lockout,
+      claimed,
+    ];
+    const events: ReadonlyArray<TilingWorkspaceSwipeEvent> = [
+      wheel(10, 0),
+      wheel(10, 0, { dy: 40 }),
+      wheel(10, 0, { ctrlKey: true }),
+      wheel(10, 0, { metaKey: true }),
+      wheel(10, 0, { canScrollFurther: true }),
+      { type: "TOUCH_START", x: 100, y: 100, ts: 0 },
+      { type: "TOUCH_MOVE", x: 80, y: 100, ts: 16 },
+      { type: "TOUCH_END", ts: 20 },
+      { type: "DRAG_ACTIVE", active: true },
+      { type: "DRAG_ACTIVE", active: false },
+      { type: "IDLE_TICK", ts: 0 },
+      { type: "IDLE_TICK", ts: 10_000 },
+      { type: "SETTLE_DONE" },
+      { type: "CANCEL" },
+      { type: "SET_CONTEXT", hasPrev: true, hasNext: true, widthPx: 400 },
+    ];
+    for (const state of phases) {
+      for (const event of events) {
+        const next: TilingWorkspaceSwipeState = workspaceSwipeReducer(state, event);
+        expect(isWellFormed(next)).toBe(true);
+        const withMeta: TilingWorkspaceSwipeState = workspaceSwipeReducer(state, event, META_CONFIG);
+        expect(isWellFormed(withMeta)).toBe(true);
+      }
+    }
   });
 });

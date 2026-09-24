@@ -306,6 +306,7 @@ export {
   workspaceSwipeSnapshot,
   type TilingWorkspaceSwipeConfig,
   type TilingWorkspaceSwipeContext,
+  type TilingWorkspaceSwipeModifier,
   type TilingWorkspaceSwipeEvent,
   type TilingWorkspaceSwipeInput,
   type TilingWorkspaceSwipeOutcome,

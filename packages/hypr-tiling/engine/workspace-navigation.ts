@@ -46,6 +46,14 @@ export type TilingWorkspaceSwipePhase =
 export type TilingWorkspaceSwipeOutcome = "commit" | "cancel";
 
 /**
+ * Keyboard modifier a wheel swipe must be held with on its arming samples.
+ * `null` (default) requires none — today's behaviour. Touch swipes ignore this
+ * (no keyboard). `ctrl` is never a swipe modifier: `ctrlKey` is always a
+ * pinch-zoom reject.
+ */
+export type TilingWorkspaceSwipeModifier = "meta" | "alt" | "shift" | null;
+
+/**
  * Tunables of the swipe FSM. Every field has a default in
  * {@link TILING_WORKSPACE_SWIPE_DEFAULTS}; `interaction.workspaces.switch.wheelSwipe`
  * accepts a partial override.
@@ -92,6 +100,14 @@ export interface TilingWorkspaceSwipeConfig {
    * Default `800`.
    */
   widthPx: number;
+  /**
+   * Keyboard modifier that must be held on the arming samples of a wheel
+   * run (`"meta"` / `"alt"` / `"shift"`). Default `null` — no modifier
+   * required. Once `tracking`, releasing the modifier does not cancel or
+   * convert the gesture to scroll. Touch ignores this. `ctrlKey` stays a
+   * pinch-zoom reject regardless.
+   */
+  modifier: TilingWorkspaceSwipeModifier;
 }
 
 /** Defaults of {@link TilingWorkspaceSwipeConfig}. */
@@ -103,7 +119,17 @@ export const TILING_WORKSPACE_SWIPE_DEFAULTS: TilingWorkspaceSwipeConfig = {
   lockoutMs: 350,
   wrap: false,
   widthPx: 800,
+  modifier: null,
 };
+
+function resolveSwipeModifier(
+  value: TilingWorkspaceSwipeModifier | undefined,
+): TilingWorkspaceSwipeModifier {
+  if (value === "meta" || value === "alt" || value === "shift" || value === null) {
+    return value;
+  }
+  return TILING_WORKSPACE_SWIPE_DEFAULTS.modifier;
+}
 
 /** Merge a partial override over {@link TILING_WORKSPACE_SWIPE_DEFAULTS} (nullish fields keep the default). */
 export function resolveWorkspaceSwipeConfig(
@@ -120,6 +146,7 @@ export function resolveWorkspaceSwipeConfig(
     lockoutMs: Math.max(0, config?.lockoutMs ?? TILING_WORKSPACE_SWIPE_DEFAULTS.lockoutMs),
     wrap: config?.wrap ?? TILING_WORKSPACE_SWIPE_DEFAULTS.wrap,
     widthPx: Math.max(1, config?.widthPx ?? TILING_WORKSPACE_SWIPE_DEFAULTS.widthPx),
+    modifier: resolveSwipeModifier(config?.modifier),
   };
 }
 
@@ -173,7 +200,22 @@ interface SwipeStateBase {
  * `SETTLE_DONE`, `lockout` expires on the clock.
  */
 export type TilingWorkspaceSwipeState =
-  | (SwipeStateBase & { phase: "idle"; progress: 0; target: null; command: null })
+  | (SwipeStateBase & {
+      phase: "idle";
+      progress: 0;
+      target: null;
+      command: null;
+      /**
+       * Clock of the last `WHEEL` in the current run; `null` when no wheel
+       * sample has been seen (or the run went idle past `wheelIdleMs`).
+       */
+      lastWheelTs: number | null;
+      /**
+       * This wheel run already failed arming (or committed). Later `WHEEL`
+       * samples of the same run cannot arm until a gap of `wheelIdleMs`.
+       */
+      runClaimedByScroll: boolean;
+    })
   | (SwipeStateBase & {
       phase: "armed";
       input: TilingWorkspaceSwipeInput;
@@ -182,6 +224,11 @@ export type TilingWorkspaceSwipeState =
       originY: number;
       /** Signed horizontal travel towards `next` accumulated so far (wheel only). */
       travelPx: number;
+      /**
+       * Signed vertical travel accumulated while armed (wheel only). The
+       * whole-window lock rejects when `|travelDy| > |travelPx| / 2`.
+       */
+      travelDy: number;
       /** Clock reading of the sample that armed / last advanced the gesture. */
       lastTs: number;
       progress: 0;
@@ -206,11 +253,15 @@ export type TilingWorkspaceSwipeState =
       outcome: TilingWorkspaceSwipeOutcome;
       /** Clock reading of the sample that ended the gesture. */
       endedTs: number;
+      /** Last `WHEEL` ts in this run (the end sample, or later swallowed momentum). */
+      lastWheelTs: number;
     })
   | (SwipeStateBase & {
       phase: "lockout";
       /** Clock reading at which `WHEEL` samples are accepted again. */
       until: number;
+      /** Last `WHEEL` ts in this run (momentum during lockout updates it). */
+      lastWheelTs: number;
       progress: 0;
       target: null;
       command: null;
@@ -226,6 +277,12 @@ export type TilingWorkspaceSwipeEvent =
       dy: number;
       /** Pinch-zoom / ctrl-wheel; never arms. */
       ctrlKey: boolean;
+      /** `WheelEvent.metaKey` at the sample (modifier gate). */
+      metaKey: boolean;
+      /** `WheelEvent.altKey` at the sample (modifier gate). */
+      altKey: boolean;
+      /** `WheelEvent.shiftKey` at the sample (modifier gate). */
+      shiftKey: boolean;
       ts: number;
       /**
        * An element between the event target and the viewport can still scroll
@@ -265,14 +322,62 @@ export const TILING_WORKSPACE_SWIPE_INITIAL_STATE: TilingWorkspaceSwipeState = {
   progress: 0,
   target: null,
   command: null,
+  lastWheelTs: null,
+  runClaimedByScroll: false,
 };
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-function idleWith(context: TilingWorkspaceSwipeContext): TilingWorkspaceSwipeState {
-  return { phase: "idle", context, progress: 0, target: null, command: null };
+function idleWith(
+  context: TilingWorkspaceSwipeContext,
+  run?: { lastWheelTs: number | null; runClaimedByScroll: boolean },
+): TilingWorkspaceSwipeState {
+  return {
+    phase: "idle",
+    context,
+    progress: 0,
+    target: null,
+    command: null,
+    lastWheelTs: run?.lastWheelTs ?? null,
+    runClaimedByScroll: run?.runClaimedByScroll ?? false,
+  };
+}
+
+function idleClaimedByScroll(
+  context: TilingWorkspaceSwipeContext,
+  lastWheelTs: number,
+): TilingWorkspaceSwipeState {
+  return idleWith(context, { lastWheelTs, runClaimedByScroll: true });
+}
+
+function isWheelRunFresh(
+  lastWheelTs: number | null,
+  ts: number,
+  wheelIdleMs: number,
+): boolean {
+  return lastWheelTs == null || ts - lastWheelTs >= wheelIdleMs;
+}
+
+function swipeModifierHeld(
+  modifier: TilingWorkspaceSwipeModifier,
+  keys: { metaKey: boolean; altKey: boolean; shiftKey: boolean },
+): boolean {
+  if (modifier == null) {
+    return true;
+  }
+  if (modifier === "meta") {
+    return keys.metaKey;
+  }
+  if (modifier === "alt") {
+    return keys.altKey;
+  }
+  return keys.shiftKey;
+}
+
+function wholeWindowHorizontalLockHolds(travelPx: number, travelDy: number): boolean {
+  return Math.abs(travelDy) <= Math.abs(travelPx) / 2;
 }
 
 /** The side `travelPx` heads to (`null` at exactly zero). */
@@ -299,17 +404,20 @@ export function hasSwipeNeighbour(
 }
 
 /**
- * The arming rules, applied to the FIRST sample that could start a gesture.
- * Pure over the facts the port stamped on the sample:
+ * The arming rules, applied to the FIRST sample that could start a gesture
+ * (and to every pre-threshold wheel sample while `armed`). Pure over the
+ * facts the port stamped on the sample:
  *
  * 1. no pane drag in flight;
  * 2. horizontal-dominant: `|dx| > 2·|dy|`;
- * 3. `ctrlKey` false (pinch-zoom);
- * 4. nothing between the target and the viewport can still scroll on X in that
+ * 3. `ctrlKey` false (pinch-zoom) — regardless of {@link TilingWorkspaceSwipeConfig.modifier};
+ * 4. the configured `modifier` is held (`null` = no modifier required);
+ * 5. nothing between the target and the viewport can still scroll on X in that
  *    direction (`canScrollFurther` false);
- * 5. a workspace exists on that side (or `wrap`).
+ * 6. a workspace exists on that side (or `wrap`).
  *
  * Returns the target the gesture heads to, or `null` when it must not arm.
+ * Touch callers pass `modifier: null` (no keyboard).
  */
 export function resolveSwipeArming(params: {
   context: TilingWorkspaceSwipeContext;
@@ -318,8 +426,21 @@ export function resolveSwipeArming(params: {
   ctrlKey: boolean;
   canScrollFurther: boolean;
   wrap: boolean;
+  modifier?: TilingWorkspaceSwipeModifier;
+  metaKey?: boolean;
+  altKey?: boolean;
+  shiftKey?: boolean;
 }): TilingWorkspaceSwipeTarget | null {
   if (params.context.dragActive || params.ctrlKey || params.canScrollFurther) {
+    return null;
+  }
+  if (
+    !swipeModifierHeld(params.modifier ?? null, {
+      metaKey: params.metaKey ?? false,
+      altKey: params.altKey ?? false,
+      shiftKey: params.shiftKey ?? false,
+    })
+  ) {
     return null;
   }
   if (Math.abs(params.dx) <= 2 * Math.abs(params.dy)) {
@@ -447,6 +568,7 @@ function settleFrom(
       input: state.input,
       outcome: "commit",
       endedTs: ts,
+      lastWheelTs: ts,
       progress: state.progress,
       target: state.target,
       command: swipeCommitCommand(state.target),
@@ -458,10 +580,30 @@ function settleFrom(
     input: state.input,
     outcome: "cancel",
     endedTs: ts,
+    lastWheelTs: ts,
     progress: state.progress,
     target: null,
     command: null,
   };
+}
+
+function wheelArmingOf(
+  event: Extract<TilingWorkspaceSwipeEvent, { type: "WHEEL" }>,
+  context: TilingWorkspaceSwipeContext,
+  config: TilingWorkspaceSwipeConfig,
+): TilingWorkspaceSwipeTarget | null {
+  return resolveSwipeArming({
+    context,
+    dx: event.dx,
+    dy: event.dy,
+    ctrlKey: event.ctrlKey,
+    canScrollFurther: event.canScrollFurther ?? false,
+    wrap: config.wrap,
+    modifier: config.modifier,
+    metaKey: event.metaKey,
+    altKey: event.altKey,
+    shiftKey: event.shiftKey,
+  });
 }
 
 /** Per-sample velocity towards the target, `0` when the sample moves away or `dt ≤ 0`. */
@@ -542,6 +684,7 @@ export function workspaceSwipeReducer(
         input: state.input,
         outcome: "cancel",
         endedTs: state.lastTs,
+        lastWheelTs: state.lastTs,
         progress: state.progress,
         target: null,
         command: null,
@@ -560,6 +703,7 @@ export function workspaceSwipeReducer(
         input: state.input,
         outcome: "cancel",
         endedTs: state.lastTs,
+        lastWheelTs: state.lastTs,
         progress: state.progress,
         target: null,
         command: null,
@@ -572,18 +716,22 @@ export function workspaceSwipeReducer(
     case "idle": {
       switch (event.type) {
         case "WHEEL": {
-          const target: TilingWorkspaceSwipeTarget | null = resolveSwipeArming({
-            context: state.context,
-            dx: event.dx,
-            dy: event.dy,
-            ctrlKey: event.ctrlKey,
-            canScrollFurther: event.canScrollFurther ?? false,
-            wrap: config.wrap,
-          });
-          if (target == null) {
+          if (state.context.dragActive) {
             return state;
           }
+          const fresh: boolean = isWheelRunFresh(state.lastWheelTs, event.ts, config.wheelIdleMs);
+          if (!fresh && state.runClaimedByScroll) {
+            return { ...state, lastWheelTs: event.ts };
+          }
+          const target: TilingWorkspaceSwipeTarget | null = wheelArmingOf(
+            event,
+            state.context,
+            config,
+          );
           const context: TilingWorkspaceSwipeContext = withSampleWidth(state.context, event.widthPx);
+          if (target == null) {
+            return idleClaimedByScroll(context, event.ts);
+          }
           if (Math.abs(event.dx) >= config.thresholdPx) {
             // One large sample crosses the threshold outright: arm and track.
             return trackingFrom({
@@ -605,6 +753,7 @@ export function workspaceSwipeReducer(
             originX: 0,
             originY: 0,
             travelPx: event.dx,
+            travelDy: event.dy,
             lastTs: event.ts,
             progress: 0,
             target: null,
@@ -622,6 +771,7 @@ export function workspaceSwipeReducer(
             originX: event.x,
             originY: event.y,
             travelPx: 0,
+            travelDy: 0,
             lastTs: event.ts,
             progress: 0,
             target: null,
@@ -640,23 +790,25 @@ export function workspaceSwipeReducer(
             return state;
           }
           // Every pre-threshold sample must keep passing the arming rules; a
-          // breach (vertical-dominant, ctrl, scrollable chain, reversed into a
-          // side with no neighbour) hands the stream back to the browser.
-          const target: TilingWorkspaceSwipeTarget | null = resolveSwipeArming({
-            context: state.context,
-            dx: event.dx,
-            dy: event.dy,
-            ctrlKey: event.ctrlKey,
-            canScrollFurther: event.canScrollFurther ?? false,
-            wrap: config.wrap,
-          });
+          // breach (vertical-dominant, missing modifier, ctrl, scrollable
+          // chain, reversed into a side with no neighbour, or the whole-window
+          // horizontal lock) claims the run for scroll.
+          const target: TilingWorkspaceSwipeTarget | null = wheelArmingOf(
+            event,
+            state.context,
+            config,
+          );
           if (target == null) {
-            return idleWith(state.context);
+            return idleClaimedByScroll(state.context, event.ts);
           }
           const context: TilingWorkspaceSwipeContext = withSampleWidth(state.context, event.widthPx);
           const travelPx: number = state.travelPx + event.dx;
+          const travelDy: number = state.travelDy + event.dy;
+          if (!wholeWindowHorizontalLockHolds(travelPx, travelDy)) {
+            return idleClaimedByScroll(context, event.ts);
+          }
           if (Math.abs(travelPx) < config.thresholdPx) {
-            return { ...state, context, travelPx, lastTs: event.ts };
+            return { ...state, context, travelPx, travelDy, lastTs: event.ts };
           }
           return trackingFrom({
             context,
@@ -727,6 +879,7 @@ export function workspaceSwipeReducer(
             originX: event.x,
             originY: event.y,
             travelPx: 0,
+            travelDy: 0,
             lastTs: event.ts,
             progress: 0,
             target: null,
@@ -801,14 +954,20 @@ export function workspaceSwipeReducer(
               phase: "lockout",
               context: state.context,
               until: state.endedTs + config.lockoutMs,
+              lastWheelTs: state.lastWheelTs,
               progress: 0,
               target: null,
               command: null,
             };
           }
-          return idleWith(state.context);
+          return idleWith(state.context, {
+            lastWheelTs: state.lastWheelTs,
+            runClaimedByScroll: false,
+          });
+        case "WHEEL":
+          return { ...state, lastWheelTs: event.ts };
         default:
-          // Wheel momentum / stray touch samples during the settle are swallowed.
+          // Stray touch samples during the settle are swallowed.
           return state;
       }
     }
@@ -816,12 +975,20 @@ export function workspaceSwipeReducer(
     case "lockout": {
       switch (event.type) {
         case "WHEEL":
-          // Trackpad momentum after a commit: swallowed until the lockout
-          // expires. The expiring sample itself is swallowed too — a fresh
-          // gesture starts on the next one.
-          return event.ts >= state.until ? idleWith(state.context) : state;
+          // Trackpad momentum after a commit: swallowed, and the run stays
+          // claimed so a tail after lockout expiry cannot re-arm.
+          if (event.ts >= state.until) {
+            return idleClaimedByScroll(state.context, event.ts);
+          }
+          return { ...state, lastWheelTs: event.ts };
         case "IDLE_TICK":
-          return event.ts >= state.until ? idleWith(state.context) : state;
+          if (event.ts < state.until) {
+            return state;
+          }
+          if (!isWheelRunFresh(state.lastWheelTs, event.ts, config.wheelIdleMs)) {
+            return idleClaimedByScroll(state.context, state.lastWheelTs);
+          }
+          return idleWith(state.context);
         case "TOUCH_START":
           // A deliberate touch is not momentum: it may start a gesture at once.
           return workspaceSwipeReducer(idleWith(state.context), event, config);

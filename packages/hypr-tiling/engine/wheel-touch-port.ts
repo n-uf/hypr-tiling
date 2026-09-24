@@ -38,6 +38,12 @@ export interface WheelInputSample {
   dy: number;
   /** `ctrlKey` (trackpad pinch-zoom reports as a ctrl-wheel). */
   ctrlKey: boolean;
+  /** `WheelEvent.metaKey` at the sample (swipe modifier gate). */
+  metaKey: boolean;
+  /** `WheelEvent.altKey` at the sample (swipe modifier gate). */
+  altKey: boolean;
+  /** `WheelEvent.shiftKey` at the sample (swipe modifier gate). */
+  shiftKey: boolean;
   /** Monotonic clock reading (ms). */
   ts: number;
   /** The scroll chain under the event target can still scroll on X in `dx`'s direction. */

@@ -351,6 +351,7 @@ export {
 export {
   TILING_WORKSPACE_SWIPE_DEFAULTS,
   type TilingWorkspaceSwipeConfig,
+  type TilingWorkspaceSwipeModifier,
   type TilingWorkspaceSwipePhase,
   type TilingWorkspaceSwipeSnapshot,
   type TilingWorkspaceSwipeTarget,

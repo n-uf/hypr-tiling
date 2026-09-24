@@ -313,6 +313,17 @@ describe("TilingRenderer set mode — wheel swipe navigation (N1)", (): void => 
     expect(onWorkspacesChange).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps overscroll-behavior-x: contain when wheelSwipe requires a modifier", (): void => {
+    const { result, onWorkspacesChange } = renderControlled({
+      interaction: { workspaces: { switch: { wheelSwipe: { modifier: "meta" } } } },
+    });
+    const host: HTMLElement = root(result);
+    expect(host.style.overscrollBehaviorX).toBe("contain");
+    wheelBurst(host, 40, 12);
+    settleWheelIdle();
+    expect(onWorkspacesChange).not.toHaveBeenCalled();
+  });
+
   it("touchSwipe sets touch-action: pan-y on the root", (): void => {
     const { result } = renderControlled({
       interaction: { workspaces: { switch: { wheelSwipe: true, touchSwipe: true } } },

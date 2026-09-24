@@ -65,6 +65,7 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
         lockoutMs: 350,
         wrap: false,
         widthPx: 800,
+        modifier: null,
       },
       transition: "none",
     },
@@ -631,6 +632,16 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       .toEqual({ wheelSwipe: false, touchSwipe: true, swipe: swipeDefaults, transition: "none" });
     expect(resolveInteractionCapabilities({ workspaces: { switch: { wheelSwipe: false } } }).workspaces.switch)
       .toEqual(RESOLVED_DEFAULTS.workspaces.switch);
+    expect(
+      resolveInteractionCapabilities({
+        workspaces: { switch: { wheelSwipe: { modifier: "meta" } } },
+      }).workspaces.switch,
+    ).toEqual({
+      wheelSwipe: true,
+      touchSwipe: false,
+      swipe: { ...swipeDefaults, modifier: "meta" },
+      transition: "none",
+    });
   });
 
   it("resolves workspaces.switch.transition (H6 / N2): default none, slide / fade pass through", (): void => {
