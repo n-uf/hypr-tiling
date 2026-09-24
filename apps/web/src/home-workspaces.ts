@@ -5,17 +5,23 @@ import type {
 } from "@n-uf/hypr-tiling";
 
 // Seed workspace set for the docs homepage. Workspace 1 (Home) is active on
-// SSR / first paint. Home folds the landing tiles plus the use-case / SEO
-// pair (a tab group so 1440×900 stays uncramped). Workspaces seats the
-// workspaces copy (left, wider) beside the set-inspector / swipe-meter
-// dogfood pair. Changelog is a four-widget dashboard: tall release timeline
-// beside latest / breaking / version. Doc tile ids match `DOC_PANES`; widget
-// tile ids live in `changelog-widgets.tsx`. Leaf id equals tile id.
+// SSR / first paint. Home is four columns: intro, features, and install at
+// full height, then the use-case / SEO tab group. Column widths are tuned so
+// 1440×900 shows every seated tile without a scroll except a short remainder
+// in features. Workspaces seats the workspaces copy (left, wider) beside the
+// set-inspector / swipe-meter dogfood pair. Changelog is a four-widget
+// dashboard: tall release timeline beside latest / breaking / version. Doc
+// tile ids match `DOC_PANES`; widget tile ids live in `changelog-widgets.tsx`.
+// Leaf id equals tile id.
+//
+// Storage key and envelope version move together. A mismatch
+// (`parseHomeWorkspaceSetBlob`) returns null so the next visit reseeds
+// instead of replaying a previous Home tree.
 
 export const HOME_WORKSPACE_STORAGE_KEY: string =
-  "hypr-tiling-home-workspaces-v3";
+  "hypr-tiling-home-workspaces-v4";
 
-export const HOME_WORKSPACE_STORAGE_VERSION: number = 3;
+export const HOME_WORKSPACE_STORAGE_VERSION: number = 4;
 
 export const HOME_WORKSPACE_ID_HOME: string = "ws-home";
 export const HOME_WORKSPACE_ID_WORKSPACES: string = "ws-workspaces";
@@ -25,33 +31,36 @@ export const HOME_WORKSPACE_NAME_HOME: string = "Home";
 export const HOME_WORKSPACE_NAME_WORKSPACES: string = "Workspaces";
 export const HOME_WORKSPACE_NAME_CHANGELOG: string = "Changelog";
 
+// Root fractions: intro 0.23, features 0.31 (0.40 of the remaining 0.77),
+// install 0.30, use-case group 0.16. All four are full height. At 1440×900
+// the features body is 90px past the pane; intro, install, and use cases fit.
 const HOME_LAYOUT: TilingLayoutNode = {
   kind: "split",
   id: "home-root",
   axis: "horizontal",
-  ratio: 0.36,
+  ratio: 0.23,
   first: { kind: "leaf", id: "intro", tileId: "intro" },
   second: {
     kind: "split",
-    id: "home-right",
-    axis: "vertical",
-    ratio: 0.52,
-    first: {
-      kind: "split",
-      id: "home-features-install",
-      axis: "horizontal",
-      ratio: 0.56,
-      first: { kind: "leaf", id: "features", tileId: "features" },
-      second: { kind: "leaf", id: "install", tileId: "install" },
-    },
+    id: "home-features-rest",
+    axis: "horizontal",
+    ratio: 0.40,
+    first: { kind: "leaf", id: "features", tileId: "features" },
     second: {
-      kind: "group",
-      id: "home-use-group",
-      activeMemberId: "usecases",
-      members: [
-        { kind: "leaf", id: "usecases", tileId: "usecases" },
-        { kind: "leaf", id: "discoverability", tileId: "discoverability" },
-      ],
+      kind: "split",
+      id: "home-install-uses",
+      axis: "horizontal",
+      ratio: 0.66,
+      first: { kind: "leaf", id: "install", tileId: "install" },
+      second: {
+        kind: "group",
+        id: "home-use-group",
+        activeMemberId: "usecases",
+        members: [
+          { kind: "leaf", id: "usecases", tileId: "usecases" },
+          { kind: "leaf", id: "discoverability", tileId: "discoverability" },
+        ],
+      },
     },
   },
 };
