@@ -33,7 +33,7 @@ import type {
  * mid-commit can re-fire or clear the intent.
  *
  * ## Wiring contract — the set-mode wrapper (`react/tiling-renderer.tsx`,
- * `TilingWorkspaceSetRenderer`), applied in the N3 follow-up
+ * `TilingWorkspaceSetRenderer`; the inner renderer owns steps 3c–4)
  *
  * Enabled by `interaction.workspaces.springLoad?: { dwellMs } | false`
  * (default `false`; type {@link TilingSpringLoadCapability}, resolved by

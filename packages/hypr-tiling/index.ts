@@ -387,10 +387,11 @@ export type {
   WheelTouchInputPort,
 } from "./engine/wheel-touch-port";
 
-// N3 — spring-loaded tab drop (engine half)
-// Consumer-facing config surface of the dwell FSM (the reducer, its state /
-// event / intent types and the drag `REARM` edge live on `./engine`); the
-// `interaction.workspaces.springLoad` capability wiring follows in the renderer.
+// N3 — spring-loaded tab drop
+// Consumer-facing config surface of the dwell FSM behind
+// `interaction.workspaces.springLoad` (the reducer, its state / event /
+// intent types and the drag `REARM` edge live on `./engine`; the set-mode
+// renderer runs the FSM and the commit → rearm itself).
 export {
   TILING_SPRING_LOAD_DEFAULTS,
   type TilingSpringLoadCapability,

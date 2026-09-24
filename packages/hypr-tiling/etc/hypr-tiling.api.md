@@ -352,6 +352,7 @@ export interface ResolvedTilingTouchDragCapability {
 export interface ResolvedTilingWorkspacesCapability {
     enable: boolean;
     followMovedLeaf: boolean;
+    springLoad: TilingSpringLoadConfig | null;
     switch: ResolvedTilingWorkspaceSwitchCapability;
 }
 
@@ -1375,6 +1376,7 @@ export type TilingWorkspacePlacement = {
 export interface TilingWorkspacesCapability {
     enable?: boolean;
     followMovedLeaf?: boolean;
+    springLoad?: TilingSpringLoadCapability | null;
     switch?: TilingWorkspaceSwitchCapability;
 }
 

@@ -572,8 +572,43 @@ neighbour on that side unless `wrap: true`. When enabled the root gets
 `wheelIdleMs` 120, `lockoutMs` 350, `wrap` false). `useWorkspaceSwipe()` is
 headless — `progress` is `-1..1` (negative = towards the previous workspace)
 so a tab indicator can follow the finger; it reads the idle snapshot outside
-a `TilingWorkspaceSwipeScope`. The pure FSM (`workspaceSwipeReducer`) and the
-port contracts ship on `@n-uf/hypr-tiling/engine`.
+a `TilingWorkspaceSwipeScope`. With a switch transition on, `phase` stays
+`"settling"` until the stage has finished sliding (commit or cancel); with
+`"none"` the settle is immediate. The pure FSM (`workspaceSwipeReducer`) and
+the port contracts ship on `@n-uf/hypr-tiling/engine`.
+
+### Spring-loaded tab drop
+
+Opt in with `interaction.workspaces.springLoad` (off by default; `true`-like
+values are `{}` or a partial `{ dwellMs }`, default 500 ms). It needs the
+host to report the workspace tab under a pane drag as a
+`kind: "workspace-tab"` external hover — through `resolveExternalDragHover`
+(point → hover) or the `externalDragHover` prop — the same hover the
+release-on-tab drop already uses.
+
+```tsx
+<TilingRenderer
+  workspaces={set}
+  onWorkspacesChange={setSet}
+  onMoveLeaf={(leafId, from, to) => …}
+  onWorkspaceSwitch={(event) => … /* event.via === "spring-load" */}
+  resolveExternalDragHover={(point) => tabStrip.hoverAt(point)}
+  interaction={{ workspaces: { springLoad: { dwellMs: 400 } } }}
+  /* … */
+/>
+```
+
+Holding a dragged pane over another workspace's tab for `dwellMs` moves
+the leaf into that workspace (`moveLeafToWorkspace`, default placement),
+switches to it (one `onWorkspacesChange`; a `switch.transition` animates it)
+and fires `onMoveLeaf` + `onWorkspaceSwitch({ via: "spring-load" })` — then
+the drag **continues** on the leaf's new seat in the destination tree under
+the still-held pointer, so the user can place it, spring-load on to a third
+workspace, or press Escape to fly it back to that seat. The active
+workspace's own tab never dwells; leaving the tab before the deadline resets
+the dwell; releasing or cancelling mid-dwell runs the ordinary tab drop /
+cancel. The dwell FSM (`springLoadReducer`) and the drag `REARM` edge ship on
+`@n-uf/hypr-tiling/engine`.
 
 ## Features
 
