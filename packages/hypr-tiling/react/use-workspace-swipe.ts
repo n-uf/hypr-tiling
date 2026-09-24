@@ -31,6 +31,7 @@ import {
   workspaceSwipeSnapshot,
   type TilingWorkspaceSwipeConfig,
   type TilingWorkspaceSwipeEvent,
+  type TilingWorkspaceSwipeOutcome,
   type TilingWorkspaceSwipeSnapshot,
   type TilingWorkspaceSwipeState,
 } from "../engine/workspace-navigation";
@@ -170,6 +171,15 @@ export interface UseWorkspaceSwipeDriverParams {
    * command path (the wrapper's `applyWorkspaceCommand(…, "swipe")`).
    */
   dispatch: (command: TilingCommand) => void;
+  /**
+   * Holds `SETTLE_DONE` until the wrapper's switch transition (N2) has
+   * settled. Called once per gesture on entry to `settling`, AFTER the commit
+   * command was dispatched; the FSM stays `settling` until `done` runs
+   * (synchronously or later — a stale `done` from a gesture that already
+   * left `settling` is ignored). Omitted → `SETTLE_DONE` is sent at once.
+   * Disposal and disable still force-settle without consulting the gate.
+   */
+  settleGate?: (outcome: TilingWorkspaceSwipeOutcome, done: () => void) => void;
   /** Timer / clock port; default the `window` scheduler. */
   scheduler?: SchedulerPort;
 }
@@ -178,10 +188,10 @@ export interface UseWorkspaceSwipeDriverParams {
  * Runs the swipe FSM for the set-mode renderer: subscribes the DOM wheel /
  * touch port on `element`, feeds samples to the store, arms the wheel-idle
  * timer (`IDLE_TICK`), dispatches the emitted command on `settling(commit)`,
- * sends `SETTLE_DONE` at once (the N2 transition stage will hold the settle
- * while it animates), expires `lockout` on the clock, and mirrors
- * `hasPrev` / `hasNext` / `dragActive` into the FSM context. Effects only —
- * returns nothing; read the state through the store.
+ * sends `SETTLE_DONE` once the `settleGate` releases (at once without one),
+ * expires `lockout` on the clock, and mirrors `hasPrev` / `hasNext` /
+ * `dragActive` into the FSM context. Effects only — returns nothing; read
+ * the state through the store.
  */
 export function useWorkspaceSwipeDriver(params: UseWorkspaceSwipeDriverParams): void {
   const { store, element, wheel, touch, config, hasPrev, hasNext, dragActive, dispatch } = params;
@@ -193,6 +203,10 @@ export function useWorkspaceSwipeDriver(params: UseWorkspaceSwipeDriverParams): 
   configRef.current = config;
   const dispatchRef = React.useRef<(command: TilingCommand) => void>(dispatch);
   dispatchRef.current = dispatch;
+  const settleGateRef = React.useRef<UseWorkspaceSwipeDriverParams["settleGate"]>(
+    params.settleGate,
+  );
+  settleGateRef.current = params.settleGate;
   const enabled: boolean = element != null && (wheel || touch);
 
   React.useEffect((): void => {
@@ -235,9 +249,14 @@ export function useWorkspaceSwipeDriver(params: UseWorkspaceSwipeDriverParams): 
       }
     };
 
+    // Each gesture's settle is numbered so a `done` the gate releases late
+    // (after disposal / a forced settle already left `settling`) is inert.
+    let settleSerial: number = 0;
+
     // Run one event, then the phase-driven side effects: command dispatch on
-    // a commit settle, the zero-length SETTLE_DONE, the lockout expiry timer,
-    // the wheel-idle timer, and the port's passive/non-passive wheel policy.
+    // a commit settle, SETTLE_DONE through the settle gate, the lockout expiry
+    // timer, the wheel-idle timer, and the port's passive/non-passive wheel
+    // policy.
     const send = (event: TilingWorkspaceSwipeEvent): void => {
       if (disposed) {
         return;
@@ -249,7 +268,30 @@ export function useWorkspaceSwipeDriver(params: UseWorkspaceSwipeDriverParams): 
         if (state.command != null) {
           dispatchRef.current(state.command);
         }
-        state = store.send({ type: "SETTLE_DONE" }, configRef.current);
+        // The gate holds the phase while the switch transition animates;
+        // `done` re-enters `send` so the lockout timer arms from the release.
+        const serial: number = ++settleSerial;
+        const outcome: TilingWorkspaceSwipeOutcome = state.outcome;
+        const gate: UseWorkspaceSwipeDriverParams["settleGate"] = settleGateRef.current;
+        if (gate == null) {
+          state = store.send({ type: "SETTLE_DONE" }, configRef.current);
+        } else {
+          let released: boolean = false;
+          gate(outcome, (): void => {
+            if (released || disposed || serial !== settleSerial) {
+              return;
+            }
+            released = true;
+            if (store.getState().phase === "settling") {
+              send({ type: "SETTLE_DONE" });
+            }
+          });
+          if (store.getState().phase === "settling") {
+            port.setTracking(false);
+            return;
+          }
+          state = store.getState();
+        }
       }
       if (state.phase === "lockout" && before.phase !== "lockout") {
         clearLockoutTimer();
@@ -312,10 +354,12 @@ export function useWorkspaceSwipeDriver(params: UseWorkspaceSwipeDriverParams): 
 
     return (): void => {
       disposed = true;
+      settleSerial += 1;
       clearIdleTimer();
       clearLockoutTimer();
       unsubscribe();
       port.setTracking(false);
+      // Force-settle whatever is in flight — a held settle included.
       if (store.getState().phase !== "idle") {
         store.send({ type: "CANCEL" }, configRef.current);
         store.send({ type: "SETTLE_DONE" }, configRef.current);

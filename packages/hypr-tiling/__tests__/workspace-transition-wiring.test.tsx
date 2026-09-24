@@ -13,6 +13,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@j
 import * as React from "react";
 import { act, cleanup, render, type RenderResult } from "@testing-library/react";
 import { TilingRenderer } from "../react/tiling-renderer";
+import { TilingWorkspaceSwipeScope, useWorkspaceSwipe } from "../react/use-workspace-swipe";
 import { WORKSPACE_TRANSITION_CLONE_ATTR } from "../react/dom-view-capture";
 import { resolveTilingTheme, type TilingTheme } from "../react/theme";
 import type { TilingWorkspaceSet } from "../engine/workspace-set";
@@ -103,9 +104,17 @@ const FAST_THEME: TilingTheme = {
   workspaceTransition: { durationMs: 20 },
 };
 
+/** A 200 ms transition for the settle-gate rows: a settle held over many frames. */
+const SLOW_THEME: TilingTheme = {
+  ...resolveTilingTheme(undefined),
+  workspaceTransition: { durationMs: 200 },
+};
+
 interface HostProps {
   readonly initial: TilingWorkspaceSet;
   readonly interaction?: TilingInteractionCapabilities;
+  /** Theme; default {@link FAST_THEME}. */
+  readonly theme?: TilingTheme;
   readonly handleRef?: React.RefObject<TilingCommandHandle | null>;
   readonly onWorkspaceSwitch?: (event: TilingWorkspaceSwitchEvent) => void;
   readonly setRef?: React.RefObject<((next: TilingWorkspaceSet) => void) | null>;
@@ -113,7 +122,7 @@ interface HostProps {
 }
 
 /** A controlled host that APPLIES every emitted set (the ordinary consumer). */
-function Host({ initial, interaction, handleRef, onWorkspaceSwitch, setRef, transitionOff }: HostProps): React.ReactElement {
+function Host({ initial, interaction, theme, handleRef, onWorkspaceSwitch, setRef, transitionOff }: HostProps): React.ReactElement {
   const [set, setSet] = React.useState<TilingWorkspaceSet>(initial);
   if (setRef != null) {
     (setRef as { current: ((next: TilingWorkspaceSet) => void) | null }).current = setSet;
@@ -125,7 +134,7 @@ function Host({ initial, interaction, handleRef, onWorkspaceSwitch, setRef, tran
     onWorkspaceSwitch,
     tiles: TILES,
     config: { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 },
-    theme: FAST_THEME,
+    theme: theme ?? FAST_THEME,
     paneIdentity: "stable",
     interaction: {
       dragRecovery: { enable: false },
@@ -175,10 +184,11 @@ function liveTileIds(result: RenderResult): ReadonlyArray<string> {
     .sort();
 }
 
-function settleTransition(): void {
-  // Fake timers drive jsdom's rAF; ~10 frames comfortably exceed the 20 ms curve.
+function settleTransition(ms: number = 200): void {
+  // Fake timers drive jsdom's rAF; ~10 frames comfortably exceed the 20 ms
+  // curve (pass a longer span for `SLOW_THEME`).
   act((): void => {
-    jest.advanceTimersByTime(200);
+    jest.advanceTimersByTime(ms);
   });
 }
 
@@ -354,5 +364,184 @@ describe("N2 wiring — transition capability on the set-mode renderer", (): voi
     expect(liveTileIds(result)).toEqual(["a", "c"]);
     expect(clone(result)).toBeNull();
     expect(incomingLayer(result).style.transform).toBe("none");
+  });
+});
+
+/** Publishes the swipe FSM phase the host reads through `useWorkspaceSwipe`. */
+function SwipePhaseProbe(): React.ReactElement {
+  const snapshot = useWorkspaceSwipe();
+  return React.createElement("output", { "data-swipe-phase": snapshot.phase });
+}
+
+/** `Host` under a swipe scope with the phase probe beside it. */
+function ScopedHost(props: HostProps): React.ReactElement {
+  return React.createElement(
+    TilingWorkspaceSwipeScope,
+    null,
+    React.createElement(SwipePhaseProbe),
+    React.createElement(Host, props),
+  );
+}
+
+function swipePhase(result: RenderResult): string | null {
+  return result.container.querySelector<HTMLElement>("[data-swipe-phase]")?.getAttribute("data-swipe-phase") ?? null;
+}
+
+/**
+ * Step frames until the stage drops its clone, asserting the FSM phase is
+ * `heldPhase` on every frame the clone is still painted. Returns the number
+ * of frames the settle was held (≥ 1).
+ */
+function stepUntilCloneDropped(result: RenderResult, heldPhase: string): number {
+  let frames: number = 0;
+  while (clone(result) != null) {
+    expect(swipePhase(result)).toBe(heldPhase);
+    act((): void => {
+      jest.advanceTimersByTime(16);
+    });
+    frames += 1;
+    if (frames > 100) {
+      throw new Error("stage never settled");
+    }
+  }
+  return frames;
+}
+
+function settleLockout(): void {
+  act((): void => {
+    jest.advanceTimersByTime(TILING_WORKSPACE_SWIPE_DEFAULTS.lockoutMs + 5);
+  });
+}
+
+describe("N1 × N2 — the swipe FSM's SETTLE_DONE waits for the switch transition", (): void => {
+  it("a committed swipe with `slide` stays `settling` while the stage animates, then enters `lockout` when the clone drops", (): void => {
+    const onWorkspaceSwitch = jest.fn((_event: TilingWorkspaceSwitchEvent): void => {});
+    const result: RenderResult = render(
+      React.createElement(ScopedHost, {
+        initial: threeWorkspaces(),
+        onWorkspaceSwitch,
+        theme: SLOW_THEME,
+        interaction: { workspaces: { switch: { wheelSwipe: true, transition: "slide" } } },
+      }),
+    );
+    const host: HTMLElement = root(result);
+    wheelBurst(host, 40, 12);
+    expect(swipePhase(result)).toBe("tracking");
+    settleWheelIdle();
+    // The switch landed and the incoming tree is live, but the FSM is HELD
+    // in `settling` for as long as the stage still paints the clone.
+    expect(onWorkspaceSwitch).toHaveBeenCalledWith({ from: "main", to: "ops", via: "swipe" });
+    expect(liveTileIds(result)).toEqual(["a", "c"]);
+    expect(clone(result)).not.toBeNull();
+    expect(swipePhase(result)).toBe("settling");
+    // Held frame after frame while the clone is painted …
+    const heldFrames: number = stepUntilCloneDropped(result, "settling");
+    expect(heldFrames).toBeGreaterThanOrEqual(2);
+    // … and released into `lockout` (the commit edge) the moment it drops.
+    expect(swipePhase(result)).toBe("lockout");
+    settleLockout();
+    expect(swipePhase(result)).toBe("idle");
+  });
+
+  it("a cancelled swipe with `slide` stays `settling` until the stage has slid back, then goes `idle`", (): void => {
+    const result: RenderResult = render(
+      React.createElement(ScopedHost, {
+        initial: threeWorkspaces(),
+        theme: SLOW_THEME,
+        interaction: { workspaces: { switch: { wheelSwipe: true, transition: "slide" } } },
+      }),
+    );
+    const host: HTMLElement = root(result);
+    wheelBurst(host, 40, 4, 100);
+    expect(swipePhase(result)).toBe("tracking");
+    settleWheelIdle();
+    expect(liveTileIds(result)).toEqual(["a", "b"]);
+    expect(clone(result)).not.toBeNull();
+    expect(swipePhase(result)).toBe("settling");
+    const heldFrames: number = stepUntilCloneDropped(result, "settling");
+    expect(heldFrames).toBeGreaterThanOrEqual(2);
+    // Released into `idle` (the cancel edge) the moment the clone drops.
+    expect(swipePhase(result)).toBe("idle");
+    expect(incomingLayer(result).style.transform).toBe("none");
+  });
+
+  it("with the default transition (`none`) the settle is immediate: commit lands straight in `lockout`", (): void => {
+    const result: RenderResult = render(
+      React.createElement(ScopedHost, {
+        initial: threeWorkspaces(),
+        transitionOff: true,
+        interaction: { workspaces: { switch: { wheelSwipe: true } } },
+      }),
+    );
+    const host: HTMLElement = root(result);
+    wheelBurst(host, 40, 12);
+    settleWheelIdle();
+    expect(liveTileIds(result)).toEqual(["a", "c"]);
+    expect(swipePhase(result)).toBe("lockout");
+    settleLockout();
+    expect(swipePhase(result)).toBe("idle");
+  });
+
+  it("with `none` a cancelled swipe settles to `idle` at once", (): void => {
+    const result: RenderResult = render(
+      React.createElement(ScopedHost, {
+        initial: threeWorkspaces(),
+        transitionOff: true,
+        interaction: { workspaces: { switch: { wheelSwipe: true } } },
+      }),
+    );
+    wheelBurst(root(result), 40, 4, 100);
+    settleWheelIdle();
+    expect(swipePhase(result)).toBe("idle");
+  });
+
+  it("`prefers-reduced-motion` (stage resolves to none) settles synchronously: no held phase", (): void => {
+    (window as { matchMedia?: unknown }).matchMedia = (query: string): MediaQueryList =>
+      ({
+        matches: query.includes("prefers-reduced-motion"),
+        media: query,
+        onchange: null,
+        addEventListener: (): void => {},
+        removeEventListener: (): void => {},
+        addListener: (): void => {},
+        removeListener: (): void => {},
+        dispatchEvent: (): boolean => false,
+      }) as MediaQueryList;
+    const result: RenderResult = render(
+      React.createElement(ScopedHost, {
+        initial: threeWorkspaces(),
+        interaction: { workspaces: { switch: { wheelSwipe: true, transition: "slide" } } },
+      }),
+    );
+    wheelBurst(root(result), 40, 12);
+    settleWheelIdle();
+    expect(liveTileIds(result)).toEqual(["a", "c"]);
+    expect(clone(result)).toBeNull();
+    expect(swipePhase(result)).toBe("lockout");
+  });
+
+  it("disabling the swipe input mid-hold force-settles: the FSM does not stay `settling`", (): void => {
+    const result: RenderResult = render(
+      React.createElement(ScopedHost, {
+        initial: threeWorkspaces(),
+        theme: SLOW_THEME,
+        interaction: { workspaces: { switch: { wheelSwipe: true, transition: "slide" } } },
+      }),
+    );
+    wheelBurst(root(result), 40, 12);
+    settleWheelIdle();
+    expect(swipePhase(result)).toBe("settling");
+    result.rerender(
+      React.createElement(ScopedHost, {
+        initial: threeWorkspaces(),
+        theme: SLOW_THEME,
+        interaction: { workspaces: { switch: { wheelSwipe: false, transition: "slide" } } },
+      }),
+    );
+    expect(swipePhase(result)).toBe("idle");
+    // The late stage settle is inert.
+    settleTransition(400);
+    expect(clone(result)).toBeNull();
+    expect(swipePhase(result)).toBe("idle");
   });
 });

@@ -22,9 +22,10 @@ import type { TilingCommand } from "./types";
  *   └──────────────────────────────────────── SETTLE_DONE (cancel) ◄──────────────┘
  * ```
  *
- * `settling` is zero-length in this release (the wrapper dispatches
- * `SETTLE_DONE` at once); it exists so the N2 transition stage can hold the
- * phase while it animates `progress` to ±1 (commit) or back to 0 (cancel).
+ * `settling` lasts as long as the wrapper's switch transition (N2): with
+ * `switch.transition` on, the set-mode renderer holds `SETTLE_DONE` until the
+ * stage has animated to the incoming view (commit) or back to the outgoing one
+ * (cancel); with `"none"` the wrapper dispatches `SETTLE_DONE` at once.
  */
 
 /** Which side of the active workspace a swipe is heading to. */

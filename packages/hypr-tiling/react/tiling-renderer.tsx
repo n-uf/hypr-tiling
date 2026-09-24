@@ -329,6 +329,7 @@ import {
   type TilingThemeId,
 } from "./theme";
 import { TilingPaneTitleBarContent } from "./tiling-pane-primitives";
+import type { TilingWorkspaceSwipeOutcome } from "../engine/workspace-navigation";
 import {
   useWorkspaceSwipeDriver,
   useWorkspaceSwipeStore,
@@ -338,6 +339,7 @@ import { createWindowSchedulerPort } from "./window-scheduler-port";
 import {
   WorkspaceTransitionStage,
   type UseWorkspaceTransitionResult,
+  type WorkspaceTransitionSettleKind,
 } from "./workspace-transition";
 
 /** Same external target (kind / targetId / workspaceId) — the point may differ. */
@@ -4667,6 +4669,11 @@ interface TilingWorkspaceTransitionBridge {
    * 60 Hz wheel stream never re-renders the tree.
    */
   readonly stageRef: React.RefObject<UseWorkspaceTransitionResult | null>;
+  /**
+   * Fired by the stage after every `finish` once the clone is gone. The
+   * wrapper releases a held swipe settle (`SETTLE_DONE`) on it.
+   */
+  readonly onSettled: (kind: WorkspaceTransitionSettleKind) => void;
 }
 
 type TilingSingleLayoutRendererProps = TilingRendererProps &
@@ -9913,6 +9920,7 @@ const TilingRendererComponent = React.forwardRef<
               ref={workspaceTransition.stageRef}
               viewportRef={viewportRef}
               mode={workspaceTransition.mode}
+              onSettled={workspaceTransition.onSettled}
             >
               {treeElement}
             </WorkspaceTransitionStage>
@@ -10338,16 +10346,33 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
   const transitionStageRef = React.useRef<UseWorkspaceTransitionResult | null>(null);
   const transitionArmedForRef = React.useRef<string | null>(null);
   const emittedSwitchToRef = React.useRef<string | null>(null);
+  // N1 × N2 settle gate: the swipe FSM's `SETTLE_DONE` waits for the stage.
+  // The driver hands over `done` on entry to `settling`; it is held here
+  // until the stage reports settled (`onSettled`), or released at once when
+  // no transition is in flight for this swipe. At most one hold at a time —
+  // the swipe FSM cannot start a second gesture while one is settling.
+  const swipeSettleHoldRef = React.useRef<(() => void) | null>(null);
+  const releaseSwipeSettleHold = React.useCallback((): void => {
+    const done: (() => void) | null = swipeSettleHoldRef.current;
+    if (done == null) {
+      return;
+    }
+    swipeSettleHoldRef.current = null;
+    done();
+  }, []);
   const beginSwitchTransition = React.useCallback(
     (to: string, direction: TilingWorkspaceTransitionDirection): void => {
       const stage: UseWorkspaceTransitionResult | null = transitionStageRef.current;
       if (stage == null || transitionArmedForRef.current === to) {
         return;
       }
+      // `begin` for another target drops the in-flight clone without a
+      // settle: a swipe settle held on that clone would never be released.
+      releaseSwipeSettleHold();
       transitionArmedForRef.current = to;
       stage.begin({ direction });
     },
-    [],
+    [releaseSwipeSettleHold],
   );
   const handleBeforeSwitch = React.useCallback(
     (from: string, to: string): void => {
@@ -10361,8 +10386,21 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       return;
     }
     transitionArmedForRef.current = null;
-    transitionStageRef.current?.finish("commit");
-  }, []);
+    const stage: UseWorkspaceTransitionResult | null = transitionStageRef.current;
+    if (stage == null) {
+      // Switched into an EMPTY workspace: no stage is mounted to finish, so
+      // nothing would report settled — release a held swipe settle here.
+      releaseSwipeSettleHold();
+      return;
+    }
+    stage.finish("commit");
+  }, [releaseSwipeSettleHold]);
+  const handleTransitionSettled = React.useCallback(
+    (_kind: WorkspaceTransitionSettleKind): void => {
+      releaseSwipeSettleHold();
+    },
+    [releaseSwipeSettleHold],
+  );
   // A switch the host never applied (or one into / out of an EMPTY workspace,
   // where no stage is mounted) must not leave a stale "switch pending" mark.
   React.useEffect((): void => {
@@ -10372,8 +10410,37 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
     (): TilingWorkspaceTransitionBridge | undefined =>
       transitionMode === "none"
         ? undefined
-        : { mode: transitionMode, stageRef: transitionStageRef },
-    [transitionMode],
+        : {
+            mode: transitionMode,
+            stageRef: transitionStageRef,
+            onSettled: handleTransitionSettled,
+          },
+    [transitionMode, handleTransitionSettled],
+  );
+  /**
+   * The driver's `settleGate`. Immediate when nothing animates this swipe
+   * (`transition: "none"`, no stage mounted, or the stage was never armed
+   * for it); otherwise `done` is held until the stage settles. A cancel — or
+   * a "commit" whose switch was refused (no neighbour, host declined) —
+   * finishes the stage back to the outgoing view now; a real commit is
+   * finished by `WorkspaceSwitchSentinel` (`handleAfterSwitch`) once the
+   * incoming tree is in the DOM.
+   */
+  const gateSwipeSettle = React.useCallback(
+    (outcome: TilingWorkspaceSwipeOutcome, done: () => void): void => {
+      const stage: UseWorkspaceTransitionResult | null = transitionStageRef.current;
+      if (transitionMode === "none" || stage == null || transitionArmedForRef.current == null) {
+        done();
+        return;
+      }
+      releaseSwipeSettleHold();
+      swipeSettleHoldRef.current = done;
+      if (outcome === "cancel" || emittedSwitchToRef.current == null) {
+        transitionArmedForRef.current = null;
+        stage.finish("cancel");
+      }
+    },
+    [transitionMode, releaseSwipeSettleHold],
   );
 
   const handleLayoutChange = React.useCallback(
@@ -10637,13 +10704,16 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
     hasNext: activeIndex >= 0 && activeIndex < workspaces.workspaces.length - 1,
     dragActive: dragGestureActive,
     dispatch: dispatchSwipeCommand,
+    settleGate: gateSwipeSettle,
   });
   // N2 × N1: while a swipe TRACKS, the stage follows the finger. `begin` at
   // the first tracking sample (the outgoing tree is still live; idempotent
   // per target), `scrub` on every sample. Imperative subscription — a 60 Hz
-  // wheel stream must not re-render the tree. Leaving `tracking` /
-  // `settling` without an emitted switch is a cancel; a commit's switch is
-  // settled by the sentinel once the incoming tree is in the DOM.
+  // wheel stream must not re-render the tree. The settle itself is owned by
+  // `gateSwipeSettle` (cancel → `finish("cancel")` at once; commit → the
+  // sentinel finishes once the incoming tree is in the DOM); the cancel
+  // branch below is the backstop for a gesture that left `tracking` with the
+  // stage still armed and no gate having run.
   React.useEffect((): (() => void) | void => {
     if (transitionMode === "none" || !swipeEnabled) {
       return;
@@ -10669,8 +10739,9 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
         return;
       }
       if (snapshot.phase === "settling") {
-        // Zero-length hold: the driver dispatches the commit command (which
-        // marks `emittedSwitchToRef`) between this sample and the next.
+        // Held by `gateSwipeSettle` until the stage settles; the driver has
+        // already dispatched the commit command (which marks
+        // `emittedSwitchToRef`) by the time it called the gate.
         return;
       }
       if (!wasTracking) {
