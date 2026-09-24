@@ -579,8 +579,19 @@ as the keymap (`onWorkspacesChange` + `onWorkspaceSwitch({ via: "swipe" })`).
 The gesture never arms while a pane drag is in flight, while `Ctrl` is held
 (pinch-zoom), for a mostly vertical delta, or while an inner element under
 the pointer can still scroll horizontally; the first / last workspace has no
-neighbour on that side unless `wrap: true`. When enabled the root gets
-`overscroll-behavior-x: contain` (and `touch-action: pan-y` for touch).
+neighbour on that side unless `wrap: true`. A wheel run is claimed at its
+**sequence start**: if the first sample(s) fail arming, later samples of
+that run (gaps `< wheelIdleMs`) cannot arm, even if they become horizontal —
+so a vertical scroll's horizontal tail, and trackpad momentum after a
+commit, stay with the page. While `armed`, the `|dx| > 2·|dy|` ratio must
+hold **cumulatively** across the window (a gradually diagonal path drops
+back to scroll); once `tracking`, vertical drift is tolerated. Optional
+`modifier: "meta" | "alt" | "shift"` requires that key on the arming
+samples only (release mid-track does not cancel); touch ignores it. When
+enabled the root gets `overscroll-behavior-x: contain` (and
+`touch-action: pan-y` for touch), including when a modifier is set —
+wheel without the modifier still scrolls normally (`preventDefault` only
+while `tracking`).
 
 ```tsx
 <TilingWorkspaceSwipeScope>
@@ -590,7 +601,7 @@ neighbour on that side unless `wrap: true`. When enabled the root gets
     onWorkspacesChange={setSet}
     interaction={{
       workspaces: {
-        switch: { wheelSwipe: { commitFraction: 0.3 }, touchSwipe: true },
+        switch: { wheelSwipe: { modifier: "meta" }, touchSwipe: true },
       },
     }}
     /* … */
@@ -600,7 +611,7 @@ neighbour on that side unless `wrap: true`. When enabled the root gets
 
 `wheelSwipe` takes `true` or a partial `TilingWorkspaceSwipeConfig`
 (`thresholdPx` 24, `commitFraction` 0.35, `commitVelocityPxMs` 0.6,
-`wheelIdleMs` 120, `lockoutMs` 350, `wrap` false). `useWorkspaceSwipe()` is
+`wheelIdleMs` 120, `lockoutMs` 350, `wrap` false, `modifier` null). `useWorkspaceSwipe()` is
 headless — `progress` is `-1..1` (negative = towards the previous workspace)
 so a tab indicator can follow the finger; it reads the idle snapshot outside
 a `TilingWorkspaceSwipeScope`. With a switch transition on, `phase` stays

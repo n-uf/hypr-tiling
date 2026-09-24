@@ -1452,11 +1452,15 @@ export interface TilingWorkspaceSwipeConfig {
     commitFraction: number;
     commitVelocityPxMs: number;
     lockoutMs: number;
+    modifier: TilingWorkspaceSwipeModifier;
     thresholdPx: number;
     wheelIdleMs: number;
     widthPx: number;
     wrap: boolean;
 }
+
+// @public
+export type TilingWorkspaceSwipeModifier = "meta" | "alt" | "shift" | null;
 
 // @public
 export type TilingWorkspaceSwipePhase = "idle" | "armed" | "tracking" | "settling" | "lockout";
@@ -1701,10 +1705,13 @@ export function viewedWorkspaceSet(value: TilingWorkspaceSet, localTrees: Tiling
 
 // @public
 export interface WheelInputSample {
+    altKey: boolean;
     canScrollFurther: boolean;
     ctrlKey: boolean;
     dx: number;
     dy: number;
+    metaKey: boolean;
+    shiftKey: boolean;
     ts: number;
     widthPx: number | null;
 }

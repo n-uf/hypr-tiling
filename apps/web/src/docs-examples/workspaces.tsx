@@ -54,7 +54,7 @@ export function WorkspacesExample(): ReactElement {
         interaction={{
           keyBindings: { bindings: [...WORKSPACE_KEY_BINDINGS] },
           workspaces: {
-            switch: { transition: "slide", wheelSwipe: true },
+            switch: { transition: "slide", wheelSwipe: { modifier: "meta" } },
             springLoad: { dwellMs: 500 },
           },
         }}

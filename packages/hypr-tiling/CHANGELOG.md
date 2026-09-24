@@ -8,7 +8,19 @@ the version number alone does not flag them.
 
 ## Unreleased
 
-## 26.9.4 — 2026-09-23
+## 26.9.5 — 2026-09-23
+
+Three desktop disambiguation gates on the workspace wheel-swipe FSM. Hosts on
+26.9.4 semantics keep `modifier: null` (gate 1 off) and pick up gates 2–3,
+which only remove false-positive arms. Touch swipe is unchanged except that it
+ignores `modifier`.
+
+- **BREAKING (type): `WheelInputSample` and the swipe `WHEEL` event require `metaKey` / `altKey` / `shiftKey`.** Custom `WheelTouchInputPort` implementations must stamp the DOM modifier flags (the built-in `createDomWheelTouchPort` does). `ctrlKey` is still the pinch-zoom reject.
+- **`TilingWorkspaceSwipeConfig.modifier: "meta" | "alt" | "shift" | null`** — default `null` (no modifier required). When set, a wheel run arms only while that key is held on the arming samples; once `tracking`, releasing it does not cancel or convert the gesture to scroll. `ctrlKey` still rejects regardless. Touch ignores `modifier`. `overscroll-behavior-x: contain` still applies; the port `preventDefault`s only while `tracking`, so a wheel without the modifier scrolls normally.
+- **Behaviour change (tightening): sequence-start gating.** A wheel run is the samples with gaps `< wheelIdleMs`. Only the start of a fresh run may arm: if the first sample(s) fail (vertical-dominant, modifier missing, chain can still scroll, …), the run is claimed by scroll (`idle.runClaimedByScroll` + `lastWheelTs`) and later samples of that run cannot arm — even if they become horizontal. After `lockout` expiry, a momentum tail that continues the committed run still cannot arm.
+- **Behaviour change (tightening): whole-window horizontal lock.** `|dx| > 2·|dy|` still applies per sample at arming; the same ratio must also hold on the accumulated `armed` window (`|travelDy| ≤ |travelPx| / 2`) until travel reaches `thresholdPx`. A gradually diagonal path is rejected and the run claimed by scroll. Once `tracking`, vertical drift is still tolerated.
+- **`switch.wheelSwipe: { modifier: "meta" }`** resolves into `switch.swipe.modifier` through the existing partial-config path (`resolveWorkspaceSwipeConfig`).
+
 
 Engine-owned workspace navigation on top of the 26.9.3 workspace set: tile-keyed
 set ops and `revealTile`, typed workspace commands and an opt-in keymap fragment,

@@ -1363,7 +1363,9 @@ export function DocsPage({
                   <Code>TilingCommandHandle</Code> ref. Opt into trackpad swipe,
                   slide/fade transition, and spring-loaded tab drop via{" "}
                   <Code>interaction.workspaces</Code> (
-                  <Code>switch.wheelSwipe</Code>,{" "}
+                  <Code>switch.wheelSwipe</Code>
+                  {" "}
+                  (optional <Code>modifier: &quot;meta&quot;</Code>),{" "}
                   <Code>switch.transition</Code>,{" "}
                   <Code>springLoad</Code>). For a persisted document use{" "}
                   <Code>useTilingWorkspaceSetController</Code> (

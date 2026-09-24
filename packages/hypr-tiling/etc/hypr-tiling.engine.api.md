@@ -520,6 +520,10 @@ export function resolveSwipeArming(params: {
     ctrlKey: boolean;
     canScrollFurther: boolean;
     wrap: boolean;
+    modifier?: TilingWorkspaceSwipeModifier;
+    metaKey?: boolean;
+    altKey?: boolean;
+    shiftKey?: boolean;
 }): TilingWorkspaceSwipeTarget | null;
 
 // @public
@@ -981,6 +985,7 @@ export interface TilingWorkspaceSwipeConfig {
     commitFraction: number;
     commitVelocityPxMs: number;
     lockoutMs: number;
+    modifier: TilingWorkspaceSwipeModifier;
     thresholdPx: number;
     wheelIdleMs: number;
     widthPx: number;
@@ -1001,6 +1006,9 @@ export type TilingWorkspaceSwipeEvent = {
     dx: number;
     dy: number;
     ctrlKey: boolean;
+    metaKey: boolean;
+    altKey: boolean;
+    shiftKey: boolean;
     ts: number;
     canScrollFurther?: boolean;
     widthPx?: number;
@@ -1041,6 +1049,9 @@ export type TilingWorkspaceSwipeEvent = {
 export type TilingWorkspaceSwipeInput = "wheel" | "touch";
 
 // @public
+export type TilingWorkspaceSwipeModifier = "meta" | "alt" | "shift" | null;
+
+// @public
 export type TilingWorkspaceSwipeOutcome = "commit" | "cancel";
 
 // @public
@@ -1059,12 +1070,15 @@ export type TilingWorkspaceSwipeState = (SwipeStateBase & {
     progress: 0;
     target: null;
     command: null;
+    lastWheelTs: number | null;
+    runClaimedByScroll: boolean;
 }) | (SwipeStateBase & {
     phase: "armed";
     input: TilingWorkspaceSwipeInput;
     originX: number;
     originY: number;
     travelPx: number;
+    travelDy: number;
     lastTs: number;
     progress: 0;
     target: null;
@@ -1083,9 +1097,11 @@ export type TilingWorkspaceSwipeState = (SwipeStateBase & {
     input: TilingWorkspaceSwipeInput;
     outcome: TilingWorkspaceSwipeOutcome;
     endedTs: number;
+    lastWheelTs: number;
 }) | (SwipeStateBase & {
     phase: "lockout";
     until: number;
+    lastWheelTs: number;
     progress: 0;
     target: null;
     command: null;
@@ -1203,10 +1219,13 @@ export function viewedWorkspaceSet(value: TilingWorkspaceSet, localTrees: Tiling
 
 // @public
 export interface WheelInputSample {
+    altKey: boolean;
     canScrollFurther: boolean;
     ctrlKey: boolean;
     dx: number;
     dy: number;
+    metaKey: boolean;
+    shiftKey: boolean;
     ts: number;
     widthPx: number | null;
 }
