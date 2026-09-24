@@ -28,6 +28,7 @@ import {
 import {
   activeDragSourceLeafId,
   activeResolvedTarget,
+  canRearmDrag,
   compactGhostOrigin,
   createFrameCoalescer,
   deriveCandidateTree,
@@ -230,6 +231,16 @@ import {
   type TilingWorkspaceSet,
   type TilingWorkspaceSetIssue,
 } from "../engine/workspace-set";
+import {
+  TILING_SPRING_LOAD_DEFAULTS,
+  TILING_SPRING_LOAD_INITIAL_STATE,
+  springLoadFireAt,
+  springLoadReducer,
+  type TilingSpringLoadConfig,
+  type TilingSpringLoadEvent,
+  type TilingSpringLoadIntent,
+  type TilingSpringLoadState,
+} from "../engine/workspace-spring-load";
 import type {
   TilingWorkspaceTransitionDirection,
   TilingWorkspaceTransitionMode,
@@ -4554,6 +4565,90 @@ interface TilingWorkspaceCommandBridge {
    * `begin` / `scrub` / `finish` through `stageRef`.
    */
   workspaceTransition?: TilingWorkspaceTransitionBridge;
+  /**
+   * N3 — spring-loaded tab drop. Present only while
+   * `interaction.workspaces.springLoad` is on; the inner renderer then
+   * reports its drag identity and publishes the imperative rearm channel.
+   */
+  springLoad?: TilingSpringLoadBridge;
+}
+
+/**
+ * The drag FSM narrowed to what the set-mode wrapper's dwell FSM keys on:
+ * phase plus the pointer / source identity of the live gesture. Reported
+ * only when one of these fields changes — never per pointer-move frame.
+ */
+interface TilingDragIdentity {
+  readonly phase: DragMachineState["phase"];
+  readonly pointerId: number | null;
+  readonly pointerType: DragPointerType | null;
+  readonly sourceLeafId: string | null;
+}
+
+const IDLE_DRAG_IDENTITY: TilingDragIdentity = {
+  phase: "idle",
+  pointerId: null,
+  pointerType: null,
+  sourceLeafId: null,
+};
+
+function dragIdentityOf(state: DragMachineState): TilingDragIdentity {
+  if (state.phase === "armed" || state.phase === "dragging") {
+    return {
+      phase: state.phase,
+      pointerId: state.pointerId,
+      pointerType: state.pointerType,
+      sourceLeafId: state.sourceLeafId,
+    };
+  }
+  return state.phase === "idle"
+    ? IDLE_DRAG_IDENTITY
+    : { phase: state.phase, pointerId: null, pointerType: null, sourceLeafId: state.sourceLeafId };
+}
+
+/**
+ * What the wrapper asks the inner renderer to do when the dwell fires
+ * (`engine/workspace-spring-load.ts` wiring contract, steps 3c–4): end the
+ * live drag as a claimed external commit now, and once the destination
+ * tree renders with `leafId` in it, `REARM` the drag on that seat under the
+ * still-held pointer.
+ */
+interface TilingSpringLoadRearmRequest {
+  /** The pointer that is still held (the claimed drag's pointer). */
+  readonly pointerId: number;
+  readonly pointerType: DragPointerType;
+  /** The moved leaf — the source of the re-armed drag. */
+  readonly leafId: string;
+  /** The destination workspace whose tree must render before the rearm. */
+  readonly workspaceId: string;
+  /** The workspace the drag started in (still active until the host applies the switch). */
+  readonly fromWorkspaceId: string;
+  /** The last window-client point the input layer saw — the re-armed drag's first sample. */
+  readonly client: DragMachinePoint;
+}
+
+/** The imperative rearm channel the inner renderer publishes for the wrapper. */
+interface TilingSpringLoadChannel {
+  /** The last window-client point the live drag's input layer processed (`null` before any). */
+  readonly lastClientPoint: () => DragMachinePoint | null;
+  /**
+   * Step 3c: dispatch `POINTER_UP { claimed: true }` for the live drag and
+   * queue the rearm. Pointer capture is kept while the rearm is pending.
+   * Returns `false` (nothing dispatched) when no drag on `pointerId` is live.
+   */
+  readonly commitAndQueueRearm: (request: TilingSpringLoadRearmRequest) => boolean;
+}
+
+/**
+ * Internal spring-load bridge (N3): the wrapper hands the inner renderer a
+ * callback for drag-identity changes and a ref the inner renderer fills
+ * with its rearm channel. Not on the public renderer prop surface.
+ */
+interface TilingSpringLoadBridge {
+  /** Inner → wrapper: the drag FSM's identity changed (phase / pointer / source leaf). */
+  readonly onDragIdentityChange: (identity: TilingDragIdentity) => void;
+  /** Inner → wrapper: the rearm channel, populated on every render of the inner renderer. */
+  readonly channelRef: React.MutableRefObject<TilingSpringLoadChannel | null>;
 }
 
 /** A tile the stable pane pool keeps mounted while its workspace is inactive. */
@@ -4636,6 +4731,7 @@ const TilingRendererComponent = React.forwardRef<
     tileSeatCounts,
     retainedPanes,
     workspaceTransition,
+    springLoad,
   }: TilingSingleLayoutRendererProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
 ): React.ReactElement {
@@ -5103,6 +5199,19 @@ const TilingRendererComponent = React.forwardRef<
   const dragSnapshotRef = React.useRef<TilingDragPaneSnapshot | null>(null);
   // The pointerId the drag captured on the stable root element, for release on settle.
   const capturedPointerIdRef = React.useRef<number | null>(null);
+  // N3 — the last window-client point the drag's input layer saw (press
+  // origin, then every raw `pointermove`). The spring-load rearm starts the
+  // continuation drag from here: the pointer is parked over a tab and may not
+  // move again before the dwell fires.
+  const lastDragClientPointRef = React.useRef<DragMachinePoint | null>(null);
+  // N3 — a spring-load rearm waiting for the destination tree. Set when the
+  // wrapper ends the live drag as a claimed commit (step 3c); consumed by the
+  // rearm layout effect once the machine is `idle` again and the destination
+  // workspace's tree carries the leaf (step 4). State (not only a ref) so the
+  // rearm effect and the pending-release guard key on it.
+  const [pendingSpringLoadRearm, setPendingSpringLoadRearm] =
+    React.useState<TilingSpringLoadRearmRequest | null>(null);
+  const pendingSpringLoadRearmRef = React.useRef<TilingSpringLoadRearmRequest | null>(null);
   const [cancelVisualState, setCancelVisualState] =
     React.useState<TilingDragCancelVisualState | null>(null);
   // The measured rect (client coords) of the resolved slot's reservation — the
@@ -5193,6 +5302,62 @@ const TilingRendererComponent = React.forwardRef<
   React.useEffect((): void => {
     onDragGestureActiveChange?.(isDragGestureActive);
   }, [onDragGestureActiveChange, isDragGestureActive]);
+  // N3 — spring-load bridge (set-mode wrapper, `interaction.workspaces.
+  // springLoad`). The wrapper's dwell FSM keys on the drag IDENTITY (phase +
+  // pointer + source leaf), reported here only when one of those primitives
+  // changes — a 60 Hz `POINTER_MOVE` stream re-renders nothing in the
+  // wrapper. Absent bridge (spring-load off / single-layout mode) → the effect
+  // is a no-op and the channel ref is never written.
+  const dragIdentity: TilingDragIdentity = dragIdentityOf(dragState);
+  const onDragIdentityChangeRef = React.useRef<
+    ((identity: TilingDragIdentity) => void) | undefined
+  >(springLoad?.onDragIdentityChange);
+  onDragIdentityChangeRef.current = springLoad?.onDragIdentityChange;
+  const springLoadBridgeActive: boolean = springLoad != null;
+  React.useEffect((): void => {
+    if (!springLoadBridgeActive) {
+      return;
+    }
+    onDragIdentityChangeRef.current?.({
+      phase: dragIdentity.phase,
+      pointerId: dragIdentity.pointerId,
+      pointerType: dragIdentity.pointerType,
+      sourceLeafId: dragIdentity.sourceLeafId,
+    });
+  }, [
+    springLoadBridgeActive,
+    dragIdentity.phase,
+    dragIdentity.pointerId,
+    dragIdentity.pointerType,
+    dragIdentity.sourceLeafId,
+  ]);
+  /**
+   * Step 3c of the spring-load contract: end the live drag as the claimed
+   * external commit (the edge `handleExternalDrop` takes on release) and
+   * queue the rearm. The settle effect keeps pointer capture while a rearm is
+   * pending; the rearm effect below consumes the request.
+   */
+  const commitAndQueueSpringLoadRearm = React.useCallback(
+    (request: TilingSpringLoadRearmRequest): boolean => {
+      // The store's state, not the post-commit ref mirror: the wrapper calls
+      // this from a timer, possibly between a dispatch and its commit.
+      const live: DragMachineState = controller.getState().drag;
+      if (live.phase !== "dragging" || live.pointerId !== request.pointerId) {
+        return false;
+      }
+      pendingSpringLoadRearmRef.current = request;
+      setPendingSpringLoadRearm(request);
+      dispatchDrag({ type: "POINTER_UP", pointerId: request.pointerId, claimed: true });
+      return true;
+    },
+    [controller, dispatchDrag],
+  );
+  if (springLoad != null) {
+    springLoad.channelRef.current = {
+      lastClientPoint: (): DragMachinePoint | null => lastDragClientPointRef.current,
+      commitAndQueueRearm: commitAndQueueSpringLoadRearm,
+    };
+  }
   // Interaction slices now OWNED by the controller store (folded out of the
   // renderer's `useState`/`useRef` per the Stage-7 state-collapse). They are
   // read off the same `useSyncExternalStore` snapshot as the drag FSM; the
@@ -7814,6 +7979,7 @@ const TilingRendererComponent = React.forwardRef<
       // starved drag alive — the watchdog now trips only when input genuinely
       // stops. Cheap no-op before the watchdog effect has armed (ref null).
       watchdogRef.current?.progress();
+      lastDragClientPointRef.current = { x: event.clientX, y: event.clientY };
       coalescer.schedule({ x: event.clientX, y: event.clientY });
     };
     const handlePointerUp = (event: PointerEvent): void => {
@@ -7998,11 +8164,15 @@ const TilingRendererComponent = React.forwardRef<
     }
     // Release pointer capture on the stable root (only when it actually holds
     // capture for this pointer — the port guards on `hasPointerCapture`).
+    // N3: NOT while a spring-load rearm is pending — the pointer is still
+    // held and the continuation drag re-uses the capture; the rearm effect
+    // (or the drop path) owns the release then.
     const owningPointerId: number | null = capturedPointerIdRef.current;
-    if (owningPointerId != null) {
+    const rearmPending: TilingSpringLoadRearmRequest | null = pendingSpringLoadRearmRef.current;
+    if (owningPointerId != null && (rearmPending == null || rearmPending.pointerId !== owningPointerId)) {
       pointerCapturePort.release(owningPointerId);
+      capturedPointerIdRef.current = null;
     }
-    capturedPointerIdRef.current = null;
     // M4 backstop: strip any residual FLIP transform/transition from the
     // survivors + cancel tracked dips/raced handles on the settle edge, so once
     // the FSM reaches `idle` no `[data-leaf-id]` element retains a non-identity
@@ -8098,6 +8268,141 @@ const TilingRendererComponent = React.forwardRef<
     setFocusedLeaf,
     stripSurvivorTransientStyles,
   ]);
+
+  // N3 step 4 — spring-load REARM. Runs after every commit while a rearm is
+  // queued; acts once (i) the drag machine is `idle` again (the claimed
+  // settle above has run its teardown and `SETTLE_DONE`, so nothing of the
+  // old tree's drag survives — `canRearmDrag`) and (ii) the destination
+  // workspace's tree is the one rendered. Measures the leaf's NEW seat,
+  // rebuilds the ghost snapshot from its tile, dispatches `REARM`, then runs
+  // the same pickup tail a threshold / long-press promotion runs (root
+  // pointer capture + `captureInitialTarget`), so the input layer
+  // re-subscribes on the held pointer and the first target / external hover
+  // of the NEW tree resolve at the parked point. A layout effect so the
+  // ghost is back before the browser paints the destination tree.
+  //
+  // Drop (never queue) the rearm when the host rendered a THIRD workspace or
+  // a destination tree without the leaf (it rewrote the set): pointer capture
+  // is released and the pointer's eventual release does nothing (idle). While
+  // the source workspace is still the one rendered the host has simply not
+  // applied the emitted set yet — wait.
+  React.useLayoutEffect((): void => {
+    const request: TilingSpringLoadRearmRequest | null = pendingSpringLoadRearm;
+    if (
+      request == null ||
+      pendingSpringLoadRearmRef.current !== request ||
+      !canRearmDrag(dragState)
+    ) {
+      return;
+    }
+    const dropRearm = (): void => {
+      pendingSpringLoadRearmRef.current = null;
+      setPendingSpringLoadRearm(null);
+      if (capturedPointerIdRef.current === request.pointerId) {
+        pointerCapturePort.release(request.pointerId);
+        capturedPointerIdRef.current = null;
+      }
+    };
+    if (paneWorkspaceId !== request.workspaceId) {
+      if (paneWorkspaceId !== request.fromWorkspaceId) {
+        dropRearm();
+      }
+      return;
+    }
+    const leaf: TilingLeafNode | null = findLeafById(layout, request.leafId);
+    if (leaf == null) {
+      dropRearm();
+      return;
+    }
+    // The seat: the pane article in the live tree, or — stable pane identity,
+    // where a pane that changed workspace is re-hosted and its article only
+    // mounts one commit after its slot registered — the registered slot
+    // wrapper itself (`display: contents` host, so the two boxes coincide).
+    const seatElement: HTMLElement | null =
+      Array.from(
+        viewportRef.current?.querySelectorAll<HTMLElement>(
+          `[data-leaf-id="${request.leafId}"]`,
+        ) ?? [],
+      ).find(
+        (element: HTMLElement): boolean => element.closest("[data-hpt-pane-pool]") == null,
+      ) ??
+      stablePaneSlotRegistryRef.current.get(leaf.tileId) ??
+      null;
+    if (seatElement == null) {
+      dropRearm();
+      return;
+    }
+    const seatRect: DOMRect = seatElement.getBoundingClientRect();
+    const tile: TilingTile | undefined = resolveTile(tiles, leaf.tileId);
+    dragSnapshotRef.current = buildDragPaneSnapshot(
+      tile ?? {
+        id: `missing-${leaf.tileId}`,
+        title: `missing tile ${leaf.tileId}`,
+        accent: "pink",
+      },
+    );
+    if (pointerCapturePort.capture(request.pointerId)) {
+      capturedPointerIdRef.current = request.pointerId;
+    }
+    lastDragClientPointRef.current = request.client;
+    pendingSpringLoadRearmRef.current = null;
+    setPendingSpringLoadRearm(null);
+    dispatchDrag({
+      type: "REARM",
+      pointerId: request.pointerId,
+      pointerType: request.pointerType,
+      sourceLeafId: request.leafId,
+      tileId: leaf.tileId,
+      anchorFootprint: {
+        left: seatRect.left,
+        top: seatRect.top,
+        width: seatRect.width,
+        height: seatRect.height,
+      },
+      client: request.client,
+    });
+    inputDriver.captureInitialTarget(request.leafId, request.client, request.pointerId);
+  }, [
+    pendingSpringLoadRearm,
+    dragState,
+    layout,
+    paneWorkspaceId,
+    tiles,
+    dispatchDrag,
+    inputDriver,
+    pointerCapturePort,
+  ]);
+  // While a rearm is queued no drag is live, so the input layer above is
+  // unsubscribed: a release / cancel of the held pointer in that window (the
+  // host applies the set a frame late and the user lets go meanwhile) must
+  // still drop the rearm and release capture, or the next render would start
+  // a drag under a pointer that is already up.
+  React.useEffect((): (() => void) | void => {
+    const request: TilingSpringLoadRearmRequest | null = pendingSpringLoadRearm;
+    if (request == null) {
+      return;
+    }
+    const dropOnRelease = (event: PointerEvent): void => {
+      if (event.pointerId !== request.pointerId) {
+        return;
+      }
+      if (pendingSpringLoadRearmRef.current !== request) {
+        return;
+      }
+      pendingSpringLoadRearmRef.current = null;
+      setPendingSpringLoadRearm(null);
+      if (capturedPointerIdRef.current === request.pointerId) {
+        pointerCapturePort.release(request.pointerId);
+        capturedPointerIdRef.current = null;
+      }
+    };
+    window.addEventListener("pointerup", dropOnRelease);
+    window.addEventListener("pointercancel", dropOnRelease);
+    return (): void => {
+      window.removeEventListener("pointerup", dropOnRelease);
+      window.removeEventListener("pointercancel", dropOnRelease);
+    };
+  }, [pendingSpringLoadRearm, pointerCapturePort]);
 
   // Drag source vanished from the CONTROLLED tree while the gesture is still
   // in flight (`armed` / `dragging`) — the host swapped the tree under the
@@ -8623,6 +8928,7 @@ const TilingRendererComponent = React.forwardRef<
             const sourcePaneRect: DOMRect =
               sourcePaneElement.getBoundingClientRect();
             dragSnapshotRef.current = buildDragPaneSnapshot(tileForDisplay);
+            lastDragClientPointRef.current = { x: event.clientX, y: event.clientY };
             dispatchDrag({
               type: "POINTER_DOWN",
               pointerId: event.nativeEvent.pointerId,
@@ -10393,6 +10699,213 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
     ? setDragGestureActive
     : undefined;
 
+  // N3 — spring-loaded tab drop. The pure dwell FSM
+  // (`engine/workspace-spring-load.ts`) runs here in refs — no render per
+  // event — over the external hover the inner renderer resolves and the drag
+  // identity it reports; ONE scheduler timer per dwell fires `TICK`. On
+  // `fired` the wrapper runs commit-and-rearm in the module doc's order:
+  // capture the pointer + last point, move the leaf and switch the set
+  // (`beginSwitchTransition` first, like `applyWorkspaceCommand`), emit the
+  // three callbacks, remember the leaf as the destination's focused leaf, end
+  // the live drag as a claimed commit through the inner channel (which keeps
+  // pointer capture and queues the `REARM` for the destination tree), then
+  // `RESET`. Off by default: with `springLoad` null nothing below subscribes
+  // and the inner renderer receives no bridge.
+  const springLoadConfig: TilingSpringLoadConfig | null = workspacesEnabled
+    ? interactionCapabilities.workspaces.springLoad
+    : null;
+  const springLoadEnabled: boolean = springLoadConfig != null;
+  const springLoadConfigRef = React.useRef<TilingSpringLoadConfig | null>(springLoadConfig);
+  springLoadConfigRef.current = springLoadConfig;
+  const springLoadStateRef = React.useRef<TilingSpringLoadState>(TILING_SPRING_LOAD_INITIAL_STATE);
+  const springLoadTimerRef = React.useRef<number | null>(null);
+  const springLoadChannelRef = React.useRef<TilingSpringLoadChannel | null>(null);
+  const dragIdentityRef = React.useRef<TilingDragIdentity>(IDLE_DRAG_IDENTITY);
+  const springLoadResolvedHoverRef = React.useRef<TilingExternalDragHover | null>(null);
+  const externalDragHoverPropRef = React.useRef<TilingExternalDragHover | null>(
+    rest.externalDragHover ?? null,
+  );
+  externalDragHoverPropRef.current = rest.externalDragHover ?? null;
+  const hostOnExternalDragHoverChangeRef = React.useRef(rest.onExternalDragHoverChange);
+  hostOnExternalDragHoverChangeRef.current = rest.onExternalDragHoverChange;
+  const clearSpringLoadTimer = React.useCallback((): void => {
+    if (springLoadTimerRef.current != null) {
+      WINDOW_SCHEDULER_PORT.clearTimer(springLoadTimerRef.current);
+      springLoadTimerRef.current = null;
+    }
+  }, []);
+  const runSpringLoadCommitRef = React.useRef<(intent: TilingSpringLoadIntent) => void>(
+    (): void => {},
+  );
+  const sendSpringLoad = React.useCallback(
+    (event: TilingSpringLoadEvent): void => {
+      const config: TilingSpringLoadConfig | null = springLoadConfigRef.current;
+      if (config == null && event.type === "HOVER") {
+        // Disabled: no dwell ever starts (DRAG_END / RESET still clear one
+        // that was in flight when the capability went off).
+        return;
+      }
+      const before: TilingSpringLoadState = springLoadStateRef.current;
+      const next: TilingSpringLoadState = springLoadReducer(
+        before,
+        event,
+        config ?? TILING_SPRING_LOAD_DEFAULTS,
+      );
+      if (next === before) {
+        return;
+      }
+      springLoadStateRef.current = next;
+      if (next.phase === "dwelling") {
+        // Arm (or re-arm on a restarted dwell) the single TICK timer.
+        if (
+          before.phase !== "dwelling" ||
+          before.since !== next.since ||
+          before.workspaceId !== next.workspaceId
+        ) {
+          clearSpringLoadTimer();
+          const fireAt: number | null = springLoadFireAt(next, config ?? TILING_SPRING_LOAD_DEFAULTS);
+          const delay: number = Math.max(0, (fireAt ?? 0) - WINDOW_SCHEDULER_PORT.now());
+          springLoadTimerRef.current = WINDOW_SCHEDULER_PORT.setTimer((): void => {
+            springLoadTimerRef.current = null;
+            sendSpringLoad({ type: "TICK", ts: WINDOW_SCHEDULER_PORT.now() });
+          }, delay);
+        }
+        return;
+      }
+      clearSpringLoadTimer();
+      if (next.phase === "fired") {
+        runSpringLoadCommitRef.current(next.intent);
+      }
+    },
+    [clearSpringLoadTimer],
+  );
+  runSpringLoadCommitRef.current = (intent: TilingSpringLoadIntent): void => {
+    const channel: TilingSpringLoadChannel | null = springLoadChannelRef.current;
+    const identity: TilingDragIdentity = dragIdentityRef.current;
+    const current: TilingWorkspaceSet = workspacesRef.current;
+    const from: string = current.activeId;
+    const hover: TilingExternalDragHover | null =
+      externalDragHoverPropRef.current ?? springLoadResolvedHoverRef.current;
+    if (
+      channel == null ||
+      identity.phase !== "dragging" ||
+      identity.pointerId == null ||
+      identity.pointerType == null ||
+      identity.sourceLeafId !== intent.leafId ||
+      intent.workspaceId === from
+    ) {
+      sendSpringLoad({ type: "RESET" });
+      return;
+    }
+    const moved: TilingWorkspaceSet = moveLeafToWorkspace(
+      current,
+      intent.leafId,
+      intent.workspaceId,
+      intent.placement,
+    );
+    if (moved === current) {
+      // Unknown destination (or a no-op re-seat): nothing to commit; the
+      // release then settles through the ordinary path.
+      sendSpringLoad({ type: "RESET" });
+      return;
+    }
+    const next: TilingWorkspaceSet = switchWorkspace(moved, intent.workspaceId);
+    // (a) the pointer identity + last processed point, before anything
+    // settles; the parked pointer may not move again before the rearm.
+    const client: DragMachinePoint = channel.lastClientPoint() ??
+      (hover != null ? { x: hover.point.x, y: hover.point.y } : { x: 0, y: 0 });
+    const request: TilingSpringLoadRearmRequest = {
+      pointerId: identity.pointerId,
+      pointerType: identity.pointerType,
+      leafId: intent.leafId,
+      workspaceId: intent.workspaceId,
+      fromWorkspaceId: from,
+      client,
+    };
+    // (b) move + switch through the same edges `applyWorkspaceCommand` takes.
+    emittedSwitchToRef.current = next.activeId;
+    beginSwitchTransition(
+      next.activeId,
+      workspaceSwitchDirection(current, from, next.activeId),
+    );
+    onWorkspacesChangeRef.current(next);
+    onMoveLeafRef.current?.(intent.leafId, from, intent.workspaceId);
+    onWorkspaceSwitchRef.current?.({ from, to: intent.workspaceId, via: "spring-load" });
+    setFocusMemory(
+      (memory: ReadonlyMap<string, string>): ReadonlyMap<string, string> =>
+        withRemembered(memory, intent.workspaceId, intent.leafId),
+    );
+    // (c) end the live drag as the claimed external commit; the inner
+    // renderer keeps pointer capture and re-arms once the destination tree
+    // renders with the leaf.
+    channel.commitAndQueueRearm(request);
+    // (d) the dwell is spent; a re-armed drag starts a fresh one over a tab.
+    sendSpringLoad({ type: "RESET" });
+  };
+  /** Feed the current external hover (prop over resolved) as a `HOVER` event. */
+  const feedSpringLoadHover = React.useCallback((): void => {
+    const identity: TilingDragIdentity = dragIdentityRef.current;
+    sendSpringLoad({
+      type: "HOVER",
+      hover: externalDragHoverPropRef.current ?? springLoadResolvedHoverRef.current,
+      leafId: identity.phase === "dragging" ? identity.sourceLeafId : null,
+      activeWorkspaceId: workspacesRef.current.activeId,
+      ts: WINDOW_SCHEDULER_PORT.now(),
+    });
+  }, [sendSpringLoad]);
+  const handleDragIdentityChange = React.useCallback(
+    (identity: TilingDragIdentity): void => {
+      const previous: TilingDragIdentity = dragIdentityRef.current;
+      dragIdentityRef.current = identity;
+      if (identity.phase === "dragging") {
+        if (previous.phase !== "dragging" || previous.pointerId !== identity.pointerId) {
+          // A pickup (or a rearm) under a hover that is already a tab starts
+          // the dwell without waiting for the next hover change.
+          feedSpringLoadHover();
+        }
+        return;
+      }
+      if (previous.phase === "dragging") {
+        // Step 5: the drag left `dragging` (release, cancel, watchdog,
+        // visibility — or the claimed commit of step 3c, after which the
+        // machine is already idle so this is a no-op).
+        sendSpringLoad({ type: "DRAG_END" });
+      }
+    },
+    [feedSpringLoadHover, sendSpringLoad],
+  );
+  const handleExternalDragHoverChange = React.useCallback(
+    (hover: TilingExternalDragHover | null): void => {
+      springLoadResolvedHoverRef.current = hover;
+      feedSpringLoadHover();
+      hostOnExternalDragHoverChangeRef.current?.(hover);
+    },
+    [feedSpringLoadHover],
+  );
+  const externalDragHoverProp: TilingExternalDragHover | null | undefined = rest.externalDragHover;
+  React.useEffect((): void => {
+    if (!springLoadEnabled) {
+      return;
+    }
+    feedSpringLoadHover();
+  }, [springLoadEnabled, externalDragHoverProp, feedSpringLoadHover]);
+  React.useEffect((): (() => void) | void => {
+    if (springLoadEnabled) {
+      return;
+    }
+    // Capability went off (or was never on): drop any dwell in flight.
+    sendSpringLoad({ type: "RESET" });
+    clearSpringLoadTimer();
+  }, [springLoadEnabled, sendSpringLoad, clearSpringLoadTimer]);
+  React.useEffect((): (() => void) => clearSpringLoadTimer, [clearSpringLoadTimer]);
+  const springLoadBridge: TilingSpringLoadBridge | undefined = React.useMemo(
+    (): TilingSpringLoadBridge | undefined =>
+      springLoadEnabled
+        ? { onDragIdentityChange: handleDragIdentityChange, channelRef: springLoadChannelRef }
+        : undefined,
+    [springLoadEnabled, handleDragIdentityChange],
+  );
+
   if (layout == null) {
     const theme: TilingTheme = themeProp ?? resolveTilingTheme(themeId);
     return (
@@ -10442,6 +10955,10 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
         tileSeatCounts={census.seatCounts}
         retainedPanes={retainedPanes}
         workspaceTransition={workspaceTransition}
+        onExternalDragHoverChange={
+          springLoadEnabled ? handleExternalDragHoverChange : rest.onExternalDragHoverChange
+        }
+        springLoad={springLoadBridge}
       />
       {workspaceTransition != null ? (
         <WorkspaceSwitchSentinel
