@@ -465,6 +465,7 @@ type ShortcutSkin = "mosaic" | "editorial" | "canvas";
 interface ShortcutBarTokens {
   readonly sectionLabel: string;
   readonly button: string;
+  readonly buttonDisabled: string;
   readonly kbd: string;
   readonly tooltip: string;
   readonly divider: string;
@@ -476,6 +477,8 @@ const SHORTCUT_BAR_SKIN: Record<ShortcutSkin, ShortcutBarTokens> = {
       "shrink-0 font-mono text-[9px] uppercase tracking-[0.22em] text-stone-600",
     button:
       "relative inline-flex shrink-0 items-center rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-1 font-mono text-[9px] leading-none text-stone-300 transition-[transform,border-color,background-color,color] duration-150 hover:-translate-y-px hover:border-amber-300/45 hover:bg-amber-300/[0.08] hover:text-amber-100 active:translate-y-0",
+    buttonDisabled:
+      "relative inline-flex shrink-0 items-center rounded border border-white/[0.04] bg-transparent px-1.5 py-1 font-mono text-[9px] leading-none text-stone-600",
     kbd: "font-mono leading-none",
     tooltip:
       "pointer-events-none whitespace-nowrap rounded border border-amber-300/25 bg-[#1c1e22] px-2 py-1 font-mono text-[10px] normal-case tracking-[0.02em] text-stone-100 shadow-[0_10px_28px_-18px_rgba(0,0,0,0.9)]",
@@ -486,6 +489,8 @@ const SHORTCUT_BAR_SKIN: Record<ShortcutSkin, ShortcutBarTokens> = {
       "shrink-0 font-mono text-[9px] uppercase tracking-[0.24em] text-[#a89c83]",
     button:
       "relative inline-flex shrink-0 items-center rounded-[3px] border border-[#ddd4bf] bg-[#efe8d6] px-1.5 py-1 font-mono text-[9px] leading-none text-[#6b6250] transition-[transform,border-color,background-color,color] duration-150 hover:-translate-y-px hover:border-[#241f17]/45 hover:bg-[#f4eedb] hover:text-[#241f17] active:translate-y-0",
+    buttonDisabled:
+      "relative inline-flex shrink-0 items-center rounded-[3px] border border-[#e6ddc9] bg-transparent px-1.5 py-1 font-mono text-[9px] leading-none text-[#c9bd9f]",
     kbd: "font-mono leading-none",
     tooltip:
       "pointer-events-none whitespace-nowrap rounded-[2px] border border-[#d7ccb2] bg-[#fbf9f2] px-2 py-1 font-mono text-[10px] normal-case tracking-[0.02em] text-[#241f17] shadow-[0_10px_28px_-20px_rgba(36,31,23,0.6)]",
@@ -496,6 +501,8 @@ const SHORTCUT_BAR_SKIN: Record<ShortcutSkin, ShortcutBarTokens> = {
       "shrink-0 font-mono text-[9px] uppercase tracking-[0.24em] text-slate-400",
     button:
       "relative inline-flex shrink-0 items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-1 font-mono text-[9px] leading-none text-slate-500 shadow-[0_1px_0_rgba(15,23,42,0.04)] transition-[transform,border-color,background-color,color] duration-150 hover:-translate-y-px hover:border-slate-300 hover:bg-white hover:text-slate-700 active:translate-y-0",
+    buttonDisabled:
+      "relative inline-flex shrink-0 items-center rounded border border-slate-100 bg-transparent px-1.5 py-1 font-mono text-[9px] leading-none text-slate-300",
     kbd: "font-mono leading-none",
     tooltip:
       "pointer-events-none whitespace-nowrap rounded border border-slate-200 bg-white px-2 py-1 font-mono text-[10px] normal-case tracking-[0.02em] text-slate-700 shadow-[0_10px_28px_-20px_rgba(15,23,42,0.4)]",
@@ -636,6 +643,28 @@ function ShortcutChip({
 // dispatching a REAL typed tiling command — but laid out as a dense, horizontally
 // scrollable single row of keycap chips grouped by section. Returns `null` when
 // nothing is actionable so the bottom bar lays out cleanly without an empty gap.
+function ResetLayoutChip({
+  tokens,
+  disabled,
+  onReset,
+}: {
+  tokens: ShortcutBarTokens;
+  disabled: boolean;
+  onReset: () => void;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      aria-label="Reset layout"
+      disabled={disabled}
+      onClick={onReset}
+      className={disabled ? tokens.buttonDisabled : tokens.button}
+    >
+      <span className={tokens.kbd}>Reset layout</span>
+    </button>
+  );
+}
+
 export function HomeShortcuts({
   commandHandleRef,
   layout,
@@ -644,6 +673,8 @@ export function HomeShortcuts({
   maximizedLeafId,
   interaction,
   skin,
+  onResetLayout,
+  resetDisabled,
 }: {
   commandHandleRef: React.RefObject<TilingCommandHandle | null>;
   layout: TilingLayoutNode | null;
@@ -652,6 +683,8 @@ export function HomeShortcuts({
   maximizedLeafId: string | null;
   interaction?: TilingInteractionCapabilities;
   skin: ShortcutSkin;
+  onResetLayout: () => void;
+  resetDisabled: boolean;
 }): React.ReactElement | null {
   const tokens: ShortcutBarTokens = SHORTCUT_BAR_SKIN[skin];
   const capabilities: ResolvedTilingInteractionCapabilities = React.useMemo(
@@ -683,16 +716,20 @@ export function HomeShortcuts({
     (section: ShortcutSection): boolean => section.entries.length > 0,
   );
 
-  if (visibleSections.length === 0) {
-    return null;
-  }
-
   return (
     <div
       role="group"
       aria-label="keyboard shortcuts"
       className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
+      <ResetLayoutChip
+        tokens={tokens}
+        disabled={resetDisabled}
+        onReset={onResetLayout}
+      />
+      {visibleSections.length > 0 ? (
+        <span aria-hidden className={tokens.divider} />
+      ) : null}
       {visibleSections.map(
         (section: ShortcutSection, sectionIndex: number): React.ReactElement => (
           <React.Fragment key={section.id}>

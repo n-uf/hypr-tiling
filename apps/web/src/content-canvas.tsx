@@ -13,16 +13,16 @@ import {
   INTRO_LICENSE_TAIL,
   INTRO_ONE_LINER,
   INTRO_REACH_PARAGRAPH,
+  INTRO_KUDOS_PARAGRAPH,
   LICENSE_NAME,
   LICENSE_URL,
-  MODEL_BODY_PARAGRAPH,
-  MODEL_KUDOS_HEADING,
-  MODEL_KUDOS_PARAGRAPH,
   ROADMAP_REST,
   USE_CASES,
   USECASES_LEAD,
   WORKSPACES_ALSO_PLANNED,
   WORKSPACES_HEADING,
+  WORKSPACES_HOWTO_HREF,
+  WORKSPACES_HOWTO_LABEL,
   WORKSPACES_LEAD,
   WORKSPACES_SHIPPED,
   type DocInline,
@@ -245,9 +245,14 @@ function IntroContent(): React.ReactElement {
       <p className="max-w-[64ch] rounded-[1px] border-l-2 border-cyan-400 bg-slate-50 px-4 py-3 text-[15px] leading-[1.55] text-slate-600">
         <CanvasInline paragraph={INTRO_DOGFOOD_PARAGRAPH} />
       </p>
-      <footer className="mt-auto border-t border-slate-200 pt-4 text-[11px] leading-[1.6] text-slate-400">
-        <CanvasLink href={LICENSE_URL}>{LICENSE_NAME}</CanvasLink>
-        {INTRO_LICENSE_TAIL}
+      <footer className="mt-auto flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-slate-200 pt-4 text-[11px] leading-[1.6] text-slate-400">
+        <span>
+          <CanvasLink href={LICENSE_URL}>{LICENSE_NAME}</CanvasLink>
+          {INTRO_LICENSE_TAIL}
+        </span>
+        <span>
+          <CanvasInline paragraph={INTRO_KUDOS_PARAGRAPH} />
+        </span>
       </footer>
     </div>
   );
@@ -301,25 +306,13 @@ function WorkspacesContent(): React.ReactElement {
       <CanvasLead>
         <CanvasInline paragraph={WORKSPACES_SHIPPED} />
       </CanvasLead>
-      <CanvasKicker>{WORKSPACES_ALSO_PLANNED}</CanvasKicker>
-      <CanvasIndex items={ROADMAP_REST} />
-    </div>
-  );
-}
-
-function ModelContent(): React.ReactElement {
-  return (
-    <div className="flex flex-col gap-5">
-      <CanvasHeading>The model</CanvasHeading>
-      <CanvasLead>
-        <CanvasInline paragraph={MODEL_BODY_PARAGRAPH} />
-      </CanvasLead>
-      <h3 className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-700">
-        {MODEL_KUDOS_HEADING}
-      </h3>
-      <CanvasLead>
-        <CanvasInline paragraph={MODEL_KUDOS_PARAGRAPH} />
-      </CanvasLead>
+      <p>
+        <CanvasLink href={WORKSPACES_HOWTO_HREF}>{WORKSPACES_HOWTO_LABEL}</CanvasLink>
+      </p>
+      <div className="flex flex-col gap-4 border-t border-slate-200 pt-5">
+        <CanvasKicker>{WORKSPACES_ALSO_PLANNED}</CanvasKicker>
+        <CanvasIndex items={ROADMAP_REST} />
+      </div>
     </div>
   );
 }
@@ -345,7 +338,6 @@ const CANVAS_PANE_CONTENT: Record<string, () => React.ReactElement> = {
   install: InstallContent,
   features: FeaturesContent,
   workspaces: WorkspacesContent,
-  model: ModelContent,
   discoverability: DiscoverabilityContent,
 };
 

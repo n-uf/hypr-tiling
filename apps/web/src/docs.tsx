@@ -343,6 +343,12 @@ export const INTRO_CONTRIBUTING_PARAGRAPH: DocParagraph = [
 ];
 export const INTRO_LICENSE_TAIL: string =
   " · source-available · free commercial use · no competing use";
+export const HYPRLAND_URL: string = "https://hypr.land";
+export const INTRO_KUDOS_PARAGRAPH: DocParagraph = [
+  "Kudos to Hyprland — Detach-and-drop, master/stack, and keyboard focus come from ",
+  { link: "Hyprland", href: HYPRLAND_URL },
+  ".",
+];
 
 // Use-cases pane lead (the list itself is `USE_CASES`).
 export const USECASES_LEAD: string =
@@ -355,59 +361,24 @@ export const INSTALL_INTRO_PARAGRAPH: DocParagraph = [
   ".",
 ];
 export const INSTALL_CONTROLLED_PARAGRAPH: DocParagraph = [
-  "You own the tree; apply every edit through ",
-  { code: "onLayoutChange" },
-  ".",
+  "You own the tree; apply every edit from your app.",
 ];
 
 export const WORKSPACES_HEADING: string = "Workspaces";
 export const WORKSPACES_LEAD: DocParagraph = [
-  "A workspace is one layout tree. A workspace set (",
-  { code: "TilingWorkspaceSet" },
-  ") is several trees over one tile pool, one active. Tab drop, swipe, keymap, and spring-load are engine-owned.",
+  "One layout per workspace, one active at a time. Switch with the tabs, a swipe, or Alt+1..9 — drag a pane onto a tab to move it there.",
 ];
 export const WORKSPACES_SHIPPED: DocParagraph = [
-  "Pass ",
-  { code: "workspaces" },
-  " + ",
-  { code: "onWorkspacesChange" },
-  " instead of ",
-  { code: "layout" },
-  " + ",
-  { code: "onLayoutChange" },
-  ". Pair with ",
-  { code: "useTilingWorkspaceTabs" },
-  ", ",
-  { code: "useTilingWorkspaceSetController" },
-  ", and ",
-  { code: "WORKSPACE_KEY_BINDINGS" },
-  ". ",
-  { link: "Workspaces how-to", href: "/docs#howto-workspaces" },
-  ".",
+  "You are using it now: this page is a set of three workspaces.",
 ];
+export const WORKSPACES_HOWTO_LABEL: string = "Workspaces how-to \u2192";
+export const WORKSPACES_HOWTO_HREF: string = "/docs#howto-workspaces";
 export const WORKSPACES_ALSO_PLANNED: string = "Also planned";
 
 // Roadmap pane lead (the list itself is `ROADMAP_ITEMS`).
 export const ROADMAP_LEAD: DocParagraph = [
   { em: "Planned" },
   ", not shipped. React + DOM only today.",
-];
-
-// Model & kudos pane.
-export const MODEL_BODY_PARAGRAPH: DocParagraph = [
-  "You own a serialisable tree of ",
-  { code: "leaf" },
-  ", ",
-  { code: "split" },
-  ", and ",
-  { code: "group" },
-  " nodes. The renderer paints it and reports every edit.",
-];
-export const MODEL_KUDOS_HEADING: string = "Kudos to Hyprland";
-export const MODEL_KUDOS_PARAGRAPH: DocParagraph = [
-  "Detach-and-drop, master/stack, and keyboard focus come from ",
-  { link: "Hyprland", href: "https://hypr.land" },
-  ".",
 ];
 
 // SEO + LLM pane.
@@ -517,9 +488,14 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
         <p className="max-w-[62ch] border-l-2 border-amber-300/30 pl-3 text-[15px] leading-[1.55] text-stone-400">
           <MosaicInline paragraph={INTRO_DOGFOOD_PARAGRAPH} />
         </p>
-        <footer className="mt-auto border-t border-white/[0.08] pt-3 text-[11px] leading-[1.5] text-stone-500">
-          <Link href={LICENSE_URL}>{LICENSE_NAME}</Link>
-          {INTRO_LICENSE_TAIL}
+        <footer className="mt-auto flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-white/[0.08] pt-3 text-[11px] leading-[1.5] text-stone-500">
+          <span>
+            <Link href={LICENSE_URL}>{LICENSE_NAME}</Link>
+            {INTRO_LICENSE_TAIL}
+          </span>
+          <span>
+            <MosaicInline paragraph={INTRO_KUDOS_PARAGRAPH} />
+          </span>
         </footer>
       </div>
     ),
@@ -599,7 +575,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     title: "workspaces",
     accent: "amber",
     summary:
-      "Workspaces: TilingWorkspaceSet over one tile pool. Pass workspaces + onWorkspacesChange; useTilingWorkspaceTabs for tablist and tab drop; useTilingWorkspaceSetController for a persisted set; WORKSPACE_KEY_BINDINGS, swipe, slide/fade transition, spring-load. Shipped 26.9.3–26.9.6.",
+      "One layout per workspace, one active at a time. Switch with the tabs, a swipe, or Alt+1..9 — drag a pane onto a tab to move it there. This page is a set of three workspaces.",
     content: (
       <div className="flex flex-col gap-4">
         <SectionHeading>{WORKSPACES_HEADING}</SectionHeading>
@@ -609,45 +585,29 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
         <SectionLead>
           <MosaicInline paragraph={WORKSPACES_SHIPPED} />
         </SectionLead>
-        <Eyebrow>{WORKSPACES_ALSO_PLANNED}</Eyebrow>
-        <ul className="flex flex-col divide-y divide-white/[0.05]">
-          {ROADMAP_REST.map(
-            (item: RoadmapItem): React.ReactElement => (
-              <li
-                key={item.term}
-                className="flex flex-col gap-0.5 py-2 first:pt-0 last:pb-0"
-              >
-                <span className="text-[15px] font-medium text-stone-100">
-                  {item.term}
-                </span>
-                <span className="text-[15px] leading-[1.45] text-stone-400">
-                  {item.detail}
-                </span>
-              </li>
-            ),
-          )}
-        </ul>
-      </div>
-    ),
-  },
-  {
-    id: "model",
-    title: "model & kudos",
-    accent: "amber",
-    summary:
-      "The layout is a serialisable split-tree you own in state; the renderer projects it to pixels and reports edits. Inspired by the Hyprland Wayland compositor.",
-    content: (
-      <div className="flex flex-col gap-4">
-        <SectionHeading>The model</SectionHeading>
-        <SectionLead>
-          <MosaicInline paragraph={MODEL_BODY_PARAGRAPH} />
-        </SectionLead>
-        <h3 className="font-display text-[15px] font-medium text-stone-100">
-          {MODEL_KUDOS_HEADING}
-        </h3>
-        <SectionLead>
-          <MosaicInline paragraph={MODEL_KUDOS_PARAGRAPH} />
-        </SectionLead>
+        <p>
+          <Link href={WORKSPACES_HOWTO_HREF}>{WORKSPACES_HOWTO_LABEL}</Link>
+        </p>
+        <div className="flex flex-col gap-3 border-t border-white/[0.08] pt-4">
+          <Eyebrow>{WORKSPACES_ALSO_PLANNED}</Eyebrow>
+          <ul className="flex flex-col divide-y divide-white/[0.05]">
+            {ROADMAP_REST.map(
+              (item: RoadmapItem): React.ReactElement => (
+                <li
+                  key={item.term}
+                  className="flex flex-col gap-0.5 py-2 first:pt-0 last:pb-0"
+                >
+                  <span className="text-[15px] font-medium text-stone-100">
+                    {item.term}
+                  </span>
+                  <span className="text-[15px] leading-[1.45] text-stone-400">
+                    {item.detail}
+                  </span>
+                </li>
+              ),
+            )}
+          </ul>
+        </div>
       </div>
     ),
   },

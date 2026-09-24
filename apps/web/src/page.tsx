@@ -18,7 +18,10 @@ import {
   type TilingWorkspaceSwitchEvent,
   type UseTilingWorkspaceTabsResult,
 } from "@n-uf/hypr-tiling";
-import { buildChangelogWidgetTiles } from "./changelog-widgets";
+import {
+  buildChangelogWidgetTiles,
+  type HomeInspectorEvent,
+} from "./changelog-widgets";
 import { preloadRoute } from "./docs-route";
 import { DOC_PANES, REPO_URL } from "./docs";
 import { DocTile } from "./tile";
@@ -30,10 +33,13 @@ import { CANVAS_THEME, CANVAS_TICKS } from "./canvas-theme";
 import { HomeShortcuts } from "./shortcuts";
 import { HomeWorkspaceTabStrip } from "./home-workspace-tabs";
 import {
+  clearHomeWorkspaceSet,
   createHomeWorkspaceSet,
+  HOME_WORKSPACE_ID_HOME,
   mintHomeWorkspaceId,
   nextHomeWorkspaceName,
   readHomeWorkspaceSet,
+  workspaceSetEquals,
   writeHomeWorkspaceSet,
 } from "./home-workspaces";
 import { MobileHome } from "./mobile-home/mobile-home";
@@ -152,6 +158,8 @@ interface SkinChromeTokens {
   readonly switchActive: string;
   readonly switchInactive: string;
   readonly ctaSecondary: string;
+  readonly resetEnabled: string;
+  readonly resetDisabled: string;
 }
 
 const SKIN_CHROME: Record<HomeSkin, SkinChromeTokens> = {
@@ -175,6 +183,9 @@ const SKIN_CHROME: Record<HomeSkin, SkinChromeTokens> = {
       "rounded-full px-3 py-1 text-stone-400 transition-colors hover:text-stone-200",
     ctaSecondary:
       "group inline-flex w-fit items-center gap-2 rounded-md border border-white/15 bg-white/[0.02] px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-stone-200 transition-[transform,border-color,background-color,color] duration-150 hover:-translate-y-px hover:border-amber-300/50 hover:bg-amber-300/[0.06] hover:text-amber-100",
+    resetEnabled:
+      "rounded-full px-3 py-1 text-stone-300 transition-colors hover:text-amber-100",
+    resetDisabled: "rounded-full px-3 py-1 text-stone-600",
   },
   editorial: {
     bar: "flex shrink-0 items-center gap-3 rounded-[4px] border border-[#e2dac6] bg-[#fbf9f2] px-3.5 py-2 shadow-[0_1px_0_rgba(36,31,23,0.03),0_10px_28px_-24px_rgba(36,31,23,0.4)]",
@@ -196,6 +207,9 @@ const SKIN_CHROME: Record<HomeSkin, SkinChromeTokens> = {
       "text-[#9c8f77] transition-colors hover:text-[#241f17]",
     ctaSecondary:
       "group inline-flex w-fit items-center gap-2 rounded-[3px] border border-[#c9bd9f] bg-transparent px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-[#6b6250] transition-[transform,border-color,color] duration-150 hover:-translate-y-px hover:border-[#241f17] hover:text-[#241f17]",
+    resetEnabled:
+      "text-[#6b6250] transition-colors hover:text-[#241f17]",
+    resetDisabled: "text-[#c9bd9f]",
   },
   canvas: {
     bar: "flex shrink-0 items-center gap-3 rounded-lg border border-slate-200 bg-white/90 px-3.5 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur",
@@ -217,6 +231,9 @@ const SKIN_CHROME: Record<HomeSkin, SkinChromeTokens> = {
       "rounded px-3 py-1 text-slate-400 transition-colors hover:text-slate-700",
     ctaSecondary:
       "group inline-flex w-fit items-center gap-2 rounded-md border border-slate-200 bg-white px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-slate-600 transition-[transform,border-color,color] duration-150 hover:-translate-y-px hover:border-slate-300 hover:text-slate-900",
+    resetEnabled:
+      "rounded px-3 py-1 text-slate-600 transition-colors hover:text-slate-900",
+    resetDisabled: "rounded px-3 py-1 text-slate-300",
   },
 };
 
@@ -259,6 +276,8 @@ function HomeTopBar({
   isMobile,
   mobileMode,
   onMobileModeChange,
+  onResetLayout,
+  resetDisabled,
 }: {
   skin: HomeSkin;
   onSkinChange: (next: HomeSkin) => void;
@@ -266,6 +285,8 @@ function HomeTopBar({
   isMobile: boolean;
   mobileMode: MobileHomeMode;
   onMobileModeChange: (mode: MobileHomeMode) => void;
+  onResetLayout: () => void;
+  resetDisabled: boolean;
 }): React.ReactElement {
   const tokens: SkinChromeTokens = SKIN_CHROME[skin];
 
@@ -296,6 +317,17 @@ function HomeTopBar({
         tabs={workspaceTabs.tabs}
         tablistProps={workspaceTabs.tablistProps}
       />
+      <div className={tokens.switchGroup}>
+        <button
+          type="button"
+          aria-label="Reset layout"
+          disabled={resetDisabled}
+          onClick={onResetLayout}
+          className={resetDisabled ? tokens.resetDisabled : tokens.resetEnabled}
+        >
+          Reset layout
+        </button>
+      </div>
       <div
         role="group"
         aria-label="Site skin"
@@ -395,6 +427,8 @@ function HomeBottomBar({
   focusedLeafId,
   maximizedLeafId,
   isCoarsePointer,
+  onResetLayout,
+  resetDisabled,
 }: {
   skin: HomeSkin;
   commandHandleRef: React.RefObject<TilingCommandHandle | null>;
@@ -404,6 +438,8 @@ function HomeBottomBar({
   focusedLeafId: string | null;
   maximizedLeafId: string | null;
   isCoarsePointer: boolean;
+  onResetLayout: () => void;
+  resetDisabled: boolean;
 }): React.ReactElement {
   const tokens: SkinBottomBarTokens = SKIN_BOTTOM_BAR[skin];
 
@@ -419,6 +455,8 @@ function HomeBottomBar({
           maximizedLeafId={maximizedLeafId}
           interaction={interaction}
           skin={skin}
+          onResetLayout={onResetLayout}
+          resetDisabled={resetDisabled}
         />
       )}
       {isCoarsePointer ? null : (
@@ -447,15 +485,22 @@ export function HomePage({
     null,
   );
   const [skin, setSkin] = React.useState<HomeSkin>("mosaic");
-  const [lastWorkspaceSwitch, setLastWorkspaceSwitch] =
-    React.useState<TilingWorkspaceSwitchEvent | null>(null);
+  const [inspectorEvent, setInspectorEvent] =
+    React.useState<HomeInspectorEvent | null>(null);
   const [switchFlashNonce, setSwitchFlashNonce] = React.useState<number>(0);
   const commandHandleRef = React.useRef<TilingCommandHandle | null>(null);
   const hydratedStorageRef = React.useRef<boolean>(false);
+  const ignoreSwitchAfterResetRef = React.useRef<boolean>(false);
 
   const onWorkspaceSwitch = React.useCallback(
     (event: TilingWorkspaceSwitchEvent): void => {
-      setLastWorkspaceSwitch(event);
+      if (ignoreSwitchAfterResetRef.current) {
+        ignoreSwitchAfterResetRef.current = false;
+        if (event.to === HOME_WORKSPACE_ID_HOME) {
+          return;
+        }
+      }
+      setInspectorEvent({ kind: "switch", event });
       setSwitchFlashNonce((nonce: number): number => nonce + 1);
     },
     [],
@@ -495,6 +540,28 @@ export function HomePage({
     onWorkspacesChange: workspaceController.onWorkspacesChange,
     theme: skin === "canvas" ? CANVAS_THEME : undefined,
   });
+
+  const seedWorkspaceSet: TilingWorkspaceSet = React.useMemo(
+    (): TilingWorkspaceSet => createHomeWorkspaceSet(),
+    [],
+  );
+  const resetDisabled: boolean = workspaceSetEquals(
+    workspaceController.set,
+    seedWorkspaceSet,
+  );
+
+  const onResetLayout = React.useCallback((): void => {
+    const seed: TilingWorkspaceSet = createHomeWorkspaceSet();
+    ignoreSwitchAfterResetRef.current = true;
+    workspaceController.onWorkspacesChange(seed);
+    workspaceController.flush();
+    setWorkspaceDocument(seed);
+    clearHomeWorkspaceSet();
+    setFocusedLeafId(INITIAL_FOCUSED_LEAF_ID);
+    setMaximizedLeafId(null);
+    setInspectorEvent({ kind: "reset" });
+    setSwitchFlashNonce((nonce: number): number => nonce + 1);
+  }, [workspaceController]);
 
   React.useEffect((): void => {
     if (hydratedStorageRef.current) {
@@ -592,7 +659,7 @@ export function HomePage({
   const widgetTiles: ReadonlyArray<TilingTile> = buildChangelogWidgetTiles({
     skin,
     workspaceSet: workspaceController.set,
-    lastSwitch: lastWorkspaceSwitch,
+    lastEvent: inspectorEvent,
     flashNonce: switchFlashNonce,
     navigate: navigate == null ? undefined : openDocsHref,
   });
@@ -663,6 +730,8 @@ export function HomePage({
           isMobile={isMobile}
           mobileMode={mobileMode}
           onMobileModeChange={onMobileModeChange}
+          onResetLayout={onResetLayout}
+          resetDisabled={resetDisabled}
         />
         <div
           className="min-h-0 min-w-0 flex-1"
@@ -738,6 +807,8 @@ export function HomePage({
             focusedLeafId={focusedLeafId}
             maximizedLeafId={maximizedLeafId}
             isCoarsePointer={isCoarsePointer}
+            onResetLayout={onResetLayout}
+            resetDisabled={resetDisabled}
           />
         )}
       </TilingWorkspaceSwipeScope>

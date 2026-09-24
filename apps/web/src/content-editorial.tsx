@@ -13,16 +13,16 @@ import {
   INTRO_LICENSE_TAIL,
   INTRO_ONE_LINER,
   INTRO_REACH_PARAGRAPH,
+  INTRO_KUDOS_PARAGRAPH,
   LICENSE_NAME,
   LICENSE_URL,
-  MODEL_BODY_PARAGRAPH,
-  MODEL_KUDOS_HEADING,
-  MODEL_KUDOS_PARAGRAPH,
   ROADMAP_REST,
   USE_CASES,
   USECASES_LEAD,
   WORKSPACES_ALSO_PLANNED,
   WORKSPACES_HEADING,
+  WORKSPACES_HOWTO_HREF,
+  WORKSPACES_HOWTO_LABEL,
   WORKSPACES_LEAD,
   WORKSPACES_SHIPPED,
   type DocInline,
@@ -223,9 +223,14 @@ function IntroContent(): React.ReactElement {
       <p className="max-w-[64ch] border-l-2 border-[#c9bd9f] pl-4 font-display text-[16px] italic leading-[1.6] text-[#4b4335]">
         <EditorialInline paragraph={INTRO_DOGFOOD_PARAGRAPH} />
       </p>
-      <footer className="mt-auto border-t border-[#ddd3bd] pt-4 text-[11px] leading-[1.6] text-[#8c8069]">
-        <EditorialLink href={LICENSE_URL}>{LICENSE_NAME}</EditorialLink>
-        {INTRO_LICENSE_TAIL}
+      <footer className="mt-auto flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-[#ddd3bd] pt-4 text-[11px] leading-[1.6] text-[#8c8069]">
+        <span>
+          <EditorialLink href={LICENSE_URL}>{LICENSE_NAME}</EditorialLink>
+          {INTRO_LICENSE_TAIL}
+        </span>
+        <span>
+          <EditorialInline paragraph={INTRO_KUDOS_PARAGRAPH} />
+        </span>
       </footer>
     </div>
   );
@@ -279,25 +284,15 @@ function WorkspacesContent(): React.ReactElement {
       <EditorialLead>
         <EditorialInline paragraph={WORKSPACES_SHIPPED} />
       </EditorialLead>
-      <EditorialKicker>{WORKSPACES_ALSO_PLANNED}</EditorialKicker>
-      <EditorialIndex items={ROADMAP_REST} />
-    </div>
-  );
-}
-
-function ModelContent(): React.ReactElement {
-  return (
-    <div className="flex flex-col gap-5">
-      <EditorialHeading>The model</EditorialHeading>
-      <EditorialLead>
-        <EditorialInline paragraph={MODEL_BODY_PARAGRAPH} />
-      </EditorialLead>
-      <h3 className="font-display text-[17px] font-normal italic text-[#241f17]">
-        {MODEL_KUDOS_HEADING}
-      </h3>
-      <EditorialLead>
-        <EditorialInline paragraph={MODEL_KUDOS_PARAGRAPH} />
-      </EditorialLead>
+      <p>
+        <EditorialLink href={WORKSPACES_HOWTO_HREF}>
+          {WORKSPACES_HOWTO_LABEL}
+        </EditorialLink>
+      </p>
+      <div className="flex flex-col gap-4 border-t border-[#ddd3bd] pt-5">
+        <EditorialKicker>{WORKSPACES_ALSO_PLANNED}</EditorialKicker>
+        <EditorialIndex items={ROADMAP_REST} />
+      </div>
     </div>
   );
 }
@@ -323,7 +318,6 @@ const EDITORIAL_PANE_CONTENT: Record<string, () => React.ReactElement> = {
   install: InstallContent,
   features: FeaturesContent,
   workspaces: WorkspacesContent,
-  model: ModelContent,
   discoverability: DiscoverabilityContent,
 };
 

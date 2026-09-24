@@ -371,15 +371,32 @@ function seatCountsOf(
 
 const INSPECTOR_FLASH_MS: number = 640;
 
+export type HomeInspectorEvent =
+  | { readonly kind: "switch"; readonly event: TilingWorkspaceSwitchEvent }
+  | { readonly kind: "reset" };
+
+function inspectorEventLine(
+  workspaceSet: TilingWorkspaceSet,
+  event: HomeInspectorEvent | null,
+): string {
+  if (event == null) {
+    return "none";
+  }
+  if (event.kind === "reset") {
+    return "reset \u2192 seed";
+  }
+  return `${workspaceName(workspaceSet, event.event.from).toLowerCase()} \u2192 ${workspaceName(workspaceSet, event.event.to).toLowerCase()} via ${event.event.via}`;
+}
+
 function SetInspectorWidget({
   skin,
   workspaceSet,
-  lastSwitch,
+  lastEvent,
   flashNonce,
 }: {
   skin: ChangelogWidgetSkin;
   workspaceSet: TilingWorkspaceSet;
-  lastSwitch: TilingWorkspaceSwitchEvent | null;
+  lastEvent: HomeInspectorEvent | null;
   flashNonce: number;
 }): React.ReactElement {
   const tokens: WidgetSkinTokens = WIDGET_SKIN[skin];
@@ -389,7 +406,7 @@ function SetInspectorWidget({
   const [flashing, setFlashing] = React.useState<boolean>(false);
 
   React.useEffect((): (() => void) | undefined => {
-    if (flashNonce === 0 || lastSwitch == null) {
+    if (flashNonce === 0 || lastEvent == null) {
       return undefined;
     }
     setFlashing(true);
@@ -399,12 +416,9 @@ function SetInspectorWidget({
     return (): void => {
       window.clearTimeout(timer);
     };
-  }, [flashNonce, lastSwitch]);
+  }, [flashNonce, lastEvent]);
 
-  const eventLine: string =
-    lastSwitch == null
-      ? "none"
-      : `${workspaceName(workspaceSet, lastSwitch.from).toLowerCase()} \u2192 ${workspaceName(workspaceSet, lastSwitch.to).toLowerCase()} via ${lastSwitch.via}`;
+  const eventLine: string = inspectorEventLine(workspaceSet, lastEvent);
 
   return (
     <div className={tokens.body}>
@@ -504,11 +518,11 @@ function SwipeMeterWidget({
 export function buildChangelogWidgetTiles(args: {
   skin: ChangelogWidgetSkin;
   workspaceSet: TilingWorkspaceSet;
-  lastSwitch: TilingWorkspaceSwitchEvent | null;
+  lastEvent: HomeInspectorEvent | null;
   flashNonce: number;
   navigate?: (to: string) => void;
 }): ReadonlyArray<TilingTile> {
-  const { skin, workspaceSet, lastSwitch, flashNonce, navigate } = args;
+  const { skin, workspaceSet, lastEvent, flashNonce, navigate } = args;
   return [
     {
       id: "release-timeline",
@@ -542,7 +556,7 @@ export function buildChangelogWidgetTiles(args: {
         <SetInspectorWidget
           skin={skin}
           workspaceSet={workspaceSet}
-          lastSwitch={lastSwitch}
+          lastEvent={lastEvent}
           flashNonce={flashNonce}
         />
       ),

@@ -26,7 +26,7 @@ import { SchematicMap } from "./schematic-map";
 // the user drags the gap to trade map height for content height. The map
 // defaults to ~24% of the area, never half. Tapping a rect in the schematic
 // re-points the content leaf at that pane; it never reshapes the split. The
-// schematic itself is drawn from a SEPARATE seven-pane dwindle tree (rects +
+// schematic itself is drawn from a SEPARATE six-pane dwindle tree (rects +
 // ordinals) so the map still represents the full home even though the engine
 // layout here is just two leaves.
 
@@ -75,7 +75,7 @@ export function PocketGridMobile({
     MOBILE_INITIAL_LEAF_ID,
   );
 
-  // The seven-pane dwindle tree the schematic is drawn from — constant across
+  // The six-pane dwindle tree the schematic is drawn from — constant across
   // the session (resizing the split never touches it).
   const dwindle: TilingLayoutNode = React.useMemo(buildMobileDwindleLayout, []);
   const dwindleQuery: TilingLayoutQuery = React.useMemo(

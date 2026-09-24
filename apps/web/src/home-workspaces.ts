@@ -6,14 +6,16 @@ import type {
 
 // Seed workspace set for the docs homepage. Workspace 1 (Home) is active on
 // SSR / first paint. Home folds the landing tiles plus the use-case / SEO
-// pair (a tab group so 1440×900 stays uncramped). Workspaces is unchanged.
-// Changelog is a six-widget dashboard. Doc tile ids match `DOC_PANES`; widget
+// pair (a tab group so 1440×900 stays uncramped). Workspaces seats the
+// workspaces copy (left, wider) beside the set-inspector / swipe-meter
+// dogfood pair. Changelog is a four-widget dashboard: tall release timeline
+// beside latest / breaking / version. Doc tile ids match `DOC_PANES`; widget
 // tile ids live in `changelog-widgets.tsx`. Leaf id equals tile id.
 
 export const HOME_WORKSPACE_STORAGE_KEY: string =
-  "hypr-tiling-home-workspaces-v2";
+  "hypr-tiling-home-workspaces-v3";
 
-export const HOME_WORKSPACE_STORAGE_VERSION: number = 2;
+export const HOME_WORKSPACE_STORAGE_VERSION: number = 3;
 
 export const HOME_WORKSPACE_ID_HOME: string = "ws-home";
 export const HOME_WORKSPACE_ID_WORKSPACES: string = "ws-workspaces";
@@ -58,51 +60,44 @@ const WORKSPACES_LAYOUT: TilingLayoutNode = {
   kind: "split",
   id: "workspaces-root",
   axis: "horizontal",
-  ratio: 0.55,
+  ratio: 0.62,
   first: { kind: "leaf", id: "workspaces", tileId: "workspaces" },
-  second: { kind: "leaf", id: "model", tileId: "model" },
+  second: {
+    kind: "split",
+    id: "workspaces-dogfood",
+    axis: "vertical",
+    ratio: 0.62,
+    first: { kind: "leaf", id: "set-inspector", tileId: "set-inspector" },
+    second: { kind: "leaf", id: "swipe-meter", tileId: "swipe-meter" },
+  },
 };
 
 const CHANGELOG_LAYOUT: TilingLayoutNode = {
   kind: "split",
   id: "changelog-root",
   axis: "horizontal",
-  ratio: 0.32,
+  ratio: 0.38,
   first: { kind: "leaf", id: "release-timeline", tileId: "release-timeline" },
   second: {
     kind: "split",
     id: "changelog-right",
     axis: "vertical",
-    ratio: 0.34,
+    ratio: 0.42,
     first: { kind: "leaf", id: "latest-release", tileId: "latest-release" },
     second: {
       kind: "split",
       id: "changelog-bottom",
-      axis: "vertical",
-      ratio: 0.5,
+      axis: "horizontal",
+      ratio: 0.56,
       first: {
-        kind: "split",
-        id: "changelog-mid",
-        axis: "horizontal",
-        ratio: 0.55,
-        first: {
-          kind: "leaf",
-          id: "breaking-changes",
-          tileId: "breaking-changes",
-        },
-        second: {
-          kind: "leaf",
-          id: "version-install",
-          tileId: "version-install",
-        },
+        kind: "leaf",
+        id: "breaking-changes",
+        tileId: "breaking-changes",
       },
       second: {
-        kind: "split",
-        id: "changelog-dogfood",
-        axis: "horizontal",
-        ratio: 0.55,
-        first: { kind: "leaf", id: "set-inspector", tileId: "set-inspector" },
-        second: { kind: "leaf", id: "swipe-meter", tileId: "swipe-meter" },
+        kind: "leaf",
+        id: "version-install",
+        tileId: "version-install",
       },
     },
   },
@@ -265,6 +260,140 @@ export function writeHomeWorkspaceSet(set: TilingWorkspaceSet): void {
   } catch {
     // Quota / private-mode: keep the in-memory set; next visit reseeds.
   }
+}
+
+export function clearHomeWorkspaceSet(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.removeItem(HOME_WORKSPACE_STORAGE_KEY);
+  } catch {
+    // Private-mode / blocked storage: in-memory reset still stands.
+  }
+}
+
+interface NormalisedSizing {
+  readonly width: string | null;
+  readonly height: string | null;
+  readonly widthPx: number | null;
+  readonly heightPx: number | null;
+}
+
+interface NormalisedLeaf {
+  readonly kind: "leaf";
+  readonly id: string;
+  readonly tileId: string;
+  readonly collapsed: boolean;
+  readonly sizing: NormalisedSizing | null;
+}
+
+interface NormalisedSplit {
+  readonly kind: "split";
+  readonly id: string;
+  readonly axis: string;
+  readonly ratio: number;
+  readonly first: NormalisedLayout;
+  readonly second: NormalisedLayout;
+  readonly layoutMode: string;
+  readonly masterCount: number | null;
+  readonly masterOrientation: string | null;
+}
+
+interface NormalisedGroup {
+  readonly kind: "group";
+  readonly id: string;
+  readonly activeMemberId: string;
+  readonly members: ReadonlyArray<NormalisedLeaf>;
+}
+
+type NormalisedLayout = NormalisedLeaf | NormalisedSplit | NormalisedGroup;
+
+interface NormalisedWorkspace {
+  readonly id: string;
+  readonly name: string;
+  readonly layout: NormalisedLayout | null;
+}
+
+interface NormalisedWorkspaceSet {
+  readonly activeId: string;
+  readonly workspaces: ReadonlyArray<NormalisedWorkspace>;
+}
+
+function normalisedSizing(
+  sizing: TilingLayoutNode["sizing"],
+): NormalisedSizing | null {
+  if (sizing == null) {
+    return null;
+  }
+  return {
+    width: sizing.width ?? null,
+    height: sizing.height ?? null,
+    widthPx: sizing.widthPx ?? null,
+    heightPx: sizing.heightPx ?? null,
+  };
+}
+
+function normalisedLeaf(node: Extract<TilingLayoutNode, { kind: "leaf" }>): NormalisedLeaf {
+  return {
+    kind: "leaf",
+    id: node.id,
+    tileId: node.tileId,
+    collapsed: node.collapsed === true,
+    sizing: normalisedSizing(node.sizing),
+  };
+}
+
+function normalisedLayoutNode(node: TilingLayoutNode): NormalisedLayout {
+  if (node.kind === "leaf") {
+    return normalisedLeaf(node);
+  }
+  if (node.kind === "group") {
+    return {
+      kind: "group",
+      id: node.id,
+      activeMemberId: node.activeMemberId,
+      members: node.members.map(normalisedLeaf),
+    };
+  }
+  return {
+    kind: "split",
+    id: node.id,
+    axis: node.axis,
+    ratio: node.ratio,
+    first: normalisedLayoutNode(node.first),
+    second: normalisedLayoutNode(node.second),
+    layoutMode: node.layoutMode ?? "dwindle",
+    masterCount: node.masterCount ?? null,
+    masterOrientation: node.masterOrientation ?? null,
+  };
+}
+
+function normalisedLayout(node: TilingLayoutNode | null): NormalisedLayout | null {
+  return node == null ? null : normalisedLayoutNode(node);
+}
+
+function normalisedWorkspaceSet(set: TilingWorkspaceSet): NormalisedWorkspaceSet {
+  return {
+    activeId: set.activeId,
+    workspaces: set.workspaces.map(
+      (workspace: TilingWorkspace): NormalisedWorkspace => ({
+        id: workspace.id,
+        name: workspace.name,
+        layout: normalisedLayout(workspace.layout),
+      }),
+    ),
+  };
+}
+
+export function workspaceSetEquals(
+  left: TilingWorkspaceSet,
+  right: TilingWorkspaceSet,
+): boolean {
+  return (
+    JSON.stringify(normalisedWorkspaceSet(left)) ===
+    JSON.stringify(normalisedWorkspaceSet(right))
+  );
 }
 
 export function mintHomeWorkspaceId(): string {
