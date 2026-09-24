@@ -37,7 +37,7 @@ neither automated layer can reproduce.
 - **Chrome remote-debugging endpoint:** `http://127.0.0.1:9333`. A fresh headless
   Chrome is launched on this port in step 1; override `CDP_PORT` if 9333 is taken.
 
-The showcase that renders the live-drag tiling surface is reachable from the
+The homepage that renders the live-drag tiling surface is reachable from the
 homepage; if the draggable panes (`EVENTS` / `DEBUG CONSOLE` / `ALERTS` /
 `OVERVIEW` / `SPEND`) are on a sub-route, navigate there in step 3 by setting
 `APP_URL` to that route.

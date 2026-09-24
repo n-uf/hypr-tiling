@@ -15,6 +15,14 @@ import {
   SectionLead,
 } from "./docs";
 import {
+  CHANGELOG_NAV_LEAVES,
+  CHANGELOG_RELEASES,
+  type ChangelogBlock,
+  type ChangelogBullet,
+  type ChangelogInline,
+  type ChangelogRelease,
+} from "./changelog";
+import {
   API_REFERENCE_SECTIONS,
   type ApiReferenceSection,
 } from "./api-reference/generated";
@@ -38,7 +46,7 @@ import { TerminalGridApp } from "./docs-examples/terminal-grid";
 // apps/web/_agent/docs-ia.md.
 //
 // NAV MODEL — the left sidebar is the SPINE. It mirrors the ENTIRE content tree
-// (Get started · Guides · Concepts · Examples · a collapsible API reference tree
+// (Get started · Guides · Concepts · Examples · Changelog · a collapsible API reference tree
 // grouped by category) and tracks the reader with an IntersectionObserver
 // scroll-spy: the active anchor highlights, the sidebar auto-scrolls it into
 // view, and clicking a leaf smooth-scrolls to its anchor. A right-rail
@@ -53,7 +61,8 @@ import { TerminalGridApp } from "./docs-examples/terminal-grid";
 //   3. How do I…    — outcome-framed recipes (the heart).
 //   4. Concepts    — only what unblocks the recipes (tree / ownership / caps).
 //   5. Examples    — whole runnable apps to copy wholesale.
-//   6. Reference   — the generated per-symbol reference, DEMOTED and grouped by
+//   6. Changelog   — release notes rendered from packages/hypr-tiling/CHANGELOG.md.
+//   7. Reference   — the generated per-symbol reference, DEMOTED and grouped by
 //                    category (Renderer · Layout & query · Theming · Commands ·
 //                    Advanced helpers): "for when you already know the name."
 //
@@ -384,6 +393,7 @@ const NAV_SECTIONS: ReadonlyArray<NavSection> = [
   { id: "howto", label: "Guides", leaves: GUIDE_LEAVES },
   { id: "concepts", label: "Concepts", leaves: CONCEPT_LEAVES },
   { id: "examples", label: "Examples", leaves: EXAMPLE_LEAVES },
+  { id: "changelog", label: "Changelog", leaves: CHANGELOG_NAV_LEAVES },
   {
     id: "reference",
     label: "API reference",
@@ -823,18 +833,6 @@ function DocsNav({
             Home
           </a>
           <a
-            href="/showcase"
-            onClick={(event: React.MouseEvent<HTMLAnchorElement>): void => {
-              if (navigate != null) {
-                event.preventDefault();
-                navigate("/showcase");
-              }
-            }}
-            className="transition-colors hover:text-amber-100"
-          >
-            Showcase
-          </a>
-          <a
             href={REPO_URL}
             target="_blank"
             rel="noopener noreferrer"
@@ -932,6 +930,128 @@ function ReferenceGroupBlock({
         ),
       )}
     </div>
+  );
+}
+
+function ChangelogInlineView({
+  inline,
+}: {
+  inline: ChangelogInline;
+}): React.ReactElement {
+  if (inline.kind === "code") {
+    return <Code>{inline.text}</Code>;
+  }
+  if (inline.kind === "strong") {
+    return <strong className="font-medium text-stone-100">{inline.text}</strong>;
+  }
+  if (inline.kind === "link") {
+    return <Link href={inline.href}>{inline.text}</Link>;
+  }
+  return <>{inline.text}</>;
+}
+
+function ChangelogInlines({
+  inlines,
+}: {
+  inlines: ReadonlyArray<ChangelogInline>;
+}): React.ReactElement {
+  return (
+    <>
+      {inlines.map(
+        (inline: ChangelogInline, index: number): React.ReactElement => (
+          <ChangelogInlineView key={`${inline.kind}-${index}`} inline={inline} />
+        ),
+      )}
+    </>
+  );
+}
+
+function ChangelogBlockView({
+  block,
+}: {
+  block: ChangelogBlock;
+}): React.ReactElement {
+  if (block.kind === "heading") {
+    return (
+      <h4 className="font-display text-[16px] font-medium text-stone-100">
+        {block.text}
+      </h4>
+    );
+  }
+  if (block.kind === "paragraph") {
+    return (
+      <p className="max-w-[68ch] text-[13px] leading-[1.7] text-stone-300/90">
+        <ChangelogInlines inlines={block.inlines} />
+      </p>
+    );
+  }
+  return (
+    <ul className="flex flex-col gap-2.5">
+      {block.bullets.map(
+        (bullet: ChangelogBullet, index: number): React.ReactElement => (
+          <li
+            key={index}
+            className="flex flex-col gap-1.5 border-l border-white/[0.08] pl-3"
+          >
+            {bullet.isBreaking ? (
+              <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-rose-300/85">
+                breaking
+              </span>
+            ) : null}
+            <span className="max-w-[68ch] text-[13px] leading-[1.65] text-stone-300/90">
+              <ChangelogInlines inlines={bullet.inlines} />
+            </span>
+          </li>
+        ),
+      )}
+    </ul>
+  );
+}
+
+function ChangelogReleaseView({
+  release,
+}: {
+  release: ChangelogRelease;
+}): React.ReactElement {
+  return (
+    <article className="flex flex-col gap-3 scroll-mt-24" id={release.id}>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 className="font-display text-[19px] font-medium text-stone-100">
+          {release.versionLabel}
+        </h3>
+        {release.date !== null ? (
+          <span className="font-mono text-[11px] tracking-[0.08em] text-stone-500">
+            {release.date}
+          </span>
+        ) : null}
+      </div>
+      {release.blocks.map(
+        (block: ChangelogBlock, index: number): React.ReactElement => (
+          <ChangelogBlockView key={`${release.id}-${block.kind}-${index}`} block={block} />
+        ),
+      )}
+    </article>
+  );
+}
+
+function Changelog(): React.ReactElement {
+  return (
+    <GuideSection id="changelog" eyebrow="releases" title="Changelog">
+      <SectionLead>
+        Newest first, including Unreleased. Calendar versioning (
+        <Code>YY.M.R</Code>) cannot signal a SemVer major — breaking changes are
+        flagged in the notes below, not by the version number. This page renders{" "}
+        <Link href={CHANGELOG_URL}>packages/hypr-tiling/CHANGELOG.md</Link>{" "}
+        directly.
+      </SectionLead>
+      <div className="flex flex-col gap-8">
+        {CHANGELOG_RELEASES.map(
+          (release: ChangelogRelease): React.ReactElement => (
+            <ChangelogReleaseView key={release.id} release={release} />
+          ),
+        )}
+      </div>
+    </GuideSection>
   );
 }
 
@@ -1182,8 +1302,8 @@ export function DocsPage({
                   header, and controls, and wire them to the renderer&rsquo;s drag,
                   maximize, focus, and grouping handlers. Same generic{" "}
                   <Code>renderTile</Code> prop as above — it returns the whole pane
-                  and hands you every interaction handle and state flag, so no
-                  showcase-only prop is involved.
+                  and hands you every interaction handle and state flag — no
+                  extra host-only prop is involved.
                 </>
               }
               exampleId="custom-chrome"
@@ -1548,12 +1668,17 @@ export function DocsPage({
             </div>
           </GuideSection>
 
-          {/* 6. REFERENCE — DEMOTED, last, grouped by category. */}
+          {/* 6. CHANGELOG — rendered from packages/hypr-tiling/CHANGELOG.md. */}
+          <Changelog />
+
+          {/* 7. REFERENCE — DEMOTED, last, grouped by category. */}
           <ApiReference />
 
           <footer className="border-t border-white/[0.08] pt-6 text-[12px] leading-[1.7] text-stone-500">
             hypr-tiling follows calendar versioning; breaking changes and release
             notes live in the{" "}
+            <Link href="#changelog">Changelog</Link>
+            {" · "}
             <Link href={CHANGELOG_URL}>CHANGELOG.md</Link>. Source-available under{" "}
             <Link href={LICENSE_URL}>{LICENSE_NAME}</Link> · free commercial use ·
             no competing use.

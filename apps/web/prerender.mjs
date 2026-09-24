@@ -15,14 +15,13 @@ const workspaceAssetsDir = resolve(here, "..", "..", "assets");
 const serverEntry = resolve(here, "dist-server/entry-server.mjs");
 const templatePath = resolve(distDir, "index.html");
 
-const { render, renderHead, renderDocs, renderDocsHead, renderShowcaseHead, llmsTxt } =
+const { render, renderHead, renderDocs, renderDocsHead, llmsTxt } =
   await import(serverEntry);
 
 const appHtml = render();
 const headHtml = renderHead();
 const docsHtml = renderDocs();
 const docsHeadHtml = renderDocsHead();
-const showcaseHeadHtml = renderShowcaseHead();
 
 const template = readFileSync(templatePath, "utf8");
 
@@ -42,12 +41,6 @@ const finalHtml = template
 const docsFinalHtml = template
   .replace("<!--app-head-->", docsHeadHtml)
   .replace("<!--app-html-->", docsHtml);
-
-// `/showcase` stays client-rendered, but this route still needs an
-// indexable-noindex signal in the initial HTML response for crawlers.
-const showcaseFinalHtml = template
-  .replace("<!--app-head-->", showcaseHeadHtml)
-  .replace("<!--app-html-->", "");
 
 const robotsTxt = `User-agent: *
 Allow: /
@@ -105,18 +98,13 @@ copyFileSync(faviconSource, resolve(distDir, "favicon.png"));
 
 const docsDir = resolve(distDir, "docs");
 mkdirSync(docsDir, { recursive: true });
-const showcaseHtmlPath = resolve(distDir, "showcase.html");
-const showcaseDir = resolve(distDir, "showcase");
-mkdirSync(showcaseDir, { recursive: true });
 
 writeFileSync(templatePath, finalHtml, "utf8");
 writeFileSync(resolve(docsDir, "index.html"), docsFinalHtml, "utf8");
-writeFileSync(showcaseHtmlPath, showcaseFinalHtml, "utf8");
-writeFileSync(resolve(showcaseDir, "index.html"), showcaseFinalHtml, "utf8");
 writeFileSync(resolve(distDir, "llms.txt"), llmsTxt(), "utf8");
 writeFileSync(resolve(distDir, "robots.txt"), robotsTxt, "utf8");
 writeFileSync(resolve(distDir, "sitemap.xml"), sitemapXml, "utf8");
 
 console.log(
-  `prerender: wrote dist/index.html (${finalHtml.length} bytes), dist/docs/index.html (${docsFinalHtml.length} bytes), dist/showcase.html (${showcaseFinalHtml.length} bytes), llms.txt, robots.txt, sitemap.xml, social image, and favicon`,
+  `prerender: wrote dist/index.html (${finalHtml.length} bytes), dist/docs/index.html (${docsFinalHtml.length} bytes), llms.txt, robots.txt, sitemap.xml, social image, and favicon`,
 );

@@ -14,11 +14,8 @@ import type { TilingTileAccent } from "@n-uf/hypr-tiling";
 // inline code.
 
 export const PACKAGE_NAME: string = "@n-uf/hypr-tiling";
-// Canonical homepage base. The redesigned docs homepage lives at the site root;
-// the full interactive showcase lives at its own `/showcase` sub-route (a
-// client-only surface, not part of this prerendered SEO mirror).
+// Canonical homepage base. The docs homepage lives at the site root.
 export const SITE_URL: string = "https://hypr-tiling.n-uf.com/";
-export const SHOWCASE_URL: string = "https://hypr-tiling.n-uf.com/showcase";
 export const REPO_URL: string = "https://github.com/n-uf/hypr-tiling";
 // The prerendered documentation route (guides + generated API reference). Its
 // own static HTML lives at `dist/docs/index.html` (see prerender.mjs).
@@ -50,54 +47,75 @@ export const CANONICAL_DESCRIPTION: string =
 export const INSTALL_SNIPPET: string =
   "pnpm add @n-uf/hypr-tiling react react-dom";
 
-interface FeatureFact {
+export type FeatureGroup = "core" | "recent";
+
+export interface FeatureFact {
   readonly term: string;
   readonly detail: string;
+  readonly group: FeatureGroup;
 }
 
 // Verified against the published export surface (packages/hypr-tiling/index.ts).
+// `detail` stays ≤ 12 words so the home features pane skims in one pass.
 export const FEATURE_FACTS: ReadonlyArray<FeatureFact> = [
   {
-    term: "Recursive split-tree layout",
-    detail:
-      "A layout is a tree of leaf, split, and group nodes. Binary splits carry a ratio and an axis; the renderer is a controlled component driven by your layout state.",
+    term: "Split tree",
+    detail: "You own a leaf, split, and group layout.",
+    group: "core",
   },
   {
-    term: "Drag-and-drop tiling",
-    detail:
-      "Hyprland-style live drag: the source detaches, the tree freezes, a cursor-following ghost hops between seats, and the move commits on release — resolving to swap, edge-insert, split-container-insert, or group-merge.",
+    term: "Drag & drop",
+    detail: "Live ghost; swap, insert, or group-merge.",
+    group: "core",
   },
   {
-    term: "Resize & sizing modes",
-    detail:
-      "Drag split dividers, or pin a pane to a measured pixel extent per dimension (static) versus ratio-distributed (flexible). Panes can acquire space directionally.",
+    term: "Resize",
+    detail: "Drag dividers, or pin a pane in pixels.",
+    group: "core",
   },
   {
-    term: "Master / stack layout",
-    detail:
-      "Any subtree can switch to a master-area-plus-stack arrangement with a configurable master count and orientation — the classic tiling-WM master layout.",
+    term: "Tab groups",
+    detail: "Stack leaves; only the active tab paints.",
+    group: "core",
   },
   {
-    term: "Tabbed grouping",
-    detail:
-      "Collapse several leaves into one slot as a stacked group with a tab strip; only the active member renders and is hit-tested.",
+    term: "Keyboard",
+    detail: "Focus, cycle, maximize; remappable commands.",
+    group: "core",
   },
   {
-    term: "Full keyboard control",
-    detail:
-      "Directional focus, a pane switcher (cycle / jump / overlay), maximize, keyboard move-mode, and master/group commands — all behind a remappable keymap and a typed command API.",
+    term: "Pane collapse",
+    detail: "Titlebar-only pin; chrome resize floor.",
+    group: "recent",
   },
   {
-    term: "Theming engine",
-    detail:
-      "Built-in themes, eight accent hues, a theme provider with hooks, and live theme switching with no remount. This page ships a bespoke mosaic theme.",
+    term: "Compact ghost",
+    detail: "Chip ghost plus host external-drop claim.",
+    group: "recent",
   },
   {
-    term: "Self-healing drag recovery",
-    detail:
-      "A frame-deadline animation backstop, an idle watchdog, transient-style teardown, and a visibilitychange reconcile guarantee a drag never strands the tree mid-transition.",
+    term: "Drag chrome",
+    detail: "Themeable ghost; overlay portal for tokens.",
+    group: "recent",
+  },
+  {
+    term: "Pane identity",
+    detail: "Same React instance through drag and drop.",
+    group: "recent",
+  },
+  {
+    term: "Persist layout",
+    detail: "Save and heal the tree on load.",
+    group: "recent",
   },
 ];
+
+export const FEATURE_CORE: ReadonlyArray<FeatureFact> = FEATURE_FACTS.filter(
+  (fact: FeatureFact): boolean => fact.group === "core",
+);
+export const FEATURE_RECENT: ReadonlyArray<FeatureFact> = FEATURE_FACTS.filter(
+  (fact: FeatureFact): boolean => fact.group === "recent",
+);
 
 interface SeoFaqItem {
   readonly question: string;
@@ -131,44 +149,20 @@ interface UseCase {
 // with the `## Use cases` section in the repo README.
 export const USE_CASES: ReadonlyArray<UseCase> = [
   {
-    term: "Dynamic / content sites",
-    detail:
-      "Real, SEO-indexable content arranged as tiles instead of a single scroll — this page dogfoods it: the docs live in prerendered panes.",
-  },
-  {
     term: "Dashboards",
-    detail:
-      "Analytics, metrics, and monitoring consoles where several resizable panes share one screen.",
+    detail: "Metrics panes that share one screen.",
   },
   {
     term: "IDE-like tools",
-    detail:
-      "Editor, preview, and terminal workspaces a user splits, stacks, and rearranges at runtime.",
+    detail: "Editor, preview, and terminal, rearranged live.",
   },
   {
-    term: "Trading & operator consoles",
-    detail:
-      "Dense, keyboard-driven control surfaces that pack many live panels into a fixed viewport.",
+    term: "Trading consoles",
+    detail: "Dense, keyboard-driven panels in one viewport.",
   },
   {
-    term: "Admin & data apps",
-    detail:
-      "Table, detail, and activity panes side by side, resized to fit the task at hand.",
-  },
-  {
-    term: "Observability & log explorers",
-    detail:
-      "Query, results, and trace panes rearranged on the fly while chasing an incident.",
-  },
-  {
-    term: "Web terminals & consoles",
-    detail:
-      "Browser-based shells, multiplexed sessions, and live log streams split and resized Hyprland-style — the tiling homage made literal, in the terminal.",
-  },
-  {
-    term: "Realtime trading terminals",
-    detail:
-      "Bloomberg-style desks — live charts, order books, watchlists, and order entry packed into dense panes that stream and rearrange in realtime.",
+    term: "Content sites",
+    detail: "SEO tiles — this page is one.",
   },
 ];
 
@@ -184,26 +178,31 @@ interface RoadmapItem {
 // unmissable so the page never misrepresents today's capabilities.
 export const ROADMAP_ITEMS: ReadonlyArray<RoadmapItem> = [
   {
+    term: "Native workspaces",
+    detail:
+      "WorkspaceSet is in design, not exported. Compact ghost and external drop already ship.",
+  },
+  {
     term: "Framework-agnostic core",
-    detail:
-      "A dependency-free vanilla TypeScript core so the tiling engine runs without any framework — the layout tree, the drag/FLIP state machine, and the self-healing recovery logic decoupled from React, ready to drive any view layer.",
+    detail: "Vanilla TypeScript engine; no React required.",
   },
   {
-    term: "First-class adapters for every major framework",
-    detail:
-      "React ships today; planned official adapters for Vue, Svelte, Solid, Angular, and standard Web Components, each a thin binding over the same vanilla core so behavior stays identical across frameworks.",
+    term: "Framework adapters",
+    detail: "Vue, Svelte, Solid, Angular, and Web Components.",
   },
   {
-    term: "Canvas rendering backend",
-    detail:
-      "An optional canvas / GPU-accelerated render path for very high pane counts and animation-heavy scenes where DOM reflow is the bottleneck. The semantic DOM path stays the default; canvas is opt-in for density.",
+    term: "Canvas backend",
+    detail: "Optional GPU path for dense pane counts.",
   },
   {
-    term: "Rust + WebAssembly core",
-    detail:
-      "Porting the hot layout, drag, and geometry math to a Rust \u2192 WebAssembly core for deterministic, high-frame-rate behavior — unlocking more window-manager-like UX: virtual workspaces, snap zones, persistent session layouts, fully keyboard-driven tiling, and per-monitor-style multi-viewport arrangements.",
+    term: "Rust + WASM core",
+    detail: "Hot path for high-frame-rate tiling math.",
   },
 ];
+
+export const ROADMAP_REST: ReadonlyArray<RoadmapItem> = ROADMAP_ITEMS.filter(
+  (item: RoadmapItem): boolean => item.term !== "Native workspaces",
+);
 
 interface DocPaneSpec {
   readonly id: string;
@@ -250,7 +249,7 @@ export function SectionLead({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <p className="max-w-[62ch] text-[13px] leading-[1.7] text-stone-300/90">
+    <p className="max-w-[62ch] text-[15px] leading-[1.6] text-stone-300/90">
       {children}
     </p>
   );
@@ -266,7 +265,7 @@ export function Code({ children }: { children: React.ReactNode }): React.ReactEl
 
 // A link styled in the mosaic accent. External destinations (absolute
 // `http(s)://` URLs to another origin) open in a new tab with
-// `rel="noopener noreferrer"`; same-site hrefs (e.g. `/showcase`, hash
+// `rel="noopener noreferrer"`; same-site hrefs (e.g. `/docs`, hash
 // anchors) stay in the current tab. Classification is by destination so the
 // behavior is centralized here rather than repeated per anchor.
 function isExternalHref(href: string): boolean {
@@ -322,12 +321,16 @@ export type DocParagraph = ReadonlyArray<DocInline>;
 // Intro pane.
 export const INTRO_HEADLINE_LEAD: string = "Rearrange the interface,";
 export const INTRO_HEADLINE_ACCENT: string = "at runtime.";
+export const INTRO_ONE_LINER: string =
+  "A controlled tiling renderer for React — drag, resize, group, and keyboard-drive panes.";
 export const INTRO_REACH_PARAGRAPH: string =
-  "Reach for it where users live inside dense, multi-panel screens — IDE-like tools, trading and operator consoles, analytics dashboards — and your app keeps strict, controlled ownership of the layout state.";
+  "Built for dashboards, IDE-like tools, and operator consoles. You own the layout tree.";
 export const INTRO_DOGFOOD_PARAGRAPH: DocParagraph = [
   "This page ",
   { em: "is" },
-  " a hypr-tiling layout. Every section is a real pane: focus it, drag its header, resize the dividers, maximize it — or run a live tiling command from the shortcut bar below.",
+  " the layout. Drag a header, resize a divider, or open ",
+  { link: "the docs", href: "/docs#quickstart" },
+  ".",
 ];
 export const CONTRIBUTING_EYEBROW: string = "contributing";
 export const INTRO_CONTRIBUTING_PARAGRAPH: DocParagraph = [
@@ -340,55 +343,68 @@ export const INTRO_LICENSE_TAIL: string =
 
 // Use-cases pane lead (the list itself is `USE_CASES`).
 export const USECASES_LEAD: string =
-  "Reach for hypr-tiling where users live across multiple panels and rearrange them as the work demands.";
+  "Any screen with several panes the user rearranges.";
 
 // Install pane prose (snippets are `INSTALL_SNIPPET` / `INTEGRATION_EXAMPLE`).
 export const INSTALL_INTRO_PARAGRAPH: DocParagraph = [
-  "Add the scoped package and its React peers. The library targets ",
-  { code: "react" },
-  " and ",
-  { code: "react-dom" },
-  " version 19.",
+  "React 19 peers. Full walkthrough in the ",
+  { link: "quickstart", href: "/docs#quickstart" },
+  ".",
 ];
 export const INSTALL_CONTROLLED_PARAGRAPH: DocParagraph = [
-  "The renderer is a controlled component: you own the layout tree in state and apply every change it reports through ",
+  "You own the tree; apply every edit through ",
   { code: "onLayoutChange" },
   ".",
 ];
 
+export const WORKSPACES_HEADING: string = "Workspaces — in design";
+export const WORKSPACES_LEAD: DocParagraph = [
+  "A workspace is one layout tree. A workspace set is several trees, one active: a leaf lives in exactly one tree unless it is pinned, and a workspace tab is a drop target for a pane drag.",
+];
+export const WORKSPACES_SHIPPED: DocParagraph = [
+  "WorkspaceSet is ",
+  { em: "not" },
+  " an exported API. What already ships in 26.9.2: compact ghost (",
+  { code: "dragGhostMode" },
+  "), host-reported ",
+  { code: "externalDragHover" },
+  ", and claim-before-settle ",
+  { code: "onExternalDrop" },
+  ". ",
+  { link: "26.9.2 notes", href: "/docs#changelog-26-9-2" },
+  ".",
+];
+export const WORKSPACES_ALSO_PLANNED: string = "Also planned";
+
 // Roadmap pane lead (the list itself is `ROADMAP_ITEMS`).
 export const ROADMAP_LEAD: DocParagraph = [
-  "Where hypr-tiling is headed. These are ",
-  { em: "planned" },
-  " directions, not shipped features today — the library currently renders to the DOM and ships a React adapter only. The items below describe where the project is going.",
+  { em: "Planned" },
+  ", not shipped. React + DOM only today.",
 ];
 
 // Model & kudos pane.
 export const MODEL_BODY_PARAGRAPH: DocParagraph = [
-  "A layout is a plain, serialisable tree: ",
+  "You own a serialisable tree of ",
   { code: "leaf" },
-  " nodes hold a tile, ",
+  ", ",
   { code: "split" },
-  " nodes divide space along an axis by a ratio, and ",
+  ", and ",
   { code: "group" },
-  " nodes stack leaves behind tabs. You hold the tree in state; the renderer projects it to pixels, runs the interaction, and reports every edit back — nothing is hidden inside the component. It is yours to persist, diff, and restore.",
+  " nodes. The renderer paints it and reports every edit.",
 ];
 export const MODEL_KUDOS_HEADING: string = "Kudos to Hyprland";
 export const MODEL_KUDOS_PARAGRAPH: DocParagraph = [
-  "The interaction model is inspired by ",
+  "Detach-and-drop, master/stack, and keyboard focus come from ",
   { link: "Hyprland", href: "https://hypr.land" },
-  ", the dynamic-tiling Wayland compositor, and its tiling-first philosophy: detach-and-drop movement, master/stack layouts, and keyboard-driven focus. Kudos to its maintainers and contributors for advancing modern tiling workflow design.",
+  ".",
 ];
 
 // SEO + LLM pane.
 export const DISCOVERABILITY_PARAGRAPHS: ReadonlyArray<DocParagraph> = [
   [
-    "Tiling does not have to cost discoverability. Every pane body is real semantic markup — headings, paragraphs, lists, code — emitted into the document, never painted onto a canvas or hidden behind a transform. All panes render at once, so unfocused sections stay in the DOM.",
-  ],
-  [
-    "Because the content lives in the DOM, it prerenders. This homepage ships its full text in the initial static HTML, with the interactive tiling layered on as progressive enhancement — so crawlers and LLM assistants that fetch and cite docs read the real content without running JavaScript. A ",
+    "Every pane is real semantic HTML, prerendered. Crawlers and LLMs read it without JavaScript. A ",
     { code: "/llms.txt" },
-    " mirror is served for the same reason.",
+    " mirror ships too.",
   ],
 ];
 
@@ -425,36 +441,47 @@ export function MosaicInline({
   );
 }
 
-export const INTEGRATION_EXAMPLE: string = `import {
-  TilingRenderer,
-  DEFAULT_TILING_LAYOUT_CONFIG,
-  type TilingLayoutNode,
-  type TilingTile,
-} from "@n-uf/hypr-tiling";
-import { useState } from "react";
+export const INTEGRATION_EXAMPLE: string = `import { TilingRenderer, DEFAULT_TILING_LAYOUT_CONFIG } from "@n-uf/hypr-tiling";
 
-const tiles: TilingTile[] = [
-  { id: "a", title: "editor", content: <Editor /> },
-  { id: "b", title: "preview", content: <Preview /> },
-];
+<TilingRenderer
+  layout={layout}
+  tiles={tiles}
+  config={DEFAULT_TILING_LAYOUT_CONFIG}
+  onLayoutChange={setLayout}
+/>`;
 
-const initialLayout: TilingLayoutNode = {
-  kind: "split", id: "root", axis: "vertical", ratio: 0.5,
-  first: { kind: "leaf", id: "l", tileId: "a" },
-  second: { kind: "leaf", id: "r", tileId: "b" },
-};
-
-export function Workspace() {
-  const [layout, setLayout] = useState(initialLayout);
+function MosaicFactList({
+  facts,
+  sinceMark,
+}: {
+  facts: ReadonlyArray<FeatureFact>;
+  sinceMark: boolean;
+}): React.ReactElement {
   return (
-    <TilingRenderer
-      layout={layout}
-      tiles={tiles}
-      config={DEFAULT_TILING_LAYOUT_CONFIG}
-      onLayoutChange={setLayout}
-    />
+    <dl className="flex flex-col divide-y divide-white/[0.05]">
+      {facts.map(
+        (fact: FeatureFact): React.ReactElement => (
+          <div
+            key={fact.term}
+            className="flex flex-col gap-0.5 py-2 first:pt-0 last:pb-0"
+          >
+            <dt className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[15px] font-medium text-stone-100">
+              {fact.term}
+              {sinceMark ? (
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-amber-200/70">
+                  since 26.9.x
+                </span>
+              ) : null}
+            </dt>
+            <dd className="text-[15px] leading-[1.45] text-stone-400">
+              {fact.detail}
+            </dd>
+          </div>
+        ),
+      )}
+    </dl>
   );
-}`;
+}
 
 export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
   {
@@ -474,18 +501,12 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
             </em>
           </h1>
         </div>
-        <SectionLead>{CANONICAL_DESCRIPTION}</SectionLead>
+        <SectionLead>{INTRO_ONE_LINER}</SectionLead>
         <SectionLead>{INTRO_REACH_PARAGRAPH}</SectionLead>
-        <p className="max-w-[62ch] border-l-2 border-amber-300/30 pl-3 text-[12px] leading-[1.6] text-stone-400">
+        <p className="max-w-[62ch] border-l-2 border-amber-300/30 pl-3 text-[15px] leading-[1.55] text-stone-400">
           <MosaicInline paragraph={INTRO_DOGFOOD_PARAGRAPH} />
         </p>
-        <div className="mt-auto flex flex-col gap-1.5 border-t border-white/[0.08] pt-3">
-          <Eyebrow>{CONTRIBUTING_EYEBROW}</Eyebrow>
-          <p className="max-w-[62ch] text-[12px] leading-[1.6] text-stone-400">
-            <MosaicInline paragraph={INTRO_CONTRIBUTING_PARAGRAPH} />
-          </p>
-        </div>
-        <footer className="border-t border-white/[0.08] pt-3 text-[11px] leading-[1.5] text-stone-500">
+        <footer className="mt-auto border-t border-white/[0.08] pt-3 text-[11px] leading-[1.5] text-stone-500">
           <Link href={LICENSE_URL}>{LICENSE_NAME}</Link>
           {INTRO_LICENSE_TAIL}
         </footer>
@@ -497,7 +518,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     title: "use cases",
     accent: "amber",
     summary:
-      "Built for dynamic/content sites, analytics dashboards, IDE-like tools, trading and operator consoles, admin and data apps, and observability/log explorers — any screen with multiple resizable, rearrangeable panes.",
+      "Dashboards, IDE-like tools, trading consoles, and content sites — any screen with several panes the user rearranges.",
     content: (
       <div className="flex flex-col gap-4">
         <SectionHeading>Use cases</SectionHeading>
@@ -509,10 +530,10 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
                 key={useCase.term}
                 className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0"
               >
-                <span className="text-[13px] font-medium text-stone-100">
+                <span className="text-[15px] font-medium text-stone-100">
                   {useCase.term}
                 </span>
-                <span className="max-w-[60ch] text-[12px] leading-[1.6] text-stone-400">
+                <span className="max-w-[60ch] text-[15px] leading-[1.45] text-stone-400">
                   {useCase.detail}
                 </span>
               </li>
@@ -530,15 +551,15 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
       "Install with pnpm add @n-uf/hypr-tiling react react-dom. React 19 peer deps. Render TilingRenderer with controlled layout state.",
     content: (
       <div className="flex flex-col gap-4">
-        <SectionHeading>Install &amp; integrate</SectionHeading>
+        <SectionHeading>Install</SectionHeading>
+        <Pre>{INSTALL_SNIPPET}</Pre>
+        <Pre>{INTEGRATION_EXAMPLE}</Pre>
         <SectionLead>
           <MosaicInline paragraph={INSTALL_INTRO_PARAGRAPH} />
         </SectionLead>
-        <Pre>{INSTALL_SNIPPET}</Pre>
         <SectionLead>
           <MosaicInline paragraph={INSTALL_CONTROLLED_PARAGRAPH} />
         </SectionLead>
-        <Pre>{INTEGRATION_EXAMPLE}</Pre>
       </div>
     ),
   },
@@ -547,53 +568,48 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     title: "features",
     accent: "amber",
     summary:
-      FEATURE_FACTS.map((f: FeatureFact): string => f.term).join(", ") + ".",
+      "Core: split tree, drag & drop, resize, tab groups, keyboard. Since 26.9.x: pane collapse, compact ghost, drag chrome, pane identity, persist layout.",
     content: (
       <div className="flex flex-col gap-4">
-        <SectionHeading>Features</SectionHeading>
-        <dl className="flex flex-col divide-y divide-white/[0.05]">
-          {FEATURE_FACTS.map(
-            (fact: FeatureFact): React.ReactElement => (
-              <div
-                key={fact.term}
-                className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0"
-              >
-                <dt className="text-[13px] font-medium text-stone-100">
-                  {fact.term}
-                </dt>
-                <dd className="max-w-[60ch] text-[12px] leading-[1.6] text-stone-400">
-                  {fact.detail}
-                </dd>
-              </div>
-            ),
-          )}
-        </dl>
+        <SectionHeading>Ships today</SectionHeading>
+        <div className="flex flex-col gap-3">
+          <Eyebrow>core tiling</Eyebrow>
+          <MosaicFactList facts={FEATURE_CORE} sinceMark={false} />
+        </div>
+        <div className="flex flex-col gap-3">
+          <Eyebrow>since 26.9.x</Eyebrow>
+          <MosaicFactList facts={FEATURE_RECENT} sinceMark={true} />
+        </div>
       </div>
     ),
   },
   {
-    id: "roadmap",
-    title: "roadmap",
+    id: "workspaces",
+    title: "workspaces",
     accent: "amber",
     summary:
-      "Planned, not-yet-shipped directions: a framework-agnostic vanilla core, first-class adapters for Vue/Svelte/Solid/Angular/Web Components, an optional canvas rendering backend, and a Rust + WebAssembly core with more window-manager-like UX (virtual workspaces, snap zones, persistent layouts).",
+      "Workspaces — in design. A workspace is one layout tree; a workspace set is several trees, one active, with pin and workspace-tab drop. WorkspaceSet is not an exported API. 26.9.2 already ships dragGhostMode, externalDragHover, and onExternalDrop.",
     content: (
       <div className="flex flex-col gap-4">
-        <SectionHeading>Roadmap</SectionHeading>
+        <SectionHeading>{WORKSPACES_HEADING}</SectionHeading>
         <SectionLead>
-          <MosaicInline paragraph={ROADMAP_LEAD} />
+          <MosaicInline paragraph={WORKSPACES_LEAD} />
         </SectionLead>
+        <SectionLead>
+          <MosaicInline paragraph={WORKSPACES_SHIPPED} />
+        </SectionLead>
+        <Eyebrow>{WORKSPACES_ALSO_PLANNED}</Eyebrow>
         <ul className="flex flex-col divide-y divide-white/[0.05]">
-          {ROADMAP_ITEMS.map(
+          {ROADMAP_REST.map(
             (item: RoadmapItem): React.ReactElement => (
               <li
                 key={item.term}
-                className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0"
+                className="flex flex-col gap-0.5 py-2 first:pt-0 last:pb-0"
               >
-                <span className="text-[13px] font-medium text-stone-100">
+                <span className="text-[15px] font-medium text-stone-100">
                   {item.term}
                 </span>
-                <span className="max-w-[60ch] text-[12px] leading-[1.6] text-stone-400">
+                <span className="text-[15px] leading-[1.45] text-stone-400">
                   {item.detail}
                 </span>
               </li>
@@ -650,7 +666,13 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
 // (Quickstart → "How do I…" recipes → minimal Concepts → runnable Examples) and
 // DEMOTES the generated per-symbol reference to last — a fallback for when you
 // already know the symbol name, never the front door.
-type DocsSection = "quickstart" | "howto" | "concepts" | "examples" | "reference";
+type DocsSection =
+  | "quickstart"
+  | "howto"
+  | "concepts"
+  | "examples"
+  | "changelog"
+  | "reference";
 
 interface DocsGuideTopic {
   // Stable anchor id on the /docs route (e.g. `quickstart`).
@@ -673,7 +695,7 @@ interface DocsGuideTopic {
 // TASK-FIRST IA: consumer docs lead with the graceful path and frame every guide
 // as an OUTCOME the reader wants, never as API enumeration. Order: Quickstart
 // (golden path) → "How do I…" recipes (the heart) → minimal Concepts → runnable
-// Examples → the DEMOTED generated reference last.
+// Examples → Changelog → the DEMOTED generated reference last.
 export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
   {
     id: "quickstart",
@@ -765,6 +787,13 @@ export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
     section: "examples",
     summary:
       "Whole runnable apps to copy wholesale: a metrics dashboard (master-stack of accented metric panes) and a terminal grid (monospace shell / logs / htop panes) — each a complete, controlled TilingRenderer.",
+  },
+  {
+    id: "changelog",
+    title: "Changelog",
+    section: "changelog",
+    summary:
+      "Release notes for @n-uf/hypr-tiling, newest first, rendered from packages/hypr-tiling/CHANGELOG.md. Calendar versioning (YY.M.R) cannot signal a SemVer major — breaking changes are flagged in the notes. Includes Unreleased plus 26.9.2 (compact ghost, external drop claim, titlebar-only pane collapse), 26.9.1 (overlay portal), 26.9.0 (dragChrome, paneIdentity), 26.7.2 (persisted layout, titlebar slot, layout integrity), 26.7.1, and 26.7.0. Native workspaces / WorkspaceSet are design-only.",
   },
   {
     id: "reference",

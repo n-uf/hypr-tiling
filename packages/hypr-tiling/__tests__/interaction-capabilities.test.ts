@@ -294,7 +294,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
   });
 
   it("preserves an explicit showContentToggle true (a tooling surface opts back in)", (): void => {
-    // The interactive showcase re-enables the checkbox to demo content-blanking.
+    // A tooling surface re-enables the checkbox to demo content-blanking.
     expect(resolveInteractionCapabilities({ paneSwitching: { showContentToggle: true } })).toEqual({
       ...RESOLVED_DEFAULTS,
       paneSwitching: {

@@ -8,6 +8,8 @@ the version number alone does not flag them.
 
 ## Unreleased
 
+Nothing pending.
+
 ## 26.9.5 — 2026-09-23
 
 Three desktop disambiguation gates on the workspace wheel-swipe FSM. Hosts on
@@ -326,7 +328,7 @@ bullet.
   dimmed source) and `data-drop-target-pane` (resolved drop target) on the leaf
   wrapper for host CSS hooks; the ghost wrapper carries `data-drag-ghost-wrapper`.
 
-## Unreleased (pre-26.9.0 notes, shipped in 26.9.0)
+## 26.7.2 — 2026-07-30
 
 - **Layout reconciliation (`normalizeLayout`).** Commit-time normalization on
   every resize/rearrange `pointerup` / `pointercancel` / `lostpointercapture`

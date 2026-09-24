@@ -2,7 +2,7 @@
  * `@n-uf/hypr-tiling/devtools` — the developer/telemetry surface.
  *
  * This subpath carries the observability panel and its seed defaults, which are
- * authoring/debugging tools (used to drive the showcase and to inspect live
+ * authoring/debugging tools (used to drive authoring tools and to inspect live
  * drag/drop hit-zone telemetry). They are intentionally kept OFF the main `.`
  * entry so the published renderer surface stays lean: a consumer that only
  * renders `TilingRenderer` never pulls the ~2,400-line panel into its bundle.
@@ -31,7 +31,7 @@ export {
 
 // ── Observability-instrumented renderer ──────────────────────────────────────
 // The SAME `TilingRenderer` component, typed to also accept the observability
-// inputs. Exported under the `TilingRenderer` name so devtools/showcase code
+// inputs. Exported under the `TilingRenderer` name so devtools code
 // reads naturally; the clean `.` renderer stays free of debug props.
 export { TilingRendererWithObservability as TilingRenderer } from "./react/tiling-renderer";
 

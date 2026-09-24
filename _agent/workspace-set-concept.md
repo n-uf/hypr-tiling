@@ -752,7 +752,7 @@ Breaking points to flag (in the order they bite a host):
   (`POINTER_UP` outside the tree still cancels).
 
 Gate before publish, as for every release: full suite + typecheck
-(pkg/showcase/web) + build + prerender + `api:check` on all three reports
+(pkg/web) + build + prerender + `api:check` on all three reports
 (`etc/hypr-tiling.api.md` will grow by the §2–§5 closure; `ae-forgotten-export`
 converges it) + `check:guardrails` (engine still framework-free; the scope
 provider and tabs live in `react/`).
@@ -993,7 +993,7 @@ the landed H3 + H4; the table's H4 persisted envelope v2 did **not** land
    `SUPER+<n>` / `SUPER+SHIFT+<n>`. Recommendation: **no defaults**; the
    commands are dispatchable and bindable (`TilingKeyBindings`), and DashAI
    already replaces the default keymap (`NO_KEY_BINDINGS`) because the
-   terminal owns `Alt+<n>`. Revisit with the showcase.
+   terminal owns `Alt+<n>`. Revisit with the homepage.
 7. **Spring-loaded switch while hovering a tab mid-drag.** Recommendation:
    **defer** — it changes the tree under a live drag (anchor footprints, seat
    reservation, FLIP survivors all belong to the old tree); a follow-up can

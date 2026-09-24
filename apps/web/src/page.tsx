@@ -60,57 +60,51 @@ const LAYOUT_CONFIG: TilingLayoutConfig = {
   handleSizePx: 8,
 };
 
-// Composition: a master-stack reading of the docs, dogfooding the lib's own
-// master/stack idea. A wide "master" hero column on the left carries the
-// positioning copy over the use-cases pane (what it is, then what it's for); the
-// right region is a two-column stack — features over the model/kudos note and
-// the roadmap pane, and the install/integration column over the SEO note. Seven
-// panes total; the keyboard-shortcut affordances live in the page-level bottom
-// bar rather than a dedicated pane. A leaf id mirrors its tile id (one tile per
-// pane).
+// Reading order: hero (full-height left) → ships today → workspaces → install
+// → deeper panes (use cases, model, SEO). Seven panes; leaf id equals tile id.
 const INITIAL_LAYOUT: TilingLayoutNode = {
   kind: "split",
   id: "root",
   axis: "horizontal",
-  ratio: 0.3,
-  first: {
-    kind: "split",
-    id: "intro-col",
-    axis: "vertical",
-    ratio: 0.62,
-    first: { kind: "leaf", id: "intro", tileId: "intro" },
-    second: { kind: "leaf", id: "usecases", tileId: "usecases" },
-  },
+  ratio: 0.4,
+  first: { kind: "leaf", id: "intro", tileId: "intro" },
   second: {
     kind: "split",
     id: "right",
-    axis: "horizontal",
-    ratio: 0.46,
-    first: {
-      kind: "split",
-      id: "mid",
-      axis: "vertical",
-      ratio: 0.44,
-      first: { kind: "leaf", id: "features", tileId: "features" },
-      second: {
-        kind: "split",
-        id: "mid-stack",
-        axis: "vertical",
-        ratio: 0.5,
-        first: { kind: "leaf", id: "model", tileId: "model" },
-        second: { kind: "leaf", id: "roadmap", tileId: "roadmap" },
-      },
-    },
+    axis: "vertical",
+    ratio: 0.38,
+    first: { kind: "leaf", id: "features", tileId: "features" },
     second: {
       kind: "split",
-      id: "far",
+      id: "lower",
       axis: "vertical",
-      ratio: 0.55,
-      first: { kind: "leaf", id: "install", tileId: "install" },
+      ratio: 0.52,
+      first: {
+        kind: "split",
+        id: "mid-row",
+        axis: "horizontal",
+        ratio: 0.52,
+        first: { kind: "leaf", id: "workspaces", tileId: "workspaces" },
+        second: { kind: "leaf", id: "install", tileId: "install" },
+      },
       second: {
-        kind: "leaf",
-        id: "discoverability",
-        tileId: "discoverability",
+        kind: "split",
+        id: "deep-row",
+        axis: "horizontal",
+        ratio: 0.34,
+        first: { kind: "leaf", id: "usecases", tileId: "usecases" },
+        second: {
+          kind: "split",
+          id: "deep-end",
+          axis: "horizontal",
+          ratio: 0.5,
+          first: { kind: "leaf", id: "model", tileId: "model" },
+          second: {
+            kind: "leaf",
+            id: "discoverability",
+            tileId: "discoverability",
+          },
+        },
       },
     },
   },
@@ -171,7 +165,6 @@ interface SkinChromeTokens {
   readonly switchLabel: string;
   readonly switchActive: string;
   readonly switchInactive: string;
-  readonly ctaPrimary: string;
   readonly ctaSecondary: string;
 }
 
@@ -194,8 +187,6 @@ const SKIN_CHROME: Record<HomeSkin, SkinChromeTokens> = {
     switchActive: "rounded-full bg-amber-300/15 px-3 py-1 text-amber-100",
     switchInactive:
       "rounded-full px-3 py-1 text-stone-400 transition-colors hover:text-stone-200",
-    ctaPrimary:
-      "group inline-flex w-fit items-center gap-2 rounded-md border border-amber-300/30 bg-amber-300/[0.06] px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-amber-100 transition-[transform,border-color,background-color] duration-150 hover:-translate-y-px hover:border-amber-300/55 hover:bg-amber-300/[0.12]",
     ctaSecondary:
       "group inline-flex w-fit items-center gap-2 rounded-md border border-white/15 bg-white/[0.02] px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-stone-200 transition-[transform,border-color,background-color,color] duration-150 hover:-translate-y-px hover:border-amber-300/50 hover:bg-amber-300/[0.06] hover:text-amber-100",
   },
@@ -217,8 +208,6 @@ const SKIN_CHROME: Record<HomeSkin, SkinChromeTokens> = {
     switchActive: "text-[#241f17] underline decoration-[#241f17] underline-offset-[3px]",
     switchInactive:
       "text-[#9c8f77] transition-colors hover:text-[#241f17]",
-    ctaPrimary:
-      "group inline-flex w-fit items-center gap-2 rounded-[3px] border border-[#241f17]/75 bg-transparent px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-[#241f17] transition-[transform,background-color,color] duration-150 hover:-translate-y-px hover:bg-[#241f17] hover:text-[#fbf9f2]",
     ctaSecondary:
       "group inline-flex w-fit items-center gap-2 rounded-[3px] border border-[#c9bd9f] bg-transparent px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-[#6b6250] transition-[transform,border-color,color] duration-150 hover:-translate-y-px hover:border-[#241f17] hover:text-[#241f17]",
   },
@@ -240,8 +229,6 @@ const SKIN_CHROME: Record<HomeSkin, SkinChromeTokens> = {
     switchActive: "rounded bg-white px-3 py-1 text-slate-900 shadow-[0_1px_0_rgba(15,23,42,0.06)]",
     switchInactive:
       "rounded px-3 py-1 text-slate-400 transition-colors hover:text-slate-700",
-    ctaPrimary:
-      "group inline-flex w-fit items-center gap-2 rounded-md border border-cyan-300 bg-cyan-50 px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-cyan-700 transition-[transform,border-color,background-color] duration-150 hover:-translate-y-px hover:border-cyan-400 hover:bg-cyan-100",
     ctaSecondary:
       "group inline-flex w-fit items-center gap-2 rounded-md border border-slate-200 bg-white px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-slate-600 transition-[transform,border-color,color] duration-150 hover:-translate-y-px hover:border-slate-300 hover:text-slate-900",
   },
@@ -252,35 +239,6 @@ const SKIN_OPTIONS: ReadonlyArray<{ id: HomeSkin; label: string }> = [
   { id: "editorial", label: "Editorial" },
   { id: "canvas", label: "Canvas" },
 ];
-
-function ShowcaseLink({
-  navigate,
-  skin,
-}: {
-  navigate?: (to: string) => void;
-  skin: HomeSkin;
-}): React.ReactElement {
-  return (
-    <a
-      href="/showcase"
-      onClick={(event: React.MouseEvent<HTMLAnchorElement>): void => {
-        if (navigate != null) {
-          event.preventDefault();
-          navigate("/showcase");
-        }
-      }}
-      className={SKIN_CHROME[skin].ctaPrimary}
-    >
-      Open the full interactive showcase
-      <span
-        aria-hidden
-        className="transition-transform duration-150 group-hover:translate-x-0.5"
-      >
-        {"\u2192"}
-      </span>
-    </a>
-  );
-}
 
 function RepoLink({ skin }: { skin: HomeSkin }): React.ReactElement {
   return (
@@ -577,7 +535,6 @@ export function HomePage({
           <div className="flex flex-col gap-5">
             {body}
             <div className="flex flex-wrap items-center gap-2.5">
-              <ShowcaseLink navigate={navigate} skin={skin} />
               <RepoLink skin={skin} />
             </div>
           </div>

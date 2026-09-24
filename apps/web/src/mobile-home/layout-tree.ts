@@ -1,4 +1,4 @@
-import type { TilingLayoutNode, TilingLeafNode } from "@n-uf/hypr-tiling";
+import type { TilingLayoutNode } from "@n-uf/hypr-tiling";
 
 // Both mobile trees carry the SAME seven documentation tiles as the desktop
 // homepage (`page.tsx`'s `INITIAL_LAYOUT`) — the mobile concepts reorganize
@@ -6,6 +6,10 @@ import type { TilingLayoutNode, TilingLeafNode } from "@n-uf/hypr-tiling";
 // so they never collide with the desktop tree's leaf ids (each mobile concept
 // owns its own independent `TilingRenderer` instance/state, decoupled from the
 // desktop renderer — switching device width never mutates desktop state).
+//
+// Reading order matches desktop: intro → features → workspaces → install →
+// usecases → model → discoverability. Workspaces is the third leaf so it is
+// one swipe / one rail tap from the hero.
 
 /**
  * A nested dwindle tree over the seven documentation panes, reshaped for a
@@ -24,37 +28,37 @@ export function buildMobileDwindleLayout(): TilingLayoutNode {
       kind: "split",
       id: "m-rest",
       axis: "vertical",
-      ratio: 0.3,
-      first: { kind: "leaf", id: "m-usecases", tileId: "usecases" },
+      ratio: 0.28,
+      first: { kind: "leaf", id: "m-features", tileId: "features" },
       second: {
         kind: "split",
         id: "m-b",
-        axis: "horizontal",
-        ratio: 0.5,
-        first: {
-          kind: "split",
-          id: "m-b1",
-          axis: "vertical",
-          ratio: 0.5,
-          first: { kind: "leaf", id: "m-install", tileId: "install" },
-          second: { kind: "leaf", id: "m-features", tileId: "features" },
-        },
+        axis: "vertical",
+        ratio: 0.32,
+        first: { kind: "leaf", id: "m-workspaces", tileId: "workspaces" },
         second: {
           kind: "split",
-          id: "m-b2",
+          id: "m-c",
           axis: "vertical",
-          ratio: 0.34,
-          first: { kind: "leaf", id: "m-model", tileId: "model" },
+          ratio: 0.36,
+          first: { kind: "leaf", id: "m-install", tileId: "install" },
           second: {
             kind: "split",
-            id: "m-b2b",
+            id: "m-d",
             axis: "vertical",
-            ratio: 0.5,
-            first: { kind: "leaf", id: "m-roadmap", tileId: "roadmap" },
+            ratio: 0.4,
+            first: { kind: "leaf", id: "m-usecases", tileId: "usecases" },
             second: {
-              kind: "leaf",
-              id: "m-discoverability",
-              tileId: "discoverability",
+              kind: "split",
+              id: "m-e",
+              axis: "horizontal",
+              ratio: 0.5,
+              first: { kind: "leaf", id: "m-model", tileId: "model" },
+              second: {
+                kind: "leaf",
+                id: "m-discoverability",
+                tileId: "discoverability",
+              },
             },
           },
         },
@@ -78,8 +82,8 @@ export function buildMobileMasterLayout(): TilingLayoutNode {
     id: "m-master-root",
     axis: "vertical",
     // High ratio → a thin stack rail (short chips), not a second half-height
-    // pane. The engine's `minPaneSizePx` (40, see `MASTER_LAYOUT_CONFIG`)
-    // floors the rail's rendered height on short viewports so it stays ~40px.
+    // pane. The engine's `minPaneSizePx` (44, see `MASTER_LAYOUT_CONFIG`)
+    // floors the rail's rendered height so chips stay ≥ 44px tap targets.
     ratio: 0.94,
     layoutMode: "master",
     masterCount: 1,
@@ -90,31 +94,31 @@ export function buildMobileMasterLayout(): TilingLayoutNode {
       id: "m-stack-a",
       axis: "horizontal",
       ratio: 0.34,
-      first: { kind: "leaf", id: "m-usecases", tileId: "usecases" },
+      first: { kind: "leaf", id: "m-features", tileId: "features" },
       second: {
         kind: "split",
         id: "m-stack-b",
         axis: "horizontal",
         ratio: 0.4,
-        first: { kind: "leaf", id: "m-install", tileId: "install" },
+        first: { kind: "leaf", id: "m-workspaces", tileId: "workspaces" },
         second: {
           kind: "split",
           id: "m-stack-c",
           axis: "horizontal",
           ratio: 0.5,
-          first: { kind: "leaf", id: "m-features", tileId: "features" },
+          first: { kind: "leaf", id: "m-install", tileId: "install" },
           second: {
             kind: "split",
             id: "m-stack-d",
             axis: "horizontal",
             ratio: 0.5,
-            first: { kind: "leaf", id: "m-model", tileId: "model" },
+            first: { kind: "leaf", id: "m-usecases", tileId: "usecases" },
             second: {
               kind: "split",
               id: "m-stack-e",
               axis: "horizontal",
               ratio: 0.5,
-              first: { kind: "leaf", id: "m-roadmap", tileId: "roadmap" },
+              first: { kind: "leaf", id: "m-model", tileId: "model" },
               second: {
                 kind: "leaf",
                 id: "m-discoverability",

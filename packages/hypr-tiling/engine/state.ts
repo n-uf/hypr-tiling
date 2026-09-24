@@ -347,7 +347,7 @@ export function normalizeStaticAxisFill(node: TilingLayoutNode): TilingLayoutNod
 /**
  * Immutably set (or clear) the per-dimension `sizing` on a single leaf. Passing
  * `undefined` (or a `sizing` with no static dimensions) leaves the leaf
- * flexible. Used by the showcase per-pane static control. The result is passed
+ * flexible. Used by a per-pane static control. The result is passed
  * through `normalizeStaticAxisFill` so a static switch can never store a
  * both-static-along-axis edge (the second along-axis sibling lands as
  * cross-axis-static + along-axis-fill instead) — closing the reachable

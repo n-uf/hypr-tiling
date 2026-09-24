@@ -57,24 +57,24 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     wordmark:
       "shrink-0 px-1 font-mono text-[11px] font-semibold lowercase tracking-[0.24em] text-amber-200/70",
     menuButton:
-      "flex h-8 shrink-0 items-center gap-1 rounded-[4px] border border-white/[0.08] bg-white/[0.015] px-2 font-mono text-[10px] uppercase tracking-[0.1em] text-stone-300 transition-colors hover:border-amber-300/40 hover:text-amber-100",
+      "flex h-11 shrink-0 items-center gap-1 rounded-[4px] border border-white/[0.08] bg-white/[0.015] px-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-stone-300 transition-colors hover:border-amber-300/40 hover:text-amber-100",
     menuPanel:
       "absolute right-0 top-[calc(100%+5px)] z-50 flex min-w-[132px] flex-col gap-0.5 overflow-hidden rounded-[5px] border border-white/[0.1] bg-[#16171a] p-1 shadow-[0_22px_46px_-24px_rgba(0,0,0,0.95)] backdrop-blur",
     menuItem:
-      "flex items-center justify-between gap-3 rounded-[3px] px-2.5 py-2 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-stone-300 transition-colors hover:bg-white/[0.05] hover:text-stone-100",
+      "flex min-h-11 items-center justify-between gap-3 rounded-[3px] px-2.5 py-2.5 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-stone-300 transition-colors hover:bg-white/[0.05] hover:text-stone-100",
     menuItemActive:
-      "flex items-center justify-between gap-3 rounded-[3px] bg-amber-300/[0.12] px-2.5 py-2 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-amber-100",
+      "flex min-h-11 items-center justify-between gap-3 rounded-[3px] bg-amber-300/[0.12] px-2.5 py-2.5 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-amber-100",
     switcherGroup:
-      "flex h-8 min-w-0 items-stretch overflow-hidden rounded-[4px] border border-white/[0.08] bg-white/[0.015] font-mono text-[10px] uppercase tracking-[0.1em]",
+      "flex h-11 min-w-0 items-stretch overflow-hidden rounded-[4px] border border-white/[0.08] bg-white/[0.015] font-mono text-[10px] uppercase tracking-[0.1em]",
     switcherActive:
       "flex items-center justify-center bg-amber-300/15 text-amber-100 transition-colors",
     switcherInactive:
       "flex items-center justify-center text-stone-400 transition-colors hover:bg-white/[0.04] hover:text-stone-200",
     switcherDivider: "border-r border-white/[0.06]",
     bottomStrip:
-      "flex h-9 shrink-0 items-center gap-3 rounded-md border border-white/[0.06] bg-[#121316]/70 px-2.5 backdrop-blur",
+      "flex h-11 shrink-0 items-center gap-3 rounded-md border border-white/[0.06] bg-[#121316]/70 px-2.5 backdrop-blur",
     overviewButton:
-      "flex h-7 shrink-0 items-center justify-center rounded-[3px] border border-white/[0.12] bg-white/[0.02] px-2.5 font-mono text-[9px] uppercase tracking-[0.14em] text-stone-300 transition-colors hover:border-amber-300/45 hover:text-amber-100",
+      "flex h-11 shrink-0 items-center justify-center rounded-[3px] border border-white/[0.12] bg-white/[0.02] px-2.5 font-mono text-[10px] uppercase tracking-[0.14em] text-stone-300 transition-colors hover:border-amber-300/45 hover:text-amber-100",
     dot: "bg-white/25",
     dotActive: "bg-amber-300",
     counterText: "shrink-0 font-mono text-[10px] tabular-nums text-stone-500",
@@ -93,24 +93,24 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     wordmark:
       "shrink-0 px-1 font-display text-[13px] tracking-[0.02em] text-[#241f17]",
     menuButton:
-      "flex h-8 shrink-0 items-center gap-1 rounded-[3px] border border-[#ddd4bf] bg-[#fbf9f2] px-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[#6b6250] transition-colors hover:border-[#241f17] hover:text-[#241f17]",
+      "flex h-11 shrink-0 items-center gap-1 rounded-[3px] border border-[#ddd4bf] bg-[#fbf9f2] px-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[#6b6250] transition-colors hover:border-[#241f17] hover:text-[#241f17]",
     menuPanel:
       "absolute right-0 top-[calc(100%+5px)] z-50 flex min-w-[132px] flex-col gap-0.5 overflow-hidden rounded-[4px] border border-[#d8cfb6] bg-[#fbf9f2] p-1 shadow-[0_18px_38px_-24px_rgba(36,31,23,0.5)]",
     menuItem:
-      "flex items-center justify-between gap-3 rounded-[2px] px-2.5 py-2 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-[#6b6250] transition-colors hover:bg-[#efe8d6] hover:text-[#241f17]",
+      "flex min-h-11 items-center justify-between gap-3 rounded-[2px] px-2.5 py-2.5 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-[#6b6250] transition-colors hover:bg-[#efe8d6] hover:text-[#241f17]",
     menuItemActive:
-      "flex items-center justify-between gap-3 rounded-[2px] bg-[#241f17] px-2.5 py-2 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-[#fbf9f2]",
+      "flex min-h-11 items-center justify-between gap-3 rounded-[2px] bg-[#241f17] px-2.5 py-2.5 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-[#fbf9f2]",
     switcherGroup:
-      "flex h-8 min-w-0 items-stretch overflow-hidden rounded-[3px] border border-[#ddd4bf] bg-[#fbf9f2] font-mono text-[10px] uppercase tracking-[0.1em]",
+      "flex h-11 min-w-0 items-stretch overflow-hidden rounded-[3px] border border-[#ddd4bf] bg-[#fbf9f2] font-mono text-[10px] uppercase tracking-[0.1em]",
     switcherActive:
       "flex items-center justify-center bg-[#241f17] text-[#fbf9f2] transition-colors",
     switcherInactive:
       "flex items-center justify-center text-[#9c8f77] transition-colors hover:bg-[#f4eedb] hover:text-[#241f17]",
     switcherDivider: "border-r border-[#ddd4bf]",
     bottomStrip:
-      "flex h-9 shrink-0 items-center gap-3 rounded-[4px] border border-[#e2dac6] bg-[#fbf9f2] px-2.5",
+      "flex h-11 shrink-0 items-center gap-3 rounded-[4px] border border-[#e2dac6] bg-[#fbf9f2] px-2.5",
     overviewButton:
-      "flex h-7 shrink-0 items-center justify-center rounded-[3px] border border-[#c9bd9f] bg-transparent px-2.5 font-mono text-[9px] uppercase tracking-[0.14em] text-[#6b6250] transition-colors hover:border-[#241f17] hover:text-[#241f17]",
+      "flex h-11 shrink-0 items-center justify-center rounded-[3px] border border-[#c9bd9f] bg-transparent px-2.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[#6b6250] transition-colors hover:border-[#241f17] hover:text-[#241f17]",
     dot: "bg-[#d7ccb2]",
     dotActive: "bg-[#241f17]",
     counterText: "shrink-0 font-mono text-[10px] tabular-nums text-[#a89c83]",
@@ -129,24 +129,24 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     wordmark:
       "shrink-0 px-1 font-mono text-[11px] font-semibold lowercase tracking-[0.24em] text-slate-500",
     menuButton:
-      "flex h-8 shrink-0 items-center gap-1 rounded-[4px] border border-slate-200 bg-slate-50 px-2 font-mono text-[10px] uppercase tracking-[0.1em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900",
+      "flex h-11 shrink-0 items-center gap-1 rounded-[4px] border border-slate-200 bg-slate-50 px-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900",
     menuPanel:
       "absolute right-0 top-[calc(100%+5px)] z-50 flex min-w-[132px] flex-col gap-0.5 overflow-hidden rounded-[5px] border border-slate-200 bg-white p-1 shadow-[0_18px_38px_-24px_rgba(15,23,42,0.35)]",
     menuItem:
-      "flex items-center justify-between gap-3 rounded-[3px] px-2.5 py-2 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900",
+      "flex min-h-11 items-center justify-between gap-3 rounded-[3px] px-2.5 py-2.5 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900",
     menuItemActive:
-      "flex items-center justify-between gap-3 rounded-[3px] bg-cyan-50 px-2.5 py-2 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-cyan-700",
+      "flex min-h-11 items-center justify-between gap-3 rounded-[3px] bg-cyan-50 px-2.5 py-2.5 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-cyan-700",
     switcherGroup:
-      "flex h-8 min-w-0 items-stretch overflow-hidden rounded-md border border-slate-200 bg-slate-50 font-mono text-[10px] uppercase tracking-[0.1em]",
+      "flex h-11 min-w-0 items-stretch overflow-hidden rounded-md border border-slate-200 bg-slate-50 font-mono text-[10px] uppercase tracking-[0.1em]",
     switcherActive:
       "flex items-center justify-center bg-white text-slate-900 shadow-[0_1px_0_rgba(15,23,42,0.06)] transition-colors",
     switcherInactive:
       "flex items-center justify-center text-slate-400 transition-colors hover:bg-white/70 hover:text-slate-700",
     switcherDivider: "border-r border-slate-200",
     bottomStrip:
-      "flex h-9 shrink-0 items-center gap-3 rounded-md border border-slate-200 bg-white/90 px-2.5 backdrop-blur",
+      "flex h-11 shrink-0 items-center gap-3 rounded-md border border-slate-200 bg-white/90 px-2.5 backdrop-blur",
     overviewButton:
-      "flex h-7 shrink-0 items-center justify-center rounded-[3px] border border-slate-200 bg-slate-50 px-2.5 font-mono text-[9px] uppercase tracking-[0.14em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900",
+      "flex h-11 shrink-0 items-center justify-center rounded-[3px] border border-slate-200 bg-slate-50 px-2.5 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900",
     dot: "bg-slate-300",
     dotActive: "bg-cyan-500",
     counterText: "shrink-0 font-mono text-[10px] tabular-nums text-slate-400",

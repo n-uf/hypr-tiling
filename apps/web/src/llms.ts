@@ -11,9 +11,9 @@ import {
   PACKAGE_NAME,
   REPO_URL,
   ROADMAP_ITEMS,
-  SHOWCASE_URL,
   SITE_URL,
 } from "./docs";
+import { CHANGELOG_MARKDOWN } from "./changelog";
 import { API_REFERENCE_SECTIONS } from "./api-reference/generated";
 
 // Plain-text content mirror for /llms.txt (Markdown, LLM-fetch friendly). Lives
@@ -27,7 +27,6 @@ export function buildLlmsTxt(): string {
   lines.push("");
   lines.push(`Homepage: ${SITE_URL}`);
   lines.push(`Documentation: ${DOCS_URL}`);
-  lines.push(`Showcase: ${SHOWCASE_URL}`);
   lines.push(`Repository: ${REPO_URL}`);
   lines.push(`Install: ${INSTALL_SNIPPET}`);
   lines.push(`License: ${LICENSE_NAME} (${LICENSE_URL})`);
@@ -53,12 +52,16 @@ export function buildLlmsTxt(): string {
   lines.push(`## Documentation (${DOCS_URL})`);
   lines.push("");
   lines.push(
-    "Consumer documentation, prerendered as static HTML at the /docs route. A consumer is a developer who uses @n-uf/hypr-tiling in their app; these docs cover only the public API surface (the hand-authored `.` facade). The information architecture is TASK-FIRST: it leads with the graceful path and frames every guide as an outcome, not an API list. The left sidebar is a full-tree spine with an IntersectionObserver scroll-spy (active anchor highlights and auto-scrolls into view), a collapsible per-category API-reference tree, and a right-rail on-this-page mini-TOC; every anchor is a plain #id so the single prerendered page stays crawlable with no JS. Reading order — Overview + Quickstart (the golden copy-paste path to a working layout), then the \"How do I…\" recipes (the heart: define the initial layout, render your own pane content, render your own pane frame & header for a fully custom look-and-feel, theme panes, choose which interactions are allowed, save & restore, trigger actions from your own buttons, build a command bar / keyboard shortcuts, group / split / maximize), then a minimal Concepts section, then a gallery of whole runnable apps. The generated per-symbol reference is DEMOTED to last — a fallback for when you already know a symbol name, not the way in. Every guide snippet is the raw source of a real, type-checked example module, so it always compiles against the current public API. Start with these topics:",
+    "Consumer documentation, prerendered as static HTML at the /docs route. A consumer is a developer who uses @n-uf/hypr-tiling in their app; these docs cover only the public API surface (the hand-authored `.` facade). The information architecture is TASK-FIRST: it leads with the graceful path and frames every guide as an outcome, not an API list. The left sidebar is a full-tree spine with an IntersectionObserver scroll-spy (active anchor highlights and auto-scrolls into view), a collapsible per-category API-reference tree, and a right-rail on-this-page mini-TOC; every anchor is a plain #id so the single prerendered page stays crawlable with no JS. Reading order — Overview + Quickstart (the golden copy-paste path to a working layout), then the \"How do I…\" recipes (the heart: define the initial layout, render your own pane content, render your own pane frame & header for a fully custom look-and-feel, theme panes, choose which interactions are allowed, save & restore, trigger actions from your own buttons, build a command bar / keyboard shortcuts, group / split / maximize), then a minimal Concepts section, then a gallery of whole runnable apps, then the Changelog (rendered from packages/hypr-tiling/CHANGELOG.md). The generated per-symbol reference is DEMOTED to last — a fallback for when you already know a symbol name, not the way in. Every guide snippet is the raw source of a real, type-checked example module, so it always compiles against the current public API. Start with these topics:",
   );
   lines.push("");
   for (const topic of DOCS_GUIDE_TOPICS) {
     lines.push(`- [${topic.title}](${DOCS_URL}#${topic.id}): ${topic.summary}`);
   }
+  lines.push("");
+  lines.push("## Package changelog");
+  lines.push("");
+  lines.push(CHANGELOG_MARKDOWN.trim());
   lines.push("");
   lines.push("## API reference (fallback — for when you already know the name)");
   lines.push("");

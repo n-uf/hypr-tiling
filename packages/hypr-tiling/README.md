@@ -15,7 +15,6 @@ your app keeps strict, controlled ownership of the layout state.
 ## Quick links
 
 - Documentation homepage: <https://hypr-tiling.n-uf.com/>
-- Interactive showcase route: <https://hypr-tiling.n-uf.com/showcase>
 - API report index: [`etc/hypr-tiling.api.md`](https://github.com/n-uf/hypr-tiling/blob/main/packages/hypr-tiling/etc/hypr-tiling.api.md)
 - Repository issues: <https://github.com/n-uf/hypr-tiling/issues>
 
@@ -666,44 +665,42 @@ cancel. The dwell FSM (`springLoadReducer`) and the drag `REARM` edge ship on
   (cycle / jump / overlay), keyboard move-mode, and master/group commands behind
   a remappable keymap.
 - **Theming engine** — three built-in themes (`neon-terminal`, `clean-flat`,
-  `mosaic`), eight accent hues, a themeable drag state (`dragChrome`), and live
-  theme switching with no remount.
+  `mosaic`), eight accent hues, a themeable drag state (`dragChrome`),
+  `overlayPortalContainer` for theme-scoped drag ghosts, and live theme
+  switching with no remount.
+- **Titlebar-only pane collapse** — opt-in `paneTitleBarControls.collapse`
+  pins a pane to its chrome extent; `resizeFloor` defaults to `"chrome"`;
+  `onPaneCollapsedChange` / `minBBoxPx` travel with the leaf.
+- **Compact drag ghost** — `dragGhostMode` (`footprint` / `compact` / `auto`),
+  host-reported `externalDragHover`, and `onExternalDrop` claim-before-settle.
+  This is the shipped subset of the WorkspaceSet drag design; native
+  workspaces are not exported.
 - **Stable pane identity** — host pane content survives drag → drop → settle
   and every other tree edit without remounting (`paneIdentity`).
+- **Persisted layout adapter** — `createPersistedTilingLayout` saves the tree
+  (localStorage by default) and heals it through `assertLayoutIntegrity` /
+  `repairLayout`.
 - **Self-healing drag recovery** — a frame-deadline backstop, an idle watchdog,
   transient-style teardown, and a `visibilitychange` reconcile so a drag never
   strands the tree mid-transition.
 
 ## Use cases
 
-hypr-tiling is built for screens where users live across multiple panels and
-rearrange them as the work demands:
+Any screen with several panes the user rearranges:
 
-- **Dynamic / content sites** — real, SEO-indexable content arranged as tiles
-  instead of a single scroll, with docs living in prerendered panes.
-- **Dashboards** — analytics, metrics, and monitoring consoles where several
-  resizable panes share one screen.
-- **IDE-like tools** — editor, preview, and terminal workspaces a user splits,
-  stacks, and rearranges at runtime.
-- **Trading & operator consoles** — dense, keyboard-driven control surfaces that
-  pack many live panels into a fixed viewport.
-- **Admin & data apps** — table, detail, and activity panes side by side, resized
-  to fit the task at hand.
-- **Observability & log explorers** — query, results, and trace panes rearranged
-  on the fly while chasing an incident.
-- **Web terminals & consoles** — browser-based shells, multiplexed sessions, and
-  live log streams split and resized Hyprland-style — the tiling homage made
-  literal, in the terminal.
-- **Realtime trading terminals** — Bloomberg-style desks: live charts, order
-  books, watchlists, and order entry packed into dense panes that stream and
-  rearrange in realtime.
+- **Dashboards** — metrics panes that share one screen.
+- **IDE-like tools** — editor, preview, and terminal, rearranged live.
+- **Trading consoles** — dense, keyboard-driven panels in one viewport.
+- **Content sites** — SEO tiles — this homepage is one.
 
 ## Roadmap
 
-Where hypr-tiling is headed. These are **planned** directions, not shipped
-features today — the library currently renders to the DOM and ships a React
-adapter only. The items below describe where the project is going:
+These are **planned** directions, not shipped. React + DOM only today.
 
+- **Native workspaces** — a workspace is one layout tree; a workspace set is
+  several trees, one active, with pin and workspace-tab drop. `WorkspaceSet` is
+  in design, not exported. Compact ghost + external drop already ship (26.9.2).
+  Design record: `_agent/workspace-set-concept.md`.
 - **Framework-agnostic core** — a dependency-free vanilla TypeScript core so the
   tiling engine runs without any framework: the layout tree, the drag/FLIP state
   machine, and the self-healing recovery logic decoupled from React, ready to
@@ -718,7 +715,7 @@ adapter only. The items below describe where the project is going:
   density.
 - **Rust + WebAssembly core** — porting the hot layout, drag, and geometry math
   to a Rust → WebAssembly core for deterministic, high-frame-rate behavior,
-  unlocking more window-manager-like UX: virtual workspaces, snap zones,
+  unlocking more window-manager-like UX: snap zones,
   persistent session layouts, fully keyboard-driven tiling, and
   per-monitor-style multi-viewport arrangements.
 
@@ -732,7 +729,6 @@ all welcome. To get involved, email
 ## Links
 
 - Homepage: <https://hypr-tiling.n-uf.com>
-- Showcase: <https://hypr-tiling.n-uf.com/showcase>
 - Repository: <https://github.com/n-uf/hypr-tiling>
 - Issues: <https://github.com/n-uf/hypr-tiling/issues>
 

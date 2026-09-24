@@ -910,7 +910,7 @@ export interface TilingDropHitZoneGeometryCapability {
 /**
  * Fully-resolved drop hit-zone geometry (no optional fields). `centerRatio` is
  * retained as the symmetric/representative value (equals `centerRatioX` when no
- * per-axis override diverges them) for telemetry + the single-knob showcase
+ * per-axis override diverges them) for telemetry + the single-knob
  * display; `centerRatioX` / `centerRatioY` are the per-axis values the resolver
  * actually consumes.
  */
@@ -1304,7 +1304,7 @@ export type TilingThemeId = "neon-terminal" | "clean-flat" | "mosaic";
 /**
  * A pickable accent paired with a human label and a solid Tailwind background
  * class for rendering a swatch dot — the generic metadata a palette control
- * (e.g. the showcase top-bar picker) iterates to offer accent selection.
+ * (e.g. a host accent picker) iterates to offer accent selection.
  */
 export interface TilingTileAccentSwatch {
   /** The accent this swatch selects. */
@@ -1692,7 +1692,7 @@ export interface TilingRenderTileGroupContext {
  * (focus / drag / drop / sizing), and the imperative callbacks a custom pane
  * surface wires to its header, drag handle, and controls. Every field is
  * something a custom pane legitimately reads to style itself or wires to drive
- * an interaction — nothing here is a debug, observability, or showcase concern
+ * an interaction — nothing here is a debug, observability, or tooling concern
  * (those live on the internal render path and the `/devtools` surface).
  *
  * @remarks
@@ -2308,7 +2308,7 @@ export interface TilingObservabilityColorConfig {
   hitZoneBlockedColorHex: string;
 }
 
-/** Per-subject overlay/border visibility toggles for the showcase observability panel. */
+/** Per-subject overlay/border visibility toggles for the observability panel. */
 export interface TilingObservabilityColorEnableConfig {
   /** Whether the drag source border overlay is drawn. */
   dragSourceBorderEnabled: boolean;

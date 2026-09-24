@@ -1,28 +1,30 @@
 import * as React from "react";
 import {
-  CANONICAL_DESCRIPTION,
-  CONTRIBUTING_EYEBROW,
   DISCOVERABILITY_PARAGRAPHS,
-  FEATURE_FACTS,
+  FEATURE_CORE,
+  FEATURE_RECENT,
   INSTALL_CONTROLLED_PARAGRAPH,
   INSTALL_INTRO_PARAGRAPH,
   INSTALL_SNIPPET,
   INTEGRATION_EXAMPLE,
-  INTRO_CONTRIBUTING_PARAGRAPH,
   INTRO_DOGFOOD_PARAGRAPH,
   INTRO_HEADLINE_ACCENT,
   INTRO_HEADLINE_LEAD,
   INTRO_LICENSE_TAIL,
+  INTRO_ONE_LINER,
   INTRO_REACH_PARAGRAPH,
   LICENSE_NAME,
   LICENSE_URL,
   MODEL_BODY_PARAGRAPH,
   MODEL_KUDOS_HEADING,
   MODEL_KUDOS_PARAGRAPH,
-  ROADMAP_ITEMS,
-  ROADMAP_LEAD,
+  ROADMAP_REST,
   USE_CASES,
   USECASES_LEAD,
+  WORKSPACES_ALSO_PLANNED,
+  WORKSPACES_HEADING,
+  WORKSPACES_LEAD,
+  WORKSPACES_SHIPPED,
   type DocInline,
   type DocParagraph,
 } from "./docs";
@@ -102,7 +104,7 @@ function CanvasLead({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <p className="max-w-[64ch] text-[13.5px] leading-[1.75] text-slate-600">
+    <p className="max-w-[64ch] text-[15px] leading-[1.6] text-slate-600">
       {children}
     </p>
   );
@@ -238,18 +240,12 @@ function IntroContent(): React.ReactElement {
         </h1>
         <span aria-hidden className="h-px w-full bg-slate-200" />
       </div>
-      <CanvasLead>{CANONICAL_DESCRIPTION}</CanvasLead>
+      <CanvasLead>{INTRO_ONE_LINER}</CanvasLead>
       <CanvasLead>{INTRO_REACH_PARAGRAPH}</CanvasLead>
-      <p className="max-w-[64ch] rounded-[1px] border-l-2 border-cyan-400 bg-slate-50 px-4 py-3 text-[13px] leading-[1.7] text-slate-600">
+      <p className="max-w-[64ch] rounded-[1px] border-l-2 border-cyan-400 bg-slate-50 px-4 py-3 text-[15px] leading-[1.55] text-slate-600">
         <CanvasInline paragraph={INTRO_DOGFOOD_PARAGRAPH} />
       </p>
-      <div className="mt-auto flex flex-col gap-2 border-t border-slate-200 pt-4">
-        <CanvasKicker>{CONTRIBUTING_EYEBROW}</CanvasKicker>
-        <p className="max-w-[64ch] text-[12.5px] leading-[1.7] text-slate-500">
-          <CanvasInline paragraph={INTRO_CONTRIBUTING_PARAGRAPH} />
-        </p>
-      </div>
-      <footer className="border-t border-slate-200 pt-4 text-[11px] leading-[1.6] text-slate-400">
+      <footer className="mt-auto border-t border-slate-200 pt-4 text-[11px] leading-[1.6] text-slate-400">
         <CanvasLink href={LICENSE_URL}>{LICENSE_NAME}</CanvasLink>
         {INTRO_LICENSE_TAIL}
       </footer>
@@ -270,15 +266,15 @@ function UseCasesContent(): React.ReactElement {
 function InstallContent(): React.ReactElement {
   return (
     <div className="flex flex-col gap-5">
-      <CanvasHeading>Install &amp; integrate</CanvasHeading>
+      <CanvasHeading>Install</CanvasHeading>
+      <CanvasPre>{INSTALL_SNIPPET}</CanvasPre>
+      <CanvasPre>{INTEGRATION_EXAMPLE}</CanvasPre>
       <CanvasLead>
         <CanvasInline paragraph={INSTALL_INTRO_PARAGRAPH} />
       </CanvasLead>
-      <CanvasPre>{INSTALL_SNIPPET}</CanvasPre>
       <CanvasLead>
         <CanvasInline paragraph={INSTALL_CONTROLLED_PARAGRAPH} />
       </CanvasLead>
-      <CanvasPre>{INTEGRATION_EXAMPLE}</CanvasPre>
     </div>
   );
 }
@@ -286,20 +282,27 @@ function InstallContent(): React.ReactElement {
 function FeaturesContent(): React.ReactElement {
   return (
     <div className="flex flex-col gap-5">
-      <CanvasHeading>Features</CanvasHeading>
-      <CanvasIndex items={FEATURE_FACTS} />
+      <CanvasHeading>Ships today</CanvasHeading>
+      <CanvasKicker>core tiling</CanvasKicker>
+      <CanvasIndex items={FEATURE_CORE} />
+      <CanvasKicker>since 26.9.x</CanvasKicker>
+      <CanvasIndex items={FEATURE_RECENT} />
     </div>
   );
 }
 
-function RoadmapContent(): React.ReactElement {
+function WorkspacesContent(): React.ReactElement {
   return (
     <div className="flex flex-col gap-5">
-      <CanvasHeading>Roadmap</CanvasHeading>
+      <CanvasHeading>{WORKSPACES_HEADING}</CanvasHeading>
       <CanvasLead>
-        <CanvasInline paragraph={ROADMAP_LEAD} />
+        <CanvasInline paragraph={WORKSPACES_LEAD} />
       </CanvasLead>
-      <CanvasIndex items={ROADMAP_ITEMS} />
+      <CanvasLead>
+        <CanvasInline paragraph={WORKSPACES_SHIPPED} />
+      </CanvasLead>
+      <CanvasKicker>{WORKSPACES_ALSO_PLANNED}</CanvasKicker>
+      <CanvasIndex items={ROADMAP_REST} />
     </div>
   );
 }
@@ -341,7 +344,7 @@ const CANVAS_PANE_CONTENT: Record<string, () => React.ReactElement> = {
   usecases: UseCasesContent,
   install: InstallContent,
   features: FeaturesContent,
-  roadmap: RoadmapContent,
+  workspaces: WorkspacesContent,
   model: ModelContent,
   discoverability: DiscoverabilityContent,
 };

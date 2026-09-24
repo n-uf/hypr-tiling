@@ -58,7 +58,7 @@ export const CANVAS_THEME: TilingTheme = {
     surface:
       "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-24px_rgba(15,23,42,0.35)]",
     bodyText:
-      "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 py-5 text-[13px] leading-[1.7] text-slate-600",
+      "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 py-5 text-[15px] leading-[1.6] text-slate-600",
     subtitleText: "text-slate-400",
     invalidDropRing: "ring-2 ring-rose-300/70",
   },

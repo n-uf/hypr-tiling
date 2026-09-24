@@ -409,7 +409,7 @@ const NEON_TERMINAL_THEME: TilingTheme = {
   // The neon-terminal drag look — lifted glass ghost with a deep slate drop
   // shadow, a `rounded-xl` seat, cyan/rose/slate cursor badge — is expressed
   // ENTIRELY through this slot (the renderer paints no drag chrome of its own),
-  // so the showcase is pixel-identical to the pre-`dragChrome` renderer.
+  // so a host theme is pixel-identical to the pre-`dragChrome` renderer.
   dragChrome: {
     ghostLifted:
       "scale-[1.01] opacity-90 shadow-[0_30px_60px_rgba(2,6,23,0.72)]",

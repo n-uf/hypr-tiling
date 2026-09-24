@@ -3,17 +3,15 @@ import {
   CANONICAL_DESCRIPTION,
   DOCS_URL,
   PAGE_TITLE,
-  SHOWCASE_URL,
   SITE_URL,
   SOCIAL_IMAGE_URL,
 } from "./docs";
 import { HomePage } from "./page";
 
-// Tiny client-side router. `/` renders the redesigned docs homepage (the SEO /
-// prerender surface); `/docs` renders the prerendered guides + generated API
-// reference; `/showcase` renders the original full interactive showcase. The
-// showcase and docs chunks are code-split so the homepage bundle stays light.
-// Navigation is pushState-based (no full reload) with a popstate listener.
+// Tiny client-side router. `/` renders the docs homepage (the SEO / prerender
+// surface); `/docs` renders the prerendered guides + generated API reference.
+// The docs chunk is code-split so the homepage bundle stays light. Navigation
+// is pushState-based (no full reload) with a popstate listener.
 
 interface RouteProps {
   readonly navigate?: (to: string) => void;
@@ -69,13 +67,6 @@ function preloadableRoute(
   return route;
 }
 
-const ShowcaseRoute: PreloadableRoute = preloadableRoute(
-  (): Promise<{ default: RouteComponent }> =>
-    import("./showcase-route").then(
-      (module): { default: RouteComponent } => ({ default: module.ShowcaseRoute }),
-    ),
-);
-
 const DocsRoute: PreloadableRoute = preloadableRoute(
   (): Promise<{ default: RouteComponent }> =>
     import("./docs-page").then(
@@ -95,18 +86,7 @@ export function preloadRoute(path: string): Promise<void> {
   if (normalized === "/docs") {
     return DocsRoute.preload();
   }
-  if (normalized === "/showcase") {
-    return ShowcaseRoute.preload();
-  }
   return Promise.resolve();
-}
-
-function ShowcaseFallback(): React.ReactElement {
-  return (
-    <div className="flex h-screen w-full items-center justify-center bg-[#080a14] font-mono text-[12px] uppercase tracking-[0.22em] text-slate-400">
-      loading showcase…
-    </div>
-  );
 }
 
 function DocsFallback(): React.ReactElement {
@@ -180,29 +160,20 @@ export function App(): React.ReactElement {
   }, []);
 
   React.useEffect((): void => {
-    const isShowcase: boolean = path === "/showcase";
     const isDocs: boolean = path === "/docs";
-    const pageTitle: string = isShowcase
-      ? "hypr-tiling showcase - interactive demo"
-      : isDocs
-        ? "hypr-tiling documentation - guides & API reference"
-        : PAGE_TITLE;
-    const pageDescription: string = isShowcase
-      ? "Interactive hypr-tiling showcase route. Canonical documentation and package details are published on the homepage."
-      : isDocs
-        ? "hypr-tiling documentation: install and integration guides, the core layout and interaction model, recipes, and the generated public API reference."
-        : CANONICAL_DESCRIPTION;
-    const canonicalHref: string = isShowcase
-      ? SHOWCASE_URL
-      : isDocs
-        ? DOCS_URL
-        : SITE_URL;
+    const pageTitle: string = isDocs
+      ? "hypr-tiling documentation - guides & API reference"
+      : PAGE_TITLE;
+    const pageDescription: string = isDocs
+      ? "hypr-tiling documentation: install and integration guides, the core layout and interaction model, recipes, and the generated public API reference."
+      : CANONICAL_DESCRIPTION;
+    const canonicalHref: string = isDocs ? DOCS_URL : SITE_URL;
 
     document.title = pageTitle;
     upsertCanonicalLink(canonicalHref);
     upsertMetaTag({
       name: "robots",
-      content: isShowcase ? "noindex,follow,max-image-preview:large" : "index,follow,max-image-preview:large",
+      content: "index,follow,max-image-preview:large",
     });
     upsertMetaTag({ property: "og:url", content: canonicalHref });
     upsertMetaTag({ property: "og:image", content: SOCIAL_IMAGE_URL });
@@ -214,19 +185,6 @@ export function App(): React.ReactElement {
     upsertMetaTag({ name: "twitter:title", content: pageTitle });
   }, [path]);
 
-  if (path === "/showcase") {
-    // Already loaded (preloaded before hydrate, or a prior visit) → render
-    // directly so the tree matches an eager SSR/prerender; otherwise suspend
-    // while the chunk loads on a client navigation.
-    if (ShowcaseRoute.isLoaded()) {
-      return <ShowcaseRoute navigate={navigate} />;
-    }
-    return (
-      <React.Suspense fallback={<ShowcaseFallback />}>
-        <ShowcaseRoute navigate={navigate} />
-      </React.Suspense>
-    );
-  }
   if (path === "/docs") {
     if (DocsRoute.isLoaded()) {
       return <DocsRoute navigate={navigate} />;

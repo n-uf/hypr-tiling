@@ -5487,7 +5487,7 @@ const TilingRendererComponent = React.forwardRef<
   }, [dragState]);
 
   // Latest slot-commitment policy mirrored to a ref so the coalescer (subscribed
-  // once per drag) reads runtime mode/delta changes (e.g. the showcase toggle)
+  // once per drag) reads runtime mode/delta changes (e.g. a host toggle)
   // without re-subscribing.
   const slotCommitmentRef =
     React.useRef<ResolvedTilingSlotCommitmentCapability>(
@@ -5500,7 +5500,7 @@ const TilingRendererComponent = React.forwardRef<
   // Latest touch long-press delay mirrored to a ref so the input-layer effect
   // (subscribed once per drag, keyed on the owning pointer id) arms the
   // long-press timer with the current value without re-subscribing on a runtime
-  // capability change (e.g. the showcase slider).
+  // capability change (e.g. a host slider).
   const touchLongPressMsRef = React.useRef<number>(
     interactionCapabilities.touchDrag.longPressMs,
   );

@@ -132,7 +132,7 @@ export function DocTile(args: TilingRenderTileProps): React.ReactElement {
       onFocus={args.onFocus}
       onPointerMove={args.onPointerMove}
       onPointerLeave={args.onPointerLeave}
-      className={`flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border bg-[#121316] outline-none shadow-[0_18px_40px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] ring-offset-0 transition-[border-color,box-shadow,opacity] duration-200 ${border} ${ring}`}
+      className={`group flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border bg-[#121316] outline-none shadow-[0_18px_40px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] ring-offset-0 transition-[border-color,box-shadow,opacity] duration-200 ${border} ${ring}`}
     >
       <header
         onPointerDown={args.onHandlePointerDown}
@@ -165,7 +165,7 @@ export function DocTile(args: TilingRenderTileProps): React.ReactElement {
           <span
             aria-hidden
             className={`shrink-0 font-mono text-[10px] tabular-nums tracking-[0.1em] ${
-              args.isFocused ? "text-amber-300/80" : "text-stone-500"
+              args.isFocused ? "text-amber-300/45" : "text-stone-600"
             }`}
           >
             {ordinal}
@@ -240,7 +240,7 @@ export function DocTile(args: TilingRenderTileProps): React.ReactElement {
         <span
           aria-hidden
           className={`shrink-0 font-mono text-[9px] tabular-nums tracking-[0.16em] ${
-            args.isFocused ? "text-amber-300/70" : "text-stone-600"
+            args.isFocused ? "text-amber-300/40" : "text-stone-700"
           }`}
         >
           {ordinal}
@@ -251,7 +251,7 @@ export function DocTile(args: TilingRenderTileProps): React.ReactElement {
             aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(
               "en-US",
             )} words, about ${metrics.readMinutes} minute read`}
-            className="flex min-w-0 items-center gap-2 font-mono text-[9px] uppercase tracking-[0.14em] text-stone-500"
+            className="flex min-w-0 items-center gap-2 font-mono text-[9px] uppercase tracking-[0.14em] text-stone-500 opacity-0 transition-opacity group-hover:opacity-100"
           >
             <span className="shrink-0 tabular-nums">
               <span className="text-stone-300">
@@ -273,7 +273,7 @@ export function DocTile(args: TilingRenderTileProps): React.ReactElement {
             </span>
           </span>
         ) : (
-          <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-stone-600">
+          <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-stone-600 opacity-0 transition-opacity group-hover:opacity-100">
             no text metrics
           </span>
         )}

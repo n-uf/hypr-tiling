@@ -895,7 +895,7 @@ duration-150"`; `cancelFlyBack = ""`; `sourcePane = "opacity-60"`;
 `dropTarget = ""`; `dropIntentLayer = "rounded-lg border"`; `cursorBadge =
 "rounded-full border backdrop-blur-[1px]"`; badge tones = the former inline
 cyan / rose / slate strings. `neon-terminal` declares the former inline look
-verbatim in its own `dragChrome` (showcase pixel-identical); `clean-flat` /
+verbatim in its own `dragChrome` (host theme pixel-identical); `clean-flat` /
 `mosaic` pass nothing and therefore drag with their own pane shell.
 
 `paneShell.dragSourceOpacity` was REMOVED (moved to `dragChrome.sourcePane`,

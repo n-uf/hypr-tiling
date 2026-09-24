@@ -1,28 +1,30 @@
 import * as React from "react";
 import {
-  CANONICAL_DESCRIPTION,
-  CONTRIBUTING_EYEBROW,
   DISCOVERABILITY_PARAGRAPHS,
-  FEATURE_FACTS,
+  FEATURE_CORE,
+  FEATURE_RECENT,
   INSTALL_CONTROLLED_PARAGRAPH,
   INSTALL_INTRO_PARAGRAPH,
   INSTALL_SNIPPET,
   INTEGRATION_EXAMPLE,
-  INTRO_CONTRIBUTING_PARAGRAPH,
   INTRO_DOGFOOD_PARAGRAPH,
   INTRO_HEADLINE_ACCENT,
   INTRO_HEADLINE_LEAD,
   INTRO_LICENSE_TAIL,
+  INTRO_ONE_LINER,
   INTRO_REACH_PARAGRAPH,
   LICENSE_NAME,
   LICENSE_URL,
   MODEL_BODY_PARAGRAPH,
   MODEL_KUDOS_HEADING,
   MODEL_KUDOS_PARAGRAPH,
-  ROADMAP_ITEMS,
-  ROADMAP_LEAD,
+  ROADMAP_REST,
   USE_CASES,
   USECASES_LEAD,
+  WORKSPACES_ALSO_PLANNED,
+  WORKSPACES_HEADING,
+  WORKSPACES_LEAD,
+  WORKSPACES_SHIPPED,
   type DocInline,
   type DocParagraph,
 } from "./docs";
@@ -86,7 +88,7 @@ function EditorialLead({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <p className="max-w-[64ch] text-[14px] leading-[1.85] text-[#4b4335]">
+    <p className="max-w-[64ch] text-[15px] leading-[1.7] text-[#4b4335]">
       {children}
     </p>
   );
@@ -216,18 +218,12 @@ function IntroContent(): React.ReactElement {
         </h1>
         <span aria-hidden className="h-px w-full bg-[#ddd3bd]" />
       </div>
-      <EditorialLead>{CANONICAL_DESCRIPTION}</EditorialLead>
+      <EditorialLead>{INTRO_ONE_LINER}</EditorialLead>
       <EditorialLead>{INTRO_REACH_PARAGRAPH}</EditorialLead>
-      <p className="max-w-[64ch] border-l-2 border-[#c9bd9f] pl-4 font-display text-[15px] italic leading-[1.7] text-[#4b4335]">
+      <p className="max-w-[64ch] border-l-2 border-[#c9bd9f] pl-4 font-display text-[16px] italic leading-[1.6] text-[#4b4335]">
         <EditorialInline paragraph={INTRO_DOGFOOD_PARAGRAPH} />
       </p>
-      <div className="mt-auto flex flex-col gap-2 border-t border-[#ddd3bd] pt-4">
-        <EditorialKicker>{CONTRIBUTING_EYEBROW}</EditorialKicker>
-        <p className="max-w-[64ch] text-[13px] leading-[1.75] text-[#5c5342]">
-          <EditorialInline paragraph={INTRO_CONTRIBUTING_PARAGRAPH} />
-        </p>
-      </div>
-      <footer className="border-t border-[#ddd3bd] pt-4 text-[11px] leading-[1.6] text-[#8c8069]">
+      <footer className="mt-auto border-t border-[#ddd3bd] pt-4 text-[11px] leading-[1.6] text-[#8c8069]">
         <EditorialLink href={LICENSE_URL}>{LICENSE_NAME}</EditorialLink>
         {INTRO_LICENSE_TAIL}
       </footer>
@@ -248,15 +244,15 @@ function UseCasesContent(): React.ReactElement {
 function InstallContent(): React.ReactElement {
   return (
     <div className="flex flex-col gap-5">
-      <EditorialHeading>Install &amp; integrate</EditorialHeading>
+      <EditorialHeading>Install</EditorialHeading>
+      <EditorialPre>{INSTALL_SNIPPET}</EditorialPre>
+      <EditorialPre>{INTEGRATION_EXAMPLE}</EditorialPre>
       <EditorialLead>
         <EditorialInline paragraph={INSTALL_INTRO_PARAGRAPH} />
       </EditorialLead>
-      <EditorialPre>{INSTALL_SNIPPET}</EditorialPre>
       <EditorialLead>
         <EditorialInline paragraph={INSTALL_CONTROLLED_PARAGRAPH} />
       </EditorialLead>
-      <EditorialPre>{INTEGRATION_EXAMPLE}</EditorialPre>
     </div>
   );
 }
@@ -264,20 +260,27 @@ function InstallContent(): React.ReactElement {
 function FeaturesContent(): React.ReactElement {
   return (
     <div className="flex flex-col gap-5">
-      <EditorialHeading>Features</EditorialHeading>
-      <EditorialIndex items={FEATURE_FACTS} />
+      <EditorialHeading>Ships today</EditorialHeading>
+      <EditorialKicker>core tiling</EditorialKicker>
+      <EditorialIndex items={FEATURE_CORE} />
+      <EditorialKicker>since 26.9.x</EditorialKicker>
+      <EditorialIndex items={FEATURE_RECENT} />
     </div>
   );
 }
 
-function RoadmapContent(): React.ReactElement {
+function WorkspacesContent(): React.ReactElement {
   return (
     <div className="flex flex-col gap-5">
-      <EditorialHeading>Roadmap</EditorialHeading>
+      <EditorialHeading>{WORKSPACES_HEADING}</EditorialHeading>
       <EditorialLead>
-        <EditorialInline paragraph={ROADMAP_LEAD} />
+        <EditorialInline paragraph={WORKSPACES_LEAD} />
       </EditorialLead>
-      <EditorialIndex items={ROADMAP_ITEMS} />
+      <EditorialLead>
+        <EditorialInline paragraph={WORKSPACES_SHIPPED} />
+      </EditorialLead>
+      <EditorialKicker>{WORKSPACES_ALSO_PLANNED}</EditorialKicker>
+      <EditorialIndex items={ROADMAP_REST} />
     </div>
   );
 }
@@ -319,7 +322,7 @@ const EDITORIAL_PANE_CONTENT: Record<string, () => React.ReactElement> = {
   usecases: UseCasesContent,
   install: InstallContent,
   features: FeaturesContent,
-  roadmap: RoadmapContent,
+  workspaces: WorkspacesContent,
   model: ModelContent,
   discoverability: DiscoverabilityContent,
 };

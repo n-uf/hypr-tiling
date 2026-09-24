@@ -13,7 +13,7 @@ Terminology (fixed across code, docs, and reports):
 - **API reference** — the consumer docs lane generated from the `.` entry.
 
 Baseline: `main` at `~395fb53`; pre-revamp green gate = 840 tests + typecheck
-(pkg/showcase/web) + build + prerender + `api:check` (single `.` report).
+(pkg/web) + build + prerender + `api:check` (single `.` report).
 
 ---
 
@@ -211,7 +211,7 @@ and the NEW `TilingLayoutQuery`.
 
 ## 4. New public DTO — `queryTilingLayout` / `TilingLayoutQuery`
 
-The dogfood consumers (`shortcuts.tsx`, `showcase.tsx`) reach into the layout
+The dogfood consumers (`shortcuts.tsx`) reach into the layout
 tree for read-only structure: leaf ids, tile order, groups, splits, master-mode
 detection, and directional neighbors. Rather than expose five raw recursive
 walkers (`readLeafNodeIds`, `tileOrderByLeafId`, `collectGroups`,
@@ -243,7 +243,7 @@ walkers go to `./engine`.
 
 ## 5. Dogfooding gate (the honesty test)
 
-`apps/web` + `packages/showcase` must build/typecheck consuming ONLY the `.`
+`apps/web` + `apps/web` must build/typecheck consuming ONLY the `.`
 public API (plus a documented, deliberate `./engine` import where genuinely
 power-user). Migration map:
 
@@ -255,9 +255,8 @@ power-user). Migration map:
 - `apps/web/src/page.tsx`: `collectSplitNodes`/`findLeafByDirection`/
   `readLeafNodeIds`/`tileOrderByLeafId`/`resolveInteractionCapabilities` →
   `queryTilingLayout(...)` + promoted `resolveInteractionCapabilities`.
-- `packages/showcase/src/showcase.tsx`: same query-facade migration;
-  `DEFAULT_DRAG_HOP_EASING`/`DEFAULT_TILING_LAYOUT_CONFIG`/`TilingRenderer`
-  stay.
+- `apps/web/src/page.tsx` also keeps
+  `DEFAULT_DRAG_HOP_EASING`/`DEFAULT_TILING_LAYOUT_CONFIG`/`TilingRenderer`.
 
 Outcome target: **zero `./engine` imports needed** by the dogfood consumers —
 the promoted set + `queryTilingLayout` fully covers them. If any raw walker
@@ -327,7 +326,7 @@ enforced invariants are identical.
   (`import type * as React` for `React.ReactNode` in a prop DTO — as in
   `engine/types.ts`) are **allowed**: they are erased at build and create no
   runtime framework edge, so the engine stays framework-free at runtime.
-- **No deep consumer imports**: `apps/web/src` + `packages/showcase/src` may
+- **No deep consumer imports**: `apps/web/src` + `apps/web/src` may
   import only `@n-uf/hypr-tiling`, `…/devtools`, or `…/engine` — never a deep
   path (`…/engine/state`, `…/react/…`, `…/dist/…`).
 - **Facade → engine import rule NOT enforced.** The user brief listed "forbid
@@ -354,7 +353,7 @@ enforced invariants are identical.
 
 ## 9. Staged gate
 
-Every stage gates on: 840 tests + typecheck (pkg/showcase/web) + build +
+Every stage gates on: 840 tests + typecheck (pkg/web) + build +
 prerender + `api:check` (all reports) all green, then commit + progressive
 rebase-loop push to `main`. Stages: 0 doc · 1 layering/rename · 2 facade ·
 3 tiered entries + multi-entry build · 4 dogfooding · 5 docs · 6 guardrails ·

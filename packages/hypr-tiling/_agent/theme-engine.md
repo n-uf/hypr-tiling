@@ -6,7 +6,7 @@ dividers, renderer root/background, top-bar/tab-strip) is painted from a single
 resolved `TilingTheme` instead of inline Tailwind class strings. Per-pane
 accents (`TilingTileAccent`) compose with the active theme through typed
 resolver functions. Any consumer of the library inherits the engine + the
-built-in themes; the showcase only selects a theme (and, from round 3, exposes
+built-in themes; the host app only selects a theme (and, from round 3, exposes
 the switcher).
 
 ## Subfolders / files structure
@@ -170,14 +170,14 @@ former `TILING_TILE_ACCENT_THEMES` record + its `accentTheme` / `accentClassName
 `TILING_TILE_ACCENT_SWATCHES` now derive from `TILING_ACCENT_HUES` in
 `theme.tsx`.
 
-## Generic-vs-showcase boundary
+## Generic-vs-host boundary
 
 - **Library (`theme.tsx` + renderer):** the engine, the `TilingTheme` contract,
   the accent-hue registry, ALL built-in themes, and the context. Any consumer
   inherits them.
-- **Showcase:** only owns `themeId` state, passes it as a prop, and (round 3)
+- **Host app:** only owns `themeId` state, passes it as a prop, and (round 3)
   renders the switcher by wiring `onThemeChange`. No visual constants live in the
-  showcase.
+  host.
 
 ## Design decision: class-token strings (not CSS variables)
 

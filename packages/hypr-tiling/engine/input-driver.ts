@@ -35,7 +35,7 @@ export function shouldArmIdleWatchdog(
  * The slot-commitment knobs the driver consults while a slot is seated — the
  * subset of `ResolvedTilingSlotCommitmentCapability` the re-aim damper reads.
  * The host re-reads these LIVE each sample (so a runtime mode/delta change —
- * e.g. the showcase toggle — takes effect without re-subscribing the driver).
+ * e.g. a host toggle — takes effect without re-subscribing the driver).
  */
 export interface DragInputDriverSlotCommitment {
   mode: DragSlotCommitmentMode;

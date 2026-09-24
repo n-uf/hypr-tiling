@@ -230,7 +230,7 @@ the window adapter is itself framework-free — see the Stage-2 judgment-call no
 
 | Stage | Scope | Risk | What could regress | Verification gate |
 |---|---|---|---|---|
-| **1** | Directory carve: `git mv` core modules → `core/`, React modules → `react/`; rewrite all import paths; keep `index.ts` + `devtools.ts` at root; update `tsup.config.ts` + web Vite alias if it pointed at a moved internal path | **Low** | broken import paths; an accidental import cycle; a changed `dist/` export shape; web/showcase alias pointing at a moved file | `pnpm typecheck` (pkg+showcase+web) + full suite (775) green; `dist/` export-shape diff clean; `apps/web` typecheck/build/prerender clean |
+| **1** | Directory carve: `git mv` core modules → `core/`, React modules → `react/`; rewrite all import paths; keep `index.ts` + `devtools.ts` at root; update `tsup.config.ts` + web Vite alias if it pointed at a moved internal path | **Low** | broken import paths; an accidental import cycle; a changed `dist/` export shape; web alias pointing at a moved file | `pnpm typecheck` (pkg+web) + full suite (775) green; `dist/` export-shape diff clean; `apps/web` typecheck/build/prerender clean |
 | **2** | `SchedulerPort` superset-merge + `createWindowSchedulerPort()`; wire renderer + drag-recovery scheduler call-sites through the port | **Low–Med** | a timing change (rAF/timeout identity drift) reopening the M1/M2/M3 starvation guarantees; `drag-recovery*.test.ts` fakes no longer matching | full suite green (esp. `drag-recovery.test.ts` / `drag-recovery-dom.test.ts` / `drag-machine.test.ts`); assert wired port behaves identically to the constants |
 | **3** | `MeasurementPort` interface + `react/` impl; replace inline DOM reads in `resolvePointerTarget`, seat-measurement effect, `setLeafSizingFromBbox`, `acquireLeafSpace`, `resolveLiveHitLogState` | **Med** | a measured rect off by selector/ref resolution; the off-screen/degenerate seat-clamp no longer nulling the seat (re-seat / phantom-seat) | full suite + **NEW measurement characterization tests** (drive `resolvePointerTarget` against injected synthetic rects; assert off-screen/degenerate clamp nulls the seat) green; typecheck/build/prerender clean |
 | **4** | FSM-driver lift: move the drag FSM + seat lifecycle orchestration into `core/createTilingController`, driven by ports | **High** | snap-back race (Fix A `shouldSuppressCompetingCancel`), watchdog/seat ordering, double-commit | char-test for the FSM driver + manual INV-R1..R4 throttle checkpoint + 24h soak |
@@ -290,7 +290,7 @@ Stages 4–7 must each re-validate INV-R1..R4 via the CDP throttle repro.
 
 **In this change set (executed now):**
 
-- **Stage 1 — GO when:** pkg+showcase+web typecheck clean; full suite 775 green;
+- **Stage 1 — GO when:** pkg+web typecheck clean; full suite 775 green;
   built `dist/` export shape byte-identical to pre-Stage-1; no new import cycle;
   `apps/web` build + prerender clean. _Risk: Low._
 - **Stage 2 — GO when:** full suite green (esp. `drag-recovery.test.ts`,

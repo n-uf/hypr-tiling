@@ -287,7 +287,7 @@ export function magneticEaseProgress(t: number, split: number = MAGNETIC_EASE_SP
  * Build a CSS `linear()` timing function by sampling `magneticEaseProgress` at
  * `sampleCount + 1` evenly-spaced points. CSS single cubic-beziers cannot
  * express the two-segment magnetic ease, so the sampled `linear()` curve carries
- * it to the compositor. Evergreen-engine feature (the showcase package target).
+ * it to the compositor. Evergreen-engine feature (the host-app target).
  * @internal
  */
 export function buildLinearEasingCss(sampleCount: number = MAGNETIC_EASE_SAMPLE_COUNT): string {

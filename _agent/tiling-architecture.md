@@ -17,7 +17,6 @@ packages/hypr-tiling/
 ├── interaction-capabilities.ts  # Interaction capability defaults and presets
 ├── pane-switching.ts            # Focus/maximize/switching pure logic
 ├── dynamic-tiling-renderer.tsx  # React renderer and pointer/drag interaction wiring
-├── showcase.tsx                 # Optional demo surface for manual behavior checks
 └── __tests__/                   # Unit tests for pure modules
 ```
 

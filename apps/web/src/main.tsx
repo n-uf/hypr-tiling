@@ -15,8 +15,7 @@ if (container == null) {
 // app.tsx), so we AWAIT the docs chunk BEFORE hydrating — the resolved route then
 // renders synchronously on the first render, matching the prerendered markup
 // (an unresolved lazy would render the Suspense fallback and mismatch, forcing
-// React to regenerate the whole tree). On the client-only `/showcase` route the
-// prerendered homepage markup does not match, so we render fresh (createRoot).
+// React to regenerate the whole tree).
 //
 // Under `vite dev`, though, there IS no prerendered markup: `prerender.mjs`
 // only replaces the `<!--app-html-->` marker with real HTML as a BUILD step
@@ -52,9 +51,7 @@ function mount(): void {
   );
 }
 
-if (path === "/showcase") {
-  renderFresh();
-} else if (path === "/docs") {
+if (path === "/docs") {
   void preloadRoute("/docs").then(mount);
 } else {
   mount();

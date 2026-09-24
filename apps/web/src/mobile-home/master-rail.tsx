@@ -30,7 +30,7 @@ const MASTER_LAYOUT_CONFIG: TilingLayoutConfig = {
   gapPx: 6,
   // Floors the stack rail's rendered height on tall viewports so it stays a
   // thin chip strip (~40px), never a second half-height band.
-  minPaneSizePx: 40,
+  minPaneSizePx: 44,
   handleSizePx: 6,
 };
 

@@ -43,7 +43,7 @@ import type {
 
 /**
  * ANIMATION control-group defaults — the single source of truth shared by the
- * showcase initial state and the group's "reset to defaults" affordance. Speeds
+ * host initial state and the group's "reset to defaults" affordance. Speeds
  * start linked at parity (100 % = the 170ms baseline for both parties), the swap
  * bounce starts at a visible demo magnitude (the public-API prop default is 0), pickup
  * scale + coherent transit keep their library defaults.

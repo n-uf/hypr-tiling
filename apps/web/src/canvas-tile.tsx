@@ -137,7 +137,7 @@ function dropStateRing(args: TilingRenderTileProps): string {
 // the squared corners + the LED bands is what separates the Canvas silhouette
 // from the rounded, softly-shadowed header-bar cards of Mosaic and Editorial.
 const PANEL_SHELL: string =
-  "relative flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-[1px] border border-slate-300 bg-white outline-none transition-[border-color,box-shadow,opacity] duration-150";
+  "group relative flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-[1px] border border-slate-300 bg-white outline-none transition-[border-color,box-shadow,opacity] duration-150";
 
 // Header rail: a dense control-panel row resolved as a 3-column grid
 // (LED + label | flex gap | index + controls). Squared, hairline, tight.
@@ -409,7 +409,7 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
             aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(
               "en-US",
             )} words, about ${metrics.readMinutes} minute read`}
-            className="flex min-w-0 items-center gap-2 font-mono text-[9px] uppercase tracking-[0.14em] text-slate-400"
+            className="flex min-w-0 items-center gap-2 font-mono text-[9px] uppercase tracking-[0.14em] text-slate-400 opacity-0 transition-opacity group-hover:opacity-100"
           >
             <span className="shrink-0 tabular-nums">
               <span className="text-slate-600">
@@ -431,7 +431,7 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
             </span>
           </span>
         ) : (
-          <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-slate-300">
+          <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-slate-300 opacity-0 transition-opacity group-hover:opacity-100">
             no text metrics
           </span>
         )}

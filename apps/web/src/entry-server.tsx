@@ -12,7 +12,6 @@ import {
   PAGE_TITLE,
   REPO_URL,
   SEO_FAQ_ITEMS,
-  SHOWCASE_URL,
   SITE_URL,
   SOCIAL_IMAGE_URL,
   TWITTER_CREATOR_HANDLE,
@@ -260,36 +259,6 @@ export function renderDocsHead(): string {
     `<meta name="twitter:creator" content="${escapeHtml(TWITTER_CREATOR_HANDLE)}" />`,
     `<link rel="alternate" type="text/markdown" href="/llms.txt" />`,
     `<script type="application/ld+json">${jsonLd}</script>`,
-  ].join("\n    ");
-}
-
-// SEO <head> for the `/showcase` route. This route is intentionally excluded
-// from indexing; the canonical docs and package details live on `/` and `/docs`.
-export function renderShowcaseHead(): string {
-  const title: string = escapeHtml("hypr-tiling showcase - interactive demo");
-  const description: string = escapeHtml(
-    "Interactive hypr-tiling showcase route. Canonical documentation and package details are published on the homepage.",
-  );
-  return [
-    `<title>${title}</title>`,
-    `<meta name="description" content="${description}" />`,
-    `<meta name="robots" content="noindex,follow,max-image-preview:large" />`,
-    `<meta name="author" content="n-uf" />`,
-    `<link rel="canonical" href="${escapeHtml(SHOWCASE_URL)}" />`,
-    `<meta property="og:type" content="website" />`,
-    `<meta property="og:title" content="${title}" />`,
-    `<meta property="og:description" content="${description}" />`,
-    `<meta property="og:url" content="${escapeHtml(SHOWCASE_URL)}" />`,
-    `<meta property="og:image" content="${escapeHtml(SOCIAL_IMAGE_URL)}" />`,
-    `<meta property="og:image:alt" content="hypr-tiling social preview" />`,
-    `<meta property="og:site_name" content="${escapeHtml(PACKAGE_NAME)}" />`,
-    `<meta name="twitter:card" content="summary_large_image" />`,
-    `<meta name="twitter:title" content="${title}" />`,
-    `<meta name="twitter:description" content="${description}" />`,
-    `<meta name="twitter:image" content="${escapeHtml(SOCIAL_IMAGE_URL)}" />`,
-    `<meta name="twitter:site" content="${escapeHtml(TWITTER_SITE_HANDLE)}" />`,
-    `<meta name="twitter:creator" content="${escapeHtml(TWITTER_CREATOR_HANDLE)}" />`,
-    `<link rel="alternate" type="text/markdown" href="/llms.txt" />`,
   ].join("\n    ");
 }
 

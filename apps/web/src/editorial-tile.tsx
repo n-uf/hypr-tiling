@@ -141,7 +141,7 @@ export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
   return (
     <TilingPaneRoot
       pane={args}
-      className={`flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-[4px] border bg-[#fbf9f2] text-[#4b4335] shadow-[0_1px_0_rgba(36,31,23,0.03),0_10px_28px_-22px_rgba(36,31,23,0.4)] outline-none transition-[border-color,box-shadow,opacity] duration-200 ${border} ${ring}`}
+      className={`group flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-[4px] border bg-[#fbf9f2] text-[#4b4335] shadow-[0_1px_0_rgba(36,31,23,0.03),0_10px_28px_-22px_rgba(36,31,23,0.4)] outline-none transition-[border-color,box-shadow,opacity] duration-200 ${border} ${ring}`}
     >
       <TilingDragHandle
         pane={args}
@@ -206,7 +206,7 @@ export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
       </TilingDragHandle>
       <TilingPaneBody
         pane={args}
-        className="min-h-0 flex-1 overflow-auto px-5 py-4 text-[13px] leading-[1.75] text-[#4b4335]"
+        className="min-h-0 flex-1 overflow-auto px-5 py-4 text-[15px] leading-[1.65] text-[#4b4335]"
       >
         {args.tile.content}
       </TilingPaneBody>
@@ -230,7 +230,7 @@ export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
             aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(
               "en-US",
             )} words, about ${metrics.readMinutes} minute read`}
-            className="flex min-w-0 items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#8c8069]"
+            className="flex min-w-0 items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#8c8069] opacity-0 transition-opacity group-hover:opacity-100"
           >
             <span className="shrink-0 tabular-nums">
               <span className="text-[#4b4335]">
@@ -256,7 +256,7 @@ export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
             </span>
           </span>
         ) : (
-          <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-[#b0a487]">
+          <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-[#b0a487] opacity-0 transition-opacity group-hover:opacity-100">
             no text metrics
           </span>
         )}

@@ -44,7 +44,7 @@ import type {
  * and never wants an end-user control that blanks it. Suppressed by default, the
  * initial pane-content-visible flag pins ON (see `resolveInitialPaneContentVisible`),
  * so panes paint their content at rest with no wiring. A tooling surface that
- * genuinely wants the toggle (e.g. the interactive showcase) opts back in with
+ * genuinely wants the toggle (e.g. a tooling surface) opts back in with
  * `paneSwitching: { showContentToggle: true }`.
  */
 export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCapabilities = {
@@ -127,7 +127,7 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
  * dashboards ship a curated layout with PRE-CONFIGURED static panes and are
  * resize-only by intent, so letting an end-user re-pin a pane's bbox or have one
  * pane absorb its siblings' space would fight the authored composition. End-user
- * per-pane sizing belongs to interactive workspaces (the showcase default), not
+ * per-pane sizing belongs to interactive workspaces (the all-enabled default), not
  * config-driven dashboards.
  */
 export const TILING_DASHBOARD_PRESET: TilingInteractionCapabilities = {
@@ -370,7 +370,7 @@ export function resolveWorkspaceSwitchCapability(
  * Resolve the per-axis drop hit-zone geometry. The symmetric `centerRatio` sets
  * both axes; a per-axis override (`centerRatioX` / `centerRatioY`) wins for that
  * axis. `centerRatio` is retained as the representative (X-axis) value for
- * telemetry + the single-knob showcase display.
+ * telemetry + the single-knob display.
  */
 function resolveDropHitZoneGeometry(
   geometry: TilingInteractionCapabilities["dropHitZoneGeometry"],

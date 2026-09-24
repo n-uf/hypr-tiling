@@ -16,7 +16,6 @@ your app keeps strict, controlled ownership of the layout state.
 ## Quick links
 
 - Documentation homepage: <https://hypr-tiling.n-uf.com/>
-- Interactive showcase route: <https://hypr-tiling.n-uf.com/showcase>
 - Package README: [`packages/hypr-tiling/README.md`](packages/hypr-tiling/README.md)
 - API report index: [`packages/hypr-tiling/etc/hypr-tiling.api.md`](packages/hypr-tiling/etc/hypr-tiling.api.md)
 - GitHub issues: <https://github.com/n-uf/hypr-tiling/issues>
@@ -128,65 +127,35 @@ Public API docs and export signatures live in:
 
 ## Features
 
-- **Recursive split-tree layout** — a layout is a tree of `leaf`, `split`, and
-  `group` nodes; binary splits carry an axis and a ratio.
-- **Drag-and-drop tiling** — Hyprland-style live drag: the source detaches, the
-  tree freezes, a cursor-following ghost hops between seats, and the move commits
-  on release, resolving to swap, edge-insert, split-container-insert, or
-  group-merge.
-- **Resize & sizing modes** — drag split dividers, or pin a pane to a measured
-  pixel extent per dimension (static) versus ratio-distributed (flexible); panes
-  can acquire space directionally.
-- **Master / stack layout** — any subtree can switch to a master-area-plus-stack
-  arrangement with a configurable master count and orientation.
-- **Tabbed grouping** — collapse several leaves into one slot as a stacked group
-  with a tab strip; only the active member renders and is hit-tested.
-- **Full keyboard control** — directional focus, a pane switcher (cycle / jump /
-  overlay), maximize, keyboard move-mode, and master/group commands, all behind a
-  remappable keymap.
-- **Theming engine** — two built-in themes (`neon-terminal`, `clean-flat`), eight
-  accent hues, a theme provider with hooks, and live theme switching with no
-  remount. Redirect drag overlays with `overlayPortalContainer` when host
-  theme tokens (CSS variables, scoped `dark`) must inherit into the ghost
-  (default remains `document.body`).
-- **Self-healing drag recovery** — a frame-deadline animation backstop, an idle
-  watchdog, transient-style teardown, and a `visibilitychange` reconcile so a drag
-  never strands the tree mid-transition.
-- **Animation choreography** — FLIP survivor reflow, ghost transit, swap bounce,
-  easing knobs, and `prefers-reduced-motion` support.
+Core tiling:
+
+- **Split tree** — you own a `leaf`, `split`, and `group` layout.
+- **Drag & drop** — live ghost; swap, insert, or group-merge.
+- **Resize** — drag dividers, or pin a pane in pixels.
+- **Tab groups** — stack leaves; only the active tab paints.
+- **Keyboard** — focus, cycle, maximize; remappable commands.
+
+Since 26.9.x:
+
+- **Pane collapse** — titlebar-only pin; chrome resize floor.
+- **Compact ghost** — chip ghost plus host external-drop claim
+  (`dragGhostMode`, `externalDragHover`, `onExternalDrop`).
+- **Drag chrome** — themeable ghost; `overlayPortalContainer` for tokens.
+- **Pane identity** — same React instance through drag and drop.
+- **Persist layout** — save and heal the tree on load.
 
 ## Roadmap
 
-Where hypr-tiling is headed. These are **planned** directions, not shipped
-features today — the library currently renders to the DOM and ships a React
-adapter only. The items below describe where the project is going:
+These are **planned** directions, not shipped. React + DOM only today.
 
-- **Framework-agnostic core** — a dependency-free vanilla TypeScript core so the
-  tiling engine runs without any framework: the layout tree, the drag/FLIP state
-  machine, and the self-healing recovery logic decoupled from React, ready to
-  drive any view layer.
-- **First-class adapters for every major framework** — React ships today;
-  planned official adapters for Vue, Svelte, Solid, Angular, and standard Web
-  Components, each a thin binding over the same vanilla core so behavior stays
-  identical across frameworks.
-- **Canvas rendering backend** — an optional canvas / GPU-accelerated render path
-  for very high pane counts and animation-heavy scenes where DOM reflow is the
-  bottleneck; the semantic DOM path stays the default and canvas is opt-in for
-  density.
-- **Rust + WebAssembly core** — porting the hot layout, drag, and geometry math
-  to a Rust → WebAssembly core for deterministic, high-frame-rate behavior,
-  unlocking more window-manager-like UX: virtual workspaces, snap zones,
-  persistent session layouts, fully keyboard-driven tiling, and
-  per-monitor-style multi-viewport arrangements.
-
-**Planned: native workspaces.** Workspaces are pulled forward out of the Rust
-core item above into the current TypeScript engine as a first-class concept: a
-`TilingWorkspaceSet` (several layout trees, one active, leaves moved between
-them by drag or command, pinned leaves present in several), a workspace tab as
-a native drop target for a pane drag, a headless `TilingWorkspaceTabs`
-primitive, and a versioned extension of the persisted-layout adapter. The
-design record, including the DashAI cut-over plan and open questions, is
-[`_agent/workspace-set-concept.md`](_agent/workspace-set-concept.md).
+- **Native workspaces** — a workspace is one layout tree; a workspace set is
+  several trees, one active, with pin and workspace-tab drop. `WorkspaceSet` is
+  in design, not exported. Compact ghost + external drop already ship (26.9.2).
+  Design record: [`_agent/workspace-set-concept.md`](_agent/workspace-set-concept.md).
+- **Framework-agnostic core** — vanilla TypeScript engine; no React required.
+- **Framework adapters** — Vue, Svelte, Solid, Angular, and Web Components.
+- **Canvas backend** — optional GPU path for dense pane counts.
+- **Rust + WASM core** — hot path for high-frame-rate tiling math.
 
 ## Contributing
 
@@ -210,7 +179,6 @@ prerendered to static HTML alongside a `/llms.txt` mirror.
 ## Workspace layout
 
 - `packages/hypr-tiling` — core React tiling renderer package (`@n-uf/hypr-tiling`)
-- `packages/showcase` — interactive showcase package (`hypr-tiling-showcase`)
 - `apps/web` — content-first homepage that renders the library's docs inside the
   tiling panes and prerenders them for SEO/LLM crawlers
 

@@ -61,7 +61,12 @@ path and demotes the reference to last:
    │
 5. Examples      whole runnable apps to copy wholesale (dashboard, terminal grid)
    │
-6. API reference DEMOTED, last. "For when you already know the name." Grouped by
+6. Changelog     release notes, newest first, rendered from
+   │             `packages/hypr-tiling/CHANGELOG.md` (Vite `?raw`). Calendar
+   │             versioning cannot signal majors — breaking changes are flagged
+   │             in the notes. Leaves are one per release (Unreleased, 26.9.2, …).
+   │
+7. API reference DEMOTED, last. "For when you already know the name." Grouped by
                  category — Core (Renderer & tiles · Layout & query · Theming ·
                  Commands) then Advanced helpers (isCommandEnabled, the
                  interaction-capability shapes, query/keymap/debug utilities).
@@ -71,9 +76,11 @@ path and demotes the reference to last:
 ```
 
 `DOCS_GUIDE_TOPICS` (in `docs.tsx`) carries a `section` field
-(`quickstart | howto | concepts | examples | reference`) that drives the sidebar
-grouping, the `llms.txt` topic index, and the JSON-LD `hasPart`. The prose bodies
-+ compiled snippets live in `docs-page.tsx` keyed by the same anchor ids.
+(`quickstart | howto | concepts | examples | changelog | reference`) that drives
+the sidebar grouping, the `llms.txt` topic index, and the JSON-LD `hasPart`. The
+prose bodies + compiled snippets live in `docs-page.tsx` keyed by the same
+anchor ids. The Changelog body is the parsed library `CHANGELOG.md`, not
+hand-duplicated prose.
 
 Each recipe's related-links row uses `ReferenceLinks`, which resolves each symbol
 name against `API_REFERENCE_SECTIONS` and emits a link only when the symbol is
@@ -90,7 +97,8 @@ sidebar, the right rail, and the scroll-spy all read), so the three stay in sync
 - **Sections**: Get started (Overview · Quickstart) · Guides (the "How do I…"
   recipes, derived from `DOCS_GUIDE_TOPICS` where `section === "howto"`) ·
   Concepts (Layout tree · Interactions · Capabilities) · Examples (Metrics
-  dashboard · Terminal grid) · **API reference** — a COLLAPSIBLE tree (collapsed
+  dashboard · Terminal grid) · Changelog (one leaf per `CHANGELOG.md` release,
+  from `CHANGELOG_NAV_LEAVES` in `changelog.ts`) · **API reference** — a COLLAPSIBLE tree (collapsed
   by default so it doesn't drown the guides) with a per-category group
   (Renderer & tiles · Layout & query · Theming · Commands · Advanced helpers),
   **each symbol a navigable leaf** under its category.
@@ -129,7 +137,7 @@ dev/demo affordance, so the LIBRARY default is `false` (opt-in) — a consumer a
 renders its own pane content and never wants an end-user control that blanks it.
 Suppressed, the initial pane-content-visible flag pins ON, so panes paint content
 at rest with no wiring, and the prerendered docs body carries the content (SEO
-intact). The interactive showcase (`packages/showcase`) opts back in explicitly
+intact). A tooling surface can opt back in explicitly
 with `paneSwitching: { showContentToggle: true }`; the homepage relies on the
 default and passes no `interaction` prop. No docs example surfaces the checkbox.
 
@@ -202,7 +210,7 @@ site.
 
 ### Consumer-first surface hardening (debug/observability off `.`)
 
-The `.` render contract is kept free of internal/debug/observability/showcase
+The `.` render contract is kept free of internal/debug/observability/tooling
 cruft. Two ground-up splits enforce this generically at the source:
 
 - **`renderTile` args** — `TilingRenderTileProps` is the clean consumer subset
@@ -219,7 +227,7 @@ cruft. Two ground-up splits enforce this generically at the source:
   the `onDropIntentChange` / `onLiveHitLogChange` / `onProjectedOverlayCountChange`
   telemetry hooks) moved to `TilingRendererObservabilityProps` on
   `@n-uf/hypr-tiling/devtools`, which also exports the observability-typed view of
-  the SAME `TilingRenderer` (used by the showcase panel) and the debug/observability
+  the SAME `TilingRenderer` (used by the homepage) and the debug/observability
   snapshot types (`TilingDropIntentDebugState`, `TilingLiveHitLogState`,
   `TilingObservabilityColorConfig`, `TilingPaneHitZone*`, …). The `.` report shrank
   accordingly; the `/devtools` report gained them.
@@ -245,7 +253,7 @@ render prop (`TilingRenderTileProps` carries every handle + state flag) combined
 with theme tokens from `useTilingTheme()` (`resolveAccentText`, `resolveFocusFrame`,
 `resolvePaneAccentSurface`, the `paneShell` / `paneHeader` token groups). The
 "Render your own pane frame & header" recipe + its compiled example
-(`docs-examples/custom-chrome.tsx`) document exactly this — no showcase-only or
+(`docs-examples/custom-chrome.tsx`) document exactly this — no host-only or
 engine-only prop is involved. Kept on
 `.`: `isCommandEnabled` (dogfood-proven in `shortcuts.tsx`) and the
 drag-animation defaults/bounds that back real `TilingRendererProps` knobs
@@ -256,8 +264,9 @@ drag-animation defaults/bounds that back real `TilingRendererProps` knobs
 
 | Doc class | Location | On public `/docs` site? |
 |---|---|---|
-| Task-first guides (Overview, Quickstart, How-do-I, Concepts, Examples) + sidebar-spine nav / scroll-spy / on-this-page rail | `apps/web/src/docs-page.tsx` | Yes |
+| Task-first guides (Overview, Quickstart, How-do-I, Concepts, Examples, Changelog) + sidebar-spine nav / scroll-spy / on-this-page rail | `apps/web/src/docs-page.tsx` | Yes |
 | Compiled example modules (guide snippets + live demos) | `apps/web/src/docs-examples/*.tsx` (+ `sources.ts`) | Yes |
+| Library changelog (source of truth; docs import via `?raw`) | `packages/hypr-tiling/CHANGELOG.md` → `apps/web/src/changelog.ts` | Yes (`/docs#changelog`) |
 | Consumer topic index (sidebar / llms.txt / JSON-LD) | `apps/web/src/docs.tsx` (`DOCS_GUIDE_TOPICS`) | Yes |
 | Generated per-symbol reference (demoted, tiered) | `apps/web/src/api-reference/generated.ts` (via `pnpm api:docs`) | Yes |
 | `llms.txt` mirror | `apps/web/src/llms.ts` (`buildLlmsTxt`) | Yes |
@@ -268,8 +277,11 @@ drag-animation defaults/bounds that back real `TilingRendererProps` knobs
 
 `DOCS_GUIDE_TOPICS` (in `docs.tsx`) is the single source for the docs sidebar
 sections, the `llms.txt` topic index, and the JSON-LD `hasPart`. The compiled
-example sources are inlined via `?raw` at build. `apps/web/prerender.mjs` writes
+example sources are inlined via `?raw` at build. The Changelog section imports
+`packages/hypr-tiling/CHANGELOG.md` the same way (`apps/web/src/changelog.ts`)
+and `buildLlmsTxt` embeds that markdown verbatim. `apps/web/prerender.mjs` writes
 the route to static HTML at `dist/docs/index.html` (alongside `dist/index.html`
 and `dist/llms.txt`), so consumers, crawlers, and LLM fetchers read the content —
 guides AND the exact snippet text — without executing JavaScript. The reference
-bundle stays code-split.
+bundle stays code-split. There is no separate `/changelog` route; the section
+lives at `/docs#changelog`.

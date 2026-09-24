@@ -117,7 +117,6 @@ const PACKAGE_NAME = "@n-uf/hypr-tiling";
 const ALLOWED_SUBPATHS = new Set(["devtools", "engine"]);
 const consumerRoots = [
   resolve(repoRoot, "apps", "web", "src"),
-  resolve(repoRoot, "packages", "showcase", "src"),
 ];
 for (const root of consumerRoots) {
   for (const file of collectSources(root)) {
