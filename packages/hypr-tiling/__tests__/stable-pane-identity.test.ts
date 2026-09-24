@@ -429,3 +429,59 @@ describe("stable pane identity across drag → drop → settle layout edits", ()
     ).toEqual(["a", "c", "d"]);
   });
 });
+
+describe("stable pane identity in set mode with a whole-pool `tiles` (H6)", (): void => {
+  it("a leaf shared by two workspaces keeps its instance and DOM node across a switch; the pool holds only the active tree's tiles", (): void => {
+    const observations: Map<string, PaneObservation> = createObservations();
+    const renderTile = (args: TilingRenderTileProps): React.ReactNode =>
+      React.createElement(ObservedPane, { key: args.tile.id, args, observations });
+    const set = (activeId: string) => ({
+      workspaces: [
+        { id: "one", name: "One", layout: split("one-root", "horizontal", leaf("leaf-a", "a"), leaf("leaf-b", "b")) },
+        { id: "two", name: "Two", layout: split("two-root", "horizontal", leaf("leaf-a", "a"), leaf("leaf-c", "c")) },
+      ],
+      activeId,
+    });
+    const view = render(
+      React.createElement(TilingRenderer, {
+        workspaces: set("one"),
+        onWorkspacesChange: (): void => {},
+        tiles: TILES,
+        config: { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 },
+        paneIdentity: "stable",
+        renderTile,
+      }),
+    );
+    const sharedNode: HTMLElement = paneArticle(view.container, "a");
+    const sharedToken: object | null = observations.get("a")?.instanceToken ?? null;
+    act((): void => {
+      observations.get("a")?.setCounter?.(7);
+    });
+    // Pool: exactly the active tree's tiles — `c` (workspace two only) is NOT mounted.
+    expect(
+      Array.from(view.container.querySelectorAll<HTMLElement>("[data-hpt-pane]"))
+        .map((node: HTMLElement): string => node.getAttribute("data-hpt-pane") ?? "")
+        .sort(),
+    ).toEqual(["a", "b"]);
+
+    view.rerender(
+      React.createElement(TilingRenderer, {
+        workspaces: set("two"),
+        onWorkspacesChange: (): void => {},
+        tiles: TILES,
+        config: { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 },
+        paneIdentity: "stable",
+        renderTile,
+      }),
+    );
+    expect(paneArticle(view.container, "a")).toBe(sharedNode);
+    expect(observations.get("a")?.instanceToken).toBe(sharedToken);
+    expect(observations.get("a")?.mounts).toBe(1);
+    expect(observations.get("a")?.counter).toBe(7);
+    expect(
+      Array.from(view.container.querySelectorAll<HTMLElement>("[data-hpt-pane]"))
+        .map((node: HTMLElement): string => node.getAttribute("data-hpt-pane") ?? "")
+        .sort(),
+    ).toEqual(["a", "c"]);
+  });
+});

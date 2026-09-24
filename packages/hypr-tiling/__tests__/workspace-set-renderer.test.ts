@@ -10,7 +10,7 @@
  * changes under it. The single-layout API is exercised alongside so the
  * mode switch is known not to disturb it.
  */
-import { afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
+import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import * as React from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { TilingRenderer } from "../react/tiling-renderer";
@@ -18,6 +18,7 @@ import {
   switchWorkspace,
   type TilingWorkspace,
   type TilingWorkspaceSet,
+  type TilingWorkspaceSetIssue,
 } from "../engine/workspace-set";
 import type {
   TilingCommandHandle,
@@ -140,6 +141,8 @@ function ObservedPane({
       "data-tile-id": args.tile.id,
       "data-surface": args.surface,
       "data-maximized": args.isMaximized ? "true" : "false",
+      "data-workspace-id": args.workspaceId,
+      "data-seat-count": String(args.seatCount),
       tabIndex: 0,
       onFocus: args.onFocus,
     },
@@ -732,5 +735,530 @@ describe("TilingRenderer single-layout mode is unchanged", (): void => {
       handleRef.current?.dispatch({ kind: "reveal-tile", tileId: "a" });
     });
     expect(onLayoutChange).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// H6 — pool-aware set renderer
+// ───────────────────────────────────────────────────────────────────────────
+
+/** jsdom has no layout: give every element a measurable client box so the integrity settle effect runs. */
+function withMeasuredViewport(width: number, height: number): () => void {
+  const widthDescriptor: PropertyDescriptor | undefined = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "clientWidth",
+  );
+  const heightDescriptor: PropertyDescriptor | undefined = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "clientHeight",
+  );
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get: (): number => width,
+  });
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get: (): number => height,
+  });
+  return (): void => {
+    if (widthDescriptor != null) {
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", widthDescriptor);
+    } else {
+      delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    }
+    if (heightDescriptor != null) {
+      Object.defineProperty(HTMLElement.prototype, "clientHeight", heightDescriptor);
+    } else {
+      delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+    }
+  };
+}
+
+function tileIdsOf(layout: TilingLayoutNode | null): ReadonlyArray<string> {
+  if (layout == null) {
+    return [];
+  }
+  if (layout.kind === "leaf") {
+    return [layout.tileId];
+  }
+  if (layout.kind === "group") {
+    return layout.members.map((member: TilingLeafNode): string => member.tileId);
+  }
+  return [...tileIdsOf(layout.first), ...tileIdsOf(layout.second)];
+}
+
+function workspaceOf(set: TilingWorkspaceSet, id: string): TilingWorkspace {
+  const workspace: TilingWorkspace | undefined = set.workspaces.find(
+    (candidate: TilingWorkspace): boolean => candidate.id === id,
+  );
+  if (workspace == null) {
+    throw new Error(`workspace ${id} missing`);
+  }
+  return workspace;
+}
+
+describe("H6 — set mode takes the whole tile pool; coverage is per tree", (): void => {
+  let restoreViewport: (() => void) | null = null;
+  let warnSpy: ReturnType<typeof jest.spyOn> | null = null;
+
+  beforeAll((): void => {
+    restoreViewport = withMeasuredViewport(1200, 800);
+    // The heal path logs its dev warning; keep the run output clean.
+    warnSpy = jest.spyOn(console, "warn").mockImplementation((): void => {});
+  });
+
+  afterAll((): void => {
+    restoreViewport?.();
+    restoreViewport = null;
+    warnSpy?.mockRestore();
+    warnSpy = null;
+  });
+
+  it("CONTRAST — single-layout mode still heals the controlled tree against the WHOLE tile map", async (): Promise<void> => {
+    const onLayoutChange = jest.fn((_next: TilingLayoutNode): void => {});
+    render(
+      React.createElement(TilingRenderer, {
+        layout: split("root", leaf("a"), leaf("b")),
+        tiles: TILES,
+        config: { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 },
+        onLayoutChange,
+        paneIdentity: "stable",
+        interaction: { paneSwitching: { showTabStrip: false, showSwitcherOverlay: false } },
+      }),
+    );
+    await flushFrames();
+    expect(onLayoutChange).toHaveBeenCalled();
+    const healed: TilingLayoutNode = onLayoutChange.mock.calls.at(-1)![0];
+    expect([...tileIdsOf(healed)].sort()).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("does NOT heal a tile seated only in an inactive workspace (or an unseated pool tile) into the active tree", async (): Promise<void> => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const view = render(
+      React.createElement(Harness, {
+        // pool = a b c d; main seats a|b; c lives only in ops; d is seated nowhere.
+        workspaces: threeWorkspaces("main"),
+        onWorkspacesChange,
+        observations: freshObservations(),
+      }),
+    );
+    await flushFrames();
+    expect(onWorkspacesChange).not.toHaveBeenCalled();
+    expect(placedTileIds(view.container)).toEqual(["a", "b"]);
+  });
+
+  it("still heals a tree whose OWN seats are broken (duplicate tile in the active tree)", async (): Promise<void> => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const set: TilingWorkspaceSet = {
+      workspaces: [
+        {
+          id: "main",
+          name: "Main",
+          layout: split("main-root", leaf("a"), { kind: "leaf", id: "leaf:a2", tileId: "a" }),
+        },
+        { id: "ops", name: "Ops", layout: leaf("c") },
+      ],
+      activeId: "main",
+    };
+    render(
+      React.createElement(Harness, {
+        workspaces: set,
+        onWorkspacesChange,
+        orphanTiles: "ignore",
+        observations: freshObservations(),
+      }),
+    );
+    await flushFrames();
+    expect(onWorkspacesChange).toHaveBeenCalled();
+    const next: TilingWorkspaceSet = onWorkspacesChange.mock.calls.at(-1)![0];
+    // The active tree is rebuilt from its own distinct tiles — `c` (ops-only)
+    // and `b` / `d` (pool-only) are NOT pulled in.
+    expect([...tileIdsOf(workspaceOf(next, "main").layout)].sort()).toEqual(["a"]);
+    expect(workspaceOf(next, "ops")).toBe(set.workspaces[1]);
+  });
+});
+
+describe("H6 — orphanTiles policy", (): void => {
+  it("`report` (default) delivers the set-wide issue list once per change and never mutates", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onIntegrityIssues = jest.fn((_issues: ReadonlyArray<TilingWorkspaceSetIssue>): void => {});
+    const set: TilingWorkspaceSet = threeWorkspaces("main");
+    const view = render(
+      React.createElement(Harness, {
+        workspaces: set,
+        onWorkspacesChange,
+        onIntegrityIssues,
+        observations: freshObservations(),
+      }),
+    );
+    expect(onWorkspacesChange).not.toHaveBeenCalled();
+    expect(onIntegrityIssues).toHaveBeenCalledTimes(1);
+    const first: ReadonlyArray<TilingWorkspaceSetIssue> = onIntegrityIssues.mock.calls[0]![0];
+    expect(first.map((issue: TilingWorkspaceSetIssue): string => `${issue.kind}:${issue.tileId}`)).toEqual([
+      "orphan-tile:d",
+    ]);
+
+    // Same fingerprint (a fresh but equal set) → no second report.
+    view.rerender(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("main"),
+        onWorkspacesChange,
+        onIntegrityIssues,
+        observations: freshObservations(),
+      }),
+    );
+    expect(onIntegrityIssues).toHaveBeenCalledTimes(1);
+
+    // Seat `d` in spare → the list goes clean and the transition IS reported.
+    const seated: TilingWorkspaceSet = {
+      ...set,
+      workspaces: set.workspaces.map((workspace: TilingWorkspace): TilingWorkspace =>
+        workspace.id === "spare" ? { ...workspace, layout: leaf("d") } : workspace,
+      ),
+    };
+    view.rerender(
+      React.createElement(Harness, {
+        workspaces: seated,
+        onWorkspacesChange,
+        onIntegrityIssues,
+        observations: freshObservations(),
+      }),
+    );
+    expect(onIntegrityIssues).toHaveBeenCalledTimes(2);
+    expect(onIntegrityIssues.mock.calls[1]![0]).toEqual([]);
+    expect(onWorkspacesChange).not.toHaveBeenCalled();
+  });
+
+  it("`report` does not fire on mount when the set is already clean", (): void => {
+    const onIntegrityIssues = jest.fn((_issues: ReadonlyArray<TilingWorkspaceSetIssue>): void => {});
+    const clean: TilingWorkspaceSet = {
+      workspaces: [
+        { id: "main", name: "Main", layout: split("main-root", leaf("a"), leaf("b")) },
+        { id: "ops", name: "Ops", layout: split("ops-root", leaf("c"), leaf("d")) },
+      ],
+      activeId: "main",
+    };
+    render(
+      React.createElement(Harness, {
+        workspaces: clean,
+        onWorkspacesChange: (): void => {},
+        onIntegrityIssues,
+        observations: freshObservations(),
+      }),
+    );
+    expect(onIntegrityIssues).not.toHaveBeenCalled();
+  });
+
+  it("`report` includes an unknown seated tile and leaves it in the tree", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onIntegrityIssues = jest.fn((_issues: ReadonlyArray<TilingWorkspaceSetIssue>): void => {});
+    const set: TilingWorkspaceSet = {
+      workspaces: [
+        { id: "main", name: "Main", layout: split("main-root", leaf("a"), leaf("zz")) },
+        { id: "ops", name: "Ops", layout: split("ops-root", leaf("b"), split("x", leaf("c"), leaf("d"))) },
+      ],
+      activeId: "main",
+    };
+    const view = render(
+      React.createElement(Harness, {
+        workspaces: set,
+        onWorkspacesChange,
+        onIntegrityIssues,
+        observations: freshObservations(),
+      }),
+    );
+    expect(onIntegrityIssues).toHaveBeenCalledTimes(1);
+    expect(
+      onIntegrityIssues.mock.calls[0]![0].map((issue: TilingWorkspaceSetIssue): string => `${issue.kind}:${issue.tileId}`),
+    ).toEqual(["unknown-tile:zz"]);
+    expect(onWorkspacesChange).not.toHaveBeenCalled();
+    // The unknown tile is painted through the missing-tile placeholder, not pruned.
+    expect(view.container.querySelector('[data-leaf-id="leaf:zz"]')).not.toBeNull();
+  });
+
+  it("`ignore` reports nothing and mutates nothing", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onIntegrityIssues = jest.fn((_issues: ReadonlyArray<TilingWorkspaceSetIssue>): void => {});
+    render(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("main"),
+        onWorkspacesChange,
+        onIntegrityIssues,
+        orphanTiles: "ignore",
+        observations: freshObservations(),
+      }),
+    );
+    expect(onIntegrityIssues).not.toHaveBeenCalled();
+    expect(onWorkspacesChange).not.toHaveBeenCalled();
+  });
+
+  it("`seat-in-active` seats the orphan in the active workspace ONCE, prunes unknown tiles, reports, and leaves inactive-only tiles alone", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onIntegrityIssues = jest.fn((_issues: ReadonlyArray<TilingWorkspaceSetIssue>): void => {});
+    const set: TilingWorkspaceSet = {
+      workspaces: [
+        { id: "main", name: "Main", layout: split("main-root", leaf("a"), leaf("zz")) },
+        { id: "ops", name: "Ops", layout: split("ops-root", leaf("a"), leaf("c")) },
+        { id: "spare", name: "Spare", layout: null },
+      ],
+      activeId: "main",
+    };
+    const view = render(
+      React.createElement(Harness, {
+        workspaces: set,
+        onWorkspacesChange,
+        onIntegrityIssues,
+        orphanTiles: "seat-in-active",
+        observations: freshObservations(),
+      }),
+    );
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+    const repaired: TilingWorkspaceSet = onWorkspacesChange.mock.calls[0]![0];
+    expect(repaired.activeId).toBe("main");
+    // Orphans `b` and `d` seated in the ACTIVE tree; unknown `zz` pruned.
+    expect([...tileIdsOf(workspaceOf(repaired, "main").layout)].sort()).toEqual(["a", "b", "d"]);
+    // `c` stays ops-only; ops untouched by reference.
+    expect(workspaceOf(repaired, "ops")).toBe(set.workspaces[1]);
+    expect(tileIdsOf(workspaceOf(repaired, "spare").layout)).toEqual([]);
+    // Default mint scheme `leaf:<tileId>`.
+    const mainLeafIds: string[] = [];
+    const walk = (node: TilingLayoutNode | null): void => {
+      if (node == null) {
+        return;
+      }
+      if (node.kind === "leaf") {
+        mainLeafIds.push(node.id);
+      } else if (node.kind === "split") {
+        walk(node.first);
+        walk(node.second);
+      }
+    };
+    walk(workspaceOf(repaired, "main").layout);
+    expect(mainLeafIds.sort()).toEqual(["leaf:a", "leaf:b", "leaf:d"]);
+    // Issues are still reported under this policy.
+    expect(onIntegrityIssues).toHaveBeenCalledTimes(1);
+
+    // The host has not applied the repaired set yet (same identity) → no second emission.
+    view.rerender(
+      React.createElement(Harness, {
+        workspaces: set,
+        onWorkspacesChange,
+        onIntegrityIssues,
+        orphanTiles: "seat-in-active",
+        observations: freshObservations(),
+      }),
+    );
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+
+    // The host applies it → clean → no further repair, the clean list is reported.
+    view.rerender(
+      React.createElement(Harness, {
+        workspaces: repaired,
+        onWorkspacesChange,
+        onIntegrityIssues,
+        orphanTiles: "seat-in-active",
+        observations: freshObservations(),
+      }),
+    );
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+    expect(onIntegrityIssues).toHaveBeenCalledTimes(2);
+    expect(onIntegrityIssues.mock.calls[1]![0]).toEqual([]);
+    expect(placedTileIds(view.container)).toEqual(["a", "b", "d"]);
+  });
+
+  it("`seat-in-active` uses the host `mintLeafId`", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    render(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("ops"),
+        onWorkspacesChange,
+        orphanTiles: "seat-in-active",
+        mintLeafId: (tileId: string): string => `pane/${tileId}`,
+        observations: freshObservations(),
+      }),
+    );
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+    const repaired: TilingWorkspaceSet = onWorkspacesChange.mock.calls[0]![0];
+    const ops: TilingLayoutNode | null = workspaceOf(repaired, "ops").layout;
+    expect([...tileIdsOf(ops)].sort()).toEqual(["a", "c", "d"]);
+    const minted: string[] = [];
+    const walk = (node: TilingLayoutNode | null): void => {
+      if (node == null) {
+        return;
+      }
+      if (node.kind === "leaf") {
+        minted.push(node.id);
+      } else if (node.kind === "split") {
+        walk(node.first);
+        walk(node.second);
+      }
+    };
+    walk(ops);
+    expect(minted).toContain("pane/d");
+    // `main` (inactive) keeps `b` to itself; the orphan never lands there.
+    expect([...tileIdsOf(workspaceOf(repaired, "main").layout)].sort()).toEqual(["a", "b"]);
+  });
+});
+
+describe("H6 — inactiveWorkspaces", (): void => {
+  it("`unmount` (default): a pane seated only in the previous workspace leaves the DOM on switch", (): void => {
+    const observations: Map<string, PaneObservation> = freshObservations();
+    const view = render(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("main"),
+        onWorkspacesChange: (): void => {},
+        observations,
+      }),
+    );
+    expect(view.container.querySelector('article[data-tile-id="b"]')).not.toBeNull();
+    view.rerender(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("ops"),
+        onWorkspacesChange: (): void => {},
+        observations,
+      }),
+    );
+    expect(view.container.querySelector('article[data-tile-id="b"]')).toBeNull();
+    view.rerender(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("main"),
+        onWorkspacesChange: (): void => {},
+        observations,
+      }),
+    );
+    // Back on main `b` is a fresh instance.
+    expect(observations.get("b")?.mounts).toBe(2);
+  });
+
+  it("`keep-mounted`: the inactive pane parks hidden in the pool with its DOM node and instance intact, and returns to its slot", (): void => {
+    const observations: Map<string, PaneObservation> = freshObservations();
+    const view = render(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("main"),
+        onWorkspacesChange: (): void => {},
+        inactiveWorkspaces: "keep-mounted",
+        observations,
+      }),
+    );
+    const nodeB: HTMLElement | null = placedPane(view.container, "b");
+    const tokenB: object | null = observations.get("b")?.instanceToken ?? null;
+    expect(nodeB).not.toBeNull();
+    expect(nodeB?.getAttribute("data-workspace-id")).toBe("main");
+    // `c` (ops-only) has never been shown → not pre-mounted.
+    expect(view.container.querySelector('article[data-tile-id="c"]')).toBeNull();
+
+    view.rerender(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("ops"),
+        onWorkspacesChange: (): void => {},
+        inactiveWorkspaces: "keep-mounted",
+        observations,
+      }),
+    );
+    expect(placedTileIds(view.container)).toEqual(["a", "c"]);
+    const parkedB: HTMLElement | null = view.container.querySelector<HTMLElement>(
+      'article[data-tile-id="b"]',
+    );
+    expect(parkedB).toBe(nodeB);
+    expect(parkedB?.closest("[data-hpt-pane-pool]")).not.toBeNull();
+    // Parked pane reports the inactive workspace that seats it, at rest.
+    expect(parkedB?.getAttribute("data-workspace-id")).toBe("main");
+    expect(observations.get("b")?.mounts).toBe(1);
+    expect(observations.get("b")?.instanceToken).toBe(tokenB);
+
+    view.rerender(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("main"),
+        onWorkspacesChange: (): void => {},
+        inactiveWorkspaces: "keep-mounted",
+        observations,
+      }),
+    );
+    expect(placedTileIds(view.container)).toEqual(["a", "b"]);
+    expect(placedPane(view.container, "b")).toBe(nodeB);
+    expect(observations.get("b")?.mounts).toBe(1);
+    // Now `c` (shown once on ops) stays mounted in the pool too.
+    const parkedC: HTMLElement | null = view.container.querySelector<HTMLElement>(
+      'article[data-tile-id="c"]',
+    );
+    expect(parkedC?.closest("[data-hpt-pane-pool]")).not.toBeNull();
+    expect(parkedC?.getAttribute("data-workspace-id")).toBe("ops");
+    expect(observations.get("c")?.mounts).toBe(1);
+  });
+
+  it("`keep-mounted`: a retained tile that leaves every workspace is unmounted", (): void => {
+    const observations: Map<string, PaneObservation> = freshObservations();
+    const view = render(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("main"),
+        onWorkspacesChange: (): void => {},
+        inactiveWorkspaces: "keep-mounted",
+        observations,
+      }),
+    );
+    view.rerender(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("ops"),
+        onWorkspacesChange: (): void => {},
+        inactiveWorkspaces: "keep-mounted",
+        observations,
+      }),
+    );
+    expect(view.container.querySelector('article[data-tile-id="b"]')).not.toBeNull();
+    const withoutB: TilingWorkspaceSet = {
+      ...threeWorkspaces("ops"),
+      workspaces: threeWorkspaces("ops").workspaces.map((workspace: TilingWorkspace): TilingWorkspace =>
+        workspace.id === "main" ? { ...workspace, layout: leaf("a") } : workspace,
+      ),
+    };
+    view.rerender(
+      React.createElement(Harness, {
+        workspaces: withoutB,
+        onWorkspacesChange: (): void => {},
+        inactiveWorkspaces: "keep-mounted",
+        observations,
+      }),
+    );
+    expect(view.container.querySelector('article[data-tile-id="b"]')).toBeNull();
+  });
+});
+
+describe("H6 — workspaceId / seatCount render props", (): void => {
+  it("set mode: panes carry the active workspace id and the set-wide seat count of their tile", (): void => {
+    const view = render(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("ops"),
+        onWorkspacesChange: (): void => {},
+        observations: freshObservations(),
+      }),
+    );
+    const a: HTMLElement | null = placedPane(view.container, "a");
+    const c: HTMLElement | null = placedPane(view.container, "c");
+    expect(a?.getAttribute("data-workspace-id")).toBe("ops");
+    expect(a?.getAttribute("data-seat-count")).toBe("2");
+    expect(c?.getAttribute("data-workspace-id")).toBe("ops");
+    expect(c?.getAttribute("data-seat-count")).toBe("1");
+  });
+
+  it("single-layout mode: workspaceId is `main` and seatCount is 1", (): void => {
+    const view = render(
+      React.createElement(TilingRenderer, {
+        layout: split("root", leaf("a"), leaf("b")),
+        tiles: TILES,
+        config: { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 },
+        onLayoutChange: (): void => {},
+        paneIdentity: "stable",
+        interaction: { paneSwitching: { showTabStrip: false, showSwitcherOverlay: false } },
+        renderTile: (args: TilingRenderTileProps): React.ReactNode =>
+          React.createElement(ObservedPane, {
+            key: args.tile.id,
+            args,
+            observations: new Map<string, PaneObservation>(),
+          }),
+      }),
+    );
+    const a: HTMLElement | null = placedPane(view.container, "a");
+    expect(a?.getAttribute("data-workspace-id")).toBe("main");
+    expect(a?.getAttribute("data-seat-count")).toBe("1");
   });
 });
