@@ -23,7 +23,13 @@ import {
 } from "../react/workspace-tabs";
 import { resolveWorkspaceTabKey } from "../engine/workspace-tabs";
 import { queryWorkspaceSet, type TilingWorkspace, type TilingWorkspaceSet } from "../engine/workspace-set";
-import type { TilingLayoutNode, TilingLeafNode, TilingTile } from "../engine/types";
+import type {
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingRenderTileProps,
+  TilingTile,
+  TilingWorkspaceSwitchEvent,
+} from "../engine/types";
 
 const PANE_RECT: DOMRect = {
   x: 10,
@@ -348,13 +354,44 @@ describe("useTilingWorkspaceTabs — semantics and roving focus", (): void => {
 });
 
 describe("useTilingWorkspaceTabs — native drop target through the renderer", (): void => {
+  interface HostProps {
+    initial: TilingWorkspaceSet;
+    onSet: (next: TilingWorkspaceSet) => void;
+    followMovedLeaf?: boolean;
+    onMoveLeaf?: (leafId: string, fromWorkspaceId: string, toWorkspaceId: string) => void;
+    onWorkspaceSwitch?: (event: TilingWorkspaceSwitchEvent) => void;
+    mounts?: Map<string, number>;
+  }
+
+  /** Counts `pane`-surface mounts per tile; the header is the drag handle like the default tile. */
+  function CountedPane({ args, mounts }: { args: TilingRenderTileProps; mounts: Map<string, number> }): React.ReactElement {
+    const isPane: boolean = args.surface === "pane";
+    React.useEffect((): void => {
+      // Ghost / overlay surfaces mount their own copies during a drag; only the placed pane counts.
+      if (isPane) mounts.set(args.tile.id, (mounts.get(args.tile.id) ?? 0) + 1);
+    }, [args.tile.id, isPane, mounts]);
+    return React.createElement(
+      "article",
+      {
+        "data-leaf-id": args.leafId,
+        "data-tile-id": args.tile.id,
+        "data-surface": args.surface,
+        onFocus: args.onFocus,
+        onPointerMove: args.onPointerMove,
+        onPointerLeave: args.onPointerLeave,
+      },
+      React.createElement("header", { onPointerDown: args.onHandlePointerDown }, args.tile.title),
+    );
+  }
+
   function Host({
     initial,
     onSet,
-  }: {
-    initial: TilingWorkspaceSet;
-    onSet: (next: TilingWorkspaceSet) => void;
-  }): React.ReactElement {
+    followMovedLeaf = false,
+    onMoveLeaf,
+    onWorkspaceSwitch,
+    mounts,
+  }: HostProps): React.ReactElement {
     const [set, setSet] = React.useState<TilingWorkspaceSet>(initial);
     const tabs: UseTilingWorkspaceTabsResult = useTilingWorkspaceTabs({
       workspaces: set,
@@ -382,10 +419,19 @@ describe("useTilingWorkspaceTabs — native drop target through the renderer", (
         tiles: TILES,
         config: { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 },
         dragGhostMode: "auto",
+        paneIdentity: "stable",
         interaction: {
           dragRecovery: { enable: false },
           paneSwitching: { showTabStrip: false, showSwitcherOverlay: false },
+          workspaces: { enable: true, followMovedLeaf },
         },
+        onMoveLeaf,
+        onWorkspaceSwitch,
+        renderTile:
+          mounts == null
+            ? undefined
+            : (args: TilingRenderTileProps): React.ReactNode =>
+                React.createElement(CountedPane, { key: args.tile.id, args, mounts }),
         ...tabs.rendererProps,
       }),
     );
@@ -472,5 +518,58 @@ describe("useTilingWorkspaceTabs — native drop target through the renderer", (
     expect(document.querySelector("[data-drag-cancel]")).toBeNull();
     // Settle clears the resolved hover.
     expect(tabByWorkspace(container, "spare").hasAttribute("data-drop-target")).toBe(false);
+  });
+
+  it("followMovedLeaf: release on a tab moves AND switches in one commit; the moved pane keeps its mount", async (): Promise<void> => {
+    const onSet = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onMoveLeaf = jest.fn((_leafId: string, _from: string, _to: string): void => {});
+    const onWorkspaceSwitch = jest.fn((_event: TilingWorkspaceSwitchEvent): void => {});
+    const mounts: Map<string, number> = new Map<string, number>();
+    const { container } = render(
+      React.createElement(Host, {
+        initial: threeWorkspaces("main"),
+        onSet,
+        followMovedLeaf: true,
+        onMoveLeaf,
+        onWorkspaceSwitch,
+        mounts,
+      }),
+    );
+    tabElements(container).forEach((tab: HTMLButtonElement, index: number): void => {
+      tab.getBoundingClientRect = (): DOMRect => tabRect(index);
+    });
+    expect(mounts.get("a")).toBe(1);
+    const header: HTMLElement | null = container.querySelector('article[data-leaf-id="leaf:a"] header');
+    if (header == null) {
+      throw new Error("expected counted-pane header for leaf:a");
+    }
+    await act(async (): Promise<void> => {
+      dispatchPointer(header, "pointerdown", { clientX: 20, clientY: 120 });
+    });
+    await flushFrames();
+    await act(async (): Promise<void> => {
+      dispatchPointer(window, "pointermove", { clientX: 40, clientY: 140 });
+    });
+    await flushFrames();
+    await act(async (): Promise<void> => {
+      dispatchPointer(window, "pointermove", { clientX: 250, clientY: 15 });
+    });
+    await flushFrames();
+    await act(async (): Promise<void> => {
+      dispatchPointer(window, "pointerup", { clientX: 250, clientY: 15 });
+    });
+    await flushFrames();
+
+    // One commit carries both the move and the switch.
+    expect(onSet).toHaveBeenCalledTimes(1);
+    const next: TilingWorkspaceSet = onSet.mock.calls.at(-1)?.[0] as TilingWorkspaceSet;
+    expect(next.activeId).toBe("spare");
+    expect(queryWorkspaceSet(next).workspacesOfLeaf("leaf:a")).toEqual(["spare"]);
+    expect(onMoveLeaf).toHaveBeenCalledWith("leaf:a", "main", "spare");
+    expect(onWorkspaceSwitch).toHaveBeenCalledWith({ from: "main", to: "spare", via: "tab-drop" });
+    // The pane travelled with the switch: same mount, now painted in `spare`.
+    expect(mounts.get("a")).toBe(1);
+    expect(container.querySelector('article[data-leaf-id="leaf:a"]')).not.toBeNull();
+    expect(container.querySelector('article[data-leaf-id="leaf:b"]')).toBeNull();
   });
 });

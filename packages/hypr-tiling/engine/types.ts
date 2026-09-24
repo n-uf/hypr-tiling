@@ -600,11 +600,15 @@ export type TilingCommand =
  * trackpad / touch swipe (`interaction.workspaces.switch`). `"spring-load"` is
  * the spring-loaded tab drop (`interaction.workspaces.springLoad`): the dwell
  * elapsed, the dragged leaf moved into the hovered workspace and the set
- * switched there. `"tab"` is reserved for a host tab strip that routes
- * through the same dispatch path.
+ * switched there. `"tab-drop"` is a plain (non-spring-loaded) drag release
+ * on a workspace tab with `interaction.workspaces.followMovedLeaf: true`: the
+ * leaf moved and the set switched in the same `onWorkspacesChange`. `"tab"`
+ * is reserved for a host tab strip that routes through the same dispatch
+ * path.
  */
 export type TilingWorkspaceSwitchVia =
   | "tab"
+  | "tab-drop"
   | "key"
   | "command"
   | "swipe"
@@ -2490,6 +2494,10 @@ export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonPro
    * Notified after a drag settled on a workspace tab and the leaf was moved
    * (the moved set has already been reported through `onWorkspacesChange`).
    * `fromWorkspaceId` is the workspace that was active when the drag started.
+   * With `interaction.workspaces.followMovedLeaf: true` the reported set is
+   * already switched to `toWorkspaceId` — do not switch again from here; a
+   * second commit would paint the leaf seated only in an inactive workspace
+   * first (a remount under `inactiveWorkspaces: "unmount"`).
    */
   onMoveLeaf?: (leafId: string, fromWorkspaceId: string, toWorkspaceId: string) => void;
   /**

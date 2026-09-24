@@ -9827,6 +9827,34 @@ const TilingRendererComponent = React.forwardRef<
         );
       }
     }
+    // A live drag lifts the source out of the display tree whenever it has no
+    // in-tree candidate — pointer over nothing, or over an external target
+    // such as a workspace tab — and the ghost paints it. Keep the pane parked
+    // in the pool through `dragging` and `settling`, so the release (in-tree,
+    // external claim, or a move into another workspace) reseats the SAME
+    // mount instead of remounting it with fresh local state.
+    const parkedSourceLeafId: string | null =
+      dragState.phase === "dragging" || dragState.phase === "settling"
+        ? dragState.sourceLeafId
+        : null;
+    const parkedSourceTileId: string | null =
+      parkedSourceLeafId == null
+        ? null
+        : (findLeafById(layout, parkedSourceLeafId)?.tileId ?? null);
+    if (parkedSourceTileId != null && !stablePaneEntries.has(parkedSourceTileId)) {
+      const last: StablePaneEntry | undefined = lastEntries.get(parkedSourceTileId);
+      if (last != null) {
+        stablePaneEntries.set(
+          parkedSourceTileId,
+          restingRetainedPaneEntry(
+            last,
+            { tileId: parkedSourceTileId, workspaceId: last.tileArgs.workspaceId },
+            resolveTile(tiles, parkedSourceTileId),
+            tileSeatCounts?.get(parkedSourceTileId) ?? last.tileArgs.seatCount,
+          ),
+        );
+      }
+    }
     for (const tileId of Array.from(lastEntries.keys())) {
       if (!stablePaneEntries.has(tileId)) {
         lastEntries.delete(tileId);
@@ -10501,22 +10529,45 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       }
       const current: TilingWorkspaceSet = workspacesRef.current;
       const from: string = current.activeId;
-      const next: TilingWorkspaceSet = moveLeafToWorkspace(
+      const moved: TilingWorkspaceSet = moveLeafToWorkspace(
         current,
         leafId,
         hover.workspaceId,
         hover.placement,
       );
-      if (next === current) {
+      if (moved === current) {
         // Unknown destination workspace (or a no-op re-seat): decline the
         // claim so the release settles through the ordinary cancel fly-back.
         return false;
       }
+      // `followMovedLeaf` lands move + switch in ONE `onWorkspacesChange`, the
+      // same edge `move-leaf-to-workspace` takes. A host switching afterwards
+      // from `onMoveLeaf` would paint an intermediate set with the leaf seated
+      // only in an inactive workspace — under `inactiveWorkspaces: "unmount"`
+      // that remounts the pane and drops its local state.
+      const follow: boolean = followMovedLeafRef.current;
+      const next: TilingWorkspaceSet = follow
+        ? switchWorkspace(moved, hover.workspaceId)
+        : moved;
+      if (next.activeId !== from) {
+        emittedSwitchToRef.current = next.activeId;
+        beginSwitchTransition(
+          next.activeId,
+          workspaceSwitchDirection(current, from, next.activeId),
+        );
+      }
       onWorkspacesChangeRef.current(next);
       onMoveLeafRef.current?.(leafId, from, hover.workspaceId);
+      if (next.activeId !== from) {
+        onWorkspaceSwitchRef.current?.({ from, to: next.activeId, via: "tab-drop" });
+        setFocusMemory(
+          (memory: ReadonlyMap<string, string>): ReadonlyMap<string, string> =>
+            withRemembered(memory, next.activeId, leafId),
+        );
+      }
       return true;
     },
-    [onExternalDrop],
+    [beginSwitchTransition, onExternalDrop],
   );
 
   const applyWorkspaceCommand = React.useCallback(
