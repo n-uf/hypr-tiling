@@ -359,6 +359,7 @@ export interface ResolvedTilingWorkspacesCapability {
 export interface ResolvedTilingWorkspaceSwitchCapability {
     swipe: TilingWorkspaceSwipeConfig;
     touchSwipe: boolean;
+    transition: TilingWorkspaceTransitionMode;
     wheelSwipe: boolean;
 }
 
@@ -770,6 +771,9 @@ export interface TilingHideTileResult {
 }
 
 // @public
+export type TilingInactiveWorkspacesMode = "unmount" | "keep-mounted";
+
+// @public
 export interface TilingInteractionCapabilities {
     coherentTransit?: boolean;
     customCursor?: boolean;
@@ -938,6 +942,9 @@ export type TilingMovePlacement = "left" | "right" | "top" | "bottom";
 export type TilingOnExternalDrop = (leafId: string, targetId: string, point: TilingClientPoint, hover: TilingExternalDragHover) => void | boolean;
 
 // @public
+export type TilingOrphanTilePolicy = "seat-in-active" | "ignore" | "report";
+
+// @public
 export type TilingOverlayPortalContainer = HTMLElement | null | (() => HTMLElement | null);
 
 // @public
@@ -1062,9 +1069,13 @@ export interface TilingRendererProps extends TilingRendererCommonProps {
 
 // @public
 export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonProps {
+    inactiveWorkspaces?: TilingInactiveWorkspacesMode;
+    mintLeafId?: (tileId: string) => string;
+    onIntegrityIssues?: (issues: ReadonlyArray<TilingWorkspaceSetIssue>) => void;
     onMoveLeaf?: (leafId: string, fromWorkspaceId: string, toWorkspaceId: string) => void;
     onWorkspacesChange: (workspaces: TilingWorkspaceSet) => void;
     onWorkspaceSwitch?: (event: TilingWorkspaceSwitchEvent) => void;
+    orphanTiles?: TilingOrphanTilePolicy;
     renderEmptyWorkspace?: (workspace: TilingWorkspace) => React_2.ReactNode;
     workspaces: TilingWorkspaceSet;
 }
@@ -1121,9 +1132,11 @@ export interface TilingRenderTileProps {
     paneOrdinal: number;
     paneWidthPx: number;
     preview: TilingLeafDropPreview | null;
+    seatCount: number;
     readonly surface: TilingRenderSurface;
     tile: TilingTile;
     widthSizingMode: TilingPaneSizingMode;
+    workspaceId: string;
 }
 
 // @public
@@ -1453,6 +1466,7 @@ export type TilingWorkspaceSwipeTarget = "prev" | "next";
 // @public
 export interface TilingWorkspaceSwitchCapability {
     touchSwipe?: boolean;
+    transition?: TilingWorkspaceTransitionMode;
     wheelSwipe?: boolean | Partial<TilingWorkspaceSwipeConfig>;
 }
 

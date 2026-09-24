@@ -422,6 +422,7 @@ export interface ResolvedTilingWorkspacesCapability {
 export interface ResolvedTilingWorkspaceSwitchCapability {
     swipe: TilingWorkspaceSwipeConfig;
     touchSwipe: boolean;
+    transition: TilingWorkspaceTransitionMode;
     wheelSwipe: boolean;
 }
 
@@ -656,6 +657,9 @@ export interface TilingHideTileResult {
 }
 
 // @public
+export type TilingInactiveWorkspacesMode = "unmount" | "keep-mounted";
+
+// @public
 export type TilingKeyboardAction = {
     kind: "toggle-maximize";
 } | {
@@ -736,6 +740,9 @@ export interface TilingMoveModeState {
     sourceLeafId: string;
     targetLeafId: string | null;
 }
+
+// @public
+export type TilingOrphanTilePolicy = "seat-in-active" | "ignore" | "report";
 
 // @public
 export interface TilingPaneSwitcherState {
@@ -951,6 +958,7 @@ export type TilingWorkspaceSwipeTarget = "prev" | "next";
 // @public
 export interface TilingWorkspaceSwitchCapability {
     touchSwipe?: boolean;
+    transition?: TilingWorkspaceTransitionMode;
     wheelSwipe?: boolean | Partial<TilingWorkspaceSwipeConfig>;
 }
 
