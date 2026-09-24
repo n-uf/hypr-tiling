@@ -1125,7 +1125,7 @@ export interface TilingWorkspaceSwitchEvent {
 }
 
 // @public
-export type TilingWorkspaceSwitchVia = "tab" | "key" | "command" | "swipe" | "spring-load" | "reveal";
+export type TilingWorkspaceSwitchVia = "tab" | "tab-drop" | "key" | "command" | "swipe" | "spring-load" | "reveal";
 
 // @public
 export type TilingWorkspaceTabKeyAction = {

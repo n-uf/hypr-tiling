@@ -446,7 +446,14 @@ function Dashboard() {
     mode reports `TILING_MAIN_WORKSPACE_ID` / `1`.
 - **Drop on a tab** — a `kind: "workspace-tab"` `externalDragHover` (what
   `tabs.rendererProps` resolves for you) settles by `moveLeafToWorkspace`
-  with no host claim; `onMoveLeaf(leafId, from, to)` reports it.
+  with no host claim; `onMoveLeaf(leafId, from, to)` reports it. With
+  `interaction.workspaces.followMovedLeaf: true` the same
+  `onWorkspacesChange` is already switched to the destination
+  (`onWorkspaceSwitch({ via: "tab-drop" })`) — do not switch again from
+  `onMoveLeaf`. Under `paneIdentity: "stable"` the dragged pane stays
+  parked in the pool for the whole drag (over empty space, over a tab, into
+  another workspace), so the release reseats the same mount and in-pane
+  local state survives.
 - **Tab strip** — `role="tablist"` / `role="tab"`, roving `tabIndex`,
   Arrow keys / Home / End move focus, Enter / Space activate, F2 → 
   `onRenameRequest`, Delete → `onCloseRequest`. Unstyled until a theme

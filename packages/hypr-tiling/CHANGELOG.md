@@ -10,6 +10,31 @@ the version number alone does not flag them.
 
 Nothing pending.
 
+## 26.9.6 — 2026-09-24
+
+Drag-source mount identity across a tab drop. Additive; no default changes.
+
+- **Fixed: a dragged pane no longer remounts when its drag has no in-tree
+  candidate.** Under `paneIdentity: "stable"` the live-drag display tree
+  lifts the source out whenever the pointer is over nothing or over an
+  external target (a workspace tab); the pool used to drop the pane's entry
+  there, so the release — in-tree, external claim, or a move into another
+  workspace — remounted it and lost in-pane local state. The source now stays
+  parked in the pool through `dragging` and `settling` (last render props,
+  transient flags cleared, like `inactiveWorkspaces: "keep-mounted"`
+  retention) and the release reseats the same mount.
+- **Tab drop honours `interaction.workspaces.followMovedLeaf`.** A plain
+  (non-spring-loaded) release on a workspace tab with `followMovedLeaf: true`
+  moves the leaf AND switches `activeId` in ONE `onWorkspacesChange`, the
+  same edge `move-leaf-to-workspace` takes, and fires
+  `onWorkspaceSwitch({ via: "tab-drop" })` + focus memory for the moved leaf.
+  Hosts that switched from `onMoveLeaf` should stop: a second commit paints
+  the leaf seated only in an inactive workspace first, which under
+  `inactiveWorkspaces: "unmount"` is itself a remount. `followMovedLeaf:
+  false` (default) is unchanged — the set is reported moved, not switched.
+- **`TilingWorkspaceSwitchVia` gains `"tab-drop"`** (additive union member;
+  exhaustive `switch`es over the union need a new arm).
+
 ## 26.9.5 — 2026-09-23
 
 Three desktop disambiguation gates on the workspace wheel-swipe FSM. Hosts on
