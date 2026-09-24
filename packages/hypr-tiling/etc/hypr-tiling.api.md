@@ -440,6 +440,9 @@ export const TILING_MAIN_WORKSPACE_ID: TilingWorkspaceId;
 export const TILING_MAIN_WORKSPACE_NAME: string;
 
 // @public
+export const TILING_SPRING_LOAD_DEFAULTS: TilingSpringLoadConfig;
+
+// @public
 export const TILING_THEME_REGISTRY: Record<TilingThemeId, TilingTheme>;
 
 // @public
@@ -1169,6 +1172,14 @@ export interface TilingSplitNode {
     ratio: number;
     second: TilingLayoutNode;
     sizing?: TilingPaneSizing;
+}
+
+// @public
+export type TilingSpringLoadCapability = Partial<TilingSpringLoadConfig> | false;
+
+// @public
+export interface TilingSpringLoadConfig {
+    dwellMs: number;
 }
 
 // @public

@@ -63,6 +63,9 @@ export function buildDefaultDwindleLayout(tileIds: ReadonlyArray<string>, axis?:
 export function canGroupMultiSelection(layout: TilingLayoutNode, selection: ReadonlySet<string>): boolean;
 
 // @public
+export function canRearmDrag(state: DragMachineState): boolean;
+
+// @public
 export function chordRequiresModifier(chord: ResolvedTilingKeyChord): boolean;
 
 // @public
@@ -161,6 +164,58 @@ export interface DragCursorViewportBounds {
     left: number;
     right: number;
     top: number;
+}
+
+// @public
+export interface DragMachinePoint {
+    x: number;
+    y: number;
+}
+
+// @public
+export type DragMachineState = {
+    phase: "idle";
+} | {
+    phase: "armed";
+    pointerId: number;
+    pointerType: DragPointerType;
+    touchDrag: boolean;
+    sourceLeafId: string;
+    anchorFootprint: TilingPaneFootprint;
+    pointerAnchorOffset: DragMachinePoint;
+    originClient: DragMachinePoint;
+} | {
+    phase: "dragging";
+    pointerId: number;
+    pointerType: DragPointerType;
+    touchDrag: boolean;
+    sourceLeafId: string;
+    anchorFootprint: TilingPaneFootprint;
+    pointerAnchorOffset: DragMachinePoint;
+    ghostFootprint: TilingPaneFootprint;
+    resolvedTarget: DragResolvedTarget | null;
+} | {
+    phase: "settling";
+    outcome: DragSettleOutcome;
+    sourceLeafId: string;
+    resolvedTarget: DragResolvedTarget | null;
+    fromFootprint: TilingPaneFootprint;
+    toFootprint: TilingPaneFootprint;
+};
+
+// @public
+export type DragPointerType = "mouse" | "pen" | "touch";
+
+// @public
+export interface DragRearmEvent {
+    anchorFootprint: TilingPaneFootprint;
+    client: DragMachinePoint;
+    pointerAnchorOffset?: DragMachinePoint;
+    pointerId: number;
+    pointerType: DragPointerType;
+    sourceLeafId: string;
+    tileId?: string;
+    type: "REARM";
 }
 
 // @public
@@ -269,6 +324,9 @@ export function isWorkspaceNavigationCommand(command: TilingCommand): command is
 }>;
 
 // @public
+export function isWorkspaceTabDragHover(hover: TilingExternalDragHover | null | undefined): hover is TilingWorkspaceTabDragHover;
+
+// @public
 export function keyboardActionToCommand(action: TilingKeyboardAction): TilingCommand;
 
 // @public
@@ -375,6 +433,9 @@ export function queryWorkspaceSet(set: TilingWorkspaceSet): TilingWorkspaceSetQu
 export function readLeafNodeIds(node: TilingLayoutNode): ReadonlyArray<string>;
 
 // @public
+export function rearmPointerAnchorOffset(anchorFootprint: TilingPaneFootprint, client: DragMachinePoint): DragMachinePoint;
+
+// @public
 export function reassertCollapsedExtentPins(node: TilingLayoutNode, collapsedExtentPx: number): TilingLayoutNode;
 
 // @public
@@ -442,6 +503,12 @@ export function resolveMultiSelectGroupHost(selection: ReadonlySet<string>, clic
 
 // @public
 export function resolveSizingMode(sizing: TilingPaneSizing | undefined, dimension: TilingDimension): TilingPaneSizingMode;
+
+// @public
+export function resolveSpringLoadCapability(capability: TilingSpringLoadCapability | null | undefined): TilingSpringLoadConfig | null;
+
+// @public
+export function resolveSpringLoadConfig(config?: Partial<TilingSpringLoadConfig> | null): TilingSpringLoadConfig;
 
 // @public
 export function resolveSwipeArming(params: {
@@ -528,6 +595,12 @@ export interface SplitBoundaryStaticFlags {
 }
 
 // @public
+export function springLoadFireAt(state: TilingSpringLoadState, config?: TilingSpringLoadConfig): number | null;
+
+// @public
+export function springLoadReducer(state: TilingSpringLoadState, event: TilingSpringLoadEvent, config?: TilingSpringLoadConfig): TilingSpringLoadState;
+
+// @public
 export function swapLeafTiles(node: TilingLayoutNode, firstLeafId: string, secondLeafId: string): TilingLayoutNode;
 
 // @public
@@ -559,6 +632,12 @@ export const TILING_MAIN_WORKSPACE_ID: TilingWorkspaceId;
 
 // @public
 export const TILING_MAIN_WORKSPACE_NAME: string;
+
+// @public
+export const TILING_SPRING_LOAD_DEFAULTS: TilingSpringLoadConfig;
+
+// @public
+export const TILING_SPRING_LOAD_INITIAL_STATE: TilingSpringLoadState;
 
 // @public
 export const TILING_WORKSPACE_NAME_MAX_CHARS: number;
@@ -753,6 +832,64 @@ export interface TilingRevealTileResult {
     readonly set: TilingWorkspaceSet;
     readonly workspaceId: TilingWorkspaceId;
 }
+
+// @public
+export type TilingSpringLoadCapability = Partial<TilingSpringLoadConfig> | false;
+
+// @public
+export interface TilingSpringLoadConfig {
+    dwellMs: number;
+}
+
+// @public
+export type TilingSpringLoadEvent = {
+    type: "HOVER";
+    hover: TilingExternalDragHover | null;
+    leafId: string | null;
+    activeWorkspaceId: string | null;
+    ts: number;
+} | {
+    type: "TICK";
+    ts: number;
+} | {
+    type: "DRAG_END";
+} | {
+    type: "RESET";
+};
+
+// @public
+export interface TilingSpringLoadIntent {
+    readonly kind: "commit-and-rearm";
+    readonly leafId: string;
+    readonly placement: TilingWorkspacePlacement | undefined;
+    readonly workspaceId: string;
+}
+
+// @public
+export type TilingSpringLoadPhase = "idle" | "dwelling" | "fired";
+
+// @public
+export type TilingSpringLoadState = {
+    phase: "idle";
+    workspaceId: null;
+    since: null;
+    leafId: null;
+    intent: null;
+} | {
+    phase: "dwelling";
+    workspaceId: string;
+    since: number;
+    leafId: string;
+    placement: TilingWorkspacePlacement | undefined;
+    intent: null;
+} | {
+    phase: "fired";
+    workspaceId: string;
+    since: number;
+    leafId: string;
+    placement: TilingWorkspacePlacement | undefined;
+    intent: TilingSpringLoadIntent;
+};
 
 // @public
 export interface TilingWorkspace {
