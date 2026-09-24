@@ -26,6 +26,7 @@ export type ScrollChainDirection = -1 | 1;
  * pan. `element` is opaque to the engine (the DOM adapter narrows it).
  */
 export interface ScrollChainPort<TElement = unknown> {
+  /** `true` while some container from `element` to the root can still scroll along `axis` in `direction`. */
   canScrollFurther(element: TElement | null, axis: ScrollChainAxis, direction: ScrollChainDirection): boolean;
 }
 
@@ -41,8 +42,8 @@ export interface WheelInputSample {
   ts: number;
   /** The scroll chain under the event target can still scroll on X in `dx`'s direction. */
   canScrollFurther: boolean;
-  /** Viewport width (CSS px) at the sample. */
-  widthPx: number;
+  /** Viewport width (CSS px) at the sample; `null` when the host has no laid-out width. */
+  widthPx: number | null;
 }
 
 /** One touch position sample (`TOUCH_START` / `TOUCH_MOVE`). */
@@ -58,14 +59,17 @@ export interface TouchInputSample {
    * the finger's direction (judged per move; `false` on the start sample).
    */
   canScrollFurther: boolean;
-  /** Viewport width (CSS px) at the sample. */
-  widthPx: number;
+  /** Viewport width (CSS px) at the sample; `null` when the host has no laid-out width. */
+  widthPx: number | null;
 }
 
 /** The sink a {@link WheelTouchInputPort} delivers samples to. */
 export interface WheelTouchInputListener {
+  /** One `wheel` event, normalised to pixels and annotated. */
   onWheel(sample: WheelInputSample): void;
+  /** A primary touch pointer went down on the host. */
   onTouchStart(sample: TouchInputSample): void;
+  /** The tracked touch pointer moved. */
   onTouchMove(sample: TouchInputSample): void;
   /** The finger lifted or the browser took the touch (`pointercancel`). */
   onTouchEnd(ts: number): void;
@@ -82,6 +86,8 @@ export interface WheelTouchInputListener {
  *   listeners are passive so the page scrolls normally.
  */
 export interface WheelTouchInputPort {
+  /** Attach `listener`; returns its detach function. Listeners are attached lazily on the first subscriber. */
   subscribe(listener: WheelTouchInputListener): () => void;
+  /** The FSM is (`true`) / is not (`false`) tracking a gesture — toggles the non-passive `preventDefault` policy. */
   setTracking(tracking: boolean): void;
 }

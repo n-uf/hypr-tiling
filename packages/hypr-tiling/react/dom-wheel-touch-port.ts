@@ -37,6 +37,11 @@ export function normaliseWheelDelta(event: WheelEvent, clientWidth: number): { d
   return { dx: event.deltaX, dy: event.deltaY };
 }
 
+function laidOutWidth(element: HTMLElement): number | null {
+  const width: number = element.clientWidth;
+  return width > 0 ? width : null;
+}
+
 /**
  * Default DOM-backed {@link WheelTouchInputPort} over one viewport root
  * element.
@@ -52,7 +57,8 @@ export function normaliseWheelDelta(event: WheelEvent, clientWidth: number): { d
  *   that one `pointerId` until it ends. The scroll chain is judged from the
  *   TOUCH-START target for the finger's current direction on every move.
  *
- * Samples carry `element.clientWidth` as `widthPx`.
+ * Samples carry `element.clientWidth` as `widthPx`, or `null` when the element
+ * has no laid-out width (so the FSM keeps its context / config width).
  */
 export function createDomWheelTouchPort(
   element: HTMLElement,
@@ -79,7 +85,7 @@ export function createDomWheelTouchPort(
       ts: now(),
       canScrollFurther:
         dx === 0 ? false : options.scrollChain.canScrollFurther(event.target, "x", direction),
-      widthPx: element.clientWidth,
+      widthPx: laidOutWidth(element),
     };
     for (const listener of listeners) {
       listener.onWheel(sample);
@@ -127,7 +133,7 @@ export function createDomWheelTouchPort(
       y: event.clientY,
       ts: now(),
       canScrollFurther: options.scrollChain.canScrollFurther(activeTouch.target, "x", direction),
-      widthPx: element.clientWidth,
+      widthPx: laidOutWidth(element),
     };
     for (const listener of listeners) {
       listener.onTouchMove(sample);
@@ -157,7 +163,7 @@ export function createDomWheelTouchPort(
       y: event.clientY,
       ts: now(),
       canScrollFurther: false,
-      widthPx: element.clientWidth,
+      widthPx: laidOutWidth(element),
     };
     for (const listener of listeners) {
       listener.onTouchStart(sample);

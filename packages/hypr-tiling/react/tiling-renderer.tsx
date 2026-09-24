@@ -232,6 +232,7 @@ import {
 import type {
   ResolvedTilingDropHitZoneGeometryCapability,
   ResolvedTilingInteractionCapabilities,
+  ResolvedTilingWorkspaceSwitchCapability,
   ResolvedTilingKeymap,
   ResolvedTilingSlotCommitmentCapability,
   TilingCommand,
@@ -308,6 +309,11 @@ import {
   type TilingThemeId,
 } from "./theme";
 import { TilingPaneTitleBarContent } from "./tiling-pane-primitives";
+import {
+  useWorkspaceSwipeDriver,
+  useWorkspaceSwipeStore,
+  type TilingWorkspaceSwipeStore,
+} from "./use-workspace-swipe";
 import { createWindowSchedulerPort } from "./window-scheduler-port";
 
 /** Same external target (kind / targetId / workspaceId) — the point may differ. */
@@ -4410,17 +4416,24 @@ function MovePaneAffordance({
  * @see {@link TilingInteractionCapabilities}
  * @see {@link TilingCommandHandle}
  */
-/** How a workspace command reached the inner router (imperative vs keymap). */
-type TilingWorkspaceCommandDispatchVia = "key" | "command";
+/** How a workspace command reached the inner router (imperative, keymap, or a swipe gesture). */
+type TilingWorkspaceCommandDispatchVia = "key" | "command" | "swipe";
 
 /**
  * Internal bridge the set-mode wrapper uses so workspace commands share the
- * same `dispatchCommand` path as the keyboard layer and the public handle.
- * Not part of the public renderer prop surface.
+ * same `dispatchCommand` path as the keyboard layer and the public handle,
+ * and so the swipe driver can attach to the inner renderer's root and yield
+ * to a pane drag. Not part of the public renderer prop surface.
  */
 interface TilingWorkspaceCommandBridge {
   /** `true` only when the wrapper mounted this inner renderer in set mode. */
   workspaceCommandsEnabled?: boolean;
+  /** Receives the `hpt-root` element (the swipe ports' host) on mount / unmount. */
+  onRootElementChange?: (element: HTMLDivElement | null) => void;
+  /** Mirrors "the drag FSM is not idle" so a swipe never arms under a drag. */
+  onDragGestureActiveChange?: (active: boolean) => void;
+  /** Inline style merged onto the root (`overscroll-behavior-x` / `touch-action` for swipe). */
+  rootStyle?: React.CSSProperties;
   /** Apply a gated workspace command against the wrapper's set. */
   onWorkspaceCommand?: (
     command: Extract<
@@ -4491,6 +4504,9 @@ const TilingRendererComponent = React.forwardRef<
     onExternalDragHoverChange,
     workspaceCommandsEnabled = false,
     onWorkspaceCommand,
+    onRootElementChange,
+    onDragGestureActiveChange,
+    rootStyle,
   }: TilingSingleLayoutRendererProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
 ): React.ReactElement {
@@ -4829,6 +4845,15 @@ const TilingRendererComponent = React.forwardRef<
     ],
   );
   const rootRef = React.useRef<HTMLDivElement | null>(null);
+  // Callback ref so the set-mode wrapper's swipe driver learns the root
+  // element (`rootRef` itself stays the object every port reads through).
+  const assignRootElement = React.useCallback(
+    (element: HTMLDivElement | null): void => {
+      rootRef.current = element;
+      onRootElementChange?.(element);
+    },
+    [onRootElementChange],
+  );
   const isPointerWithinRootRef = React.useRef<boolean>(false);
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
   const splitContainerRefs = React.useRef<Map<string, HTMLDivElement>>(
@@ -5023,6 +5048,11 @@ const TilingRendererComponent = React.forwardRef<
   // the instant the FSM returns to `idle`, so normal text selection in panes
   // still works at rest.
   const isDragGestureActive: boolean = dragState.phase !== "idle";
+  // Set-mode wrapper mirror: a workspace swipe must never arm under a drag
+  // (armed / dragging / settling) and yields when one picks up mid-gesture.
+  React.useEffect((): void => {
+    onDragGestureActiveChange?.(isDragGestureActive);
+  }, [onDragGestureActiveChange, isDragGestureActive]);
   // Interaction slices now OWNED by the controller store (folded out of the
   // renderer's `useState`/`useRef` per the Stage-7 state-collapse). They are
   // read off the same `useSyncExternalStore` snapshot as the drag FSM; the
@@ -9326,8 +9356,9 @@ const TilingRendererComponent = React.forwardRef<
     <OverlayPortalContainerContext.Provider value={overlayPortalContainer}>
     <TilingThemeProvider theme={theme}>
       <div
-        ref={rootRef}
+        ref={assignRootElement}
         tabIndex={-1}
+        style={rootStyle}
         className={cn(
           "hpt-root",
           theme.root.container,
@@ -9813,12 +9844,63 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
     [applyWorkspaceCommand],
   );
 
+  // N1 — swipe navigation. The FSM runs over the wheel / touch ports attached
+  // to the (inner or empty-shell) `hpt-root`; a committed swipe dispatches its
+  // `cycle-workspace` through `applyWorkspaceCommand(…, "swipe")` so it shares
+  // the keymap / handle path (enable gate, `onWorkspaceSwitch`).
+  const switchCapability: ResolvedTilingWorkspaceSwitchCapability =
+    interactionCapabilities.workspaces.switch;
+  const wheelSwipe: boolean = workspacesEnabled && switchCapability.wheelSwipe;
+  const touchSwipe: boolean = workspacesEnabled && switchCapability.touchSwipe;
+  const swipeEnabled: boolean = wheelSwipe || touchSwipe;
+  const [swipeHostElement, setSwipeHostElement] = React.useState<HTMLDivElement | null>(null);
+  const [dragGestureActive, setDragGestureActive] = React.useState<boolean>(false);
+  const swipeStore: TilingWorkspaceSwipeStore = useWorkspaceSwipeStore();
+  const activeIndex: number = workspaces.workspaces.findIndex(
+    (workspace: TilingWorkspace): boolean => workspace.id === activeId,
+  );
+  const dispatchSwipeCommand = React.useCallback(
+    (command: TilingCommand): void => {
+      if (isWorkspaceNavigationCommand(command)) {
+        applyWorkspaceCommand(command, "swipe");
+      }
+    },
+    [applyWorkspaceCommand],
+  );
+  useWorkspaceSwipeDriver({
+    store: swipeStore,
+    element: swipeHostElement,
+    wheel: wheelSwipe,
+    touch: touchSwipe,
+    config: switchCapability.swipe,
+    hasPrev: activeIndex > 0,
+    hasNext: activeIndex >= 0 && activeIndex < workspaces.workspaces.length - 1,
+    dragActive: dragGestureActive,
+    dispatch: dispatchSwipeCommand,
+  });
+  const swipeRootStyle: React.CSSProperties | undefined = swipeEnabled
+    ? {
+        overscrollBehaviorX: "contain",
+        ...(touchSwipe ? { touchAction: "pan-y" } : {}),
+      }
+    : undefined;
+  // Only observe the root / drag state when a swipe input is on, so the
+  // default (swipe off) mounts with the same render count as before N1.
+  const observeSwipeHost: ((element: HTMLDivElement | null) => void) | undefined = swipeEnabled
+    ? setSwipeHostElement
+    : undefined;
+  const observeDragGesture: ((active: boolean) => void) | undefined = swipeEnabled
+    ? setDragGestureActive
+    : undefined;
+
   if (layout == null) {
     const theme: TilingTheme = themeProp ?? resolveTilingTheme(themeId);
     return (
       <TilingThemeProvider theme={theme}>
         <div
+          ref={observeSwipeHost}
           tabIndex={-1}
+          style={swipeRootStyle}
           className={cn("hpt-root", theme.root.container, className)}
           data-hpt-workspace-id={activeId}
           data-hpt-workspace-empty=""
@@ -9844,6 +9926,9 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       onExternalDrop={handleExternalDrop}
       workspaceCommandsEnabled
       onWorkspaceCommand={applyWorkspaceCommand}
+      onRootElementChange={observeSwipeHost}
+      onDragGestureActiveChange={observeDragGesture}
+      rootStyle={swipeRootStyle}
     />
   );
 });

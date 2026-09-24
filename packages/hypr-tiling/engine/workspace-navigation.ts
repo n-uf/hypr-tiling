@@ -33,7 +33,7 @@ export type TilingWorkspaceSwipeTarget = "prev" | "next";
 /** The input class that owns the current gesture. */
 export type TilingWorkspaceSwipeInput = "wheel" | "touch";
 
-/** The lifecycle phase of {@link TilingWorkspaceSwipeState}. */
+/** The lifecycle phase of the swipe FSM state (`TilingWorkspaceSwipeState`). */
 export type TilingWorkspaceSwipePhase =
   | "idle"
   | "armed"
