@@ -114,6 +114,9 @@ function dropStateRing(args: TilingRenderTileProps): string {
   if (args.isInvalidDrop) {
     return CANVAS_THEME.paneShell.invalidDropRing;
   }
+  if (args.preview?.mode === "group-merge") {
+    return DROP_TARGET_RING;
+  }
   if (args.isDropTarget) {
     return DROP_TARGET_RING;
   }

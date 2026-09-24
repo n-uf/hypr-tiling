@@ -26,12 +26,17 @@ import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
 // because the renderer's drag pickup resolves the source pane via
 // `closest("article[data-leaf-id]")`.
 
+const SWAP_DROP_RING: string = "ring-2 ring-amber-300/55";
+
 function dropStateRing(args: TilingRenderTileProps): string {
   if (args.isInvalidDrop) {
     return "ring-2 ring-rose-300/55";
   }
+  if (args.preview?.mode === "group-merge") {
+    return SWAP_DROP_RING;
+  }
   if (args.isDropTarget) {
-    return "ring-2 ring-amber-300/55";
+    return SWAP_DROP_RING;
   }
   if (args.isHoveringDropCandidate) {
     return "ring-1 ring-amber-200/45";

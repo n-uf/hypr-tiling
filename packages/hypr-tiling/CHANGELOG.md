@@ -21,6 +21,14 @@ pass `false` keep the strip hidden. New `groupTabStrip` options are additive.
 - The strip is a `role="tablist"` of `role="tab"` buttons (`aria-selected`, Left/Right/Home/End). Labels ellipsize with a `title` tooltip. The active-indicator transition is disabled under `prefers-reduced-motion`.
 - A drop on a built-in tab inserts at that tab's index (`TilingDropIntentState.memberInsertIndex`). A drop past the last tab, and every host `groupDropTargetRef` hit, still appends.
 
+### Multi-select grouping
+
+- Pane args gain `multiSelectionCount: number` — how many leaves are multi-selected in the active workspace (`0` when none). Every pane of that workspace reports the same count, including panes that are not themselves selected, so a host can show Cancel when only one tile is selected. Inactive retained panes and the drag-ghost / drag-cancel surfaces report `0`.
+
+### Drop preview
+
+- `TilingLeafPreviewMode` gains `"group-merge"`. While a drag hovers a group-merge target (built-in group tab strip, or a host `groupDropTargetRef` hit with `fallbackReason: "host-group-drop-target"`), the target pane's `preview.mode` is `"group-merge"` (`role: "drop-target-result-shadow"`). The drag source and every other pane keep `preview: null` for that intent. Live drag mode still suppresses the per-tile preview.
+
 ## 26.9.8 — 2026-09-24
 
 ### Docs

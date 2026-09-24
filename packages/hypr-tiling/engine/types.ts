@@ -2053,6 +2053,15 @@ export interface TilingRenderTileProps {
    */
   canGroupMultiSelection: boolean;
   /**
+   * How many leaves are multi-selected in the active workspace. `0` when the
+   * set is empty. The same count is reported on every pane of that workspace,
+   * including panes that are not themselves selected, so a host can show a
+   * Cancel control when the count is `1` (the Group control stays hidden until
+   * {@link canGroupMultiSelection} is true). Inactive retained panes and the
+   * drag-ghost / drag-cancel surfaces report `0`.
+   */
+  readonly multiSelectionCount: number;
+  /**
    * Toggle THIS pane in/out of the multi-selection set. Wire to an
    * Alt/Opt+click on the pane header. Does not change focus.
    */
@@ -2154,8 +2163,8 @@ export type TilingMovePlacement = "left" | "right" | "top" | "bottom";
 export type TilingFocusDirection = "left" | "right" | "up" | "down";
 /** Which side of a preview a shadow represents (drag source vs drop target). */
 export type TilingLeafPreviewRole = "drag-source-landing-shadow" | "drop-target-result-shadow";
-/** Whether a preview depicts a swap or an edge-insert result. */
-export type TilingLeafPreviewMode = "swap" | "edge-insert";
+/** Whether a preview depicts a swap, an edge-insert, or a group-merge result. */
+export type TilingLeafPreviewMode = "swap" | "edge-insert" | "group-merge";
 /**
  * The outcome a drop resolves to: exchange tiles (`"swap"`), insert at an edge
  * (`"edge-insert"`), insert into an existing split container
@@ -2327,7 +2336,7 @@ export interface TilingPaneHitZoneOverlayDebugState {
 export interface TilingLeafDropPreview {
   /** Whether this preview is the drag-source landing or the drop-target result. */
   role: TilingLeafPreviewRole;
-  /** Whether the preview depicts a swap or an edge-insert. */
+  /** Whether the preview depicts a swap, an edge-insert, or a group-merge. */
   mode: TilingLeafPreviewMode;
   /** The drop zone the preview corresponds to. */
   zone: TilingLeafDropZone;

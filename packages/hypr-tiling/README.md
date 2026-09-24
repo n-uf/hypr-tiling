@@ -809,6 +809,13 @@ contains the source; those hits fall through to the pane body. The whole hit
 is off when `grouping.enable` is false. It works with the built-in strip
 shown or hidden.
 
+While the pointer is over a group-merge target — the built-in strip, or a
+host element (`fallbackReason: "host-group-drop-target"`) — the **target**
+pane's `preview` is `{ mode: "group-merge", role: "drop-target-result-shadow",
+… }`. Other panes, including the drag source, keep `preview: null` for that
+intent. Hosts paint a merge ring from `preview.mode === "group-merge"`. Live
+drag mode still suppresses the per-tile preview.
+
 Precedence, highest first: the built-in strip, then the host element (it wins
 over the centre swap and over any edge band the element covers), then
 uncovered edge bands (`edge-insert`), then the pane centre (`swap`).
@@ -824,11 +831,16 @@ uncovered edge bands (`edge-insert`), then the pane centre (`swap`).
 With `paneSwitching.multiSelectGrouping` (default on) and `grouping.enable`,
 Alt/Opt+click on a pane header toggles panes into a transient multi-selection
 (`isMultiSelectGroupingEnabled`, `isMultiSelected`, `onToggleMultiSelect`).
-When at least two are selected and grouping would change the layout,
-`canGroupMultiSelection` is true and `onGroupMultiSelection(clickedLeafId)`
-folds them into one tabbed group at the clicked pane's slot. Escape clears the
-selection; hosts can call `onClearMultiSelection()` from their own Cancel
-control to run the same clear path without walking every pane's toggle.
+`multiSelectionCount` is the number of leaves currently multi-selected in the
+active workspace (`0` when none). Every pane of that workspace reports the
+same count, including panes that are not themselves selected, so a host can
+show Cancel when the count is `1`. When at least two are selected and grouping
+would change the layout, `canGroupMultiSelection` is true and
+`onGroupMultiSelection(clickedLeafId)` folds them into one tabbed group at the
+clicked pane's slot. Escape clears the selection; hosts can call
+`onClearMultiSelection()` from their own Cancel control to run the same clear
+path without walking every pane's toggle. Inactive retained panes and the
+drag-ghost / drag-cancel surfaces report `multiSelectionCount: 0`.
 
 ## Features
 

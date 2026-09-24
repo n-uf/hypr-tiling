@@ -141,6 +141,30 @@ describe("live-mode render invariant — frozen gap-closed tree, no result-shado
     expect(gated).toBeNull();
   });
 
+  it("group-merge intent: the target tile receives preview.mode group-merge for strip and host hits", (): void => {
+    const origins: ReadonlyArray<string> = ["group-tab-strip", "host-group-drop-target"];
+    for (const fallbackReason of origins) {
+      const dropState: TilingDropIntentState = {
+        ...makeDropState(TARGET_LEAF_ID, "center", "group-merge"),
+        fallbackReason,
+      };
+      const target: TilingLeafDropPreview | null = resolveLeafDropPreview(
+        TARGET_LEAF_ID,
+        SOURCE_LEAF_ID,
+        dropState,
+      );
+      expect(target?.mode).toBe("group-merge");
+      expect(target?.role).toBe("drop-target-result-shadow");
+      expect(target?.zone).toBe("center");
+      expect(target?.partnerLeafId).toBe(SOURCE_LEAF_ID);
+      expect(resolveLeafDropPreview(SOURCE_LEAF_ID, SOURCE_LEAF_ID, dropState)).toBeNull();
+      expect(resolveLeafDropPreview("B", SOURCE_LEAF_ID, dropState)).toBeNull();
+      expect(
+        resolveLeafDropPreviewForMode(true, TARGET_LEAF_ID, SOURCE_LEAF_ID, dropState),
+      ).toBeNull();
+    }
+  });
+
   it("edge-insert intent: same live-vs-preview divergence (shadow in preview, null in live)", (): void => {
     const dropState: TilingDropIntentState = makeDropState(TARGET_LEAF_ID, "left", "edge-insert");
 

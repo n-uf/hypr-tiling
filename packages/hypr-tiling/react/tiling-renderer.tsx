@@ -1073,6 +1073,21 @@ export function resolveLeafDropPreview(
   ) {
     return null;
   }
+  if (dropState.action === "group-merge") {
+    // Strip hits (`fallbackReason: "group-tab-strip"`) and host
+    // `groupDropTargetRef` hits (`"host-group-drop-target"`) both arrive as
+    // this action. Only the target pane paints the merge ring; the source
+    // keeps `preview: null`.
+    if (leafId !== dropState.leafId) {
+      return null;
+    }
+    return {
+      role: "drop-target-result-shadow",
+      mode: "group-merge",
+      zone: dropState.zone,
+      partnerLeafId: dragSourceLeafId,
+    };
+  }
   if (dropState.action !== "swap" && dropState.action !== "edge-insert") {
     return null;
   }
@@ -1622,6 +1637,7 @@ export function restingRetainedPaneEntry(
     preview: null,
     isMultiSelected: false,
     canGroupMultiSelection: false,
+    multiSelectionCount: 0,
   };
   return {
     tileId: retained.tileId,
@@ -1897,6 +1913,7 @@ export function buildGhostTileArgs(
     isMultiSelectGroupingEnabled: capabilityFlags.isMultiSelectGroupingEnabled,
     isMultiSelected: false,
     canGroupMultiSelection: false,
+    multiSelectionCount: 0,
     onToggleMultiSelect: GHOST_TILE_NOOP,
     onGroupMultiSelection: GHOST_TILE_NOOP,
     onClearMultiSelection: GHOST_TILE_NOOP,
@@ -8993,6 +9010,7 @@ const TilingRendererComponent = React.forwardRef<
           isMultiSelectGroupingEnabled,
           isMultiSelected: multiSelectedLeafIds.has(node.id),
           canGroupMultiSelection: canGroupMultiSelectionNow,
+          multiSelectionCount: multiSelectedLeafIds.size,
           onToggleMultiSelect: (): void => {
             toggleMultiSelect(node.id);
           },

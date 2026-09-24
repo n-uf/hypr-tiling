@@ -601,6 +601,34 @@ describe("onClearMultiSelection clears the whole selection from host chrome", ()
       );
   }
 
+  it("reports multiSelectionCount 0, then 1, then 2, then 0 after clear", (): void => {
+    const argsByLeafId = new Map<string, TilingRenderTileProps>();
+    const { container } = render(
+      React.createElement(CaptureHarness, { argsByLeafId }),
+    );
+
+    const counts = (): number[] =>
+      allPaneArgs(argsByLeafId).map(
+        (args: TilingRenderTileProps): number => args.multiSelectionCount,
+      );
+
+    expect(counts().every((count: number): boolean => count === 0)).toBe(true);
+
+    selectHeader(container, "features");
+    expect(counts().every((count: number): boolean => count === 1)).toBe(true);
+    expect(argsByLeafId.get("features")?.isMultiSelected).toBe(true);
+    expect(argsByLeafId.get("install")?.isMultiSelected).toBe(false);
+
+    selectHeader(container, "install");
+    expect(counts().every((count: number): boolean => count === 2)).toBe(true);
+
+    act((): void => {
+      argsByLeafId.get("model")?.onClearMultiSelection();
+    });
+
+    expect(counts().every((count: number): boolean => count === 0)).toBe(true);
+  });
+
   it("clears every isMultiSelected and canGroupMultiSelection after two panes are toggled", (): void => {
     const argsByLeafId = new Map<string, TilingRenderTileProps>();
     const { container } = render(

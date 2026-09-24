@@ -43,6 +43,9 @@ function dropStateRing(args: TilingRenderTileProps): string {
   if (args.isInvalidDrop) {
     return INVALID_DROP_RING;
   }
+  if (args.preview?.mode === "group-merge") {
+    return DROP_TARGET_RING;
+  }
   if (args.isDropTarget) {
     return DROP_TARGET_RING;
   }
