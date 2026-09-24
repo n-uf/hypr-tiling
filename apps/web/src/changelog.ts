@@ -1,8 +1,11 @@
 // Single source for the /docs Changelog section: the library CHANGELOG.md,
 // imported as raw text (Vite `?raw`, inlined at build for client + SSR) and
 // parsed into typed release records. Do not duplicate release prose here.
+// Package identity (version, repository) is read from packages/hypr-tiling/
+// package.json at build time so the home Changelog widgets stay in lockstep.
 
 import changelogMarkdown from "../../../packages/hypr-tiling/CHANGELOG.md?raw";
+import libraryPackageJson from "../../../packages/hypr-tiling/package.json";
 
 export const CHANGELOG_MARKDOWN: string = changelogMarkdown;
 
@@ -261,3 +264,123 @@ export const CHANGELOG_NAV_LEAVES: ReadonlyArray<ChangelogNavLeaf> =
       label: release.versionLabel,
     }),
   );
+
+interface LibraryPackageJson {
+  readonly name: string;
+  readonly version: string;
+  readonly repository: {
+    readonly type: string;
+    readonly url: string;
+  };
+}
+
+const LIBRARY_PACKAGE: LibraryPackageJson = libraryPackageJson;
+
+export const LIBRARY_PACKAGE_NAME: string = LIBRARY_PACKAGE.name;
+export const LIBRARY_VERSION: string = LIBRARY_PACKAGE.version;
+
+function repositoryHttpsUrl(raw: string): string {
+  return raw.replace(/^git\+/, "").replace(/\.git$/, "");
+}
+
+export const LIBRARY_REPOSITORY_URL: string = repositoryHttpsUrl(
+  LIBRARY_PACKAGE.repository.url,
+);
+
+export const LIBRARY_NPM_URL: string =
+  `https://www.npmjs.com/package/${LIBRARY_PACKAGE_NAME}`;
+
+export function changelogInlinesText(
+  inlines: ReadonlyArray<ChangelogInline>,
+): string {
+  return inlines
+    .map((inline: ChangelogInline): string => inline.text)
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function releaseLead(release: ChangelogRelease): string {
+  for (const block of release.blocks) {
+    if (block.kind === "paragraph") {
+      const text: string = changelogInlinesText(block.inlines);
+      if (text !== "") {
+        return text;
+      }
+    }
+  }
+  for (const block of release.blocks) {
+    if (block.kind === "list") {
+      const first: ChangelogBullet | undefined = block.bullets[0];
+      if (first != null) {
+        const text: string = changelogInlinesText(first.inlines);
+        if (text !== "") {
+          return text;
+        }
+      }
+    }
+  }
+  return "";
+}
+
+export function isPublishedRelease(release: ChangelogRelease): boolean {
+  return release.versionLabel !== "Unreleased";
+}
+
+export function latestPublishedRelease(
+  releases: ReadonlyArray<ChangelogRelease>,
+): ChangelogRelease | null {
+  for (const release of releases) {
+    if (isPublishedRelease(release)) {
+      return release;
+    }
+  }
+  return releases[0] ?? null;
+}
+
+export interface BreakingReleaseGroup {
+  readonly versionLabel: string;
+  readonly releaseId: string;
+  readonly bullets: ReadonlyArray<ChangelogBullet>;
+}
+
+export function breakingChangeGroups(
+  releases: ReadonlyArray<ChangelogRelease>,
+): ReadonlyArray<BreakingReleaseGroup> {
+  const groups: Array<BreakingReleaseGroup> = [];
+  for (const release of releases) {
+    const bullets: Array<ChangelogBullet> = [];
+    for (const block of release.blocks) {
+      if (block.kind !== "list") {
+        continue;
+      }
+      for (const bullet of block.bullets) {
+        if (bullet.isBreaking) {
+          bullets.push(bullet);
+        }
+      }
+    }
+    if (bullets.length > 0) {
+      groups.push({
+        versionLabel: release.versionLabel,
+        releaseId: release.id,
+        bullets,
+      });
+    }
+  }
+  return groups;
+}
+
+export function releaseBullets(
+  release: ChangelogRelease,
+): ReadonlyArray<ChangelogBullet> {
+  const bullets: Array<ChangelogBullet> = [];
+  for (const block of release.blocks) {
+    if (block.kind === "list") {
+      for (const bullet of block.bullets) {
+        bullets.push(bullet);
+      }
+    }
+  }
+  return bullets;
+}

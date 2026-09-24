@@ -5,6 +5,8 @@ import {
   type TilingWorkspaceTablistElementProps,
   type TilingWorkspaceSwipeSnapshot,
 } from "@n-uf/hypr-tiling";
+import { LIBRARY_VERSION } from "./changelog";
+import { HOME_WORKSPACE_ID_CHANGELOG } from "./home-workspaces";
 import type { HomeSkin } from "./page";
 
 // Workspace tab strip for the homepage chrome. Spreads the headless
@@ -129,7 +131,11 @@ export function HomeWorkspaceTabStrip({
             <span aria-hidden className={tokens.tabIndex}>
               {index + 1}
             </span>
-            <span className="truncate">{tab.workspace.name}</span>
+            <span className="truncate">
+              {tab.workspace.id === HOME_WORKSPACE_ID_CHANGELOG
+                ? `${tab.workspace.name} \u00b7 ${LIBRARY_VERSION}`
+                : tab.workspace.name}
+            </span>
           </button>
         );
       })}

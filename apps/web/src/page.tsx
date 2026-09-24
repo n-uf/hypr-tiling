@@ -15,8 +15,11 @@ import {
   type TilingWorkspace,
   type TilingWorkspaceSet,
   type TilingWorkspaceSetController,
+  type TilingWorkspaceSwitchEvent,
   type UseTilingWorkspaceTabsResult,
 } from "@n-uf/hypr-tiling";
+import { buildChangelogWidgetTiles } from "./changelog-widgets";
+import { preloadRoute } from "./docs-route";
 import { DOC_PANES, REPO_URL } from "./docs";
 import { DocTile } from "./tile";
 import { EditorialTile } from "./editorial-tile";
@@ -65,7 +68,8 @@ import {
 // keeps the library's own pane tab strip OFF (`paneSwitching.showTabStrip: false`)
 // — the top chrome bar carries the wordmark, the workspace tab strip
 // (`useTilingWorkspaceTabs`), and the skin switch as site chrome. The home is a
-// three-workspace set so a first visit discovers workspaces by using the page.
+// three-workspace set (Home · Workspaces · Changelog) so a first visit
+// discovers workspaces by using the page.
 
 export type HomeSkin = "mosaic" | "editorial" | "canvas";
 
@@ -443,8 +447,31 @@ export function HomePage({
     null,
   );
   const [skin, setSkin] = React.useState<HomeSkin>("mosaic");
+  const [lastWorkspaceSwitch, setLastWorkspaceSwitch] =
+    React.useState<TilingWorkspaceSwitchEvent | null>(null);
+  const [switchFlashNonce, setSwitchFlashNonce] = React.useState<number>(0);
   const commandHandleRef = React.useRef<TilingCommandHandle | null>(null);
   const hydratedStorageRef = React.useRef<boolean>(false);
+
+  const onWorkspaceSwitch = React.useCallback(
+    (event: TilingWorkspaceSwitchEvent): void => {
+      setLastWorkspaceSwitch(event);
+      setSwitchFlashNonce((nonce: number): number => nonce + 1);
+    },
+    [],
+  );
+
+  const openDocsHref = React.useCallback(
+    (to: string): void => {
+      if (navigate == null) {
+        return;
+      }
+      void preloadRoute("/docs").then((): void => {
+        navigate(to);
+      });
+    },
+    [navigate],
+  );
 
   const onWorkspaceCommit = React.useCallback(
     (next: TilingWorkspaceSet): void => {
@@ -533,7 +560,7 @@ export function HomePage({
     writeStoredMobileHomeMode(next);
   }, []);
 
-  const tiles: ReadonlyArray<TilingTile> = DOC_PANES.map(
+  const docTiles: ReadonlyArray<TilingTile> = DOC_PANES.map(
     (pane): TilingTile => {
       const body: React.ReactNode =
         skin === "editorial" ? (
@@ -562,6 +589,14 @@ export function HomePage({
       };
     },
   );
+  const widgetTiles: ReadonlyArray<TilingTile> = buildChangelogWidgetTiles({
+    skin,
+    workspaceSet: workspaceController.set,
+    lastSwitch: lastWorkspaceSwitch,
+    flashNonce: switchFlashNonce,
+    navigate: navigate == null ? undefined : openDocsHref,
+  });
+  const tiles: ReadonlyArray<TilingTile> = [...docTiles, ...widgetTiles];
 
   const tilesById: ReadonlyMap<string, TilingTile> = React.useMemo(
     (): ReadonlyMap<string, TilingTile> =>
@@ -677,6 +712,7 @@ export function HomePage({
               maximizedLeafId={maximizedLeafId}
               onMaximizedLeafChange={setMaximizedLeafId}
               {...workspaceTabs.rendererProps}
+              onWorkspaceSwitch={onWorkspaceSwitch}
               renderTile={(args: TilingRenderTileProps): React.ReactNode =>
                 // Each skin's tile consumes the library `TilingRenderTileProps`
                 // directly — group representation comes from `args.group`, drag

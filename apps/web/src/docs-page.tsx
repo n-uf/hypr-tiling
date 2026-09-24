@@ -1159,6 +1159,25 @@ export function DocsPage({
   navigate?: (to: string) => void;
 }): React.ReactElement {
   const activeId = useScrollSpy(ANCHOR_INDEX.order);
+
+  React.useEffect((): void => {
+    const raw: string = window.location.hash;
+    if (raw.length < 2) {
+      return;
+    }
+    const id: string = raw.slice(1);
+    const target: HTMLElement | null = document.getElementById(id);
+    if (target == null) {
+      return;
+    }
+    const reduceMotion: boolean = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    target.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "start",
+    });
+  }, []);
   return (
     <div className="min-h-screen bg-[#0c0d0f] font-sans text-stone-100">
       <style dangerouslySetInnerHTML={{ __html: API_PROSE_STYLES }} />

@@ -4,38 +4,53 @@ import type {
   TilingWorkspaceSet,
 } from "@n-uf/hypr-tiling";
 
-// Seed workspace set for the docs homepage. The landing tree (intro / features /
-// install) is workspace 1 so SSR and first paint stay on the editorial home.
-// Feature copy (workspaces + model) and use-case / SEO copy sit in the other
-// two. Tile ids match `DOC_PANES`; leaf id equals tile id, same as the previous
-// single-layout home.
+// Seed workspace set for the docs homepage. Workspace 1 (Home) is active on
+// SSR / first paint. Home folds the landing tiles plus the use-case / SEO
+// pair (a tab group so 1440×900 stays uncramped). Workspaces is unchanged.
+// Changelog is a six-widget dashboard. Doc tile ids match `DOC_PANES`; widget
+// tile ids live in `changelog-widgets.tsx`. Leaf id equals tile id.
 
 export const HOME_WORKSPACE_STORAGE_KEY: string =
-  "hypr-tiling-home-workspaces-v1";
+  "hypr-tiling-home-workspaces-v2";
 
-export const HOME_WORKSPACE_STORAGE_VERSION: number = 1;
+export const HOME_WORKSPACE_STORAGE_VERSION: number = 2;
 
 export const HOME_WORKSPACE_ID_HOME: string = "ws-home";
 export const HOME_WORKSPACE_ID_WORKSPACES: string = "ws-workspaces";
-export const HOME_WORKSPACE_ID_USE: string = "ws-use";
+export const HOME_WORKSPACE_ID_CHANGELOG: string = "ws-changelog";
 
 export const HOME_WORKSPACE_NAME_HOME: string = "Home";
 export const HOME_WORKSPACE_NAME_WORKSPACES: string = "Workspaces";
-export const HOME_WORKSPACE_NAME_USE: string = "Use";
+export const HOME_WORKSPACE_NAME_CHANGELOG: string = "Changelog";
 
 const HOME_LAYOUT: TilingLayoutNode = {
   kind: "split",
   id: "home-root",
   axis: "horizontal",
-  ratio: 0.42,
+  ratio: 0.36,
   first: { kind: "leaf", id: "intro", tileId: "intro" },
   second: {
     kind: "split",
     id: "home-right",
     axis: "vertical",
-    ratio: 0.55,
-    first: { kind: "leaf", id: "features", tileId: "features" },
-    second: { kind: "leaf", id: "install", tileId: "install" },
+    ratio: 0.52,
+    first: {
+      kind: "split",
+      id: "home-features-install",
+      axis: "horizontal",
+      ratio: 0.56,
+      first: { kind: "leaf", id: "features", tileId: "features" },
+      second: { kind: "leaf", id: "install", tileId: "install" },
+    },
+    second: {
+      kind: "group",
+      id: "home-use-group",
+      activeMemberId: "usecases",
+      members: [
+        { kind: "leaf", id: "usecases", tileId: "usecases" },
+        { kind: "leaf", id: "discoverability", tileId: "discoverability" },
+      ],
+    },
   },
 };
 
@@ -48,13 +63,49 @@ const WORKSPACES_LAYOUT: TilingLayoutNode = {
   second: { kind: "leaf", id: "model", tileId: "model" },
 };
 
-const USE_LAYOUT: TilingLayoutNode = {
+const CHANGELOG_LAYOUT: TilingLayoutNode = {
   kind: "split",
-  id: "use-root",
+  id: "changelog-root",
   axis: "horizontal",
-  ratio: 0.5,
-  first: { kind: "leaf", id: "usecases", tileId: "usecases" },
-  second: { kind: "leaf", id: "discoverability", tileId: "discoverability" },
+  ratio: 0.32,
+  first: { kind: "leaf", id: "release-timeline", tileId: "release-timeline" },
+  second: {
+    kind: "split",
+    id: "changelog-right",
+    axis: "vertical",
+    ratio: 0.34,
+    first: { kind: "leaf", id: "latest-release", tileId: "latest-release" },
+    second: {
+      kind: "split",
+      id: "changelog-bottom",
+      axis: "vertical",
+      ratio: 0.5,
+      first: {
+        kind: "split",
+        id: "changelog-mid",
+        axis: "horizontal",
+        ratio: 0.55,
+        first: {
+          kind: "leaf",
+          id: "breaking-changes",
+          tileId: "breaking-changes",
+        },
+        second: {
+          kind: "leaf",
+          id: "version-install",
+          tileId: "version-install",
+        },
+      },
+      second: {
+        kind: "split",
+        id: "changelog-dogfood",
+        axis: "horizontal",
+        ratio: 0.55,
+        first: { kind: "leaf", id: "set-inspector", tileId: "set-inspector" },
+        second: { kind: "leaf", id: "swipe-meter", tileId: "swipe-meter" },
+      },
+    },
+  },
 };
 
 export function createHomeWorkspaceSet(): TilingWorkspaceSet {
@@ -72,9 +123,9 @@ export function createHomeWorkspaceSet(): TilingWorkspaceSet {
         layout: WORKSPACES_LAYOUT,
       },
       {
-        id: HOME_WORKSPACE_ID_USE,
-        name: HOME_WORKSPACE_NAME_USE,
-        layout: USE_LAYOUT,
+        id: HOME_WORKSPACE_ID_CHANGELOG,
+        name: HOME_WORKSPACE_NAME_CHANGELOG,
+        layout: CHANGELOG_LAYOUT,
       },
     ],
   };
@@ -148,7 +199,7 @@ function isWorkspaceSet(value: JsonValue): value is TilingWorkspaceSet & JsonRec
 
 // A pre-workspace homepage blob was a bare `TilingLayoutNode` (kind split/leaf/
 // group). Those reset to the seed set — we do not guess how to split one tree
-// into three workspaces.
+// into the Home / Workspaces / Changelog set.
 function isLegacyLayoutBlob(value: JsonValue): boolean {
   if (!isJsonRecord(value)) {
     return false;

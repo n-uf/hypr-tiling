@@ -126,14 +126,18 @@ function resolveChord(chord: TilingKeyChord): ResolvedTilingKeyChord {
   };
 }
 
-function workspaceBindingLabel(command: TilingCommand): string | null {
+function workspaceBindingLabel(
+  command: TilingCommand,
+  workspaces: ReadonlyArray<TilingWorkspace>,
+): string | null {
   if (command.kind === "cycle-workspace") {
     return command.direction === "previous"
       ? "Previous workspace"
       : "Next workspace";
   }
   if (command.kind === "switch-workspace" && "index" in command) {
-    return `Workspace ${command.index}`;
+    const seated: TilingWorkspace | undefined = workspaces[command.index - 1];
+    return seated?.name ?? `Workspace ${command.index}`;
   }
   if (command.kind === "move-leaf-to-workspace" && "direction" in command) {
     return command.direction === "previous"
@@ -407,7 +411,8 @@ function buildSections(args: {
     entries: WORKSPACE_KEY_BINDINGS.map(
       (binding: TilingKeyBinding, index: number): ShortcutEntry => {
         const label: string =
-          workspaceBindingLabel(binding.command) ?? binding.command.kind;
+          workspaceBindingLabel(binding.command, workspaces) ??
+          binding.command.kind;
         return {
           id: `workspace-${index}`,
           label,
