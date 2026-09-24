@@ -1,15 +1,21 @@
 import * as React from "react";
 import {
   TilingRenderer,
+  TilingWorkspaceSwipeScope,
+  WORKSPACE_KEY_BINDINGS,
   queryTilingLayout,
-  type TilingCommand,
+  useTilingWorkspaceSetController,
+  useTilingWorkspaceTabs,
+  type TilingCommandHandle,
   type TilingInteractionCapabilities,
   type TilingLayoutConfig,
   type TilingLayoutNode,
-  type TilingLayoutQuery,
   type TilingRenderTileProps,
   type TilingTile,
-  type TilingCommandHandle,
+  type TilingWorkspace,
+  type TilingWorkspaceSet,
+  type TilingWorkspaceSetController,
+  type UseTilingWorkspaceTabsResult,
 } from "@n-uf/hypr-tiling";
 import { DOC_PANES, REPO_URL } from "./docs";
 import { DocTile } from "./tile";
@@ -19,6 +25,14 @@ import { CanvasTile } from "./canvas-tile";
 import { CanvasPaneContent } from "./content-canvas";
 import { CANVAS_THEME, CANVAS_TICKS } from "./canvas-theme";
 import { HomeShortcuts } from "./shortcuts";
+import { HomeWorkspaceTabStrip } from "./home-workspace-tabs";
+import {
+  createHomeWorkspaceSet,
+  mintHomeWorkspaceId,
+  nextHomeWorkspaceName,
+  readHomeWorkspaceSet,
+  writeHomeWorkspaceSet,
+} from "./home-workspaces";
 import { MobileHome } from "./mobile-home/mobile-home";
 import { MobileTopStrip } from "./mobile-home/top-strip";
 import {
@@ -48,9 +62,10 @@ import {
 // `mosaic` is the default, so the prerendered HTML/SEO ships the Mosaic skin;
 // the skin switch in the top bar is a client-side presentation toggle. The
 // homepage always paints its own documentation content through `renderTile` and
-// keeps the library's own tab strip OFF (`paneSwitching.showTabStrip: false`) —
-// the top chrome bar below carries the wordmark, the pane tabs (rebuilt on the
-// public query + command API), and the skin switch as site chrome.
+// keeps the library's own pane tab strip OFF (`paneSwitching.showTabStrip: false`)
+// — the top chrome bar carries the wordmark, the workspace tab strip
+// (`useTilingWorkspaceTabs`), and the skin switch as site chrome. The home is a
+// three-workspace set so a first visit discovers workspaces by using the page.
 
 export type HomeSkin = "mosaic" | "editorial" | "canvas";
 
@@ -60,57 +75,24 @@ const LAYOUT_CONFIG: TilingLayoutConfig = {
   handleSizePx: 8,
 };
 
-// Reading order: hero (full-height left) → ships today → workspaces → install
-// → deeper panes (use cases, model, SEO). Seven panes; leaf id equals tile id.
-const INITIAL_LAYOUT: TilingLayoutNode = {
-  kind: "split",
-  id: "root",
-  axis: "horizontal",
-  ratio: 0.4,
-  first: { kind: "leaf", id: "intro", tileId: "intro" },
-  second: {
-    kind: "split",
-    id: "right",
-    axis: "vertical",
-    ratio: 0.38,
-    first: { kind: "leaf", id: "features", tileId: "features" },
-    second: {
-      kind: "split",
-      id: "lower",
-      axis: "vertical",
-      ratio: 0.52,
-      first: {
-        kind: "split",
-        id: "mid-row",
-        axis: "horizontal",
-        ratio: 0.52,
-        first: { kind: "leaf", id: "workspaces", tileId: "workspaces" },
-        second: { kind: "leaf", id: "install", tileId: "install" },
-      },
-      second: {
-        kind: "split",
-        id: "deep-row",
-        axis: "horizontal",
-        ratio: 0.34,
-        first: { kind: "leaf", id: "usecases", tileId: "usecases" },
-        second: {
-          kind: "split",
-          id: "deep-end",
-          axis: "horizontal",
-          ratio: 0.5,
-          first: { kind: "leaf", id: "model", tileId: "model" },
-          second: {
-            kind: "leaf",
-            id: "discoverability",
-            tileId: "discoverability",
-          },
-        },
-      },
-    },
-  },
-};
-
 const INITIAL_FOCUSED_LEAF_ID: string = "intro";
+
+function activeWorkspaceLayout(
+  set: TilingWorkspaceSet,
+): TilingLayoutNode | null {
+  const seated: TilingWorkspace | undefined = set.workspaces.find(
+    (workspace: TilingWorkspace): boolean => workspace.id === set.activeId,
+  );
+  return seated?.layout ?? null;
+}
+
+function firstLeafIdInLayout(layout: TilingLayoutNode | null): string | null {
+  if (layout == null) {
+    return null;
+  }
+  const leafIds: ReadonlyArray<string> = queryTilingLayout(layout).leafIds;
+  return leafIds[0] ?? null;
+}
 
 // Mosaic canvas: warm-graphite with a faint blueprint grid (a quiet nod to the
 // tiling geometry) plus two soft washes — a gold glow top-left and a cool depth
@@ -260,47 +242,35 @@ function RepoLink({ skin }: { skin: HomeSkin }): React.ReactElement {
 }
 
 // The top chrome bar — site chrome, not floating over content. Left: the
-// wordmark. Middle: the pane tabs, rebuilt entirely on the PUBLIC query +
-// command API (`queryTilingLayout` for reading order + titles, a `focus-pane` /
-// `toggle-maximize` dispatch per tab) so it replaces the library's built-in tab
-// strip while staying consumer-surface-only — OR, on a narrow/coarse mobile
-// viewport, the mobile home mode switcher (Master / Swipe / Grid) in that same
-// slot, since the mobile concepts each paint their own pane navigation and the
-// desktop tab rail would just be redundant chrome there. Right: the skin
-// switch. The whole bar re-skins with the active skin so it belongs to the
-// design it presents.
+// wordmark. Middle: the workspace tab strip (`useTilingWorkspaceTabs` — native
+// drop targets, spring-load, swipe-progress tick) — OR, on a narrow/coarse
+// mobile viewport, the mobile home mode switcher (Master / Swipe / Grid) in
+// that same slot. Mobile concepts each paint their own pane navigation and
+// already consume horizontal swipe (Fullscreen + Swipe), so the workspace
+// strip stays desktop-only there. Right: the skin switch.
 function HomeTopBar({
   skin,
   onSkinChange,
-  layout,
-  focusedLeafId,
-  maximizedLeafId,
-  tilesById,
-  dispatch,
+  workspaceTabs,
   isMobile,
   mobileMode,
   onMobileModeChange,
 }: {
   skin: HomeSkin;
   onSkinChange: (next: HomeSkin) => void;
-  layout: TilingLayoutNode;
-  focusedLeafId: string | null;
-  maximizedLeafId: string | null;
-  tilesById: ReadonlyMap<string, TilingTile>;
-  dispatch: (command: TilingCommand) => void;
+  workspaceTabs: UseTilingWorkspaceTabsResult;
   isMobile: boolean;
   mobileMode: MobileHomeMode;
   onMobileModeChange: (mode: MobileHomeMode) => void;
 }): React.ReactElement {
   const tokens: SkinChromeTokens = SKIN_CHROME[skin];
-  const query: TilingLayoutQuery = queryTilingLayout(layout);
 
   // Mobile: the ENTIRE top chrome collapses to one thin status-bar row
   // (wordmark · mode segments · skin menu — see `MobileTopStrip`). The desktop
-  // pane-tab rail is dropped here because each mobile concept paints its own
-  // in-content pane navigation, and the skin pills fold into an overflow menu,
-  // so nothing but a single ~44px strip stands between the top edge and the
-  // content.
+  // workspace-tab rail is dropped here because each mobile concept paints its
+  // own in-content pane navigation, and the skin pills fold into an overflow
+  // menu, so nothing but a single ~44px strip stands between the top edge and
+  // the content.
   if (isMobile) {
     return (
       <MobileTopStrip
@@ -317,40 +287,11 @@ function HomeTopBar({
       <div aria-label="hypr tiling title" className={tokens.wordmark}>
         HYPR TILING
       </div>
-      <div role="tablist" aria-label="panes" className={tokens.tabRail}>
-        {query.leafIds.map((leafId: string, index: number): React.ReactElement => {
-          const tileId: string = query.tileOrder[index] ?? leafId;
-          const tile: TilingTile | undefined = tilesById.get(tileId);
-          const title: string = tile?.title ?? tileId;
-          const isActive: boolean = leafId === focusedLeafId;
-          const isMaximized: boolean = leafId === maximizedLeafId;
-          return (
-            <button
-              key={leafId}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              title={
-                isMaximized
-                  ? `${title} (maximized — double-click to restore)`
-                  : `${title} (double-click to maximize)`
-              }
-              onClick={(): void => dispatch({ kind: "focus-pane", leafId })}
-              onDoubleClick={(): void =>
-                dispatch({ kind: "toggle-maximize", leafId })
-              }
-              className={`${tokens.tabBase} ${
-                isActive ? tokens.tabActive : tokens.tabInactive
-              }`}
-            >
-              <span aria-hidden className={tokens.tabIndex}>
-                {index + 1}
-              </span>
-              <span className="truncate">{title}</span>
-            </button>
-          );
-        })}
-      </div>
+      <HomeWorkspaceTabStrip
+        skin={skin}
+        tabs={workspaceTabs.tabs}
+        tablistProps={workspaceTabs.tablistProps}
+      />
       <div
         role="group"
         aria-label="Site skin"
@@ -440,12 +381,13 @@ function BottomBarAccent({ skin }: { skin: HomeSkin }): React.ReactElement {
 // in-content controls instead of a second page-level bar). Left: a minimal
 // per-skin accent mark. Center: the keyboard-shortcut strip (`HomeShortcuts`),
 // suppressed on a coarse (touch) pointer since key-chord chips are inert without
-// a physical keyboard. Right: the "double-click tab to maximize" hint.
+// a physical keyboard. Right: the workspace-tab drop hint.
 function HomeBottomBar({
   skin,
   commandHandleRef,
   interaction,
   layout,
+  workspaceSet,
   focusedLeafId,
   maximizedLeafId,
   isCoarsePointer,
@@ -453,7 +395,8 @@ function HomeBottomBar({
   skin: HomeSkin;
   commandHandleRef: React.RefObject<TilingCommandHandle | null>;
   interaction: TilingInteractionCapabilities;
-  layout: TilingLayoutNode;
+  layout: TilingLayoutNode | null;
+  workspaceSet: TilingWorkspaceSet;
   focusedLeafId: string | null;
   maximizedLeafId: string | null;
   isCoarsePointer: boolean;
@@ -467,6 +410,7 @@ function HomeBottomBar({
         <HomeShortcuts
           commandHandleRef={commandHandleRef}
           layout={layout}
+          workspaceSet={workspaceSet}
           focusedLeafId={focusedLeafId}
           maximizedLeafId={maximizedLeafId}
           interaction={interaction}
@@ -475,8 +419,8 @@ function HomeBottomBar({
       )}
       {isCoarsePointer ? null : (
         <span className="ml-auto hidden shrink-0 items-center gap-2 sm:flex">
-          <span className={tokens.hintKbd}>dbl-click tab</span>
-          <span className={tokens.hintText}>to maximize</span>
+          <span className={tokens.hintKbd}>drag pane to tab</span>
+          <span className={tokens.hintText}>to move</span>
         </span>
       )}
     </div>
@@ -488,7 +432,10 @@ export function HomePage({
 }: {
   navigate?: (to: string) => void;
 }): React.ReactElement {
-  const [layout, setLayout] = React.useState<TilingLayoutNode>(INITIAL_LAYOUT);
+  // Seed on first paint (SSR + hydration). Storage is applied after mount so
+  // the prerendered tree stays deterministic: workspace 1 (Home) is active.
+  const [workspaceDocument, setWorkspaceDocument] =
+    React.useState<TilingWorkspaceSet>(createHomeWorkspaceSet);
   const [focusedLeafId, setFocusedLeafId] = React.useState<string | null>(
     INITIAL_FOCUSED_LEAF_ID,
   );
@@ -497,6 +444,76 @@ export function HomePage({
   );
   const [skin, setSkin] = React.useState<HomeSkin>("mosaic");
   const commandHandleRef = React.useRef<TilingCommandHandle | null>(null);
+  const hydratedStorageRef = React.useRef<boolean>(false);
+
+  const onWorkspaceCommit = React.useCallback(
+    (next: TilingWorkspaceSet): void => {
+      setWorkspaceDocument(next);
+      writeHomeWorkspaceSet(next);
+    },
+    [],
+  );
+
+  const workspaceController: TilingWorkspaceSetController =
+    useTilingWorkspaceSetController({
+      value: workspaceDocument,
+      onCommit: onWorkspaceCommit,
+      mintWorkspaceId: mintHomeWorkspaceId,
+      nextWorkspaceName: nextHomeWorkspaceName,
+      maxWorkspaces: 4,
+    });
+
+  const workspaceTabs: UseTilingWorkspaceTabsResult = useTilingWorkspaceTabs({
+    workspaces: workspaceController.set,
+    onWorkspacesChange: workspaceController.onWorkspacesChange,
+    theme: skin === "canvas" ? CANVAS_THEME : undefined,
+  });
+
+  React.useEffect((): void => {
+    if (hydratedStorageRef.current) {
+      return;
+    }
+    hydratedStorageRef.current = true;
+    const stored: TilingWorkspaceSet | null = readHomeWorkspaceSet();
+    if (stored != null) {
+      setWorkspaceDocument(stored);
+    }
+  }, []);
+
+  React.useEffect((): (() => void) => {
+    const flush = workspaceController.flush;
+    const onPageHide = (): void => {
+      flush();
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return (): void => {
+      window.removeEventListener("pagehide", onPageHide);
+      flush();
+    };
+  }, [workspaceController.flush]);
+
+  const activeLayout: TilingLayoutNode | null = activeWorkspaceLayout(
+    workspaceController.set,
+  );
+
+  React.useEffect((): void => {
+    if (activeLayout == null) {
+      if (focusedLeafId != null) {
+        setFocusedLeafId(null);
+      }
+      if (maximizedLeafId != null) {
+        setMaximizedLeafId(null);
+      }
+      return;
+    }
+    const leafIds: ReadonlyArray<string> = queryTilingLayout(activeLayout).leafIds;
+    if (focusedLeafId == null || !leafIds.includes(focusedLeafId)) {
+      setFocusedLeafId(firstLeafIdInLayout(activeLayout));
+    }
+    if (maximizedLeafId != null && !leafIds.includes(maximizedLeafId)) {
+      setMaximizedLeafId(null);
+    }
+  }, [activeLayout, focusedLeafId, maximizedLeafId]);
 
   // Mobile home mode: which of the three mobile organization concepts
   // (Master + Rail / Fullscreen + Swipe / Pocket Grid) presents on a
@@ -514,10 +531,6 @@ export function HomePage({
   const onMobileModeChange = React.useCallback((next: MobileHomeMode): void => {
     setMobileMode(next);
     writeStoredMobileHomeMode(next);
-  }, []);
-
-  const dispatch = React.useCallback((command: TilingCommand): void => {
-    commandHandleRef.current?.dispatch(command);
   }, []);
 
   const tiles: ReadonlyArray<TilingTile> = DOC_PANES.map(
@@ -558,25 +571,32 @@ export function HomePage({
     [tiles],
   );
 
-  // Interaction: the homepage keeps the library's own top tab strip OFF (the top
-  // chrome bar owns pane switching) and the per-group tab strip OFF
+  // Interaction: the homepage keeps the library's own pane tab strip OFF (the
+  // top chrome bar owns workspace switching) and the per-group tab strip OFF
   // (`grouping.showGroupTabStrip: false` — every skin paints its OWN
   // grouped-stack representation from `args.group`) for every skin. The two
   // light skins (Editorial, Canvas) additionally hide the resize handles so the
   // airy gutters carry the separation (drag resize still works through the
-  // invisible hit area).
+  // invisible hit area). Workspace navigation is on: swipe, slide, spring-load,
+  // and `WORKSPACE_KEY_BINDINGS` (Alt+1..9 / Alt+arrows) merged into the
+  // default keymap — colliding chords (Alt+1..9) become workspace switches.
   const interaction: TilingInteractionCapabilities = React.useMemo(
-    (): TilingInteractionCapabilities =>
-      skin === "mosaic"
-        ? {
-            paneSwitching: { showTabStrip: false },
-            grouping: { showGroupTabStrip: false },
-          }
-        : {
-            paneSwitching: { showTabStrip: false },
-            grouping: { showGroupTabStrip: false },
-            resizeHandlesVisible: false,
-          },
+    (): TilingInteractionCapabilities => ({
+      paneSwitching: { showTabStrip: false },
+      grouping: { showGroupTabStrip: false },
+      resizeHandlesVisible: skin === "mosaic",
+      keyBindings: { bindings: [...WORKSPACE_KEY_BINDINGS] },
+      workspaces: {
+        enable: true,
+        followMovedLeaf: true,
+        switch: {
+          wheelSwipe: { modifier: "meta" },
+          touchSwipe: true,
+          transition: "slide",
+        },
+        springLoad: { dwellMs: 450 },
+      },
+    }),
     [skin],
   );
 
@@ -600,85 +620,91 @@ export function HomePage({
       }`}
       style={background}
     >
-      <HomeTopBar
-        skin={skin}
-        onSkinChange={setSkin}
-        layout={layout}
-        focusedLeafId={focusedLeafId}
-        maximizedLeafId={maximizedLeafId}
-        tilesById={tilesById}
-        dispatch={dispatch}
-        isMobile={isMobile}
-        mobileMode={mobileMode}
-        onMobileModeChange={onMobileModeChange}
-      />
-      <div className="min-h-0 min-w-0 flex-1">
-        {isMobile ? (
-          // Narrow/coarse viewport: one of the three mobile organization
-          // concepts, each with its own independent `TilingRenderer`
-          // instance/state (see `mobile-home/`) — the desktop `layout` state
-          // above is untouched. Same tiles, same skin, same renderTile.
-          <MobileHome
-            mode={mobileMode}
-            tiles={tiles}
-            tilesById={tilesById}
+      <TilingWorkspaceSwipeScope>
+        <HomeTopBar
+          skin={skin}
+          onSkinChange={setSkin}
+          workspaceTabs={workspaceTabs}
+          isMobile={isMobile}
+          mobileMode={mobileMode}
+          onMobileModeChange={onMobileModeChange}
+        />
+        <div
+          className="min-h-0 min-w-0 flex-1"
+          {...workspaceTabs.panelProps(workspaceController.set.activeId)}
+        >
+          {isMobile ? (
+            // Narrow/coarse viewport: one of the three mobile organization
+            // concepts, each with its own independent `TilingRenderer`
+            // instance/state (see `mobile-home/`) — the desktop workspace set
+            // above is untouched. Same tiles, same skin, same renderTile.
+            <MobileHome
+              mode={mobileMode}
+              tiles={tiles}
+              tilesById={tilesById}
+              skin={skin}
+              renderTile={(args: TilingRenderTileProps): React.ReactNode =>
+                skin === "editorial" ? (
+                  <EditorialTile {...args} />
+                ) : skin === "canvas" ? (
+                  <CanvasTile {...args} />
+                ) : (
+                  <DocTile {...args} />
+                )
+              }
+            />
+          ) : (
+            <TilingRenderer
+              ref={commandHandleRef}
+              workspaces={workspaceController.set}
+              onWorkspacesChange={workspaceController.onWorkspacesChange}
+              tiles={tiles}
+              config={LAYOUT_CONFIG}
+              interaction={interaction}
+              orphanTiles="report"
+              paneIdentity="stable"
+              inactiveWorkspaces="keep-mounted"
+              // Canvas runs its full consumer-authored `TilingTheme` (the `theme`
+              // prop takes precedence over `themeId`), so the renderer-owned
+              // surfaces (root/viewport/divider/ghost shell) paint the Canvas desk
+              // vocabulary too. Mosaic and Editorial keep the built-in `mosaic`
+              // theme via `themeId` (Editorial's pane chrome is fully custom and
+              // its renderer-owned surfaces stay transparent under `mosaic`).
+              theme={skin === "canvas" ? CANVAS_THEME : undefined}
+              themeId="mosaic"
+              focusedLeafId={focusedLeafId}
+              onFocusedLeafChange={setFocusedLeafId}
+              maximizedLeafId={maximizedLeafId}
+              onMaximizedLeafChange={setMaximizedLeafId}
+              {...workspaceTabs.rendererProps}
+              renderTile={(args: TilingRenderTileProps): React.ReactNode =>
+                // Each skin's tile consumes the library `TilingRenderTileProps`
+                // directly — group representation comes from `args.group`, drag
+                // surfaces discriminate on `args.surface`. No prop threading.
+                skin === "editorial" ? (
+                  <EditorialTile {...args} />
+                ) : skin === "canvas" ? (
+                  <CanvasTile {...args} />
+                ) : (
+                  <DocTile {...args} />
+                )
+              }
+            />
+          )}
+        </div>
+        {isMobile ? null : (
+          <HomeBottomBar
             skin={skin}
-            renderTile={(args: TilingRenderTileProps): React.ReactNode =>
-              skin === "editorial" ? (
-                <EditorialTile {...args} />
-              ) : skin === "canvas" ? (
-                <CanvasTile {...args} />
-              ) : (
-                <DocTile {...args} />
-              )
-            }
-          />
-        ) : (
-          <TilingRenderer
-            ref={commandHandleRef}
-            layout={layout}
-            tiles={tiles}
-            config={LAYOUT_CONFIG}
+            commandHandleRef={commandHandleRef}
             interaction={interaction}
-            onLayoutChange={setLayout}
-            // Canvas runs its full consumer-authored `TilingTheme` (the `theme`
-            // prop takes precedence over `themeId`), so the renderer-owned
-            // surfaces (root/viewport/divider/ghost shell) paint the Canvas desk
-            // vocabulary too. Mosaic and Editorial keep the built-in `mosaic`
-            // theme via `themeId` (Editorial's pane chrome is fully custom and
-            // its renderer-owned surfaces stay transparent under `mosaic`).
-            theme={skin === "canvas" ? CANVAS_THEME : undefined}
-            themeId="mosaic"
+            layout={activeLayout}
+            workspaceSet={workspaceController.set}
             focusedLeafId={focusedLeafId}
-            onFocusedLeafChange={setFocusedLeafId}
             maximizedLeafId={maximizedLeafId}
-            onMaximizedLeafChange={setMaximizedLeafId}
-            renderTile={(args: TilingRenderTileProps): React.ReactNode =>
-              // Each skin's tile consumes the library `TilingRenderTileProps`
-              // directly — group representation comes from `args.group`, drag
-              // surfaces discriminate on `args.surface`. No prop threading.
-              skin === "editorial" ? (
-                <EditorialTile {...args} />
-              ) : skin === "canvas" ? (
-                <CanvasTile {...args} />
-              ) : (
-                <DocTile {...args} />
-              )
-            }
+            isCoarsePointer={isCoarsePointer}
           />
         )}
-      </div>
-      {isMobile ? null : (
-        <HomeBottomBar
-          skin={skin}
-          commandHandleRef={commandHandleRef}
-          interaction={interaction}
-          layout={layout}
-          focusedLeafId={focusedLeafId}
-          maximizedLeafId={maximizedLeafId}
-          isCoarsePointer={isCoarsePointer}
-        />
-      )}
+      </TilingWorkspaceSwipeScope>
     </main>
   );
 }

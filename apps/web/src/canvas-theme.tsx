@@ -114,4 +114,10 @@ export const CANVAS_THEME: TilingTheme = {
     accentHue(accent).focusBorder,
   // Active chip: a soft cyan primary — the workspace's one interactive accent.
   resolveTabActive: (): string => "border-cyan-300 bg-cyan-50 text-cyan-700",
+  workspaceTabs:
+    "flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+  workspaceTab:
+    "flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-500 outline-none transition-colors hover:border-slate-300 hover:text-slate-800",
+  workspaceTabActive: "border-cyan-300 bg-cyan-50 text-cyan-700",
+  workspaceTabDropTarget: "border-cyan-400 bg-cyan-100 text-cyan-800",
 };

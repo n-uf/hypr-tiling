@@ -4,12 +4,16 @@ import {
   isCommandEnabled,
   queryTilingLayout,
   resolveInteractionCapabilities,
-  resolveJumpedPaneId,
+  WORKSPACE_KEY_BINDINGS,
   type TilingFocusDirection,
   type TilingGroupNode,
+  type TilingKeyChord,
+  type TilingKeyBinding,
   type TilingLayoutNode,
   type TilingLayoutQuery,
   type TilingSplitNode,
+  type TilingWorkspace,
+  type TilingWorkspaceSet,
   type ResolvedTilingInteractionCapabilities,
   type ResolvedTilingKeyChord,
   type ResolvedTilingKeyChordModifiers,
@@ -112,18 +116,71 @@ function gatesFromCapabilities(
   };
 }
 
+function resolveChord(chord: TilingKeyChord): ResolvedTilingKeyChord {
+  return {
+    code: chord.code,
+    alt: chord.alt ?? false,
+    ctrl: chord.ctrl ?? false,
+    meta: chord.meta ?? false,
+    shift: chord.shift ?? false,
+  };
+}
+
+function workspaceBindingLabel(command: TilingCommand): string | null {
+  if (command.kind === "cycle-workspace") {
+    return command.direction === "previous"
+      ? "Previous workspace"
+      : "Next workspace";
+  }
+  if (command.kind === "switch-workspace" && "index" in command) {
+    return `Workspace ${command.index}`;
+  }
+  if (command.kind === "move-leaf-to-workspace" && "direction" in command) {
+    return command.direction === "previous"
+      ? "Move pane to previous workspace"
+      : "Move pane to next workspace";
+  }
+  return null;
+}
+
+function workspaceBindingVisible(args: {
+  command: TilingCommand;
+  gates: TilingCommandGates;
+  workspaceCount: number;
+  activeIndex: number;
+  focusedLeafId: string | null;
+}): boolean {
+  const { command, gates, workspaceCount, activeIndex, focusedLeafId } = args;
+  if (!isCommandEnabled(command, gates)) {
+    return false;
+  }
+  if (workspaceCount < 2) {
+    return false;
+  }
+  if (command.kind === "switch-workspace" && "index" in command) {
+    return command.index <= workspaceCount && command.index !== activeIndex + 1;
+  }
+  if (command.kind === "move-leaf-to-workspace") {
+    return focusedLeafId != null;
+  }
+  return true;
+}
+
 function buildSections(args: {
-  layout: TilingLayoutNode;
+  layout: TilingLayoutNode | null;
+  workspaceSet: TilingWorkspaceSet;
   focusedLeafId: string | null;
   maximizedLeafId: string | null;
   keymap: ResolvedTilingKeymap;
   gates: TilingCommandGates;
 }): ReadonlyArray<ShortcutSection> {
-  const { layout, focusedLeafId, maximizedLeafId, keymap, gates } = args;
-  const query: TilingLayoutQuery = queryTilingLayout(layout);
-  const leafIds: ReadonlyArray<string> = query.leafIds;
+  const { layout, workspaceSet, focusedLeafId, maximizedLeafId, keymap, gates } =
+    args;
+  const query: TilingLayoutQuery | null =
+    layout == null ? null : queryTilingLayout(layout);
+  const leafIds: ReadonlyArray<string> = query?.leafIds ?? [];
   const hasMultiplePanes: boolean = leafIds.length > 1;
-  const groups: ReadonlyArray<TilingGroupNode> = query.groups;
+  const groups: ReadonlyArray<TilingGroupNode> = query?.groups ?? [];
   const focusedGroup: TilingGroupNode | undefined =
     focusedLeafId == null
       ? undefined
@@ -132,11 +189,12 @@ function buildSections(args: {
         );
   const isFocusedGrouped: boolean =
     focusedGroup != null && focusedGroup.members.length > 1;
-  const splits: ReadonlyArray<TilingSplitNode> = query.splits;
-  const isMasterActive: boolean = query.hasMasterSplit;
+  const splits: ReadonlyArray<TilingSplitNode> = query?.splits ?? [];
+  const isMasterActive: boolean = query?.hasMasterSplit ?? false;
 
   const directionExists = (direction: TilingFocusDirection): boolean =>
     focusedLeafId != null &&
+    query != null &&
     query.neighborLeafId(focusedLeafId, direction) != null;
 
   const directionEntry = (
@@ -152,27 +210,6 @@ function buildSections(args: {
       isVisible: isCommandEnabled(command, gates) && directionExists(direction),
     };
   };
-
-  const jumpEntries: ReadonlyArray<ShortcutEntry> = leafIds.map(
-    (_, index: number): ShortcutEntry => {
-      const paneNumber: number = index + 1;
-      const command: TilingCommand = { kind: "focus-jump", paneNumber };
-      const target: string | null = resolveJumpedPaneId(leafIds, paneNumber);
-      const prefix: string = modifierPrefix(keymap.jumpToPane);
-      const combo: string =
-        prefix.length === 0 ? `${paneNumber}` : `${prefix}+${paneNumber}`;
-      return {
-        id: `focus-jump-${paneNumber}`,
-        label: `Pane ${paneNumber}`,
-        combo,
-        command,
-        isVisible:
-          isCommandEnabled(command, gates) &&
-          target != null &&
-          target !== focusedLeafId,
-      };
-    },
-  );
 
   const focusSection: ShortcutSection = {
     id: "focus",
@@ -213,7 +250,6 @@ function buildSections(args: {
       directionEntry("down", keymap.focusDown),
       directionEntry("up", keymap.focusUp),
       directionEntry("right", keymap.focusRight),
-      ...jumpEntries,
     ],
   };
 
@@ -361,7 +397,41 @@ function buildSections(args: {
     ],
   };
 
-  return [focusSection, windowSection, layoutSection, groupSection].map(
+  const workspaces: ReadonlyArray<TilingWorkspace> = workspaceSet.workspaces;
+  const activeIndex: number = workspaces.findIndex(
+    (workspace: TilingWorkspace): boolean => workspace.id === workspaceSet.activeId,
+  );
+  const workspaceSection: ShortcutSection = {
+    id: "workspace",
+    heading: "workspace",
+    entries: WORKSPACE_KEY_BINDINGS.map(
+      (binding: TilingKeyBinding, index: number): ShortcutEntry => {
+        const label: string =
+          workspaceBindingLabel(binding.command) ?? binding.command.kind;
+        return {
+          id: `workspace-${index}`,
+          label,
+          combo: formatChord(resolveChord(binding.chord)),
+          command: binding.command,
+          isVisible: workspaceBindingVisible({
+            command: binding.command,
+            gates,
+            workspaceCount: workspaces.length,
+            activeIndex,
+            focusedLeafId,
+          }),
+        };
+      },
+    ),
+  };
+
+  return [
+    workspaceSection,
+    focusSection,
+    windowSection,
+    layoutSection,
+    groupSection,
+  ].map(
     (section: ShortcutSection): ShortcutSection => ({
       ...section,
       entries: section.entries.filter(
@@ -564,13 +634,15 @@ function ShortcutChip({
 export function HomeShortcuts({
   commandHandleRef,
   layout,
+  workspaceSet,
   focusedLeafId,
   maximizedLeafId,
   interaction,
   skin,
 }: {
   commandHandleRef: React.RefObject<TilingCommandHandle | null>;
-  layout: TilingLayoutNode;
+  layout: TilingLayoutNode | null;
+  workspaceSet: TilingWorkspaceSet;
   focusedLeafId: string | null;
   maximizedLeafId: string | null;
   interaction?: TilingInteractionCapabilities;
@@ -586,12 +658,13 @@ export function HomeShortcuts({
     (): ReadonlyArray<ShortcutSection> =>
       buildSections({
         layout,
+        workspaceSet,
         focusedLeafId,
         maximizedLeafId,
         keymap: capabilities.keymap,
         gates: gatesFromCapabilities(capabilities),
       }),
-    [layout, focusedLeafId, maximizedLeafId, capabilities],
+    [layout, workspaceSet, focusedLeafId, maximizedLeafId, capabilities],
   );
 
   const dispatch = React.useCallback(
