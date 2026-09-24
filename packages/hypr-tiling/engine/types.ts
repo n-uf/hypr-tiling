@@ -10,6 +10,10 @@ import type {
   TilingWorkspaceSetIssue,
 } from "./workspace-set";
 import type { TilingWorkspaceSwipeConfig } from "./workspace-navigation";
+import type {
+  TilingSpringLoadCapability,
+  TilingSpringLoadConfig,
+} from "./workspace-spring-load";
 import type { TilingWorkspaceTransitionMode } from "./workspace-transition";
 
 /**
@@ -594,9 +598,10 @@ export type TilingCommand =
 /**
  * How a workspace switch was initiated through the renderer. `"swipe"` is a
  * trackpad / touch swipe (`interaction.workspaces.switch`). `"spring-load"` is
- * reserved for the spring-loaded tab drop; the set-mode wrapper does not emit
- * it yet. `"tab"` is reserved for a host tab strip that routes through the
- * same dispatch path.
+ * the spring-loaded tab drop (`interaction.workspaces.springLoad`): the dwell
+ * elapsed, the dragged leaf moved into the hovered workspace and the set
+ * switched there. `"tab"` is reserved for a host tab strip that routes
+ * through the same dispatch path.
  */
 export type TilingWorkspaceSwitchVia =
   | "tab"
@@ -1101,6 +1106,19 @@ export interface TilingWorkspacesCapability {
    * opt-in (default `false`); see {@link TilingWorkspaceSwitchCapability}.
    */
   switch?: TilingWorkspaceSwitchCapability;
+  /**
+   * Spring-loaded workspace-tab drop (N3): hold a dragged pane over another
+   * workspace's tab for `dwellMs` (default `500`) and the pane commits into
+   * that workspace (`moveLeafToWorkspace`), the set switches there
+   * (`onWorkspaceSwitch({ via: "spring-load" })`) and the drag continues on
+   * the pane's new seat under the still-held pointer. `false` (default)
+   * disables it; an object enables it and overrides `dwellMs`. Needs a
+   * `kind: "workspace-tab"` external hover (`resolveExternalDragHover` /
+   * `useTilingWorkspaceTabs`, or the `externalDragHover` prop); the active
+   * workspace's own tab never dwells. `null` reads as `false` (so a resolved
+   * capability object re-resolves to itself).
+   */
+  springLoad?: TilingSpringLoadCapability | null;
 }
 
 /**
@@ -1153,6 +1171,8 @@ export interface ResolvedTilingWorkspacesCapability {
   followMovedLeaf: boolean;
   /** Gesture switching (both inputs default off). */
   switch: ResolvedTilingWorkspaceSwitchCapability;
+  /** Spring-loaded tab drop config, or `null` when disabled (the default). */
+  springLoad: TilingSpringLoadConfig | null;
 }
 
 /**
@@ -2481,8 +2501,10 @@ export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonPro
    * whenever `activeId` changes through the renderer. `via` is `"tab"` for a
    * tab strip, `"key"` for a keymap binding, `"command"` for an imperative
    * `dispatch`, `"reveal"` for `reveal-tile`, `"swipe"` for a trackpad /
-   * touch swipe (`interaction.workspaces.switch`). `"spring-load"` is
-   * reserved and is not emitted yet.
+   * touch swipe (`interaction.workspaces.switch`), `"spring-load"` for a
+   * spring-loaded tab drop (`interaction.workspaces.springLoad`; fired
+   * beside {@link TilingRendererWorkspaceSetProps.onMoveLeaf}). `"tab"` is
+   * reserved for a host tab strip.
    */
   onWorkspaceSwitch?: (event: TilingWorkspaceSwitchEvent) => void;
   /**

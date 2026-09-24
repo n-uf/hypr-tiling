@@ -68,6 +68,7 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
       },
       transition: "none",
     },
+    springLoad: null,
   },
 };
 
@@ -641,9 +642,39 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       .toBe("none");
   });
 
+  it("resolves workspaces.springLoad (N3): default null, false → null, object → merged config, bare boolean keeps it off", (): void => {
+    expect(resolveInteractionCapabilities({}).workspaces.springLoad).toBeNull();
+    expect(resolveInteractionCapabilities({ workspaces: true }).workspaces.springLoad).toBeNull();
+    expect(resolveInteractionCapabilities({ workspaces: { springLoad: false } }).workspaces.springLoad).toBeNull();
+    expect(resolveInteractionCapabilities({ workspaces: { springLoad: {} } }).workspaces.springLoad).toEqual({
+      dwellMs: 500,
+    });
+    expect(
+      resolveInteractionCapabilities({ workspaces: { springLoad: { dwellMs: 250 } } }).workspaces,
+    ).toEqual({ ...RESOLVED_DEFAULTS.workspaces, springLoad: { dwellMs: 250 } });
+    expect(
+      resolveInteractionCapabilities({ workspaces: { springLoad: { dwellMs: -10 } } }).workspaces.springLoad,
+    ).toEqual({ dwellMs: 0 });
+    // The other fields keep their defaults / explicit values beside it.
+    expect(
+      resolveInteractionCapabilities({
+        workspaces: { enable: false, switch: { wheelSwipe: true }, springLoad: { dwellMs: 300 } },
+      }).workspaces,
+    ).toEqual({
+      ...RESOLVED_DEFAULTS.workspaces,
+      enable: false,
+      switch: { ...RESOLVED_DEFAULTS.workspaces.switch, wheelSwipe: true },
+      springLoad: { dwellMs: 300 },
+    });
+  });
+
   it("is idempotent when re-resolving a resolved object", (): void => {
     const once: ResolvedTilingInteractionCapabilities = resolveInteractionCapabilities({ resize: "vertical" });
     expect(resolveInteractionCapabilities(once)).toEqual(once);
+    const withSpringLoad: ResolvedTilingInteractionCapabilities = resolveInteractionCapabilities({
+      workspaces: { springLoad: { dwellMs: 120 } },
+    });
+    expect(resolveInteractionCapabilities(withSpringLoad)).toEqual(withSpringLoad);
   });
 
   it("does not mutate the default singleton", (): void => {

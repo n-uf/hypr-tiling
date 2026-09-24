@@ -16,6 +16,7 @@ import {
   resolveWorkspaceSwipeConfig,
   type TilingWorkspaceSwipeConfig,
 } from "./workspace-navigation";
+import { resolveSpringLoadCapability } from "./workspace-spring-load";
 import type { TilingWorkspaceTransitionMode } from "./workspace-transition";
 import type {
   TilingSplitAxis,
@@ -109,6 +110,9 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
       swipe: TILING_WORKSPACE_SWIPE_DEFAULTS,
       transition: "none",
     },
+    // Spring-loaded tab drop is opt-in too: a pane parked over a tab must not
+    // move workspaces unless the host asked for it.
+    springLoad: null,
   },
 };
 
@@ -310,8 +314,12 @@ function resolveGroupingCapability(
 /**
  * Resolve the `workspaces` capability. A bare boolean is shorthand for
  * `{ enable }` (`followMovedLeaf` keeps its default `false`, `switch` its
- * all-off default); the object form merges field-by-field over the defaults
- * via nullish coalescing, so an explicit `false` on any field is preserved.
+ * all-off default, `springLoad` off); the object form merges field-by-field
+ * over the defaults via nullish coalescing, so an explicit `false` on any
+ * field is preserved. `springLoad` resolves through
+ * `resolveSpringLoadCapability`: `false` / omitted → `null`, an object → the
+ * merged `TilingSpringLoadConfig`. Re-resolving a resolved object is stable
+ * (`null` stays `null`, a config re-merges to itself).
  */
 function resolveWorkspacesCapability(
   workspaces: boolean | TilingWorkspacesCapability | undefined,
@@ -321,6 +329,7 @@ function resolveWorkspacesCapability(
       enable: workspaces,
       followMovedLeaf: TILING_INTERACTION_CAPABILITY_DEFAULTS.workspaces.followMovedLeaf,
       switch: TILING_INTERACTION_CAPABILITY_DEFAULTS.workspaces.switch,
+      springLoad: TILING_INTERACTION_CAPABILITY_DEFAULTS.workspaces.springLoad,
     };
   }
   return {
@@ -329,6 +338,7 @@ function resolveWorkspacesCapability(
       workspaces?.followMovedLeaf
       ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.workspaces.followMovedLeaf,
     switch: resolveWorkspaceSwitchCapability(workspaces?.switch),
+    springLoad: resolveSpringLoadCapability(workspaces?.springLoad),
   };
 }
 
