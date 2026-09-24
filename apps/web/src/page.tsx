@@ -10,6 +10,7 @@ import {
   type TilingInteractionCapabilities,
   type TilingLayoutConfig,
   type TilingLayoutNode,
+  type TilingPaneIdentityMode,
   type TilingRenderTileProps,
   type TilingTile,
   type TilingWorkspace,
@@ -491,6 +492,13 @@ export function HomePage({
   const commandHandleRef = React.useRef<TilingCommandHandle | null>(null);
   const hydratedStorageRef = React.useRef<boolean>(false);
   const ignoreSwitchAfterResetRef = React.useRef<boolean>(false);
+  // SSR and the hydration pass must use `"slot"` so pane bodies land in the HTML;
+  // switch to `"stable"` after mount so tile-keyed state survives workspace changes.
+  const [paneIdentity, setPaneIdentity] =
+    React.useState<TilingPaneIdentityMode>("slot");
+  React.useEffect((): void => {
+    setPaneIdentity("stable");
+  }, []);
 
   const onWorkspaceSwitch = React.useCallback(
     (event: TilingWorkspaceSwitchEvent): void => {
@@ -766,7 +774,7 @@ export function HomePage({
               config={LAYOUT_CONFIG}
               interaction={interaction}
               orphanTiles="report"
-              paneIdentity="stable"
+              paneIdentity={paneIdentity}
               inactiveWorkspaces="keep-mounted"
               // Canvas runs its full consumer-authored `TilingTheme` (the `theme`
               // prop takes precedence over `themeId`), so the renderer-owned
