@@ -744,19 +744,70 @@ from `onMoveLeaf`.
 
 ## Tab groups
 
-`grouping.enable` (default on) lets a drag merge panes. The built-in group tab
-strip is one hit target. Hosts that set `grouping.showGroupTabStrip: false`
-and paint their own chips attach `args.groupDropTargetRef` to the element that
-should mean "drop here to group with this pane" — a chip strip, a title bar,
-or both (the same callback may be attached to more than one element).
+`grouping.enable` (default on) lets a drag merge panes into a stacked group.
+The built-in strip is the canonical chrome: with `grouping.showGroupTabStrip`
+left at its default `true`, a group of two or more members paints a tab row
+(`role="tablist"`) above the pane header. Active tab is full opacity with an
+accent edge; inactive tabs are dimmed; labels truncate with the full title in
+the `title` attribute. Arrow keys, Home, and End move the active member (the
+same `group-tab-jump` path as a click). The right end ejects the active member
+(`remove-from-group`, a sibling split) and ungroups. `groupTabStrip.showEject`
+and `groupTabStrip.showUngroup` both default to `true`; set either to `false`
+to hide that control.
 
-A pointer over that element during a drag resolves `group-merge` on the same
-commit as the built-in strip. The target is a loose leaf → a new group
-`{target, source}` with the source active. The target is already a group →
-the source is appended and made active. The drag source's own target is
-skipped, and so is a target whose group already contains the source; those
-hits fall through to the pane body. The whole hit is off when `grouping.enable`
-is false. It works with the built-in strip shown or hidden.
+`placement: "bottom"` draws that same row under the pane body. Either
+placement subtracts the strip height from the member content box so the body
+does not clip. The strip sits in the group's own stacking context (same layer
+as the pane header, not an overlay). The active-indicator transition is
+`none` under `prefers-reduced-motion`.
+
+| `groupTabStrip` field | Default | What it does |
+| --- | --- | --- |
+| `placement` | `"top"` | `"top"` above the header, `"bottom"` under the body |
+| `height` | `28` | Strip height in CSS pixels; subtracted from the content box |
+| `showUngroup` | `true` | Ungroup control at the right end |
+| `showEject` | `true` | Eject the active member at the right end |
+| `theme` | dark row, amber edge | CSS-value tokens (see below); omitted tokens keep the default |
+| `renderTabLabel` | tile title | `(member) => ReactNode`; `member` is `{ id, tileId, title, active }` |
+
+Theme tokens (`TilingGroupTabStripTheme`, all optional CSS values):
+`background`, `borderColor`, `tabColor`, `tabActiveColor`, `tabBackground`,
+`tabActiveBackground`, `accent` (active top edge), `fontFamily`, `fontSize`,
+`letterSpacing`, `radius`, `gap`, `paddingX`, `controlColor`,
+`controlHoverColor`. They are resolved like `dragChrome` (partial over
+defaults) and applied as inline styles plus `--hpt-group-tab-*` custom
+properties on the strip element.
+
+A drop on a strip tab resolves `group-merge` and inserts the dragged leaf at
+that tab's index (the hovered member shifts right). A drop on the strip past
+the last tab appends. Host targets do not insert by index.
+
+```tsx
+interaction={{
+  grouping: {
+    showGroupTabStrip: true,
+    groupTabStrip: {
+      placement: "top",
+      theme: { background: "#0c0d10", accent: "rgb(252, 211, 77)" },
+    },
+  },
+}}
+```
+
+Hosts that still set `grouping.showGroupTabStrip: false` can paint their own
+chips. Attach `args.groupDropTargetRef` to the element that should mean
+"drop here to group with this pane" — a title bar, a chip row, or both (the
+same callback may be attached to more than one element). That hit is the
+secondary path: it resolves the same `group-merge` commit, but it always
+appends.
+
+A pointer over that element during a drag resolves `group-merge`. The target
+is a loose leaf → a new group `{target, source}` with the source active. The
+target is already a group → the source is appended and made active. The drag
+source's own target is skipped, and so is a target whose group already
+contains the source; those hits fall through to the pane body. The whole hit
+is off when `grouping.enable` is false. It works with the built-in strip
+shown or hidden.
 
 Precedence, highest first: the built-in strip, then the host element (it wins
 over the centre swap and over any edge band the element covers), then
@@ -764,9 +815,7 @@ uncovered edge bands (`edge-insert`), then the pane centre (`swap`).
 
 ```tsx
 <header ref={args.groupDropTargetRef} onPointerDown={args.onHandlePointerDown}>
-  {args.group?.members.map((member) => (
-    <button key={member.leafId} type="button">{member.tile?.title}</button>
-  ))}
+  {args.tile.title}
 </header>
 ```
 

@@ -149,6 +149,12 @@ export interface TilingDropIntentState {
   rejectedSplitReasons: ReadonlyArray<string>;
   /** The tuning knobs that shaped this resolution. */
   tuning: TilingDropIntentTuningState;
+  /**
+   * Member index a `group-merge` inserts at, when the pointer is over a
+   * built-in strip tab. Omitted for host drop targets (those append) and
+   * for a strip hit that did not resolve a tab.
+   */
+  memberInsertIndex?: number;
 }
 
 interface TilingDropIntentResolutionInput {
@@ -664,14 +670,65 @@ export function resolveHostGroupDropTargetHit(
  * `fallbackReason` defaults to `"group-tab-strip"`; host targets pass
  * `"host-group-drop-target"`.
  */
+/**
+ * One built-in strip tab's client bounds, in member order. `index` is the
+ * insert slot a drop on that tab requests (the hovered member shifts right).
+ */
+export interface TilingGroupTabMemberBounds {
+  index: number;
+  bounds: TilingClientRectBounds;
+}
+
+/**
+ * Member index to insert at when the pointer is over a built-in strip.
+ * A point inside a tab returns that tab's index. A point in the tab band
+ * but past the last tab's midpoint appends (`last index + 1`). A point
+ * outside the tab band returns `undefined` (caller appends).
+ */
+export function resolveGroupTabInsertIndex(
+  clientX: number,
+  clientY: number,
+  tabs: ReadonlyArray<TilingGroupTabMemberBounds>,
+): number | undefined {
+  if (tabs.length === 0) {
+    return undefined;
+  }
+  for (const tab of tabs) {
+    if (pointInClientBounds(clientX, clientY, tab.bounds)) {
+      return tab.index;
+    }
+  }
+  const inBand: boolean = tabs.some(
+    (tab: TilingGroupTabMemberBounds): boolean =>
+      clientY >= tab.bounds.top && clientY <= tab.bounds.bottom,
+  );
+  if (!inBand) {
+    return undefined;
+  }
+  const sorted: TilingGroupTabMemberBounds[] = tabs.slice().sort(
+    (left: TilingGroupTabMemberBounds, right: TilingGroupTabMemberBounds): number =>
+      left.bounds.left - right.bounds.left,
+  );
+  for (const tab of sorted) {
+    const mid: number = (tab.bounds.left + tab.bounds.right) / 2;
+    if (clientX < mid) {
+      return tab.index;
+    }
+  }
+  const last: TilingGroupTabMemberBounds = sorted[sorted.length - 1];
+  return last.index + 1;
+}
+
 export function buildGroupTabStripMergeIntent(input: {
   activeMemberLeafId: string;
   evaluateCenter: () => TilingDropIntentEvaluation;
   fallbackReason?: string;
+  /** Insert slot from {@link resolveGroupTabInsertIndex}. Omitted → append. */
+  memberInsertIndex?: number;
 }): TilingDropIntentState {
   const evaluation: TilingDropIntentEvaluation = input.evaluateCenter();
   const isValid: boolean = evaluation.isValid;
-  return {
+  const intent: TilingDropIntentState = {
     leafId: input.activeMemberLeafId,
     zone: "center",
     action: isValid ? "group-merge" : "none",
@@ -694,4 +751,8 @@ export function buildGroupTabStripMergeIntent(input: {
     rejectedSplitReasons: [],
     tuning: GROUP_TAB_STRIP_MERGE_TUNING,
   };
+  if (input.memberInsertIndex != null && Number.isFinite(input.memberInsertIndex)) {
+    intent.memberInsertIndex = input.memberInsertIndex;
+  }
+  return intent;
 }

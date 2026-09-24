@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jes
 import * as React from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { TilingRenderer } from "../react/tiling-renderer";
+import { buildGroupTabStripMergeIntent } from "../engine/drop-intent-resolver";
 import { collectGroups } from "../engine/state";
 import type {
   TilingGroupNode,
@@ -260,5 +261,21 @@ describe("host groupDropTargetRef — renderer commit", (): void => {
     expect([...memberIds].sort()).toEqual(["leaf:a", "leaf:b"]);
     expect(groups[0].activeMemberId).toBe("leaf:a");
     expect(mounts.get("a")).toBe(1);
+  });
+});
+
+describe("host group-drop target stays append-only", (): void => {
+  it("omits memberInsertIndex so the merge appends", (): void => {
+    const intent = buildGroupTabStripMergeIntent({
+      activeMemberLeafId: "leaf:b",
+      fallbackReason: "host-group-drop-target",
+      evaluateCenter: (): { isValid: boolean; rejectionReason: string | null } => ({
+        isValid: true,
+        rejectionReason: null,
+      }),
+    });
+    expect(intent.action).toBe("group-merge");
+    expect(intent.fallbackReason).toBe("host-group-drop-target");
+    expect(intent.memberInsertIndex).toBeUndefined();
   });
 });

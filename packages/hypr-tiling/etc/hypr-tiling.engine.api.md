@@ -725,6 +725,7 @@ export interface TilingDropIntentState {
     fallbackReason: string | null;
     finalEdge: TilingEdgeZone | null;
     leafId: string;
+    memberInsertIndex?: number;
     nearestEdgeDistancePx: number;
     paneLocalX: number;
     paneLocalY: number;

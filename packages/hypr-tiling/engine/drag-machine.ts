@@ -391,10 +391,11 @@ export function isCommittableTarget(
  * - no target / self-target / non-committable → `removeLeafTile` (gap-closed
  *   base; the source rides the ghost over the closed gap).
  * - `swap` → `swapLeafTiles`.
- * - `group-merge` → `mergeDraggedLeafIntoTarget` (append into the target's
- *   group, or create `{target, source}` with the source active when the
- *   target is a loose leaf). Same reference when the source is already a
- *   member. A missing target leaf gap-closes.
+ * - `group-merge` → `mergeDraggedLeafIntoTarget` (insert into the target's
+ *   group at `memberInsertIndex`, or append when that index is omitted;
+ *   create `{target, source}` with the source active when the target is a
+ *   loose leaf). Same reference when the source is already a member. A
+ *   missing target leaf gap-closes.
  * - `edge-insert` → `insertLeafAdjacent` at the resolved edge.
  */
 export function deriveCandidateTree(
@@ -415,7 +416,12 @@ export function deriveCandidateTree(
     if (findLeafById(layout, resolvedTarget.leafId) == null) {
       return removeLeafTile(layout, sourceLeafId);
     }
-    return mergeDraggedLeafIntoTarget(layout, sourceLeafId, resolvedTarget.leafId);
+    return mergeDraggedLeafIntoTarget(
+      layout,
+      sourceLeafId,
+      resolvedTarget.leafId,
+      resolvedTarget.memberInsertIndex,
+    );
   }
   if (resolvedTarget.action === "edge-insert") {
     const edgeZone: TilingEdgeZone | null = resolveCommitEdgeZone(resolvedTarget);

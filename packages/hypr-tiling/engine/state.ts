@@ -1881,15 +1881,18 @@ export function ungroupNode(layout: TilingLayoutNode, groupId: string): TilingLa
 }
 
 /**
- * Extract `sourceLeafId` from wherever it sits and append it as a member of
- * `groupId` (the drag-into-group commit). The newly added member becomes active
- * (focus follows the merge). Returns the layout unchanged when the group is
- * absent or the source leaf is already a member of that group.
+ * Extract `sourceLeafId` from wherever it sits and insert it as a member of
+ * `groupId` (the drag-into-group commit). `insertIndex` is the member slot
+ * (0 = before the current first member); omitted or out of range appends.
+ * The newly added member becomes active (focus follows the merge). Returns
+ * the layout unchanged when the group is absent or the source leaf is
+ * already a member of that group.
  */
 export function addLeafToGroup(
   layout: TilingLayoutNode,
   groupId: string,
   sourceLeafId: string,
+  insertIndex?: number,
 ): TilingLayoutNode {
   const group: TilingGroupNode | null = findGroupById(layout, groupId);
   if (group == null) {
@@ -1903,9 +1906,15 @@ export function addLeafToGroup(
     return layout;
   }
   const member: TilingLeafNode = asGroupMember(extraction.extractedLeaf);
+  const members: TilingLeafNode[] = group.members.slice();
+  const at: number =
+    insertIndex == null || !Number.isFinite(insertIndex)
+      ? members.length
+      : Math.max(0, Math.min(Math.trunc(insertIndex), members.length));
+  members.splice(at, 0, member);
   const nextGroup: TilingGroupNode = {
     ...group,
-    members: [...group.members, member],
+    members,
     activeMemberId: member.id,
   };
   return normalizeStaticAxisFill(replaceNodeById(extraction.nextNode, groupId, nextGroup));
@@ -1915,24 +1924,26 @@ export function addLeafToGroup(
  * Drag-to-group commit shared by the built-in group tab strip and a host
  * `groupDropTargetRef` hit (`deriveCandidateTree` / projected layout).
  *
- * - The target leaf already sits in a group → {@link addLeafToGroup} appends
- *   the source and makes it active (a no-op, same reference, when the source
- *   is already a member).
+ * - The target leaf already sits in a group → {@link addLeafToGroup} inserts
+ *   the source at `insertIndex` (appends when omitted) and makes it active
+ *   (a no-op, same reference, when the source is already a member).
  * - The target is a loose leaf → a new group occupies that leaf's slot with
- *   members `[target, source]` and the source active.
+ *   members `[target, source]` and the source active (`insertIndex` does not
+ *   apply; there is no strip yet).
  * - Either leaf is absent, or the source is the target → the input layout.
  */
 export function mergeDraggedLeafIntoTarget(
   layout: TilingLayoutNode,
   sourceLeafId: string,
   targetLeafId: string,
+  insertIndex?: number,
 ): TilingLayoutNode {
   if (sourceLeafId === targetLeafId) {
     return layout;
   }
   const targetGroup: TilingGroupNode | null = findGroupContainingLeaf(layout, targetLeafId);
   if (targetGroup != null) {
-    return addLeafToGroup(layout, targetGroup.id, sourceLeafId);
+    return addLeafToGroup(layout, targetGroup.id, sourceLeafId, insertIndex);
   }
   if (findLeafById(layout, targetLeafId) == null) {
     return layout;

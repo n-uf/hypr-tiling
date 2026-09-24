@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   TILING_DASHBOARD_PRESET,
+  TILING_GROUP_TAB_STRIP_DEFAULTS,
   TILING_INTERACTION_CAPABILITY_DEFAULTS,
   isResizeAxisEnabled,
   resolveInteractionCapabilities,
@@ -50,7 +51,11 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   keymap: TILING_KEYMAP_DEFAULTS,
   keyBindings: { bindings: [], replaceDefaults: false },
   masterLayout: true,
-  grouping: { enable: true, showGroupTabStrip: true },
+  grouping: {
+    enable: true,
+    showGroupTabStrip: true,
+    groupTabStrip: TILING_GROUP_TAB_STRIP_DEFAULTS,
+  },
   workspaces: {
     enable: true,
     followMovedLeaf: false,
@@ -545,10 +550,12 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     expect(resolveInteractionCapabilities(undefined).grouping).toEqual({
       enable: true,
       showGroupTabStrip: true,
+      groupTabStrip: TILING_GROUP_TAB_STRIP_DEFAULTS,
     });
     expect(resolveInteractionCapabilities({}).grouping).toEqual({
       enable: true,
       showGroupTabStrip: true,
+      groupTabStrip: TILING_GROUP_TAB_STRIP_DEFAULTS,
     });
   });
 
@@ -556,25 +563,69 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     expect(resolveInteractionCapabilities({ grouping: true })).toEqual(RESOLVED_DEFAULTS);
     expect(resolveInteractionCapabilities({ grouping: false })).toEqual({
       ...RESOLVED_DEFAULTS,
-      grouping: { enable: false, showGroupTabStrip: true },
+      grouping: {
+        enable: false,
+        showGroupTabStrip: true,
+        groupTabStrip: TILING_GROUP_TAB_STRIP_DEFAULTS,
+      },
     });
   });
 
   it("merges a partial grouping object field-by-field over the defaults", (): void => {
     expect(resolveInteractionCapabilities({ grouping: { showGroupTabStrip: false } })).toEqual({
       ...RESOLVED_DEFAULTS,
-      grouping: { enable: true, showGroupTabStrip: false },
+      grouping: {
+        enable: true,
+        showGroupTabStrip: false,
+        groupTabStrip: TILING_GROUP_TAB_STRIP_DEFAULTS,
+      },
     });
     expect(resolveInteractionCapabilities({ grouping: { enable: false } })).toEqual({
       ...RESOLVED_DEFAULTS,
-      grouping: { enable: false, showGroupTabStrip: true },
+      grouping: {
+        enable: false,
+        showGroupTabStrip: true,
+        groupTabStrip: TILING_GROUP_TAB_STRIP_DEFAULTS,
+      },
     });
     expect(
       resolveInteractionCapabilities({ grouping: { enable: false, showGroupTabStrip: false } }),
     ).toEqual({
       ...RESOLVED_DEFAULTS,
-      grouping: { enable: false, showGroupTabStrip: false },
+      grouping: {
+        enable: false,
+        showGroupTabStrip: false,
+        groupTabStrip: TILING_GROUP_TAB_STRIP_DEFAULTS,
+      },
     });
+  });
+
+  it("merges groupTabStrip tokens over the defaults and keeps an explicit height of 0", (): void => {
+    const label = (member: { title: string }): string => member.title;
+    const resolved = resolveInteractionCapabilities({
+      grouping: {
+        groupTabStrip: {
+          placement: "bottom",
+          height: 0,
+          showEject: false,
+          showUngroup: false,
+          theme: { accent: "rgb(1, 2, 3)" },
+          renderTabLabel: label,
+        },
+      },
+    });
+    expect(resolved.grouping.groupTabStrip.placement).toBe("bottom");
+    expect(resolved.grouping.groupTabStrip.height).toBe(0);
+    expect(resolved.grouping.groupTabStrip.showEject).toBe(false);
+    expect(resolved.grouping.groupTabStrip.showUngroup).toBe(false);
+    expect(resolved.grouping.groupTabStrip.theme.accent).toBe("rgb(1, 2, 3)");
+    expect(resolved.grouping.groupTabStrip.theme.background).toBe(
+      TILING_GROUP_TAB_STRIP_DEFAULTS.theme.background,
+    );
+    expect(resolved.grouping.groupTabStrip.renderTabLabel).toBe(label);
+    expect(resolveInteractionCapabilities(resolved).grouping.groupTabStrip).toEqual(
+      resolved.grouping.groupTabStrip,
+    );
   });
 
   it("is idempotent over grouping (re-resolving a resolved grouping object)", (): void => {

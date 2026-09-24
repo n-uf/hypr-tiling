@@ -245,7 +245,37 @@ export interface ResolvedTilingDropHitZoneGeometryCapability {
 // @public
 export interface ResolvedTilingGroupingCapability {
     enable: boolean;
+    groupTabStrip: ResolvedTilingGroupTabStripOptions;
     showGroupTabStrip: boolean;
+}
+
+// @public
+export interface ResolvedTilingGroupTabStripOptions {
+    height: number;
+    placement: "top" | "bottom";
+    renderTabLabel?: (member: TilingGroupTabMember) => React_2.ReactNode;
+    showEject: boolean;
+    showUngroup: boolean;
+    theme: ResolvedTilingGroupTabStripTheme;
+}
+
+// @public
+export interface ResolvedTilingGroupTabStripTheme {
+    accent: string;
+    background: string;
+    borderColor: string;
+    controlColor: string;
+    controlHoverColor: string;
+    fontFamily: string;
+    fontSize: string;
+    gap: string;
+    letterSpacing: string;
+    paddingX: string;
+    radius: string;
+    tabActiveBackground: string;
+    tabActiveColor: string;
+    tabBackground: string;
+    tabColor: string;
 }
 
 // @public
@@ -774,6 +804,7 @@ export interface TilingGhostChipContext {
 // @public
 export interface TilingGroupingCapability {
     enable?: boolean;
+    groupTabStrip?: TilingGroupTabStripOptions;
     showGroupTabStrip?: boolean;
 }
 
@@ -793,6 +824,43 @@ export interface TilingGroupNode {
     kind: "group";
     members: ReadonlyArray<TilingLeafNode>;
     sizing?: TilingPaneSizing;
+}
+
+// @public
+export interface TilingGroupTabMember {
+    active: boolean;
+    id: string;
+    tileId: string;
+    title: string;
+}
+
+// @public
+export interface TilingGroupTabStripOptions {
+    height?: number;
+    placement?: "top" | "bottom";
+    renderTabLabel?: (member: TilingGroupTabMember) => React_2.ReactNode;
+    showEject?: boolean;
+    showUngroup?: boolean;
+    theme?: TilingGroupTabStripTheme;
+}
+
+// @public
+export interface TilingGroupTabStripTheme {
+    accent?: string;
+    background?: string;
+    borderColor?: string;
+    controlColor?: string;
+    controlHoverColor?: string;
+    fontFamily?: string;
+    fontSize?: string;
+    gap?: string;
+    letterSpacing?: string;
+    paddingX?: string;
+    radius?: string;
+    tabActiveBackground?: string;
+    tabActiveColor?: string;
+    tabBackground?: string;
+    tabColor?: string;
 }
 
 // @public

@@ -72,6 +72,7 @@ import {
   paneZoneClipPaths,
   resolveDropIntent,
   resolveDropIntentHitZoneDiagnostics,
+  resolveGroupTabInsertIndex,
   resolveGroupTabStripHit,
   resolveHostGroupDropTargetHit,
   toPaneLocalPoint,
@@ -256,6 +257,7 @@ import {
 } from "../engine/survivor-reflow";
 import type {
   ResolvedTilingDropHitZoneGeometryCapability,
+  ResolvedTilingGroupTabStripOptions,
   ResolvedTilingInteractionCapabilities,
   ResolvedTilingWorkspaceSwitchCapability,
   ResolvedTilingKeymap,
@@ -314,6 +316,7 @@ import type {
 } from "../engine/types";
 import { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "../engine/types";
 import { cn } from "./cn";
+import { GroupTabStrip, type GroupTabStripMember } from "./group-tab-strip";
 import { createDomMeasurementPort } from "./dom-measurement-port";
 import { createDomPointerCapturePort } from "./dom-pointer-capture-port";
 import { createDomStyleApplierPort } from "./dom-style-applier-port";
@@ -844,8 +847,40 @@ export function resolvePointerTargetFromMeasurement(
       const targetFootprint: TilingPaneFootprint | undefined =
         hitFootprints.get(tabStripHit.activeMemberLeafId);
       if (targetFootprint != null) {
+        const memberRects: ReadonlyArray<{
+          index: number;
+          left: number;
+          top: number;
+          right: number;
+          bottom: number;
+        }> = measurement.measureGroupTabMemberRects(tabStripHit.groupId);
+        const memberInsertIndex: number | undefined = resolveGroupTabInsertIndex(
+          input.clientX,
+          input.clientY,
+          memberRects.map(
+            (rect: {
+              index: number;
+              left: number;
+              top: number;
+              right: number;
+              bottom: number;
+            }): {
+              index: number;
+              bounds: { left: number; top: number; right: number; bottom: number };
+            } => ({
+              index: rect.index,
+              bounds: {
+                left: rect.left,
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+              },
+            }),
+          ),
+        );
         return buildGroupTabStripMergeIntent({
           activeMemberLeafId: tabStripHit.activeMemberLeafId,
+          memberInsertIndex,
           evaluateCenter: (): {
             isValid: boolean;
             rejectionReason: string | null;
@@ -9278,6 +9313,65 @@ const TilingRendererComponent = React.forwardRef<
           dropState?.action === "group-merge" &&
           findGroupContainingLeaf(layout, dropState.leafId)?.id ===
             groupNode.id;
+        const groupTabStrip: ResolvedTilingGroupTabStripOptions =
+          interactionCapabilities.grouping.groupTabStrip;
+        const showStrip: boolean =
+          showGroupTabStrip && groupNode.members.length >= 2;
+        const stripHeightPx: number = showStrip ? groupTabStrip.height : 0;
+        const memberHeightPx: number = Math.max(
+          0,
+          containerHeightPx - stripHeightPx,
+        );
+        const groupStripPlacement: "top" | "bottom" = groupTabStrip.placement;
+        const stripMembers: ReadonlyArray<GroupTabStripMember> =
+          groupNode.members.map(
+            (member: TilingLeafNode, memberIndex: number): GroupTabStripMember => {
+              const memberTile: TilingTile | undefined = resolveTile(
+                tiles,
+                member.tileId,
+              );
+              return {
+                index: memberIndex,
+                id: member.id,
+                tileId: member.tileId,
+                title: memberTile?.title ?? member.tileId,
+                active: member.id === groupNode.activeMemberId,
+              };
+            },
+          );
+        const groupStrip: React.ReactElement | null = showStrip ? (
+          <GroupTabStrip
+            groupId={groupNode.id}
+            members={stripMembers}
+            options={groupTabStrip}
+            isGroupingEnabled={isGroupingEnabled}
+            isMergeTarget={isGroupMergeTarget}
+            prefersReducedMotion={prefersReducedMotion}
+            setRef={(element: HTMLDivElement | null): void => {
+              setGroupTabStripRef(groupNode.id, element);
+            }}
+            onActivate={(memberNumber: number): void => {
+              dispatchCommand({
+                kind: "group-tab-jump",
+                groupId: groupNode.id,
+                memberNumber,
+              });
+            }}
+            onEject={(memberId: string): void => {
+              dispatchCommand({
+                kind: "remove-from-group",
+                groupId: groupNode.id,
+                memberId,
+              });
+            }}
+            onUngroup={(): void => {
+              dispatchCommand({
+                kind: "ungroup",
+                groupId: groupNode.id,
+              });
+            }}
+          />
+        ) : null;
         return (
           <section
             ref={(element: HTMLDivElement | null): void =>
@@ -9285,104 +9379,26 @@ const TilingRendererComponent = React.forwardRef<
             }
             data-group-id={groupNode.id}
             className={cn(
-              "hpt-group relative flex h-full max-h-full min-h-0 w-full min-w-0 flex-col gap-1",
+              "hpt-group relative flex h-full max-h-full min-h-0 w-full min-w-0 flex-col",
               isSurvivorReflowOverflowWindow
                 ? "overflow-visible"
                 : "overflow-hidden",
             )}
           >
-            {showGroupTabStrip ? (
-              <div
-                ref={(element: HTMLDivElement | null): void =>
-                  setGroupTabStripRef(groupNode.id, element)
-                }
-                role="tablist"
-                aria-label={`group ${groupNode.id} members`}
-                className={cn(
-                  "hpt-group-tab-strip flex shrink-0 items-center gap-1 overflow-x-auto rounded-lg border px-1.5 py-1 transition-colors",
-                  isGroupMergeTarget
-                    ? "border-violet-400/60 bg-violet-500/15 ring-2 ring-violet-400/50"
-                    : "border-white/10 bg-black/30",
-                )}
-              >
-                {groupNode.members.map(
-                  (
-                    member: TilingLeafNode,
-                    memberIndex: number,
-                  ): React.ReactElement => {
-                    const memberTile: TilingTile | undefined = resolveTile(
-                      tiles,
-                      member.tileId,
-                    );
-                    const memberTitle: string =
-                      memberTile?.title ?? member.tileId;
-                    const isActiveMember: boolean =
-                      member.id === groupNode.activeMemberId;
-                    return (
-                      <div
-                        key={`hpt-group-tab-${member.id}`}
-                        className={cn(
-                          "hpt-group-tab flex shrink-0 items-center gap-0.5 rounded border font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
-                          isActiveMember
-                            ? theme.resolveTabActive(memberTile?.accent)
-                            : "border-white/10 bg-slate-950/70 text-slate-400",
-                        )}
-                      >
-                        <button
-                          type="button"
-                          role="tab"
-                          aria-selected={isActiveMember}
-                          title={`group member ${member.id} (Alt+${memberIndex + 1})`}
-                          onClick={(): void => {
-                            dispatchCommand({
-                              kind: "group-tab-jump",
-                              groupId: groupNode.id,
-                              memberNumber: memberIndex + 1,
-                            });
-                          }}
-                          className={cn(
-                            "flex shrink-0 items-center gap-1.5 rounded px-2 py-1 outline-none transition-colors",
-                            isActiveMember
-                              ? "text-inherit"
-                              : "hover:border-white/25 hover:text-slate-200",
-                          )}
-                        >
-                          <span className="font-semibold opacity-70">
-                            {memberIndex + 1}
-                          </span>
-                          <span className="max-w-[12ch] truncate">
-                            {memberTitle}
-                          </span>
-                        </button>
-                        {isGroupingEnabled ? (
-                          <button
-                            type="button"
-                            aria-label={`remove ${memberTitle} from group ${groupNode.id}`}
-                            title={`Eject ${memberTitle} from this group`}
-                            onClick={(
-                              event: React.MouseEvent<HTMLButtonElement>,
-                            ): void => {
-                              event.stopPropagation();
-                              dispatchCommand({
-                                kind: "remove-from-group",
-                                groupId: groupNode.id,
-                                memberId: member.id,
-                              });
-                            }}
-                            className="hpt-group-tab-remove mr-0.5 rounded border border-white/10 px-1 py-0.5 text-[9px] text-slate-500 outline-none transition-colors hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-rose-200"
-                          >
-                            ×
-                          </button>
-                        ) : null}
-                      </div>
-                    );
-                  },
-                )}
-              </div>
-            ) : null}
-            <div className="hpt-group-active relative min-h-0 w-full flex-1 overflow-hidden">
-              {renderBranch(activeMember, containerWidthPx, containerHeightPx)}
+            {groupStripPlacement === "top" ? groupStrip : null}
+            <div
+              className="hpt-group-active relative min-h-0 w-full flex-1 overflow-hidden"
+              data-hpt-group-content-box=""
+              style={{
+                height:
+                  stripHeightPx > 0
+                    ? `calc(100% - ${stripHeightPx}px)`
+                    : "100%",
+              }}
+            >
+              {renderBranch(activeMember, containerWidthPx, memberHeightPx)}
             </div>
+            {groupStripPlacement === "bottom" ? groupStrip : null}
           </section>
         );
       }
@@ -9880,6 +9896,8 @@ const TilingRendererComponent = React.forwardRef<
       dispatchCommand,
       isGroupingEnabled,
       showGroupTabStrip,
+      interactionCapabilities,
+      prefersReducedMotion,
       groupContextByActiveLeafId,
       isMultiSelectGroupingEnabled,
       multiSelectedLeafIds,

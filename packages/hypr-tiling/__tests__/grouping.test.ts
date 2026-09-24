@@ -19,7 +19,11 @@ import type { TilingGrowConstraints } from "../engine/state";
 import { collectLeafFootprints } from "../engine/leaf-geometry";
 import type { TilingLeafFootprint } from "../engine/leaf-geometry";
 import { resolveProjectedDropLayout } from "../engine/projected-layout";
-import { buildGroupTabStripMergeIntent, resolveDropIntent } from "../engine/drop-intent-resolver";
+import {
+  buildGroupTabStripMergeIntent,
+  resolveDropIntent,
+  resolveGroupTabInsertIndex,
+} from "../engine/drop-intent-resolver";
 import type {
   TilingDropIntentState,
   TilingZoneGeometryConfig,
@@ -419,6 +423,37 @@ describe("drag-into-group drop intent", (): void => {
     );
     expect(memberIds(group)).toEqual(["a", "b", "c"]);
     expect(group.activeMemberId).toBe("c");
+  });
+
+  it("inserts a tab-strip drop at the hovered member index", (): void => {
+    const grouped: TilingLayoutNode = groupLeaves(threeLeafTree(), ["a", "b"]);
+    const dropState: TilingDropIntentState = buildGroupTabStripMergeIntent({
+      activeMemberLeafId: "b",
+      memberInsertIndex: 0,
+      evaluateCenter: (): { isValid: boolean; rejectionReason: string | null } => ({
+        isValid: true,
+        rejectionReason: null,
+      }),
+    });
+    expect(dropState.memberInsertIndex).toBe(0);
+    const projected: TilingLayoutNode | null = resolveProjectedDropLayout(grouped, "c", dropState);
+    expect(projected).not.toBeNull();
+    const group: TilingGroupNode = asGroup(
+      findGroupById(projected as TilingLayoutNode, "group-a") as TilingLayoutNode,
+    );
+    expect(memberIds(group)).toEqual(["c", "a", "b"]);
+    expect(group.activeMemberId).toBe("c");
+  });
+
+  it("resolves a hovered tab's insert index and appends past the last tab", (): void => {
+    const tabs = [
+      { index: 0, bounds: { left: 0, top: 0, right: 40, bottom: 28 } },
+      { index: 1, bounds: { left: 40, top: 0, right: 80, bottom: 28 } },
+    ];
+    expect(resolveGroupTabInsertIndex(10, 10, tabs)).toBe(0);
+    expect(resolveGroupTabInsertIndex(50, 10, tabs)).toBe(1);
+    expect(resolveGroupTabInsertIndex(100, 10, tabs)).toBe(2);
+    expect(resolveGroupTabInsertIndex(10, 80, tabs)).toBeUndefined();
   });
 });
 

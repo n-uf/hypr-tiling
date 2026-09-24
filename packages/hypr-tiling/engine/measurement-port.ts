@@ -29,6 +29,18 @@ export interface MeasurementPort {
   /** A group's tab-strip client rect, or `null` if the strip is unmounted. */
   measureGroupTabStripRect(groupId: string): DOMRect | null;
   /**
+   * Client bounds of each `[role="tab"]` in the group's built-in strip, in
+   * DOM order. `index` is the tab's `data-member-index` (the insert slot).
+   * Empty when the strip is unmounted.
+   */
+  measureGroupTabMemberRects(groupId: string): ReadonlyArray<{
+    index: number;
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+  }>;
+  /**
    * Client rects of the host-registered group-drop targets for `leafId`
    * (every element the pane's `groupDropTargetRef` currently holds). Empty
    * when the pane registered none.

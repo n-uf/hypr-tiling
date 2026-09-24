@@ -1224,14 +1224,152 @@ export interface TilingGroupingCapability {
    * `paneSwitching.showTabStrip`, which governs the TOP-LEVEL tab strip only.
    */
   showGroupTabStrip?: boolean;
+  /**
+   * Built-in group tab strip. Ignored when `showGroupTabStrip` is `false`.
+   * Omitted fields resolve to the defaults in `groupTabStrip` below.
+   */
+  groupTabStrip?: TilingGroupTabStripOptions;
+}
+
+/**
+ * One member of a built-in group tab strip, as seen by
+ * {@link TilingGroupTabStripOptions.renderTabLabel}.
+ */
+export interface TilingGroupTabMember {
+  /** Group-member leaf id. */
+  id: string;
+  /** Tile id the member displays. */
+  tileId: string;
+  /** Tile title, or the tile id when the tile has no title. */
+  title: string;
+  /** Whether this member is the group's active member. */
+  active: boolean;
+}
+
+/**
+ * CSS-value tokens for the built-in group tab strip. Every field is optional;
+ * omitted tokens resolve to the library default (dark row, amber active edge).
+ * Applied as CSS custom properties on the strip element.
+ */
+export interface TilingGroupTabStripTheme {
+  /** Strip row background. */
+  background?: string;
+  /** Strip row border color. */
+  borderColor?: string;
+  /** Inactive tab label color. */
+  tabColor?: string;
+  /** Active tab label color. */
+  tabActiveColor?: string;
+  /** Inactive tab background. */
+  tabBackground?: string;
+  /** Active tab background. */
+  tabActiveBackground?: string;
+  /** Active-tab indicator color (top edge). */
+  accent?: string;
+  /** Tab label font family. */
+  fontFamily?: string;
+  /** Tab label font size (CSS length). */
+  fontSize?: string;
+  /** Tab label letter spacing (CSS length). */
+  letterSpacing?: string;
+  /** Tab corner radius (CSS length). */
+  radius?: string;
+  /** Gap between tabs (CSS length). */
+  gap?: string;
+  /** Horizontal padding of the strip (CSS length). */
+  paddingX?: string;
+  /** Eject / ungroup control color. */
+  controlColor?: string;
+  /** Eject / ungroup control color on hover. */
+  controlHoverColor?: string;
+}
+
+/** Fully resolved {@link TilingGroupTabStripTheme} (every token set). */
+export interface ResolvedTilingGroupTabStripTheme {
+  /** Strip row background. */
+  background: string;
+  /** Strip row border color. */
+  borderColor: string;
+  /** Inactive tab label color. */
+  tabColor: string;
+  /** Active tab label color. */
+  tabActiveColor: string;
+  /** Inactive tab background. */
+  tabBackground: string;
+  /** Active tab background. */
+  tabActiveBackground: string;
+  /** Active-tab indicator color (top edge). */
+  accent: string;
+  /** Tab label font family. */
+  fontFamily: string;
+  /** Tab label font size (CSS length). */
+  fontSize: string;
+  /** Tab label letter spacing (CSS length). */
+  letterSpacing: string;
+  /** Tab corner radius (CSS length). */
+  radius: string;
+  /** Gap between tabs (CSS length). */
+  gap: string;
+  /** Horizontal padding of the strip (CSS length). */
+  paddingX: string;
+  /** Eject / ungroup control color. */
+  controlColor: string;
+  /** Eject / ungroup control color on hover. */
+  controlHoverColor: string;
+}
+
+/**
+ * Built-in group tab strip options. The strip is the canonical group chrome:
+ * hosts theme it instead of painting their own tabs.
+ */
+export interface TilingGroupTabStripOptions {
+  /**
+   * `"top"` (default) paints the strip above the pane header.
+   * `"bottom"` paints the same strip under the pane body.
+   */
+  placement?: "top" | "bottom";
+  /** Strip height in CSS pixels. Default `28`. */
+  height?: number;
+  /** Show the ungroup control at the right end. Default `true`. */
+  showUngroup?: boolean;
+  /**
+   * Show the eject control at the right end. Ejects the active member out
+   * of the group (`remove-from-group`). Default `true`.
+   */
+  showEject?: boolean;
+  /** CSS-value tokens. Omitted tokens keep the library default. */
+  theme?: TilingGroupTabStripTheme;
+  /**
+   * Custom tab label. Default is the tile title. The string title is always
+   * the tab's `title` attribute (ellipsis tooltip).
+   */
+  renderTabLabel?: (member: TilingGroupTabMember) => React.ReactNode;
+}
+
+/** Fully resolved built-in strip options. `renderTabLabel` stays optional. */
+export interface ResolvedTilingGroupTabStripOptions {
+  /** `"top"` above the pane header, `"bottom"` under the pane body. */
+  placement: "top" | "bottom";
+  /** Strip height in CSS pixels. */
+  height: number;
+  /** Whether the ungroup control renders. */
+  showUngroup: boolean;
+  /** Whether the eject control renders. */
+  showEject: boolean;
+  /** Resolved CSS-value tokens. */
+  theme: ResolvedTilingGroupTabStripTheme;
+  /** Custom tab label, when the host passed one. */
+  renderTabLabel?: (member: TilingGroupTabMember) => React.ReactNode;
 }
 
 /** Resolved group / tabbed-stacking capability (no optional fields). */
 export interface ResolvedTilingGroupingCapability {
   /** Whether group / tabbed-stacking is enabled. */
   enable: boolean;
-  /** Whether the per-group tab strip renders. */
+  /** Whether the per-group tab strip renders. Default `true`. */
   showGroupTabStrip: boolean;
+  /** Resolved built-in strip options (present even when the strip is hidden). */
+  groupTabStrip: ResolvedTilingGroupTabStripOptions;
 }
 
 /**

@@ -21,8 +21,12 @@ import type { TilingWorkspaceTransitionMode } from "./workspace-transition";
 import type {
   TilingSplitAxis,
   ResolvedTilingGroupingCapability,
+  ResolvedTilingGroupTabStripOptions,
+  ResolvedTilingGroupTabStripTheme,
   ResolvedTilingInteractionCapabilities,
   TilingGroupingCapability,
+  TilingGroupTabStripOptions,
+  TilingGroupTabStripTheme,
   TilingInteractionCapabilities,
   TilingKeymap,
   TilingMaximizeCapability,
@@ -33,6 +37,37 @@ import type {
   ResolvedTilingWorkspacesCapability,
   ResolvedTilingWorkspaceSwitchCapability,
 } from "./types";
+
+/**
+ * Default CSS tokens for the built-in group tab strip: a dark row with an
+ * amber active-tab edge. Hosts override any subset via `groupTabStrip.theme`.
+ */
+export const TILING_GROUP_TAB_STRIP_THEME_DEFAULTS: ResolvedTilingGroupTabStripTheme = {
+  background: "rgba(0, 0, 0, 0.45)",
+  borderColor: "rgba(255, 255, 255, 0.1)",
+  tabColor: "rgb(148, 163, 184)",
+  tabActiveColor: "rgb(255, 251, 235)",
+  tabBackground: "transparent",
+  tabActiveBackground: "rgba(252, 211, 77, 0.16)",
+  accent: "rgb(252, 211, 77)",
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  fontSize: "10px",
+  letterSpacing: "0.08em",
+  radius: "0px",
+  gap: "2px",
+  paddingX: "6px",
+  controlColor: "rgb(168, 162, 158)",
+  controlHoverColor: "rgb(254, 243, 199)",
+};
+
+/** Default built-in strip: top of the pane, 28px, eject and ungroup shown. */
+export const TILING_GROUP_TAB_STRIP_DEFAULTS: ResolvedTilingGroupTabStripOptions = {
+  placement: "top",
+  height: 28,
+  showUngroup: true,
+  showEject: true,
+  theme: TILING_GROUP_TAB_STRIP_THEME_DEFAULTS,
+};
 
 /**
  * All-enabled defaults. An undefined capability config (or any undefined field)
@@ -97,7 +132,11 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
   keymap: TILING_KEYMAP_DEFAULTS,
   keyBindings: { bindings: [], replaceDefaults: false },
   masterLayout: true,
-  grouping: { enable: true, showGroupTabStrip: true },
+  grouping: {
+    enable: true,
+    showGroupTabStrip: true,
+    groupTabStrip: TILING_GROUP_TAB_STRIP_DEFAULTS,
+  },
   // Gesture switching is opt-IN (like `showContentToggle` / `collapse`): a
   // horizontal wheel over the viewport must keep scrolling inner content
   // unless the host asked for swipe navigation.
@@ -288,11 +327,52 @@ export function resolveInteractionCapabilities(
   };
 }
 
+function resolveGroupTabStripTheme(
+  theme: TilingGroupTabStripTheme | undefined,
+): ResolvedTilingGroupTabStripTheme {
+  const defaults: ResolvedTilingGroupTabStripTheme = TILING_GROUP_TAB_STRIP_THEME_DEFAULTS;
+  return {
+    background: theme?.background ?? defaults.background,
+    borderColor: theme?.borderColor ?? defaults.borderColor,
+    tabColor: theme?.tabColor ?? defaults.tabColor,
+    tabActiveColor: theme?.tabActiveColor ?? defaults.tabActiveColor,
+    tabBackground: theme?.tabBackground ?? defaults.tabBackground,
+    tabActiveBackground: theme?.tabActiveBackground ?? defaults.tabActiveBackground,
+    accent: theme?.accent ?? defaults.accent,
+    fontFamily: theme?.fontFamily ?? defaults.fontFamily,
+    fontSize: theme?.fontSize ?? defaults.fontSize,
+    letterSpacing: theme?.letterSpacing ?? defaults.letterSpacing,
+    radius: theme?.radius ?? defaults.radius,
+    gap: theme?.gap ?? defaults.gap,
+    paddingX: theme?.paddingX ?? defaults.paddingX,
+    controlColor: theme?.controlColor ?? defaults.controlColor,
+    controlHoverColor: theme?.controlHoverColor ?? defaults.controlHoverColor,
+  };
+}
+
+function resolveGroupTabStripOptions(
+  options: TilingGroupTabStripOptions | undefined,
+): ResolvedTilingGroupTabStripOptions {
+  const defaults: ResolvedTilingGroupTabStripOptions = TILING_GROUP_TAB_STRIP_DEFAULTS;
+  const resolved: ResolvedTilingGroupTabStripOptions = {
+    placement: options?.placement ?? defaults.placement,
+    height: options?.height ?? defaults.height,
+    showUngroup: options?.showUngroup ?? defaults.showUngroup,
+    showEject: options?.showEject ?? defaults.showEject,
+    theme: resolveGroupTabStripTheme(options?.theme),
+  };
+  if (options?.renderTabLabel != null) {
+    resolved.renderTabLabel = options.renderTabLabel;
+  }
+  return resolved;
+}
+
 /**
  * Resolve the `grouping` capability. A bare boolean is shorthand for
  * `{ enable }` (`showGroupTabStrip` keeps its default `true`); the object form
  * merges field-by-field over the all-enabled defaults via nullish coalescing,
- * so an explicit `false` on either field is preserved.
+ * so an explicit `false` on either field is preserved. `groupTabStrip` merges
+ * the same way; `showGroupTabStrip` already defaults to `true`.
  */
 function resolveGroupingCapability(
   grouping: boolean | TilingGroupingCapability | undefined,
@@ -301,6 +381,7 @@ function resolveGroupingCapability(
     return {
       enable: grouping,
       showGroupTabStrip: TILING_INTERACTION_CAPABILITY_DEFAULTS.grouping.showGroupTabStrip,
+      groupTabStrip: resolveGroupTabStripOptions(undefined),
     };
   }
   return {
@@ -308,6 +389,7 @@ function resolveGroupingCapability(
     showGroupTabStrip:
       grouping?.showGroupTabStrip
       ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.grouping.showGroupTabStrip,
+    groupTabStrip: resolveGroupTabStripOptions(grouping?.groupTabStrip),
   };
 }
 

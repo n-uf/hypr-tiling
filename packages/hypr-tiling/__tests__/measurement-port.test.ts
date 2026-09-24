@@ -51,6 +51,13 @@ function fakePort(overrides: Partial<MeasurementPort>): MeasurementPort {
     measureLeafRect: (): DOMRect | null => null,
     measureReservationRect: (): DOMRect | null => null,
     measureGroupTabStripRect: (): DOMRect | null => null,
+    measureGroupTabMemberRects: (): ReadonlyArray<{
+      index: number;
+      left: number;
+      top: number;
+      right: number;
+      bottom: number;
+    }> => [],
     measureGroupDropTargetRects: (): ReadonlyArray<DOMRect> => [],
     readComputedTransform: (): string | null => null,
     ...overrides,

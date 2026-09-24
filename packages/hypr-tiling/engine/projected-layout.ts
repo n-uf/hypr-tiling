@@ -63,12 +63,17 @@ export function resolveProjectedDropLayout(
   }
   if (dropState.action === "group-merge") {
     // Same reducer as the live candidate / commit (`mergeDraggedLeafIntoTarget`):
-    // append into the target's group, or create one when the target is a loose
-    // leaf. A missing target leaf has no projection.
+    // insert at `memberInsertIndex` (append when omitted), or create a group
+    // when the target is a loose leaf. A missing target leaf has no projection.
     if (findLeafById(layout, dropState.leafId) == null) {
       return null;
     }
-    return mergeDraggedLeafIntoTarget(layout, sourceLeafId, dropState.leafId);
+    return mergeDraggedLeafIntoTarget(
+      layout,
+      sourceLeafId,
+      dropState.leafId,
+      dropState.memberInsertIndex,
+    );
   }
   if (dropState.action !== "edge-insert") {
     return null;

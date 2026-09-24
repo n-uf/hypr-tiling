@@ -9,7 +9,17 @@ the version number alone does not flag them.
 
 ## Unreleased
 
-Nothing pending.
+### Tab groups — built-in strip is the canonical rendering
+
+`showGroupTabStrip` already defaults to `true` (no default flip). Hosts that
+pass `false` keep the strip hidden. New `groupTabStrip` options are additive.
+
+- `groupTabStrip.placement` `"top"` (default, above the pane header) or `"bottom"` (under the pane body). `height` default `28` (px). Both placements subtract that height from the member content box.
+- `showEject` (default `true`) ejects the active member (`remove-from-group`). `showUngroup` (default `true`) ungroups. Both sit at the right end of the strip.
+- `theme` (`TilingGroupTabStripTheme`) is optional CSS values — `background`, `borderColor`, `tabColor`, `tabActiveColor`, `tabBackground`, `tabActiveBackground`, `accent`, `fontFamily`, `fontSize`, `letterSpacing`, `radius`, `gap`, `paddingX`, `controlColor`, `controlHoverColor` — resolved over the dark/amber default and applied as inline styles plus `--hpt-group-tab-*` custom properties (same partial-token path as `dragChrome`).
+- `renderTabLabel(member)` overrides the tile-title label. `member` is `{ id, tileId, title, active }`.
+- The strip is a `role="tablist"` of `role="tab"` buttons (`aria-selected`, Left/Right/Home/End). Labels ellipsize with a `title` tooltip. The active-indicator transition is disabled under `prefers-reduced-motion`.
+- A drop on a built-in tab inserts at that tab's index (`TilingDropIntentState.memberInsertIndex`). A drop past the last tab, and every host `groupDropTargetRef` hit, still appends.
 
 ## 26.9.8 — 2026-09-24
 

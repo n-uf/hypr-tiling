@@ -45,6 +45,42 @@ export function createDomMeasurementPort(refs: DomMeasurementRefs): MeasurementP
         ?.getBoundingClientRect() ?? null,
     measureGroupTabStripRect: (groupId: string): DOMRect | null =>
       groupTabStripRefs.current.get(groupId)?.getBoundingClientRect() ?? null,
+    measureGroupTabMemberRects: (
+      groupId: string,
+    ): ReadonlyArray<{
+      index: number;
+      left: number;
+      top: number;
+      right: number;
+      bottom: number;
+    }> => {
+      const strip: HTMLDivElement | undefined = groupTabStripRefs.current.get(groupId);
+      if (strip == null) {
+        return [];
+      }
+      const tabs: NodeListOf<HTMLElement> = strip.querySelectorAll<HTMLElement>('[role="tab"]');
+      const rects: Array<{
+        index: number;
+        left: number;
+        top: number;
+        right: number;
+        bottom: number;
+      }> = [];
+      tabs.forEach((tab: HTMLElement, position: number): void => {
+        const raw: string | null = tab.getAttribute("data-member-index");
+        const parsed: number = raw == null ? position : Number.parseInt(raw, 10);
+        const index: number = Number.isFinite(parsed) ? parsed : position;
+        const rect: DOMRect = tab.getBoundingClientRect();
+        rects.push({
+          index,
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+        });
+      });
+      return rects;
+    },
     measureGroupDropTargetRects: (leafId: string): ReadonlyArray<DOMRect> => {
       const elements: Set<HTMLElement> | undefined =
         groupDropTargetRefs.current.get(leafId);

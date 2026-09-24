@@ -737,3 +737,181 @@ describe("Alt+G is the keyboard twin of the Group button", (): void => {
     expect(query(container, ".hpt-group-tab-strip")).toBeNull();
   });
 });
+
+describe("built-in group tab strip", (): void => {
+  function groupedTree(): TilingLayoutNode {
+    const group: TilingGroupNode = {
+      kind: "group",
+      id: "g1",
+      members: [leaf("alpha"), leaf("beta")],
+      activeMemberId: "alpha",
+    };
+    return split("root", "horizontal", group, leaf("loose"));
+  }
+
+  const GROUP_TILES: ReadonlyArray<TilingTile> = ["alpha", "beta", "loose"].map(
+    (id: string): TilingTile => ({ id, title: id, accent: "amber" }),
+  );
+
+  function StripHarness(props: {
+    interaction?: TilingInteractionCapabilities;
+    onLayout?: (layout: TilingLayoutNode) => void;
+  }): React.ReactElement {
+    const [layout, setLayout] = React.useState<TilingLayoutNode>(groupedTree());
+    return React.createElement(TilingRenderer, {
+      layout,
+      tiles: GROUP_TILES,
+      config: { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 },
+      interaction: props.interaction,
+      focusedLeafId: "alpha",
+      onLayoutChange: (next: TilingLayoutNode): void => {
+        setLayout(next);
+        props.onLayout?.(next);
+      },
+      renderTile: (args: TilingRenderTileProps): React.ReactNode => renderDocTile(args),
+    });
+  }
+
+  it("renders a tablist for a group of two or more and truncates labels", (): void => {
+    const { container } = render(React.createElement(StripHarness, {}));
+    const strip: HTMLElement = requireEl(container, ".hpt-group-tab-strip");
+    expect(strip.getAttribute("role")).toBe("tablist");
+    expect(strip.getAttribute("data-hpt-group-tab-placement")).toBe("top");
+    const tabs: NodeListOf<HTMLElement> = strip.querySelectorAll('[role="tab"]');
+    expect(tabs.length).toBe(2);
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
+    expect(tabs[1].getAttribute("aria-selected")).toBe("false");
+    expect(tabs[0].getAttribute("title")).toBe("alpha");
+    expect(tabs[0].getAttribute("data-member-index")).toBe("0");
+    expect(tabs[1].getAttribute("data-member-index")).toBe("1");
+    const label: HTMLElement | null = tabs[0].querySelector("span");
+    expect(label?.style.textOverflow).toBe("ellipsis");
+    expect(tabs[0].style.transition).toContain("box-shadow");
+    expect(query(container, "[data-hpt-group-eject]")).not.toBeNull();
+    expect(query(container, "[data-hpt-group-ungroup]")).not.toBeNull();
+    const box: HTMLElement = requireEl(container, "[data-hpt-group-content-box]");
+    expect(box.style.height).toBe("calc(100% - 28px)");
+    expect(strip.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  });
+
+  it("moves activation with arrow keys", (): void => {
+    const layouts: TilingLayoutNode[] = [];
+    const { container } = render(
+      React.createElement(StripHarness, {
+        onLayout: (layout: TilingLayoutNode): void => {
+          layouts.push(layout);
+        },
+      }),
+    );
+    const first: HTMLElement = requireEl(container, '[role="tab"][data-member-index="0"]');
+    act((): void => {
+      fireEvent.keyDown(first, { key: "ArrowRight" });
+    });
+    const last: TilingLayoutNode = layouts[layouts.length - 1];
+    expect(collectGroups(last)[0].activeMemberId).toBe("beta");
+    const selected: HTMLElement = requireEl(container, '[role="tab"][aria-selected="true"]');
+    expect(selected.getAttribute("data-member-index")).toBe("1");
+  });
+
+  it("ejects the active member and ungroups, and hides both controls when flagged off", (): void => {
+    const ejectLayouts: TilingLayoutNode[] = [];
+    const ejected = render(
+      React.createElement(StripHarness, {
+        onLayout: (layout: TilingLayoutNode): void => {
+          ejectLayouts.push(layout);
+        },
+      }),
+    );
+    act((): void => {
+      fireEvent.click(requireEl(ejected.container, "[data-hpt-group-eject]"));
+    });
+    expect(collectGroups(ejectLayouts[ejectLayouts.length - 1]).length).toBe(0);
+    ejected.unmount();
+
+    const ungroupLayouts: TilingLayoutNode[] = [];
+    const ungrouped = render(
+      React.createElement(StripHarness, {
+        onLayout: (layout: TilingLayoutNode): void => {
+          ungroupLayouts.push(layout);
+        },
+      }),
+    );
+    act((): void => {
+      fireEvent.click(requireEl(ungrouped.container, "[data-hpt-group-ungroup]"));
+    });
+    expect(collectGroups(ungroupLayouts[ungroupLayouts.length - 1]).length).toBe(0);
+    ungrouped.unmount();
+
+    const hidden = render(
+      React.createElement(StripHarness, {
+        interaction: {
+          grouping: {
+            groupTabStrip: { showEject: false, showUngroup: false },
+          },
+        },
+      }),
+    );
+    expect(query(hidden.container, "[data-hpt-group-eject]")).toBeNull();
+    expect(query(hidden.container, "[data-hpt-group-ungroup]")).toBeNull();
+    expect(query(hidden.container, ".hpt-group-tab-strip")).not.toBeNull();
+    hidden.unmount();
+  });
+
+  it("places the strip under the body and shrinks the content box by the strip height", (): void => {
+    const { container } = render(
+      React.createElement(StripHarness, {
+        interaction: {
+          grouping: { groupTabStrip: { placement: "bottom", height: 40 } },
+        },
+      }),
+    );
+    const strip: HTMLElement = requireEl(container, ".hpt-group-tab-strip");
+    const box: HTMLElement = requireEl(container, "[data-hpt-group-content-box]");
+    expect(strip.getAttribute("data-hpt-group-tab-placement")).toBe("bottom");
+    expect(box.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(box.style.height).toBe("calc(100% - 40px)");
+    expect(strip.style.height).toBe("40px");
+  });
+
+  it("writes theme tokens onto the strip element", (): void => {
+    const { container } = render(
+      React.createElement(StripHarness, {
+        interaction: {
+          grouping: {
+            groupTabStrip: {
+              theme: { accent: "rgb(1, 2, 3)", background: "rgb(9, 9, 9)" },
+            },
+          },
+        },
+      }),
+    );
+    const strip: HTMLElement = requireEl(container, ".hpt-group-tab-strip");
+    expect(strip.style.getPropertyValue("--hpt-group-tab-accent")).toBe("rgb(1, 2, 3)");
+    expect(strip.style.getPropertyValue("--hpt-group-tab-strip-background")).toBe("rgb(9, 9, 9)");
+    expect(strip.style.background).toBe("rgb(9, 9, 9)");
+  });
+
+  it("drops the active-indicator transition under prefers-reduced-motion", (): void => {
+    const original: typeof window.matchMedia | undefined = window.matchMedia;
+    window.matchMedia = ((query: string): MediaQueryList =>
+      ({
+        matches: query.includes("reduce"),
+        media: query,
+        onchange: null,
+        addEventListener: (): void => {},
+        removeEventListener: (): void => {},
+        addListener: (): void => {},
+        removeListener: (): void => {},
+        dispatchEvent: (): boolean => false,
+      }) as MediaQueryList);
+    const { container, unmount } = render(React.createElement(StripHarness, {}));
+    const strip: HTMLElement = requireEl(container, ".hpt-group-tab-strip");
+    expect(strip.getAttribute("data-hpt-reduced-motion")).toBe("true");
+    const active: HTMLElement = requireEl(container, '[role="tab"][aria-selected="true"]');
+    // jsdom drops an inline `transition: none` back to an empty string, which
+    // is the same as no transition. Either reading means the indicator is still.
+    expect(active.style.transition === "none" || active.style.transition === "").toBe(true);
+    unmount();
+    window.matchMedia = original;
+  });
+});
