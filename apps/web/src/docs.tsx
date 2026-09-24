@@ -328,13 +328,6 @@ export const INTRO_ONE_LINER: string =
   "A controlled tiling renderer for React — drag, resize, group, and keyboard-drive panes.";
 export const INTRO_REACH_PARAGRAPH: string =
   "Built for dashboards, IDE-like tools, and operator consoles. You own the layout tree.";
-export const INTRO_DOGFOOD_PARAGRAPH: DocParagraph = [
-  "This page ",
-  { em: "is" },
-  " the layout. Drag a header, resize a divider, or open ",
-  { link: "the docs", href: "/docs#quickstart" },
-  ".",
-];
 export const CONTRIBUTING_EYEBROW: string = "contributing";
 export const INTRO_CONTRIBUTING_PARAGRAPH: DocParagraph = [
   "hypr-tiling is built in the open and welcomes collaboration — framework adapters, rendering backends, bug reports, and ideas from the roadmap. To get involved, reach out at ",
@@ -345,9 +338,9 @@ export const INTRO_LICENSE_TAIL: string =
   " · source-available · free commercial use · no competing use";
 export const HYPRLAND_URL: string = "https://hypr.land";
 export const INTRO_KUDOS_PARAGRAPH: DocParagraph = [
-  "Kudos to Hyprland — Detach-and-drop, master/stack, and keyboard focus come from ",
+  "Kudos to ",
   { link: "Hyprland", href: HYPRLAND_URL },
-  ".",
+  " — detach-and-drop, master/stack, and keyboard focus.",
 ];
 
 // Use-cases pane lead (the list itself is `USE_CASES`).
@@ -480,29 +473,27 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     summary:
       "Dynamic tiling for React. A recursive split-tree renderer for runtime-rearrangeable, resizable panes.",
     content: (
-      <div className="flex min-h-full flex-col gap-5">
-        <div className="flex flex-col gap-3">
+      <div className="flex flex-1 flex-col gap-2">
+        <div className="flex flex-col gap-2">
           <Eyebrow>dynamic tiling · for react</Eyebrow>
-          <h1 className="font-display text-[clamp(2rem,3.4vw,2.9rem)] font-medium leading-[1.02] tracking-[-0.015em] text-stone-50">
+          <h1 className="font-display text-[clamp(2rem,3.2vw,2.65rem)] font-medium leading-[1.02] tracking-[-0.015em] text-stone-50">
             {INTRO_HEADLINE_LEAD}{" "}
             <em className="font-display italic text-amber-200/90">
               {INTRO_HEADLINE_ACCENT}
             </em>
           </h1>
         </div>
-        <SectionLead>{INTRO_ONE_LINER}</SectionLead>
-        <SectionLead>{INTRO_REACH_PARAGRAPH}</SectionLead>
-        <p className="max-w-[62ch] border-l-2 border-amber-300/30 pl-3 text-[15px] leading-[1.55] text-stone-400">
-          <MosaicInline paragraph={INTRO_DOGFOOD_PARAGRAPH} />
+        <p className="max-w-[62ch] text-[15px] leading-[1.45] text-stone-300/90">
+          {INTRO_ONE_LINER}
         </p>
-        <footer className="mt-auto flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-white/[0.08] pt-3 text-[11px] leading-[1.5] text-stone-500">
-          <span>
-            <Link href={LICENSE_URL}>{LICENSE_NAME}</Link>
-            {INTRO_LICENSE_TAIL}
-          </span>
-          <span>
-            <MosaicInline paragraph={INTRO_KUDOS_PARAGRAPH} />
-          </span>
+        <p className="max-w-[62ch] text-[15px] leading-[1.45] text-stone-300/90">
+          {INTRO_REACH_PARAGRAPH}
+        </p>
+        <footer className="mt-auto border-t border-white/[0.08] pt-2 text-[11px] leading-[1.4] text-stone-500">
+          <Link href={LICENSE_URL}>{LICENSE_NAME}</Link>
+          {INTRO_LICENSE_TAIL}
+          {" · "}
+          <MosaicInline paragraph={INTRO_KUDOS_PARAGRAPH} />
         </footer>
       </div>
     ),

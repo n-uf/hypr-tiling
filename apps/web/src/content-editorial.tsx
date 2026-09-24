@@ -7,7 +7,6 @@ import {
   INSTALL_INTRO_PARAGRAPH,
   INSTALL_SNIPPET,
   INTEGRATION_EXAMPLE,
-  INTRO_DOGFOOD_PARAGRAPH,
   INTRO_HEADLINE_ACCENT,
   INTRO_HEADLINE_LEAD,
   INTRO_LICENSE_TAIL,
@@ -207,10 +206,10 @@ function EditorialIndex({
 
 function IntroContent(): React.ReactElement {
   return (
-    <div className="flex min-h-full flex-col gap-6">
-      <div className="flex flex-col gap-4">
+    <div className="flex min-h-full flex-col gap-3">
+      <div className="flex flex-col gap-2">
         <EditorialKicker>dynamic tiling · for react</EditorialKicker>
-        <h1 className="font-display text-[clamp(2.1rem,3.6vw,3rem)] font-normal leading-[1.04] tracking-[-0.02em] text-[#241f17]">
+        <h1 className="font-display text-[clamp(1.75rem,2.5vw,2.15rem)] font-normal leading-[1.04] tracking-[-0.02em] text-[#241f17]">
           {INTRO_HEADLINE_LEAD}{" "}
           <em className="font-display italic text-[#7a6a4c]">
             {INTRO_HEADLINE_ACCENT}
@@ -218,19 +217,17 @@ function IntroContent(): React.ReactElement {
         </h1>
         <span aria-hidden className="h-px w-full bg-[#ddd3bd]" />
       </div>
-      <EditorialLead>{INTRO_ONE_LINER}</EditorialLead>
-      <EditorialLead>{INTRO_REACH_PARAGRAPH}</EditorialLead>
-      <p className="max-w-[64ch] border-l-2 border-[#c9bd9f] pl-4 font-display text-[16px] italic leading-[1.6] text-[#4b4335]">
-        <EditorialInline paragraph={INTRO_DOGFOOD_PARAGRAPH} />
+      <p className="max-w-[64ch] text-[15px] leading-[1.5] text-[#4b4335]">
+        {INTRO_ONE_LINER}
       </p>
-      <footer className="mt-auto flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-[#ddd3bd] pt-4 text-[11px] leading-[1.6] text-[#8c8069]">
-        <span>
-          <EditorialLink href={LICENSE_URL}>{LICENSE_NAME}</EditorialLink>
-          {INTRO_LICENSE_TAIL}
-        </span>
-        <span>
-          <EditorialInline paragraph={INTRO_KUDOS_PARAGRAPH} />
-        </span>
+      <p className="max-w-[64ch] text-[15px] leading-[1.5] text-[#4b4335]">
+        {INTRO_REACH_PARAGRAPH}
+      </p>
+      <footer className="mt-auto border-t border-[#ddd3bd] pt-2 text-[11px] leading-[1.4] text-[#8c8069]">
+        <EditorialLink href={LICENSE_URL}>{LICENSE_NAME}</EditorialLink>
+        {INTRO_LICENSE_TAIL}
+        {" · "}
+        <EditorialInline paragraph={INTRO_KUDOS_PARAGRAPH} />
       </footer>
     </div>
   );

@@ -669,7 +669,7 @@ export function HomePage({
         );
       const content: React.ReactNode =
         pane.id === "intro" ? (
-          <div className="flex flex-col gap-5">
+          <div className="flex min-h-full flex-col gap-2.5">
             {body}
             <div className="flex flex-wrap items-center gap-2.5">
               <RepoLink skin={skin} />

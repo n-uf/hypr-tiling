@@ -7,7 +7,6 @@ import {
   INSTALL_INTRO_PARAGRAPH,
   INSTALL_SNIPPET,
   INTEGRATION_EXAMPLE,
-  INTRO_DOGFOOD_PARAGRAPH,
   INTRO_HEADLINE_ACCENT,
   INTRO_HEADLINE_LEAD,
   INTRO_LICENSE_TAIL,
@@ -228,31 +227,29 @@ function CanvasIndex({
 
 function IntroContent(): React.ReactElement {
   return (
-    <div className="flex min-h-full flex-col gap-6">
-      <div className="flex flex-col gap-4">
+    <div className="flex min-h-full flex-col gap-3">
+      <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-4">
           <CanvasKicker>dynamic tiling · for react</CanvasKicker>
           <CanvasLedRow />
         </div>
-        <h1 className="text-[clamp(1.9rem,3.2vw,2.6rem)] font-semibold leading-[1.06] tracking-[-0.02em] text-slate-900">
+        <h1 className="text-[clamp(1.65rem,2.3vw,2rem)] font-semibold leading-[1.05] tracking-[-0.02em] text-slate-900">
           {INTRO_HEADLINE_LEAD}{" "}
           <span className="text-cyan-600">{INTRO_HEADLINE_ACCENT}</span>
         </h1>
         <span aria-hidden className="h-px w-full bg-slate-200" />
       </div>
-      <CanvasLead>{INTRO_ONE_LINER}</CanvasLead>
-      <CanvasLead>{INTRO_REACH_PARAGRAPH}</CanvasLead>
-      <p className="max-w-[64ch] rounded-[1px] border-l-2 border-cyan-400 bg-slate-50 px-4 py-3 text-[15px] leading-[1.55] text-slate-600">
-        <CanvasInline paragraph={INTRO_DOGFOOD_PARAGRAPH} />
+      <p className="max-w-[64ch] text-[14px] leading-[1.45] text-slate-600">
+        {INTRO_ONE_LINER}
       </p>
-      <footer className="mt-auto flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-slate-200 pt-4 text-[11px] leading-[1.6] text-slate-400">
-        <span>
-          <CanvasLink href={LICENSE_URL}>{LICENSE_NAME}</CanvasLink>
-          {INTRO_LICENSE_TAIL}
-        </span>
-        <span>
-          <CanvasInline paragraph={INTRO_KUDOS_PARAGRAPH} />
-        </span>
+      <p className="max-w-[64ch] text-[14px] leading-[1.45] text-slate-600">
+        {INTRO_REACH_PARAGRAPH}
+      </p>
+      <footer className="mt-auto border-t border-slate-200 pt-2 text-[11px] leading-[1.4] text-slate-400">
+        <CanvasLink href={LICENSE_URL}>{LICENSE_NAME}</CanvasLink>
+        {INTRO_LICENSE_TAIL}
+        {" · "}
+        <CanvasInline paragraph={INTRO_KUDOS_PARAGRAPH} />
       </footer>
     </div>
   );

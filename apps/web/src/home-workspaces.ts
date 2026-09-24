@@ -8,7 +8,7 @@ import type {
 // SSR / first paint. Home is four columns: intro over discoverability in the
 // left stack, then features, install, and use cases at full height. Column
 // widths are tuned for the four-column home grid at 1440×900; the left stack
-// seats discoverability under intro (~70/30). Workspaces seats the workspaces copy (left, wider) beside the
+// seats discoverability under intro (0.675/0.325). Workspaces seats the workspaces copy (left, wider) beside the
 // set-inspector / swipe-meter dogfood pair. Changelog is a four-widget
 // dashboard: tall release timeline beside latest / breaking / version. Doc
 // tile ids match `DOC_PANES`; widget tile ids live in `changelog-widgets.tsx`.
@@ -19,9 +19,9 @@ import type {
 // instead of replaying a previous Home tree.
 
 export const HOME_WORKSPACE_STORAGE_KEY: string =
-  "hypr-tiling-home-workspaces-v5";
+  "hypr-tiling-home-workspaces-v6";
 
-export const HOME_WORKSPACE_STORAGE_VERSION: number = 5;
+export const HOME_WORKSPACE_STORAGE_VERSION: number = 6;
 
 export const HOME_WORKSPACE_ID_HOME: string = "ws-home";
 export const HOME_WORKSPACE_ID_WORKSPACES: string = "ws-workspaces";
@@ -31,19 +31,20 @@ export const HOME_WORKSPACE_NAME_HOME: string = "Home";
 export const HOME_WORKSPACE_NAME_WORKSPACES: string = "Workspaces";
 export const HOME_WORKSPACE_NAME_CHANGELOG: string = "Changelog";
 
-// Root fractions: left column 0.23 (intro ~0.70 / discoverability ~0.30 of that
-// column), features 0.31 (0.40 of the remaining 0.77), install 0.30, use cases
-// 0.16.
+// Root fractions: left column 0.26 (intro 0.675 / discoverability 0.325 of that
+// column), features 0.308 (0.416 of the remaining 0.74), install 0.275
+// (0.636 of what remains after features), use cases 0.157. The extra left
+// width comes from install so features and use cases keep their share.
 const HOME_LAYOUT: TilingLayoutNode = {
   kind: "split",
   id: "home-root",
   axis: "horizontal",
-  ratio: 0.23,
+  ratio: 0.26,
   first: {
     kind: "split",
     id: "home-intro-stack",
     axis: "vertical",
-    ratio: 0.70,
+    ratio: 0.675,
     first: { kind: "leaf", id: "intro", tileId: "intro" },
     second: {
       kind: "leaf",
@@ -55,13 +56,13 @@ const HOME_LAYOUT: TilingLayoutNode = {
     kind: "split",
     id: "home-features-rest",
     axis: "horizontal",
-    ratio: 0.40,
+    ratio: 0.416,
     first: { kind: "leaf", id: "features", tileId: "features" },
     second: {
       kind: "split",
       id: "home-install-uses",
       axis: "horizontal",
-      ratio: 0.66,
+      ratio: 0.636,
       first: { kind: "leaf", id: "install", tileId: "install" },
       second: { kind: "leaf", id: "usecases", tileId: "usecases" },
     },
