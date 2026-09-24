@@ -328,3 +328,28 @@ export type {
   WheelTouchInputListener,
   WheelTouchInputPort,
 } from "./engine/wheel-touch-port";
+
+// N3 — spring-loaded tab drop (engine half)
+export {
+  TILING_SPRING_LOAD_DEFAULTS,
+  TILING_SPRING_LOAD_INITIAL_STATE,
+  isWorkspaceTabDragHover,
+  resolveSpringLoadCapability,
+  resolveSpringLoadConfig,
+  springLoadFireAt,
+  springLoadReducer,
+  type TilingSpringLoadCapability,
+  type TilingSpringLoadConfig,
+  type TilingSpringLoadEvent,
+  type TilingSpringLoadIntent,
+  type TilingSpringLoadPhase,
+  type TilingSpringLoadState,
+} from "./engine/workspace-spring-load";
+export {
+  canRearmDrag,
+  rearmPointerAnchorOffset,
+  type DragMachinePoint,
+  type DragMachineState,
+  type DragPointerType,
+  type DragRearmEvent,
+} from "./engine/drag-machine";
