@@ -16,6 +16,7 @@ import {
   resolveWorkspaceSwipeConfig,
   type TilingWorkspaceSwipeConfig,
 } from "./workspace-navigation";
+import type { TilingWorkspaceTransitionMode } from "./workspace-transition";
 import type {
   TilingSplitAxis,
   ResolvedTilingGroupingCapability,
@@ -102,7 +103,12 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
   workspaces: {
     enable: true,
     followMovedLeaf: false,
-    switch: { wheelSwipe: false, touchSwipe: false, swipe: TILING_WORKSPACE_SWIPE_DEFAULTS },
+    switch: {
+      wheelSwipe: false,
+      touchSwipe: false,
+      swipe: TILING_WORKSPACE_SWIPE_DEFAULTS,
+      transition: "none",
+    },
   },
 };
 
@@ -330,7 +336,8 @@ function resolveWorkspacesCapability(
  * Resolve the `workspaces.switch` gesture capability. `wheelSwipe: true` runs
  * the FSM on {@link TILING_WORKSPACE_SWIPE_DEFAULTS}; an object form enables
  * wheel swipe AND overrides the named config fields (touch swipe shares that
- * config). Both inputs default to off.
+ * config). Both inputs default to off. `transition` defaults to `"none"` (no
+ * stage mounted).
  */
 export function resolveWorkspaceSwitchCapability(
   capability: TilingWorkspaceSwitchCapability | undefined,
@@ -345,7 +352,8 @@ export function resolveWorkspaceSwitchCapability(
     typeof wheelSwipe === "object" && wheelSwipe != null
       ? resolveWorkspaceSwipeConfig(wheelSwipe)
       : defaults.swipe;
-  return { wheelSwipe: wheelEnabled, touchSwipe, swipe };
+  const transition: TilingWorkspaceTransitionMode = capability?.transition ?? defaults.transition;
+  return { wheelSwipe: wheelEnabled, touchSwipe, swipe, transition };
 }
 
 /**

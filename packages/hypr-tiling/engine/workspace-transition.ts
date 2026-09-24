@@ -3,9 +3,10 @@
  *
  * No DOM, no React — the node Jest environment runs this module. The React
  * stage (`react/workspace-transition.tsx`) consumes these to drive a frozen
- * outgoing clone against the live incoming tree. Inactive workspace trees
- * are not mounted (`inactiveWorkspaces` did not ship), so the outgoing view
- * cannot be a second live tree.
+ * outgoing clone against the live incoming tree. Only the active workspace
+ * TREE is mounted (`inactiveWorkspaces: "keep-mounted"` parks panes in the
+ * hidden pool, not a second laid-out tree), so the outgoing view is a
+ * snapshot, never a live tree.
  */
 
 import { DEFAULT_DRAG_HOP_EASING } from "./drag-easing";

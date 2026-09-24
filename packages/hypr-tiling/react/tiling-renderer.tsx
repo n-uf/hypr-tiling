@@ -214,17 +214,26 @@ import {
 } from "../engine/state";
 import type { StyleApplierPort } from "../engine/style-applier-port";
 import {
+  TILING_DEFAULT_WORKSPACE_PLACEMENT,
+  TILING_MAIN_WORKSPACE_ID,
   activeWorkspace,
   cycleWorkspace,
   moveLeafToWorkspace,
   queryWorkspaceSet,
+  repairWorkspaceSet,
   revealTile,
   setWorkspaceLayout,
   switchWorkspace,
+  workspaceSetIssues,
   type TilingRevealTileResult,
   type TilingWorkspace,
   type TilingWorkspaceSet,
+  type TilingWorkspaceSetIssue,
 } from "../engine/workspace-set";
+import type {
+  TilingWorkspaceTransitionDirection,
+  TilingWorkspaceTransitionMode,
+} from "../engine/workspace-transition";
 import {
   shouldSnapSurvivorReflowOnSettleCommit,
   type SurvivorRect,
@@ -315,6 +324,10 @@ import {
   type TilingWorkspaceSwipeStore,
 } from "./use-workspace-swipe";
 import { createWindowSchedulerPort } from "./window-scheduler-port";
+import {
+  WorkspaceTransitionStage,
+  type UseWorkspaceTransitionResult,
+} from "./workspace-transition";
 
 /** Same external target (kind / targetId / workspaceId) — the point may differ. */
 function isSameExternalDragTarget(
@@ -1323,7 +1336,7 @@ export function DragSourceSlotReservation({
 type StablePaneSlotRegistry = Map<string, HTMLElement>;
 
 /** One tile's pane render inputs, collected during the tree render pass. */
-interface StablePaneEntry {
+export interface StablePaneEntry {
   readonly tileId: string;
   readonly tileArgs: TilingRenderTileProps;
   readonly defaultTileArgs: TilingDefaultTileProps;
@@ -1458,6 +1471,53 @@ function StablePanePool({
       })}
     </div>
   );
+}
+
+/**
+ * Resting render props for a pane the pool keeps mounted while its workspace
+ * is inactive (`inactiveWorkspaces: "keep-mounted"`, H6). Starts from the
+ * pane's LAST in-tree render (so the host sees the same callback identities
+ * and chrome flags it already had), then clears every transient state flag —
+ * focus, drag / drop / move / maximize / multi-select — because a hidden pane
+ * is never the subject of an interaction, and re-reads the tile payload from
+ * the current pool so a title / content update still reaches the hidden pane.
+ * `workspaceId` reports the inactive workspace that seats the tile;
+ * `seatCount` follows the current set.
+ */
+export function restingRetainedPaneEntry(
+  last: StablePaneEntry,
+  retained: TilingRetainedPane,
+  tile: TilingTile | undefined,
+  seatCount: number,
+): StablePaneEntry {
+  const resting: Partial<TilingRenderTileProps> = {
+    tile: tile ?? last.tileArgs.tile,
+    workspaceId: retained.workspaceId,
+    seatCount,
+    isDragSource: false,
+    isDropTarget: false,
+    isDropEligible: false,
+    isHoveringDropCandidate: false,
+    isInvalidDrop: false,
+    isFocused: false,
+    isMoveSource: false,
+    moveTargetPlacement: null,
+    isMaximized: false,
+    dropZone: null,
+    preview: null,
+    isMultiSelected: false,
+    canGroupMultiSelection: false,
+  };
+  return {
+    tileId: retained.tileId,
+    tileArgs: { ...last.tileArgs, ...resting },
+    defaultTileArgs: {
+      ...last.defaultTileArgs,
+      ...resting,
+      dropIntentDebugPath: null,
+      dropIntentDebugAction: null,
+    },
+  };
 }
 
 /**
@@ -1615,6 +1675,24 @@ export interface GhostTileCapabilityFlags {
 }
 
 /**
+ * Where a pane sits in the workspace set — the `workspaceId` / `seatCount`
+ * pair every {@link TilingRenderTileProps} carries (H6). Single-layout mode
+ * always renders with {@link SINGLE_LAYOUT_PANE_SEAT}.
+ */
+export interface TilingPaneSeatContext {
+  /** Workspace whose tree seats the pane. */
+  readonly workspaceId: string;
+  /** Number of workspaces in the set that seat the pane's tile. */
+  readonly seatCount: number;
+}
+
+/** The seat context of every pane in single-layout mode (`"main"`, seated once). */
+export const SINGLE_LAYOUT_PANE_SEAT: TilingPaneSeatContext = {
+  workspaceId: TILING_MAIN_WORKSPACE_ID,
+  seatCount: 1,
+};
+
+/**
  * Builds the `TilingRenderTileProps` the drag overlays (the floating pickup
  * ghost and the cancel fly-back) pass to a consumer `renderTile` so a custom
  * pane's chrome TRAVELS with the drag. It is a faithful representation of the
@@ -1652,6 +1730,7 @@ export function buildGhostTileArgs(
   isPaneContentVisible: boolean,
   surface: Exclude<TilingRenderSurface, "pane">,
   capabilityFlags: GhostTileCapabilityFlags,
+  seat: TilingPaneSeatContext = SINGLE_LAYOUT_PANE_SEAT,
 ): TilingRenderTileProps {
   const ghostTile: TilingTile = {
     id: snapshot.tileId,
@@ -1667,6 +1746,8 @@ export function buildGhostTileArgs(
     leafId: sourceLeafId,
     tile: ghostTile,
     paneOrdinal,
+    workspaceId: seat.workspaceId,
+    seatCount: seat.seatCount,
     paneWidthPx,
     isPaneContentVisible,
     paneBodyRenderMode: resolvePaneBodyRenderMode(false, isPaneContentVisible),
@@ -4448,6 +4529,49 @@ interface TilingWorkspaceCommandBridge {
     >,
     via: TilingWorkspaceCommandDispatchVia,
   ) => boolean;
+  /**
+   * H6 — coverage override. The tile ids this tree is expected to seat; the
+   * inner renderer heals / refuses commits against THESE instead of
+   * `expectedTileIdsFromHostTiles(tiles)`. The set-mode wrapper passes the
+   * active tree's own seated tiles so a tile seated only in an inactive
+   * workspace (or a pool tile no workspace seats) is never pulled into the
+   * active tree. Undefined → single-layout semantics (the whole `tiles` map).
+   */
+  expectedTileIds?: ReadonlyArray<string>;
+  /** H6 — seat context every pane render prop carries (`workspaceId` = active id). */
+  workspaceId?: string;
+  /** H6 — per-tile seat counts across the set; a tile absent here is seated once. */
+  tileSeatCounts?: ReadonlyMap<string, number>;
+  /**
+   * H6 — `inactiveWorkspaces: "keep-mounted"`: pool tiles seated only in
+   * inactive workspaces, with the workspace each pane reports. The stable
+   * pane pool keeps their last-rendered pane instance mounted (hidden).
+   */
+  retainedPanes?: ReadonlyArray<TilingRetainedPane>;
+  /**
+   * N2 — workspace switch transition. When present the viewport mounts a
+   * `WorkspaceTransitionStage` around the tree; the wrapper drives
+   * `begin` / `scrub` / `finish` through `stageRef`.
+   */
+  workspaceTransition?: TilingWorkspaceTransitionBridge;
+}
+
+/** A tile the stable pane pool keeps mounted while its workspace is inactive. */
+export interface TilingRetainedPane {
+  readonly tileId: string;
+  readonly workspaceId: string;
+}
+
+/** Stage wiring the set-mode wrapper hands the inner renderer (N2). */
+interface TilingWorkspaceTransitionBridge {
+  /** Requested mode (`"none"` never reaches the inner renderer). */
+  readonly mode: TilingWorkspaceTransitionMode;
+  /**
+   * Imperative stage handle the wrapper calls `begin` / `scrub` / `finish`
+   * on. Swipe progress is scrubbed imperatively (not through a prop) so a
+   * 60 Hz wheel stream never re-renders the tree.
+   */
+  readonly stageRef: React.RefObject<UseWorkspaceTransitionResult | null>;
 }
 
 type TilingSingleLayoutRendererProps = TilingRendererProps &
@@ -4507,6 +4631,11 @@ const TilingRendererComponent = React.forwardRef<
     onRootElementChange,
     onDragGestureActiveChange,
     rootStyle,
+    expectedTileIds: expectedTileIdsProp,
+    workspaceId: paneWorkspaceId = TILING_MAIN_WORKSPACE_ID,
+    tileSeatCounts,
+    retainedPanes,
+    workspaceTransition,
   }: TilingSingleLayoutRendererProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
 ): React.ReactElement {
@@ -4633,6 +4762,11 @@ const TilingRendererComponent = React.forwardRef<
     new Map<string, StablePaneEntry>(),
   );
   const stablePanePoolOrderRef = React.useRef<ReadonlyArray<string>>([]);
+  // Last in-tree render props per tile — the resting source for panes the
+  // pool keeps mounted while their workspace is inactive (H6 keep-mounted).
+  const lastStablePaneEntriesRef = React.useRef<Map<string, StablePaneEntry>>(
+    new Map<string, StablePaneEntry>(),
+  );
   // A stable-mode leaf slot registers its wrapper element under the TILE id it
   // currently shows. React 19 callback-ref cleanup: the returned function runs
   // on detach (and whenever the closure identity changes, i.e. every commit),
@@ -4887,12 +5021,18 @@ const TilingRendererComponent = React.forwardRef<
   // `onLayoutChangeRef` are owned by the commit choke point above.
   const configRef = React.useRef(config);
   configRef.current = config;
-  // Host tile map is the source of truth for coverage: every commit/idle
-  // normalize must heal missing/duplicate/unknown tileIds against it.
-  const expectedTileIdsRef = React.useRef<ReadonlyArray<string>>(
-    expectedTileIdsFromHostTiles(tiles),
+  // Coverage source of truth: every commit/idle normalize must heal
+  // missing/duplicate/unknown tileIds against it. Single-layout mode: the
+  // host tile map. Set mode (H6): the wrapper's `expectedTileIds` — the
+  // active tree's OWN seated tiles — so `tiles` can be the whole pool without
+  // the active tree absorbing tiles seated elsewhere.
+  const expectedTileIds: ReadonlyArray<string> = React.useMemo(
+    (): ReadonlyArray<string> =>
+      expectedTileIdsProp ?? expectedTileIdsFromHostTiles(tiles),
+    [expectedTileIdsProp, tiles],
   );
-  expectedTileIdsRef.current = expectedTileIdsFromHostTiles(tiles);
+  const expectedTileIdsRef = React.useRef<ReadonlyArray<string>>(expectedTileIds);
+  expectedTileIdsRef.current = expectedTileIds;
   const viewportSizeRef = React.useRef(viewportSize);
   viewportSizeRef.current = viewportSize;
   // Live resize ratio updates are rAF-coalesced (one layout commit per frame).
@@ -5914,7 +6054,6 @@ const TilingRendererComponent = React.forwardRef<
     if (resizeState != null || dragState.phase !== "idle") {
       return;
     }
-    const expectedTileIds: ReadonlyArray<string> = expectedTileIdsRef.current;
     const tileCoverageBroken: boolean =
       expectedTileIds.length > 0 &&
       !layoutCoversExpectedTiles(layout, expectedTileIds);
@@ -5949,9 +6088,9 @@ const TilingRendererComponent = React.forwardRef<
     commitNormalizedLayout,
     config,
     dragState.phase,
+    expectedTileIds,
     layout,
     resizeState,
-    tiles,
     viewportSize.height,
     viewportSize.width,
   ]);
@@ -8336,6 +8475,8 @@ const TilingRendererComponent = React.forwardRef<
           leafId: node.id,
           tile: tileForDisplay,
           paneOrdinal: Math.max(1, leafIds.indexOf(node.id) + 1),
+          workspaceId: paneWorkspaceId,
+          seatCount: tileSeatCounts?.get(node.tileId) ?? 1,
           paneWidthPx: containerWidthPx,
           isPaneContentVisible,
           paneBodyRenderMode,
@@ -9341,8 +9482,44 @@ const TilingRendererComponent = React.forwardRef<
     maximizedLeaf != null
       ? renderBranch(maximizedLeaf, viewportSize.width, viewportSize.height)
       : renderBranch(displayLayout, viewportSize.width, viewportSize.height);
-  const stablePaneEntries: ReadonlyMap<string, StablePaneEntry> =
+  const stablePaneEntries: Map<string, StablePaneEntry> =
     stablePaneEntriesRef.current;
+  // H6 `inactiveWorkspaces: "keep-mounted"`: a pool tile seated only in an
+  // inactive workspace keeps its pane mounted (hidden, parked in the pool)
+  // using its last in-tree render props at rest. A tile that has never been
+  // shown has no last render and mounts lazily the first time its workspace
+  // is active. Tiles neither in the tree nor retained leave the pool.
+  if (paneIdentityMode === "stable") {
+    const lastEntries: Map<string, StablePaneEntry> = lastStablePaneEntriesRef.current;
+    for (const [tileId, entry] of stablePaneEntries) {
+      lastEntries.set(tileId, entry);
+    }
+    if (retainedPanes != null) {
+      for (const retained of retainedPanes) {
+        if (stablePaneEntries.has(retained.tileId)) {
+          continue;
+        }
+        const last: StablePaneEntry | undefined = lastEntries.get(retained.tileId);
+        if (last == null) {
+          continue;
+        }
+        stablePaneEntries.set(
+          retained.tileId,
+          restingRetainedPaneEntry(
+            last,
+            retained,
+            resolveTile(tiles, retained.tileId),
+            tileSeatCounts?.get(retained.tileId) ?? 1,
+          ),
+        );
+      }
+    }
+    for (const tileId of Array.from(lastEntries.keys())) {
+      if (!stablePaneEntries.has(tileId)) {
+        lastEntries.delete(tileId);
+      }
+    }
+  }
   const stablePanePoolOrder: ReadonlyArray<string> =
     paneIdentityMode === "stable"
       ? resolveStablePanePoolOrder(
@@ -9418,7 +9595,24 @@ const TilingRendererComponent = React.forwardRef<
               : undefined
           }
         >
-          {treeElement}
+          {workspaceTransition != null ? (
+            // N2: the set-mode wrapper asked for a switch transition. The
+            // stage wraps the tree INSIDE the viewport so the frozen outgoing
+            // clone and the incoming tree share the viewport's box; the
+            // wrapper drives `begin` / `scrub` / `finish` through `stageRef`.
+            // Mounted only when the resolved capability is not `"none"` —
+            // otherwise the tree is the viewport's direct child exactly as
+            // before.
+            <WorkspaceTransitionStage
+              ref={workspaceTransition.stageRef}
+              viewportRef={viewportRef}
+              mode={workspaceTransition.mode}
+            >
+              {treeElement}
+            </WorkspaceTransitionStage>
+          ) : (
+            treeElement
+          )}
           {showProjectedLandingOverlays ? (
             <ProjectedLandingOverlays
               overlays={projectedLandingOverlays}
@@ -9555,6 +9749,132 @@ function withRemembered(
 }
 
 /**
+ * H6 — the set-wide seat census the wrapper hands the inner renderer: the
+ * active tree's own (deduplicated, reading-order) tile ids, how many
+ * workspaces seat each pool tile, and — under `keep-mounted` — the pool tiles
+ * seated ONLY in inactive workspaces (with the first such workspace in tab
+ * order). Pure; exported for tests.
+ */
+export interface TilingWorkspaceSeatCensus {
+  /** Tile ids the active tree seats (deduplicated, reading order). */
+  readonly activeTileIds: ReadonlyArray<string>;
+  /** Seat count per tile id across the whole set (tiles seated ≥ 1 time). */
+  readonly seatCounts: ReadonlyMap<string, number>;
+  /** Pool tiles seated in no active-tree seat but in ≥ 1 inactive workspace. */
+  readonly retainedPanes: ReadonlyArray<TilingRetainedPane>;
+}
+
+/** Build the {@link TilingWorkspaceSeatCensus} of `set` against the host tile pool. */
+export function resolveWorkspaceSeatCensus(
+  set: TilingWorkspaceSet,
+  activeId: string,
+  poolTileIds: ReadonlyArray<string>,
+): TilingWorkspaceSeatCensus {
+  const query = queryWorkspaceSet(set);
+  const seatCounts: Map<string, number> = new Map<string, number>();
+  const activeTileIds: string[] = [];
+  const activeSeen: Set<string> = new Set<string>();
+  for (const tileId of query.tileIds(activeId)) {
+    if (!activeSeen.has(tileId)) {
+      activeSeen.add(tileId);
+      activeTileIds.push(tileId);
+    }
+  }
+  const pool: Set<string> = new Set<string>(poolTileIds);
+  const retained: TilingRetainedPane[] = [];
+  const retainedSeen: Set<string> = new Set<string>();
+  for (const workspace of set.workspaces) {
+    const seenHere: Set<string> = new Set<string>();
+    for (const tileId of query.tileIds(workspace.id)) {
+      if (seenHere.has(tileId)) {
+        continue;
+      }
+      seenHere.add(tileId);
+      seatCounts.set(tileId, (seatCounts.get(tileId) ?? 0) + 1);
+      if (
+        workspace.id !== activeId &&
+        !activeSeen.has(tileId) &&
+        pool.has(tileId) &&
+        !retainedSeen.has(tileId)
+      ) {
+        retainedSeen.add(tileId);
+        retained.push({ tileId, workspaceId: workspace.id });
+      }
+    }
+  }
+  return { activeTileIds, seatCounts, retainedPanes: retained };
+}
+
+/** Stable fingerprint of an issue list — equal lists (same order) print the same string. */
+export function workspaceSetIssueFingerprint(
+  issues: ReadonlyArray<TilingWorkspaceSetIssue>,
+): string {
+  return issues
+    .map(
+      (issue: TilingWorkspaceSetIssue): string =>
+        `${issue.kind}|${issue.workspaceId ?? ""}|${issue.leafId ?? ""}|${issue.tileId ?? ""}`,
+    )
+    .join("\n");
+}
+
+/** Default leaf id for a tile `orphanTiles: "seat-in-active"` seats from scratch. */
+export function defaultSetRendererMintLeafId(tileId: string): string {
+  return `leaf:${tileId}`;
+}
+
+/** Tab-order direction from `from` to `to` (`"next"` when either id is unknown). */
+export function workspaceSwitchDirection(
+  set: TilingWorkspaceSet,
+  from: string,
+  to: string,
+): TilingWorkspaceTransitionDirection {
+  const fromIndex: number = set.workspaces.findIndex(
+    (workspace: TilingWorkspace): boolean => workspace.id === from,
+  );
+  const toIndex: number = set.workspaces.findIndex(
+    (workspace: TilingWorkspace): boolean => workspace.id === to,
+  );
+  if (fromIndex === -1 || toIndex === -1) {
+    return "next";
+  }
+  return toIndex < fromIndex ? "prev" : "next";
+}
+
+interface WorkspaceSwitchSentinelProps {
+  readonly activeId: string;
+  readonly onBeforeSwitch: (from: string, to: string) => void;
+  readonly onAfterSwitch: (from: string, to: string) => void;
+}
+
+/**
+ * N2 — the one React hook that runs after render but BEFORE the DOM mutates:
+ * `getSnapshotBeforeUpdate`. When `activeId` changes for any reason the
+ * wrapper did not itself route (a host that sets `workspaces.activeId`
+ * directly, e.g. `useTilingWorkspaceTabs`), this is the last moment the
+ * outgoing tree is still in the viewport and can be captured for the
+ * transition; `componentDidUpdate` then settles the stage over the incoming
+ * tree. Renders nothing.
+ */
+class WorkspaceSwitchSentinel extends React.Component<WorkspaceSwitchSentinelProps> {
+  getSnapshotBeforeUpdate(prev: WorkspaceSwitchSentinelProps): null {
+    if (prev.activeId !== this.props.activeId) {
+      this.props.onBeforeSwitch(prev.activeId, this.props.activeId);
+    }
+    return null;
+  }
+
+  componentDidUpdate(prev: WorkspaceSwitchSentinelProps): void {
+    if (prev.activeId !== this.props.activeId) {
+      this.props.onAfterSwitch(prev.activeId, this.props.activeId);
+    }
+  }
+
+  render(): null {
+    return null;
+  }
+}
+
+/**
  * Workspace-set mode of {@link TilingRenderer}: paints the active workspace's
  * tree through the single-layout renderer and folds every reported tree edit
  * back into the set (`setWorkspaceLayout`). Owns the per-workspace focus /
@@ -9582,6 +9902,10 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
     className,
     themeId,
     theme: themeProp,
+    orphanTiles = "report",
+    mintLeafId,
+    onIntegrityIssues,
+    inactiveWorkspaces = "unmount",
     ...rest
   }: TilingRendererWorkspaceSetProps & TilingRendererObservabilityProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
@@ -9589,6 +9913,46 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
   const active: TilingWorkspace | null = activeWorkspace(workspaces);
   const activeId: string = active?.id ?? workspaces.activeId;
   const layout: TilingLayoutNode | null = active?.layout ?? null;
+
+  // H6 — `tiles` is the WHOLE pool. Coverage is judged set-wide here; the
+  // inner renderer only heals the tiles the ACTIVE tree seats itself, so a
+  // tile seated only in an inactive workspace (or a pool tile no workspace
+  // seats) is never pulled into the active tree by the coverage heal.
+  const poolTileIds: ReadonlyArray<string> = React.useMemo(
+    (): ReadonlyArray<string> => expectedTileIdsFromHostTiles(rest.tiles),
+    [rest.tiles],
+  );
+  const census: TilingWorkspaceSeatCensus = React.useMemo(
+    (): TilingWorkspaceSeatCensus =>
+      resolveWorkspaceSeatCensus(workspaces, activeId, poolTileIds),
+    [workspaces, activeId, poolTileIds],
+  );
+  const issues: ReadonlyArray<TilingWorkspaceSetIssue> = React.useMemo(
+    (): ReadonlyArray<TilingWorkspaceSetIssue> =>
+      orphanTiles === "ignore"
+        ? []
+        : workspaceSetIssues(workspaces, { expectedTileIds: poolTileIds }),
+    [orphanTiles, workspaces, poolTileIds],
+  );
+  const issueFingerprint: string = workspaceSetIssueFingerprint(issues);
+  const onIntegrityIssuesRef = React.useRef(onIntegrityIssues);
+  onIntegrityIssuesRef.current = onIntegrityIssues;
+  // `"report"` / `"seat-in-active"`: deliver the issue list when it CHANGES
+  // (fingerprint), including the transition back to clean. A set that mounts
+  // clean fires nothing.
+  const reportedFingerprintRef = React.useRef<string>("");
+  React.useEffect((): void => {
+    if (orphanTiles === "ignore") {
+      return;
+    }
+    if (reportedFingerprintRef.current === issueFingerprint) {
+      return;
+    }
+    reportedFingerprintRef.current = issueFingerprint;
+    onIntegrityIssuesRef.current?.(issues);
+  }, [orphanTiles, issueFingerprint, issues]);
+  const retainedPanes: ReadonlyArray<TilingRetainedPane> | undefined =
+    inactiveWorkspaces === "keep-mounted" ? census.retainedPanes : undefined;
 
   // Per-workspace memory for the UNCONTROLLED focus / maximize case: the
   // inner renderer is driven controlled from here so a switch restores the
@@ -9629,6 +9993,82 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
   followMovedLeafRef.current = followMovedLeaf;
   const focusedLeafRef = React.useRef<string | null>(effectiveFocusedLeafId ?? null);
   focusedLeafRef.current = effectiveFocusedLeafId ?? null;
+
+  // H6 `orphanTiles: "seat-in-active"`: repair once per offending set
+  // identity — the host applies the emitted set (issues → empty) or ignores
+  // it (same identity seen again → no second emission).
+  const repairedSetRef = React.useRef<TilingWorkspaceSet | null>(null);
+  const mintLeafIdRef = React.useRef(mintLeafId);
+  mintLeafIdRef.current = mintLeafId;
+  React.useLayoutEffect((): void => {
+    if (orphanTiles !== "seat-in-active" || issues.length === 0) {
+      return;
+    }
+    if (repairedSetRef.current === workspaces) {
+      return;
+    }
+    repairedSetRef.current = workspaces;
+    const repaired = repairWorkspaceSet(workspaces, {
+      expectedTileIds: poolTileIds,
+      orphanPlacement: TILING_DEFAULT_WORKSPACE_PLACEMENT,
+      mintLeafId: mintLeafIdRef.current ?? defaultSetRendererMintLeafId,
+    });
+    if (repaired.set !== workspaces) {
+      onWorkspacesChangeRef.current(repaired.set);
+    }
+  }, [orphanTiles, issues, workspaces, poolTileIds]);
+
+  // N2 — switch transition. The stage lives inside the inner renderer's
+  // viewport; the wrapper owns WHEN it begins (before the tree swaps) and
+  // settles (after). Every switch routed through `applyWorkspaceCommand`
+  // begins here with the exact direction; a host-driven `activeId` change
+  // is caught by `WorkspaceSwitchSentinel` (pre-mutation) with the tab-order
+  // direction. `transitionArmedForRef` makes `begin` idempotent per target,
+  // so a swipe that already captured the outgoing view at tracking start is
+  // not re-captured (and its scrub progress not reset) when it commits.
+  const transitionMode: TilingWorkspaceTransitionMode = workspacesEnabled
+    ? interactionCapabilities.workspaces.switch.transition
+    : "none";
+  const transitionStageRef = React.useRef<UseWorkspaceTransitionResult | null>(null);
+  const transitionArmedForRef = React.useRef<string | null>(null);
+  const emittedSwitchToRef = React.useRef<string | null>(null);
+  const beginSwitchTransition = React.useCallback(
+    (to: string, direction: TilingWorkspaceTransitionDirection): void => {
+      const stage: UseWorkspaceTransitionResult | null = transitionStageRef.current;
+      if (stage == null || transitionArmedForRef.current === to) {
+        return;
+      }
+      transitionArmedForRef.current = to;
+      stage.begin({ direction });
+    },
+    [],
+  );
+  const handleBeforeSwitch = React.useCallback(
+    (from: string, to: string): void => {
+      beginSwitchTransition(to, workspaceSwitchDirection(workspacesRef.current, from, to));
+    },
+    [beginSwitchTransition],
+  );
+  const handleAfterSwitch = React.useCallback((): void => {
+    emittedSwitchToRef.current = null;
+    if (transitionArmedForRef.current == null) {
+      return;
+    }
+    transitionArmedForRef.current = null;
+    transitionStageRef.current?.finish("commit");
+  }, []);
+  // A switch the host never applied (or one into / out of an EMPTY workspace,
+  // where no stage is mounted) must not leave a stale "switch pending" mark.
+  React.useEffect((): void => {
+    emittedSwitchToRef.current = null;
+  }, [activeId, workspaces]);
+  const workspaceTransition: TilingWorkspaceTransitionBridge | undefined = React.useMemo(
+    (): TilingWorkspaceTransitionBridge | undefined =>
+      transitionMode === "none"
+        ? undefined
+        : { mode: transitionMode, stageRef: transitionStageRef },
+    [transitionMode],
+  );
 
   const handleLayoutChange = React.useCallback(
     (nextLayout: TilingLayoutNode): void => {
@@ -9806,6 +10246,20 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       if (next === current && (revealLeafId == null || focusAlready)) {
         return false;
       }
+      if (next.activeId !== from) {
+        // N2: capture the outgoing tree BEFORE the host applies the switch.
+        // A cycle carries its own direction (wrap-around safe); everything
+        // else compares tab-order positions.
+        emittedSwitchToRef.current = next.activeId;
+        beginSwitchTransition(
+          next.activeId,
+          command.kind === "cycle-workspace"
+            ? command.direction === "previous"
+              ? "prev"
+              : "next"
+            : workspaceSwitchDirection(current, from, next.activeId),
+        );
+      }
       if (next !== current) {
         onWorkspacesChangeRef.current(next);
       }
@@ -9825,7 +10279,7 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       }
       return true;
     },
-    [onFocusedLeafChange],
+    [beginSwitchTransition, onFocusedLeafChange],
   );
 
   React.useImperativeHandle(
@@ -9878,6 +10332,52 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
     dragActive: dragGestureActive,
     dispatch: dispatchSwipeCommand,
   });
+  // N2 × N1: while a swipe TRACKS, the stage follows the finger. `begin` at
+  // the first tracking sample (the outgoing tree is still live; idempotent
+  // per target), `scrub` on every sample. Imperative subscription — a 60 Hz
+  // wheel stream must not re-render the tree. Leaving `tracking` /
+  // `settling` without an emitted switch is a cancel; a commit's switch is
+  // settled by the sentinel once the incoming tree is in the DOM.
+  React.useEffect((): (() => void) | void => {
+    if (transitionMode === "none" || !swipeEnabled) {
+      return;
+    }
+    let wasTracking: boolean = false;
+    return swipeStore.subscribe((): void => {
+      const snapshot = swipeStore.getSnapshot();
+      if (snapshot.phase === "tracking") {
+        wasTracking = true;
+        if (snapshot.target == null) {
+          return;
+        }
+        const current: TilingWorkspaceSet = workspacesRef.current;
+        const to: string | null = queryWorkspaceSet(current).neighbour(
+          current.activeId,
+          snapshot.target === "prev" ? "previous" : "next",
+        );
+        if (to == null) {
+          return;
+        }
+        beginSwitchTransition(to, snapshot.target);
+        transitionStageRef.current?.scrub(snapshot.progress);
+        return;
+      }
+      if (snapshot.phase === "settling") {
+        // Zero-length hold: the driver dispatches the commit command (which
+        // marks `emittedSwitchToRef`) between this sample and the next.
+        return;
+      }
+      if (!wasTracking) {
+        return;
+      }
+      wasTracking = false;
+      if (emittedSwitchToRef.current != null || transitionArmedForRef.current == null) {
+        return;
+      }
+      transitionArmedForRef.current = null;
+      transitionStageRef.current?.finish("cancel");
+    });
+  }, [transitionMode, swipeEnabled, swipeStore, beginSwitchTransition]);
   const swipeRootStyle: React.CSSProperties | undefined = swipeEnabled
     ? {
         overscrollBehaviorX: "contain",
@@ -9907,29 +10407,50 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
         >
           {active != null ? renderEmptyWorkspace?.(active) : null}
         </div>
+        {workspaceTransition != null ? (
+          <WorkspaceSwitchSentinel
+            activeId={activeId}
+            onBeforeSwitch={handleBeforeSwitch}
+            onAfterSwitch={handleAfterSwitch}
+          />
+        ) : null}
       </TilingThemeProvider>
     );
   }
   return (
-    <TilingSingleLayoutRenderer
-      {...rest}
-      ref={innerHandleRef}
-      className={className}
-      themeId={themeId}
-      theme={themeProp}
-      layout={layout}
-      onLayoutChange={handleLayoutChange}
-      focusedLeafId={effectiveFocusedLeafId}
-      onFocusedLeafChange={handleFocusedLeafChange}
-      maximizedLeafId={effectiveMaximizedLeafId}
-      onMaximizedLeafChange={handleMaximizedLeafChange}
-      onExternalDrop={handleExternalDrop}
-      workspaceCommandsEnabled
-      onWorkspaceCommand={applyWorkspaceCommand}
-      onRootElementChange={observeSwipeHost}
-      onDragGestureActiveChange={observeDragGesture}
-      rootStyle={swipeRootStyle}
-    />
+    <>
+      <TilingSingleLayoutRenderer
+        {...rest}
+        ref={innerHandleRef}
+        className={className}
+        themeId={themeId}
+        theme={themeProp}
+        layout={layout}
+        onLayoutChange={handleLayoutChange}
+        focusedLeafId={effectiveFocusedLeafId}
+        onFocusedLeafChange={handleFocusedLeafChange}
+        maximizedLeafId={effectiveMaximizedLeafId}
+        onMaximizedLeafChange={handleMaximizedLeafChange}
+        onExternalDrop={handleExternalDrop}
+        workspaceCommandsEnabled
+        onWorkspaceCommand={applyWorkspaceCommand}
+        onRootElementChange={observeSwipeHost}
+        onDragGestureActiveChange={observeDragGesture}
+        rootStyle={swipeRootStyle}
+        expectedTileIds={census.activeTileIds}
+        workspaceId={activeId}
+        tileSeatCounts={census.seatCounts}
+        retainedPanes={retainedPanes}
+        workspaceTransition={workspaceTransition}
+      />
+      {workspaceTransition != null ? (
+        <WorkspaceSwitchSentinel
+          activeId={activeId}
+          onBeforeSwitch={handleBeforeSwitch}
+          onAfterSwitch={handleAfterSwitch}
+        />
+      ) : null}
+    </>
   );
 });
 
