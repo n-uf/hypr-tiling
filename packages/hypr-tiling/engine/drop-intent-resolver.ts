@@ -472,9 +472,12 @@ export function resolveDropIntent(input: TilingDropIntentResolutionInput): Tilin
   const evaluation: TilingDropIntentEvaluation = evaluateZone(zone);
   const isValid: boolean = evaluation.isValid;
   // A center drop on a pane body — leaf OR group — is always `swap`. Add-to-group
-  // (`group-merge`) is reachable only via the group's TAB STRIP drop target
-  // (`resolveGroupTabStripHit` → `buildGroupTabStripMergeIntent`), never via the
-  // group body center, so the center (swap) zone is identical on every slot.
+  // (`group-merge`) is never produced by this body partition. It is reachable
+  // only from a distinct hit target resolved BEFORE the body: the built-in group
+  // tab strip (`resolveGroupTabStripHit`) or a host-registered group drop target
+  // (`resolveHostGroupDropTargetHit`). Both build the same intent via
+  // `buildGroupTabStripMergeIntent`. The center (swap) zone stays identical on
+  // every slot.
   const action: TilingDropAction = isCenter
     ? (isValid ? "swap" : "none")
     : (isValid ? "edge-insert" : "none");
@@ -603,13 +606,68 @@ const GROUP_TAB_STRIP_MERGE_TUNING: TilingDropIntentTuningState = {
 };
 
 /**
- * Build a `group-merge` drop intent for a tab-strip hit (center zone, no geometry
- * partition). Validity comes from the caller's `evaluateCenter` closure (same
- * SSOT as pane-body center drops).
+ * A host-registered group-drop target hit during drag — merge into this pane.
+ * `leafId` is the pane the host attached `groupDropTargetRef` to (a loose leaf,
+ * or a group's active member).
+ */
+export interface TilingHostGroupDropTargetHit {
+  leafId: string;
+}
+
+/**
+ * One pane's host group-drop target(s) for {@link resolveHostGroupDropTargetHit}.
+ * `bounds` may list several elements (title bar and chip strip) that share the
+ * pane's ref callback. `groupMemberLeafIds` is empty for a loose leaf.
+ */
+export interface TilingHostGroupDropTargetCandidate {
+  leafId: string;
+  bounds: ReadonlyArray<TilingClientRectBounds>;
+  groupMemberLeafIds: ReadonlyArray<string>;
+}
+
+/**
+ * First eligible host group-drop target whose bounds contain the client point.
+ *
+ * Eligibility matches the built-in tab strip, plus an already-member guard:
+ * the drag source's own target is skipped, and so is a target whose group
+ * already contains the source. Skipped candidates fall through (the caller
+ * continues with pane-body zones). `candidates` are checked in order.
+ */
+export function resolveHostGroupDropTargetHit(
+  clientX: number,
+  clientY: number,
+  sourceLeafId: string,
+  candidates: ReadonlyArray<TilingHostGroupDropTargetCandidate>,
+): TilingHostGroupDropTargetHit | null {
+  for (const candidate of candidates) {
+    const containsPoint: boolean = candidate.bounds.some(
+      (bounds: TilingClientRectBounds): boolean => pointInClientBounds(clientX, clientY, bounds),
+    );
+    if (!containsPoint) {
+      continue;
+    }
+    if (candidate.leafId === sourceLeafId) {
+      continue;
+    }
+    if (candidate.groupMemberLeafIds.includes(sourceLeafId)) {
+      continue;
+    }
+    return { leafId: candidate.leafId };
+  }
+  return null;
+}
+
+/**
+ * Build a `group-merge` drop intent for a tab-strip or host-target hit (center
+ * zone, no geometry partition). Validity comes from the caller's
+ * `evaluateCenter` closure (same SSOT as pane-body center drops).
+ * `fallbackReason` defaults to `"group-tab-strip"`; host targets pass
+ * `"host-group-drop-target"`.
  */
 export function buildGroupTabStripMergeIntent(input: {
   activeMemberLeafId: string;
   evaluateCenter: () => TilingDropIntentEvaluation;
+  fallbackReason?: string;
 }): TilingDropIntentState {
   const evaluation: TilingDropIntentEvaluation = input.evaluateCenter();
   const isValid: boolean = evaluation.isValid;
@@ -619,7 +677,7 @@ export function buildGroupTabStripMergeIntent(input: {
     action: isValid ? "group-merge" : "none",
     dominantEdge: "top",
     finalEdge: null,
-    fallbackReason: "group-tab-strip",
+    fallbackReason: input.fallbackReason ?? "group-tab-strip",
     blockedReason: isValid ? null : (evaluation.rejectionReason ?? "group-tab-strip-blocked"),
     axisPath: [],
     edgeThresholdRatio: GROUP_TAB_STRIP_MERGE_TUNING.edgeThresholdRatio,

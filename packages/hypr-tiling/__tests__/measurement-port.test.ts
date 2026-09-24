@@ -8,6 +8,7 @@ import { resolveInteractionCapabilities } from "../engine/interaction-capabiliti
 import type { MeasurementPort } from "../engine/measurement-port";
 import type {
   ResolvedTilingInteractionCapabilities,
+  TilingGroupNode,
   TilingLayoutConfig,
   TilingLeafNode,
   TilingPaneFootprint,
@@ -50,6 +51,7 @@ function fakePort(overrides: Partial<MeasurementPort>): MeasurementPort {
     measureLeafRect: (): DOMRect | null => null,
     measureReservationRect: (): DOMRect | null => null,
     measureGroupTabStripRect: (): DOMRect | null => null,
+    measureGroupDropTargetRects: (): ReadonlyArray<DOMRect> => [],
     readComputedTransform: (): string | null => null,
     ...overrides,
   };
@@ -176,6 +178,106 @@ describe("resolvePointerTargetFromMeasurement — synthetic-rect characterizatio
       }),
     );
     expect(result).toBeNull();
+  });
+
+  it("resolves a host group-drop target as group-merge, ahead of the body zone it overlaps", (): void => {
+    // client (310, 60) → local (210, 10): the top edge band of B. The host
+    // element covers that band, so the hit is group-merge rather than edge-insert.
+    const port: MeasurementPort = fakePort({
+      measureViewportRect: () => VIEWPORT,
+      measureGroupDropTargetRects: (leafId: string): ReadonlyArray<DOMRect> =>
+        leafId === "B" ? [rect(300, 50, 40, 30)] : [],
+    });
+    const result = resolvePointerTargetFromMeasurement(
+      port,
+      pointerInput(310, 60, "A"),
+    );
+    expect(result?.action).toBe("group-merge");
+    expect(result?.leafId).toBe("B");
+    expect(result?.fallbackReason).toBe("host-group-drop-target");
+  });
+
+  it("keeps a centre body drop as swap when no host target covers it", (): void => {
+    const port: MeasurementPort = fakePort({ measureViewportRect: () => VIEWPORT });
+    const result = resolvePointerTargetFromMeasurement(
+      port,
+      pointerInput(400, 250, "A"),
+    );
+    expect(result?.leafId).toBe("B");
+    expect(result?.action).toBe("swap");
+  });
+
+  it("keeps an uncovered edge band as edge-insert", (): void => {
+    const port: MeasurementPort = fakePort({
+      measureViewportRect: () => VIEWPORT,
+      measureGroupDropTargetRects: (): ReadonlyArray<DOMRect> => [
+        rect(0, 0, 8, 8),
+      ],
+    });
+    const result = resolvePointerTargetFromMeasurement(
+      port,
+      pointerInput(310, 250, "A", {
+        config: { ...CONFIG, minPaneSizePx: 40 },
+      }),
+    );
+    expect(result?.leafId).toBe("B");
+    expect(result?.action).toBe("edge-insert");
+  });
+
+  it("ignores the drag source's own host target", (): void => {
+    const port: MeasurementPort = fakePort({
+      measureViewportRect: () => VIEWPORT,
+      measureGroupDropTargetRects: (leafId: string): ReadonlyArray<DOMRect> =>
+        leafId === "A" ? [rect(150, 200, 80, 40)] : [],
+    });
+    const result = resolvePointerTargetFromMeasurement(
+      port,
+      pointerInput(180, 220, "A"),
+    );
+    expect(result).toBeNull();
+  });
+
+  it("falls through to the body zone when the source is already in the target group", (): void => {
+    const grouped: TilingGroupNode = {
+      kind: "group",
+      id: "group-B",
+      activeMemberId: "B",
+      members: [leaf("B", "tile-b"), leaf("A", "tile-a")],
+    };
+    const port: MeasurementPort = fakePort({
+      measureViewportRect: () => VIEWPORT,
+      measureGroupDropTargetRects: (leafId: string): ReadonlyArray<DOMRect> =>
+        leafId === "B" ? [rect(350, 200, 80, 40)] : [],
+    });
+    const result = resolvePointerTargetFromMeasurement(
+      port,
+      pointerInput(400, 250, "A", {
+        layout: grouped,
+        leafIds: ["B"],
+        liveHitFootprintsById: new Map<string, TilingPaneFootprint>([
+          ["B", { left: 200, top: 0, width: 200, height: 400 }],
+        ]),
+        leafFootprintsById: new Map<string, TilingPaneFootprint>([
+          ["B", { left: 200, top: 0, width: 200, height: 400 }],
+        ]),
+      }),
+    );
+    expect(result?.action).toBe("swap");
+    expect(result?.leafId).toBe("B");
+  });
+
+  it("ignores host targets when grouping is disabled", (): void => {
+    const port: MeasurementPort = fakePort({
+      measureViewportRect: () => VIEWPORT,
+      measureGroupDropTargetRects: (leafId: string): ReadonlyArray<DOMRect> =>
+        leafId === "B" ? [rect(350, 200, 80, 40)] : [],
+    });
+    const result = resolvePointerTargetFromMeasurement(
+      port,
+      pointerInput(400, 250, "A", { groupingEnabled: false }),
+    );
+    expect(result?.action).toBe("swap");
+    expect(result?.fallbackReason).not.toBe("host-group-drop-target");
   });
 });
 

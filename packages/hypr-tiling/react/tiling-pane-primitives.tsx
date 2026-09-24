@@ -87,6 +87,8 @@ export interface TilingDragHandleProps extends Omit<
     | "isMultiSelectGroupingEnabled"
     | "onToggleMultiSelect"
   >;
+  /** Forwarded to the handle element (a host group-drop target, for example). */
+  ref?: React.Ref<HTMLDivElement>;
 }
 
 /**
@@ -101,10 +103,12 @@ export interface TilingDragHandleProps extends Omit<
 export function TilingDragHandle({
   pane,
   style,
+  ref,
   ...rest
 }: TilingDragHandleProps): React.ReactElement {
   return (
     <div
+      ref={ref}
       {...rest}
       style={{ touchAction: "none", ...style }}
       onPointerDown={pane.onHandlePointerDown}

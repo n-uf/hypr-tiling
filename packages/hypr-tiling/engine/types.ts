@@ -1861,6 +1861,34 @@ export interface TilingRenderTileProps {
    */
   readonly group: TilingRenderTileGroupContext | null;
   /**
+   * Ref callback for the element that accepts a drag-to-group drop on this
+   * pane (a custom chip strip, the title bar, or both — the same callback may
+   * be attached to more than one element). While `grouping.enable` is on, a
+   * pointer over any of those elements during a drag resolves `group-merge`
+   * into this pane, on the same commit path as the built-in group tab strip:
+   * a loose leaf becomes a new group `{this pane, source}` with the source
+   * active; an existing group appends the source and makes it active.
+   *
+   * The hit is resolved before pane-body zone classification, so it wins over
+   * the centre swap and over any edge band the element overlaps — the same
+   * way the built-in strip wins over the group body. Pixels the element does
+   * not cover keep the body partition (edge bands stay `edge-insert`, the
+   * centre stays `swap`). The built-in strip is checked first when both
+   * contain the point. Ineligible hits (this pane is the drag source, or the
+   * source is already a member of this pane's group) fall through to that
+   * body partition. Inert on the drag-ghost / drag-cancel surfaces.
+   *
+   * Gated by `grouping.enable`. Works with `showGroupTabStrip` either way.
+   *
+   * @example
+   * ```tsx
+   * <header ref={args.groupDropTargetRef} onPointerDown={args.onHandlePointerDown}>
+   *   {args.tile.title}
+   * </header>
+   * ```
+   */
+  readonly groupDropTargetRef: React.RefCallback<HTMLElement | null>;
+  /**
    * Establish single focus on this pane (and clear any in-progress
    * multi-selection). Wire to the pane root's `onFocus`. The renderer reads the
    * focus event's `target`: when a multi-selection is active and focus landed on

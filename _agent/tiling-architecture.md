@@ -54,7 +54,7 @@ Consumer App
 Pure modules own all deterministic behavior:
 
 - `state.ts` applies structural mutations (`updateSplitRatio`, `swapLeafTiles`, insert/move helpers) without side effects.
-- `drop-intent-resolver.ts` converts pointer coordinates into stable drop intent (`center`, `left`, `right`, `top`, `bottom`) using pane-local geometry.
+- `drop-intent-resolver.ts` converts pointer coordinates into stable drop intent (`center`, `left`, `right`, `top`, `bottom`) using pane-local geometry. A host may also register `groupDropTargetRef` on `TilingRenderTileProps`: while `grouping.enable` is on, a pointer over that element resolves `group-merge` (the same intent the built-in group tab strip produces) before body zones are classified. The built-in strip is checked first, then the host element — which wins over the centre swap and over any edge band the element covers — then uncovered edge bands (`edge-insert`), then the pane centre (`swap`). A loose target leaf becomes a new group with the dragged source active; a group appends the source. The source's own target, and a group that already contains the source, fall through to the body partition.
 - `pane-sizing.ts` resolves split distribution and min-size clamping for resize and static sizing behavior.
 - `pane-switching.ts` provides focus and navigation helpers independent of React rendering.
 - `projected-layout.ts` computes previewable post-drop topology using the same reducers used at commit.

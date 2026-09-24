@@ -389,7 +389,8 @@ describe("drag-into-group drop intent", (): void => {
   // The center (swap) zone is group-agnostic — `resolveDropIntent` no longer
   // takes a `targetIsGroup` flag, so a center drop on a group body is `swap`
   // just like a center drop on a leaf. Add-to-group (`group-merge`) is reachable
-  // ONLY through the group's tab strip (`buildGroupTabStripMergeIntent`).
+  // through the group's tab strip or a host group-drop target
+  // (`buildGroupTabStripMergeIntent`), not through the body partition.
   function tabStripMergeDrop(): TilingDropIntentState {
     return buildGroupTabStripMergeIntent({
       activeMemberLeafId: "b",

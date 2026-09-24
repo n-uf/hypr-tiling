@@ -720,6 +720,7 @@ export function TilingDragHandle(input: TilingDragHandleProps): React_2.ReactEle
 // @public
 export interface TilingDragHandleProps extends Omit<React_2.HTMLAttributes<HTMLElement>, "onPointerDown" | "onClick"> {
     pane: Pick<TilingRenderTileProps, "onHandlePointerDown" | "isMultiSelectGroupingEnabled" | "onToggleMultiSelect">;
+    ref?: React_2.Ref<HTMLDivElement>;
 }
 
 // @public
@@ -1129,6 +1130,7 @@ export interface TilingRenderTileProps {
     collapsedDimension: TilingDimension | null;
     dropZone: TilingLeafDropZone | null;
     readonly group: TilingRenderTileGroupContext | null;
+    readonly groupDropTargetRef: React_2.RefCallback<HTMLElement | null>;
     heightSizingMode: TilingPaneSizingMode;
     isCollapsed: boolean;
     isCollapseEnabled: boolean;

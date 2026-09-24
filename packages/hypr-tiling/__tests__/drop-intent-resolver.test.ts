@@ -9,6 +9,7 @@ import {
   resolveDropIntent,
   resolveDropIntentHitZoneDiagnostics,
   resolveGroupTabStripHit,
+  resolveHostGroupDropTargetHit,
   resolvePaneZoneGeometry,
   snapToDevicePixel,
   toPaneLocalPoint,
@@ -455,14 +456,37 @@ describe("group tab strip drop helpers", (): void => {
     expect(intent.action).toBe("group-merge");
     expect(intent.fallbackReason).toBe("group-tab-strip");
   });
+
+  it("resolveHostGroupDropTargetHit returns the first eligible target", (): void => {
+    const bounds = { left: 0, top: 0, right: 40, bottom: 20 };
+    const hit = resolveHostGroupDropTargetHit(10, 10, "source", [
+      { leafId: "source", bounds: [bounds], groupMemberLeafIds: [] },
+      { leafId: "host", bounds: [bounds], groupMemberLeafIds: ["host", "other"] },
+      { leafId: "later", bounds: [bounds], groupMemberLeafIds: [] },
+    ]);
+    expect(hit).toEqual({ leafId: "host" });
+  });
+
+  it("resolveHostGroupDropTargetHit skips a target that already contains the source", (): void => {
+    const hit = resolveHostGroupDropTargetHit(10, 10, "source", [
+      {
+        leafId: "active",
+        bounds: [{ left: 0, top: 0, right: 40, bottom: 20 }],
+        groupMemberLeafIds: ["active", "source"],
+      },
+    ]);
+    expect(hit).toBeNull();
+  });
 });
 
-describe("group body center is SWAP, never group-merge (add-to-group is tab-strip-only)", (): void => {
+describe("group body center is SWAP, never group-merge (body partition stays swap)", (): void => {
   // Regression guard for the center/swap-zone-hijack bug: a center drop on a
   // GROUP body must resolve to `swap` (identical to a center drop on a leaf), so
   // the swap affordance is preserved on every slot. `resolveDropIntent` has no
-  // group awareness at all — `group-merge` is reachable ONLY through the group's
-  // tab strip (`resolveGroupTabStripHit` → `buildGroupTabStripMergeIntent`).
+  // group awareness at all — `group-merge` is reachable only from the built-in
+  // tab strip or a host `groupDropTargetRef` (`resolveGroupTabStripHit` /
+  // `resolveHostGroupDropTargetHit` → `buildGroupTabStripMergeIntent`), never
+  // from the pane-body partition.
   it("resolves a center body drop to swap regardless of the target being a group", (): void => {
     const center = resolveAt(100, 100);
     expect(center.zone).toBe("center");
@@ -474,7 +498,7 @@ describe("group body center is SWAP, never group-merge (add-to-group is tab-stri
     expect(resolveAt(100, 10).action).toBe("edge-insert");
   });
 
-  it("the only group-merge path is the tab strip, which still merges", (): void => {
+  it("the pane-body resolver never emits group-merge; the tab strip still does", (): void => {
     const tabStripMerge = buildGroupTabStripMergeIntent({
       activeMemberLeafId: "b",
       evaluateCenter: (): ZoneEvaluation => ({ isValid: true, rejectionReason: null }),

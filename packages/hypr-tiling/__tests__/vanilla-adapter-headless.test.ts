@@ -105,6 +105,9 @@ function createVanillaHarness(): VanillaHarness {
       groupTabStripRefs: elementRef<Map<string, HTMLDivElement>>(
         new Map<string, HTMLDivElement>(),
       ),
+      groupDropTargetRefs: elementRef<Map<string, Set<HTMLElement>>>(
+        new Map<string, Set<HTMLElement>>(),
+      ),
     }),
     styleApplier: createDomStyleApplierPort(
       elementRef<HTMLDivElement | null>(viewport),
@@ -129,6 +132,7 @@ describe("vanilla DOM adapter — the four ports run headlessly with no React", 
     expect(h.measurement.measureLeafRect("C")).not.toBeNull();
     expect(h.measurement.readComputedTransform("C")).not.toBeNull();
     expect(h.measurement.measureLeafRect("does-not-exist")).toBeNull();
+    expect(h.measurement.measureGroupDropTargetRects("C")).toEqual([]);
 
     // StyleApplierPort: real element.style writes + clamp measurement + strip.
     const handles = h.styleApplier.collectLeafHandles();

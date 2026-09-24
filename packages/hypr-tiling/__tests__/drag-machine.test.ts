@@ -475,6 +475,31 @@ describe("drag-machine — derived candidate tree IS the live reflow (== commit,
     expect([...memberIdsFromGroup(groups[0])].sort()).toEqual(["A", "B", "C"]);
     expect(findGroupContainingLeaf(candidate, "C")?.id).toBe(groups[0].id);
   });
+
+  it("group-merge onto a loose leaf creates a group with the source active", (): void => {
+    const layout: TilingSplitNode = baseLayout();
+    const candidate: TilingLayoutNode = deriveCandidateTree(
+      layout,
+      "C",
+      makeTarget("B", "center", "group-merge"),
+    );
+    const group: TilingGroupNode | null = findGroupContainingLeaf(candidate, "C");
+    expect(group).not.toBeNull();
+    expect(group?.id).toBe("group-B");
+    expect(group == null ? [] : [...memberIdsFromGroup(group)].sort()).toEqual(["B", "C"]);
+    expect(group?.activeMemberId).toBe("C");
+    expect(findLeafById(candidate, "A")).not.toBeNull();
+  });
+
+  it("group-merge of a leaf already in the target group is a no-op", (): void => {
+    const layout: TilingLayoutNode = groupLeaves(baseLayout(), ["A", "B"]);
+    const candidate: TilingLayoutNode = deriveCandidateTree(
+      layout,
+      "A",
+      makeTarget("B", "center", "group-merge"),
+    );
+    expect(candidate).toBe(layout);
+  });
 });
 
 describe("drag-machine — single-instance reservation gate (ghost fills the slot)", (): void => {

@@ -742,11 +742,40 @@ active tree. Tab drop with `followMovedLeaf: true` already switches in the
 same `onWorkspacesChange` (`via: "tab-drop"`) — do not call `switchWorkspace`
 from `onMoveLeaf`.
 
+## Tab groups
+
+`grouping.enable` (default on) lets a drag merge panes. The built-in group tab
+strip is one hit target. Hosts that set `grouping.showGroupTabStrip: false`
+and paint their own chips attach `args.groupDropTargetRef` to the element that
+should mean "drop here to group with this pane" — a chip strip, a title bar,
+or both (the same callback may be attached to more than one element).
+
+A pointer over that element during a drag resolves `group-merge` on the same
+commit as the built-in strip. The target is a loose leaf → a new group
+`{target, source}` with the source active. The target is already a group →
+the source is appended and made active. The drag source's own target is
+skipped, and so is a target whose group already contains the source; those
+hits fall through to the pane body. The whole hit is off when `grouping.enable`
+is false. It works with the built-in strip shown or hidden.
+
+Precedence, highest first: the built-in strip, then the host element (it wins
+over the centre swap and over any edge band the element covers), then
+uncovered edge bands (`edge-insert`), then the pane centre (`swap`).
+
+```tsx
+<header ref={args.groupDropTargetRef} onPointerDown={args.onHandlePointerDown}>
+  {args.group?.members.map((member) => (
+    <button key={member.leafId} type="button">{member.tile?.title}</button>
+  ))}
+</header>
+```
+
 ## Features
 
 - **Drag/drop rearrange** — Hyprland-style live drag; the move commits on
   release, resolving to swap, edge-insert, split-container-insert, or
-  group-merge.
+  group-merge (built-in strip, or a host `groupDropTargetRef` when the strip
+  is hidden).
 - **Resizable split dividers** — drag dividers, or pin a pane to a measured pixel
   extent (static) versus ratio-distributed (flexible).
 - **Group / stack tabs** — collapse several leaves into one slot as a stacked

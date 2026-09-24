@@ -4,12 +4,14 @@ import { dragSourceReservationSelector } from "../engine/drag-presentation";
 
 /**
  * Refs the {@link createDomMeasurementPort} adapter reads through — the same
- * `rootRef` / `viewportRef` / `groupTabStripRefs` the renderer already owns.
+ * `rootRef` / `viewportRef` / `groupTabStripRefs` / `groupDropTargetRefs` the
+ * renderer already owns.
  */
 export interface DomMeasurementRefs {
   rootRef: ElementRef<HTMLDivElement | null>;
   viewportRef: ElementRef<HTMLDivElement | null>;
   groupTabStripRefs: ElementRef<Map<string, HTMLDivElement>>;
+  groupDropTargetRefs: ElementRef<Map<string, Set<HTMLElement>>>;
 }
 
 /**
@@ -22,13 +24,14 @@ export interface DomMeasurementRefs {
  *   - `measureReservationRect` ← `rootRef.current?.querySelector(
  *     dragSourceReservationSelector(leafId))` (the `cc23956`-scoped seat selector)
  *   - `measureGroupTabStripRect` ← `groupTabStripRefs.current.get(groupId)`
+ *   - `measureGroupDropTargetRects` ← `groupDropTargetRefs.current.get(leafId)`
  *   - `readComputedTransform` ← `getComputedStyle(leafEl).transform`
  *
  * Returns `null` wherever the backing element is absent so callers retain their
  * existing null-handling.
  */
 export function createDomMeasurementPort(refs: DomMeasurementRefs): MeasurementPort {
-  const { rootRef, viewportRef, groupTabStripRefs } = refs;
+  const { rootRef, viewportRef, groupTabStripRefs, groupDropTargetRefs } = refs;
   return {
     measureViewportRect: (): DOMRect | null =>
       viewportRef.current?.getBoundingClientRect() ?? null,
@@ -42,6 +45,18 @@ export function createDomMeasurementPort(refs: DomMeasurementRefs): MeasurementP
         ?.getBoundingClientRect() ?? null,
     measureGroupTabStripRect: (groupId: string): DOMRect | null =>
       groupTabStripRefs.current.get(groupId)?.getBoundingClientRect() ?? null,
+    measureGroupDropTargetRects: (leafId: string): ReadonlyArray<DOMRect> => {
+      const elements: Set<HTMLElement> | undefined =
+        groupDropTargetRefs.current.get(leafId);
+      if (elements == null || elements.size === 0) {
+        return [];
+      }
+      const rects: DOMRect[] = [];
+      for (const element of elements) {
+        rects.push(element.getBoundingClientRect());
+      }
+      return rects;
+    },
     readComputedTransform: (leafId: string): string | null => {
       const element: HTMLElement | null =
         rootRef.current?.querySelector<HTMLElement>(

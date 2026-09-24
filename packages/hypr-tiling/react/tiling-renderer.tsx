@@ -73,7 +73,10 @@ import {
   resolveDropIntent,
   resolveDropIntentHitZoneDiagnostics,
   resolveGroupTabStripHit,
+  resolveHostGroupDropTargetHit,
   toPaneLocalPoint,
+  type TilingHostGroupDropTargetCandidate,
+  type TilingHostGroupDropTargetHit,
 } from "../engine/drop-intent-resolver";
 import {
   collectStaticGatedLeafIds,
@@ -767,9 +770,10 @@ function readSplitPathToLeaf(
  * Pure, host-port-driven core of `resolvePointerTarget` (Stage-3 measurement
  * lift). All DOM geometry comes from the injected {@link MeasurementPort}, so the
  * hit resolution is unit-testable against synthetic rects. Behavior is identical
- * to the former inline closure: viewport-missing → `null`; tab-strip hits take
- * priority over the group body; the source + statically-gated leaves are skipped;
- * a footprint miss → `null`; otherwise the resolved drop intent.
+ * to the former inline closure: viewport-missing → `null`; tab-strip hits, then
+ * host group-drop targets, take priority over the group body; the source +
+ * statically-gated leaves are skipped; a footprint miss → `null`; otherwise
+ * the resolved drop intent.
  */
 export function resolvePointerTargetFromMeasurement(
   measurement: MeasurementPort,
@@ -804,8 +808,12 @@ export function resolvePointerTargetFromMeasurement(
     input.liveDragModeEnabled
       ? input.liveHitFootprintsById
       : input.leafFootprintsById;
-  // Tab-strip hits take priority over the group body: the strip sits above the
-  // active-member footprint and is the Hyprland groupbar merge target.
+  // Distinct merge targets are resolved BEFORE the pane-body partition, so they
+  // win over both the centre swap and any edge band they overlap — the same
+  // way the built-in strip wins over the group body. Order: built-in tab strip,
+  // then host `groupDropTargetRef` elements. Pixels neither covers fall through
+  // to edge-insert / centre-swap. Ineligible host targets (the source pane, or
+  // a group that already contains the source) are skipped so the body zones run.
   if (input.groupingEnabled) {
     const tabStripHit = resolveGroupTabStripHit(
       input.clientX,
@@ -847,6 +855,63 @@ export function resolvePointerTargetFromMeasurement(
               layout: input.layout,
               sourceLeafId: input.sourceLeafId,
               targetLeafId: tabStripHit.activeMemberLeafId,
+              targetFootprint,
+              config: input.config,
+              viewportWidth: input.viewportSize.width,
+              viewportHeight: input.viewportSize.height,
+            }),
+        });
+      }
+    }
+    const hostDropHit: TilingHostGroupDropTargetHit | null =
+      resolveHostGroupDropTargetHit(
+      input.clientX,
+      input.clientY,
+      input.sourceLeafId,
+      input.leafIds.map((leafId: string): TilingHostGroupDropTargetCandidate => {
+        const group: TilingGroupNode | null = findGroupContainingLeaf(
+          input.layout,
+          leafId,
+        );
+        return {
+          leafId,
+          bounds: measurement.measureGroupDropTargetRects(leafId).map(
+            (rect: DOMRect): {
+              left: number;
+              top: number;
+              right: number;
+              bottom: number;
+            } => ({
+              left: rect.left,
+              top: rect.top,
+              right: rect.right,
+              bottom: rect.bottom,
+            }),
+          ),
+          groupMemberLeafIds:
+            group == null
+              ? []
+              : group.members.map((member: TilingLeafNode): string => member.id),
+        };
+      }),
+    );
+    if (hostDropHit != null) {
+      const targetFootprint: TilingPaneFootprint | undefined = hitFootprints.get(
+        hostDropHit.leafId,
+      );
+      if (targetFootprint != null) {
+        return buildGroupTabStripMergeIntent({
+          activeMemberLeafId: hostDropHit.leafId,
+          fallbackReason: "host-group-drop-target",
+          evaluateCenter: (): {
+            isValid: boolean;
+            rejectionReason: string | null;
+          } =>
+            evaluateZoneCandidate({
+              zone: "center",
+              layout: input.layout,
+              sourceLeafId: input.sourceLeafId,
+              targetLeafId: hostDropHit.leafId,
               targetFootprint,
               config: input.config,
               viewportWidth: input.viewportSize.width,
@@ -1803,6 +1868,9 @@ export function buildGhostTileArgs(
     onHandlePointerDown: GHOST_TILE_NOOP,
     onPointerMove: GHOST_TILE_NOOP,
     onPointerLeave: GHOST_TILE_NOOP,
+    // Drag surfaces must not register a drop target — the ghost would steal
+    // hits from the seated pane that owns the real callback.
+    groupDropTargetRef: GHOST_TILE_NOOP,
   };
 }
 
@@ -5103,13 +5171,62 @@ const TilingRendererComponent = React.forwardRef<
   const groupTabStripRefs = React.useRef<Map<string, HTMLDivElement>>(
     new Map(),
   );
+  const groupDropTargetElementsRef = React.useRef<Map<string, Set<HTMLElement>>>(
+    new Map(),
+  );
+  const groupDropTargetCallbacksRef = React.useRef<
+    Map<string, React.RefCallback<HTMLElement | null>>
+  >(new Map());
+  const groupDropTargetRefFor = React.useCallback(
+    (leafId: string): React.RefCallback<HTMLElement | null> => {
+      const cached: React.RefCallback<HTMLElement | null> | undefined =
+        groupDropTargetCallbacksRef.current.get(leafId);
+      if (cached != null) {
+        return cached;
+      }
+      const callback: React.RefCallback<HTMLElement | null> = (
+        element: HTMLElement | null,
+      ): void => {
+        const registered: Map<string, Set<HTMLElement>> =
+          groupDropTargetElementsRef.current;
+        if (element == null) {
+          const elements: Set<HTMLElement> | undefined = registered.get(leafId);
+          if (elements == null) {
+            return;
+          }
+          for (const current of elements) {
+            if (!current.isConnected) {
+              elements.delete(current);
+            }
+          }
+          if (elements.size === 0) {
+            registered.delete(leafId);
+          }
+          return;
+        }
+        const elements: Set<HTMLElement> =
+          registered.get(leafId) ?? new Set<HTMLElement>();
+        elements.add(element);
+        registered.set(leafId, elements);
+      };
+      groupDropTargetCallbacksRef.current.set(leafId, callback);
+      return callback;
+    },
+    [],
+  );
   // DOM-geometry host port. Reads through the stable `rootRef` / `viewportRef` /
   // `groupTabStripRefs`, so the pointer-target resolution + ghost-seat clamp run
   // against a single injectable measurement seam (unit-testable with synthetic
   // rects) rather than scattered inline `getBoundingClientRect()` reads.
   const measurementPort: MeasurementPort = React.useMemo(
-    () => createDomMeasurementPort({ rootRef, viewportRef, groupTabStripRefs }),
-    [rootRef, viewportRef, groupTabStripRefs],
+    () =>
+      createDomMeasurementPort({
+        rootRef,
+        viewportRef,
+        groupTabStripRefs,
+        groupDropTargetRefs: groupDropTargetElementsRef,
+      }),
+    [rootRef, viewportRef, groupTabStripRefs, groupDropTargetElementsRef],
   );
   const clearCancelVisualTimeoutRef = React.useRef<number | null>(null);
   const [viewportSize, setViewportSize] = React.useState<{
@@ -8836,6 +8953,7 @@ const TilingRendererComponent = React.forwardRef<
             dropState,
           ),
           group: groupContextByActiveLeafId.get(node.id) ?? null,
+          groupDropTargetRef: groupDropTargetRefFor(node.id),
           isMultiSelectGroupingEnabled,
           isMultiSelected: multiSelectedLeafIds.has(node.id),
           canGroupMultiSelection: canGroupMultiSelectionNow,
@@ -9769,6 +9887,7 @@ const TilingRendererComponent = React.forwardRef<
       clearMultiSelection,
       layout,
       setGroupTabStripRef,
+      groupDropTargetRefFor,
       isPaneContentVisible,
       theme,
       dragChrome,

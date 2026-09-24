@@ -11,8 +11,9 @@
  *
  * The default host adapter is `react/dom-measurement-port.ts`
  * (`createDomMeasurementPort`), which reads through the renderer's
- * `rootRef` / `viewportRef` / `groupTabStripRefs` and the
- * `[data-leaf-id]` / reservation / tab-strip selectors.
+ * `rootRef` / `viewportRef` / `groupTabStripRefs` /
+ * `groupDropTargetRefs` and the `[data-leaf-id]` / reservation / tab-strip
+ * selectors.
  */
 export interface MeasurementPort {
   /** The drag viewport's client rect, or `null` if the viewport is unmounted. */
@@ -27,6 +28,12 @@ export interface MeasurementPort {
   measureReservationRect(leafId: string): DOMRect | null;
   /** A group's tab-strip client rect, or `null` if the strip is unmounted. */
   measureGroupTabStripRect(groupId: string): DOMRect | null;
+  /**
+   * Client rects of the host-registered group-drop targets for `leafId`
+   * (every element the pane's `groupDropTargetRef` currently holds). Empty
+   * when the pane registered none.
+   */
+  measureGroupDropTargetRects(leafId: string): ReadonlyArray<DOMRect>;
   /**
    * A leaf pane's COMPUTED `transform` string (for the stuck-transition / residual
    * transform recovery checks), or `null` if the element is absent.

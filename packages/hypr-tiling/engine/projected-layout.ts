@@ -1,7 +1,7 @@
 import {
-  addLeafToGroup,
-  findGroupContainingLeaf,
+  findLeafById,
   insertLeafAdjacent,
+  mergeDraggedLeafIntoTarget,
   readLeafNodeIds,
   siblingSubtreeForLeaf,
   swapLeafTiles,
@@ -62,13 +62,13 @@ export function resolveProjectedDropLayout(
     return swapLeafTiles(layout, sourceLeafId, dropState.leafId);
   }
   if (dropState.action === "group-merge") {
-    // The drop target's representative leaf id (`dropState.leafId`) is a group's
-    // active member; merge the dragged source into that group.
-    const group = findGroupContainingLeaf(layout, dropState.leafId);
-    if (group == null) {
+    // Same reducer as the live candidate / commit (`mergeDraggedLeafIntoTarget`):
+    // append into the target's group, or create one when the target is a loose
+    // leaf. A missing target leaf has no projection.
+    if (findLeafById(layout, dropState.leafId) == null) {
       return null;
     }
-    return addLeafToGroup(layout, group.id, sourceLeafId);
+    return mergeDraggedLeafIntoTarget(layout, sourceLeafId, dropState.leafId);
   }
   if (dropState.action !== "edge-insert") {
     return null;

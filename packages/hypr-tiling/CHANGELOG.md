@@ -13,6 +13,15 @@ the version number alone does not flag them.
 
 - README, CHANGELOG intro and the docs home state the calendar-versioning contract: active development, releases may break compatibility, pin exact versions.
 
+### Tab groups — host drop target
+
+Additive. Hosts that hide `grouping.showGroupTabStrip` and paint their own chips can still offer drag-to-group.
+
+- `TilingRenderTileProps.groupDropTargetRef: React.RefCallback<HTMLElement | null>` — attach it to the element (title bar, chip strip, or both; the same callback may be attached to several elements) that should accept "drop here to group with this pane". Inert on the drag-ghost and drag-cancel surfaces.
+- While `grouping.enable` is on, a pointer over a registered element resolves `group-merge` on the same commit path as the built-in strip (`deriveCandidateTree` / projected layout). A loose leaf becomes a new group `{target, source}` with the source active; an existing group appends the source and makes it active. One commit; pane identity is preserved under `paneIdentity: "stable"`. Works with `showGroupTabStrip` either `true` or `false`.
+- Precedence: built-in group tab strip, then the host element (it wins over the centre swap and over any edge band the element covers), then uncovered edge bands (`edge-insert`), then the pane centre (`swap`). The drag source's own target, and a group that already contains the source, fall through to that body partition.
+- Inserting at a hovered chip index is not part of this change; a group target appends.
+
 ## 26.9.7 — 2026-09-24
 
 ### Workspaces — reset to defaults
