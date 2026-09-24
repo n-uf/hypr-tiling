@@ -352,6 +352,7 @@ describe("floating drag ghost routes through consumer renderTile (custom skin tr
     expect(args.onFocus()).toBeUndefined();
     expect(args.onToggleMultiSelect()).toBeUndefined();
     expect(args.onGroupMultiSelection(SOURCE_LEAF)).toBeUndefined();
+    expect(args.onClearMultiSelection()).toBeUndefined();
     expect(args.onHandlePointerDown({} as never)).toBeUndefined();
     expect(args.onPointerMove({} as never)).toBeUndefined();
     expect(args.onPointerLeave({} as never)).toBeUndefined();

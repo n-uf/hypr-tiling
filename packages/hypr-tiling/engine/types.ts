@@ -1927,6 +1927,11 @@ export interface TilingRenderTileProps {
    */
   onGroupMultiSelection: (clickedLeafId: string) => void;
   /**
+   * Clear the whole multi-selection set (all panes). No-op when the set is empty
+   * or the feature is off. Wire to a host "Cancel" control.
+   */
+  readonly onClearMultiSelection: () => void;
+  /**
    * Pointer-Events drag pickup on the pane's drag handle (the title-bar grip).
    * Wire this to the handle's `onPointerDown`; the renderer arms the drag FSM,
    * crosses the pickup threshold, and takes pointer capture on a stable element

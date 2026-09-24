@@ -540,6 +540,140 @@ describe("group context on renderTile args (args.group)", (): void => {
   });
 });
 
+describe("onClearMultiSelection clears the whole selection from host chrome", (): void => {
+  function engage(container: HTMLElement): void {
+    const root: HTMLElement = container.firstElementChild as HTMLElement;
+    act((): void => {
+      fireEvent.pointerEnter(root);
+    });
+  }
+
+  function pressEscape(): void {
+    act((): void => {
+      fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
+    });
+  }
+
+  interface CaptureHarnessProps {
+    argsByLeafId: Map<string, TilingRenderTileProps>;
+    onRenderTile?: () => void;
+  }
+
+  function CaptureHarness(props: CaptureHarnessProps): React.ReactElement {
+    const [layout, setLayout] = React.useState<TilingLayoutNode>(homepageTree());
+    const interaction: TilingInteractionCapabilities = {
+      paneSwitching: { showContentToggle: false },
+    };
+    return React.createElement(TilingRenderer, {
+      layout,
+      tiles: TILES,
+      config: { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 },
+      interaction,
+      onLayoutChange: (next: TilingLayoutNode): void => {
+        setLayout(next);
+      },
+      renderTile: (args: TilingRenderTileProps): React.ReactNode => {
+        props.onRenderTile?.();
+        props.argsByLeafId.set(args.leafId, args);
+        return renderDocTile(args);
+      },
+    });
+  }
+
+  function allPaneArgs(
+    argsByLeafId: Map<string, TilingRenderTileProps>,
+  ): TilingRenderTileProps[] {
+    return [
+      "intro",
+      "usecases",
+      "features",
+      "model",
+      "install",
+      "discoverability",
+      "controls",
+    ]
+      .map((leafId: string): TilingRenderTileProps | undefined =>
+        argsByLeafId.get(leafId),
+      )
+      .filter(
+        (args: TilingRenderTileProps | undefined): args is TilingRenderTileProps =>
+          args != null,
+      );
+  }
+
+  it("clears every isMultiSelected and canGroupMultiSelection after two panes are toggled", (): void => {
+    const argsByLeafId = new Map<string, TilingRenderTileProps>();
+    const { container } = render(
+      React.createElement(CaptureHarness, { argsByLeafId }),
+    );
+
+    selectHeader(container, "features");
+    selectHeader(container, "install");
+
+    expect(query(container, '[data-testid="check-features"]')).not.toBeNull();
+    expect(query(container, '[data-testid="check-install"]')).not.toBeNull();
+    expect(argsByLeafId.get("features")?.canGroupMultiSelection).toBe(true);
+
+    act((): void => {
+      argsByLeafId.get("model")?.onClearMultiSelection();
+    });
+
+    for (const args of allPaneArgs(argsByLeafId)) {
+      expect(args.isMultiSelected).toBe(false);
+      expect(args.canGroupMultiSelection).toBe(false);
+    }
+    expect(query(container, '[data-testid^="check-"]')).toBeNull();
+  });
+
+  it("exposes the same stable callback on every pane (shared clearMultiSelection)", (): void => {
+    const argsByLeafId = new Map<string, TilingRenderTileProps>();
+    render(React.createElement(CaptureHarness, { argsByLeafId }));
+
+    const featuresClear = argsByLeafId.get("features")?.onClearMultiSelection;
+    const modelClear = argsByLeafId.get("model")?.onClearMultiSelection;
+    expect(featuresClear).toBe(modelClear);
+    expect(typeof featuresClear).toBe("function");
+  });
+
+  it("is a no-op when nothing is selected (no extra renderTile pass)", (): void => {
+    const argsByLeafId = new Map<string, TilingRenderTileProps>();
+    let renderTileCalls = 0;
+    render(
+      React.createElement(CaptureHarness, {
+        argsByLeafId,
+        onRenderTile: (): void => {
+          renderTileCalls += 1;
+        },
+      }),
+    );
+    const callsAfterMount: number = renderTileCalls;
+
+    act((): void => {
+      argsByLeafId.get("model")?.onClearMultiSelection();
+    });
+
+    expect(renderTileCalls).toBe(callsAfterMount);
+  });
+
+  it("Escape still clears an active multi-selection (regression)", (): void => {
+    const argsByLeafId = new Map<string, TilingRenderTileProps>();
+    const { container } = render(
+      React.createElement(CaptureHarness, { argsByLeafId }),
+    );
+    engage(container);
+    selectHeader(container, "features");
+    selectHeader(container, "install");
+    expect(query(container, '[data-testid="check-features"]')).not.toBeNull();
+
+    pressEscape();
+
+    for (const args of allPaneArgs(argsByLeafId)) {
+      expect(args.isMultiSelected).toBe(false);
+    }
+    expect(query(container, '[data-testid^="check-"]')).toBeNull();
+  });
+});
+
 describe("Alt+G is the keyboard twin of the Group button", (): void => {
   function engage(container: HTMLElement): void {
     // The document-level keydown listener only fires while the instance is

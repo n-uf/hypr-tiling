@@ -13,6 +13,10 @@ the version number alone does not flag them.
 
 - README, CHANGELOG intro and the docs home state the calendar-versioning contract: active development, releases may break compatibility, pin exact versions.
 
+### Multi-select grouping
+
+- Pane args gain `onClearMultiSelection()` — clears the whole selection from host chrome (same path as Escape).
+
 ### Tab groups — host drop target
 
 Additive. Hosts that hide `grouping.showGroupTabStrip` and paint their own chips can still offer drag-to-group.

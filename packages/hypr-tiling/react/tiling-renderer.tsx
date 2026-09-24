@@ -1864,6 +1864,7 @@ export function buildGhostTileArgs(
     canGroupMultiSelection: false,
     onToggleMultiSelect: GHOST_TILE_NOOP,
     onGroupMultiSelection: GHOST_TILE_NOOP,
+    onClearMultiSelection: GHOST_TILE_NOOP,
     onFocus: GHOST_TILE_NOOP,
     onHandlePointerDown: GHOST_TILE_NOOP,
     onPointerMove: GHOST_TILE_NOOP,
@@ -8961,6 +8962,7 @@ const TilingRendererComponent = React.forwardRef<
             toggleMultiSelect(node.id);
           },
           onGroupMultiSelection: groupMultiSelection,
+          onClearMultiSelection: clearMultiSelection,
           onFocus: (event?: React.SyntheticEvent<HTMLElement>): void => {
             // Header-control guard: when a multi-selection is active and DOM
             // focus moves to a header CONTROL button (the Group button, the

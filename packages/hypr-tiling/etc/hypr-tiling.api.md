@@ -1152,6 +1152,7 @@ export interface TilingRenderTileProps {
     leafId: string;
     moveTargetPlacement: TilingMovePlacement | null;
     onAcquireSpace: (direction: TilingFocusDirection) => void;
+    readonly onClearMultiSelection: () => void;
     onFocus: (event?: React_2.SyntheticEvent<HTMLElement>) => void;
     onGroupMultiSelection: (clickedLeafId: string) => void;
     onHandlePointerDown: (event: React_2.PointerEvent<HTMLElement>) => void;

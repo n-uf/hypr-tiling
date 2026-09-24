@@ -770,6 +770,17 @@ uncovered edge bands (`edge-insert`), then the pane centre (`swap`).
 </header>
 ```
 
+### Multi-select grouping
+
+With `paneSwitching.multiSelectGrouping` (default on) and `grouping.enable`,
+Alt/Opt+click on a pane header toggles panes into a transient multi-selection
+(`isMultiSelectGroupingEnabled`, `isMultiSelected`, `onToggleMultiSelect`).
+When at least two are selected and grouping would change the layout,
+`canGroupMultiSelection` is true and `onGroupMultiSelection(clickedLeafId)`
+folds them into one tabbed group at the clicked pane's slot. Escape clears the
+selection; hosts can call `onClearMultiSelection()` from their own Cancel
+control to run the same clear path without walking every pane's toggle.
+
 ## Features
 
 - **Drag/drop rearrange** — Hyprland-style live drag; the move commits on
