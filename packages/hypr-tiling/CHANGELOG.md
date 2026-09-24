@@ -9,6 +9,10 @@ the version number alone does not flag them.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.9.8 — 2026-09-24
+
 ### Docs
 
 - README, CHANGELOG intro and the docs home state the calendar-versioning contract: active development, releases may break compatibility, pin exact versions.
