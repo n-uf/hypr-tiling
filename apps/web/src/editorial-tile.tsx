@@ -66,11 +66,16 @@ function dropStateRing(args: TilingRenderTileProps): string {
 // (`group.ungroup`).
 function EditorialGroupSwitcher({
   group,
+  dropTargetRef,
 }: {
   group: TilingRenderTileGroupContext;
+  dropTargetRef: React.RefCallback<HTMLElement | null>;
 }): React.ReactElement {
   return (
-    <span className="flex min-w-0 shrink items-baseline gap-2 overflow-hidden font-mono text-[10px] uppercase tracking-[0.14em]">
+    <span
+      ref={dropTargetRef}
+      className="flex min-w-0 shrink items-baseline gap-2 overflow-hidden font-mono text-[10px] uppercase tracking-[0.14em]"
+    >
       <span aria-hidden className="shrink-0 text-[#b0a487]">
         grp
       </span>
@@ -145,6 +150,7 @@ export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
     >
       <TilingDragHandle
         pane={args}
+        ref={args.groupDropTargetRef}
         className={`flex shrink-0 cursor-grab select-none items-baseline justify-between gap-3 border-t-2 border-b px-4 py-2.5 active:cursor-grabbing ${
           args.isFocused
             ? "border-t-[#241f17] border-b-[#d7ccb2]"
@@ -223,7 +229,10 @@ export function EditorialTile(args: TilingRenderTileProps): React.ReactElement {
           {folio}
         </span>
         {args.group != null ? (
-          <EditorialGroupSwitcher group={args.group} />
+          <EditorialGroupSwitcher
+            group={args.group}
+            dropTargetRef={args.groupDropTargetRef}
+          />
         ) : null}
         {metrics != null ? (
           <span

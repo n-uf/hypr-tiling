@@ -192,11 +192,16 @@ const PANEL_BODY: string = CANVAS_THEME.paneShell.bodyText;
 // renders for a group's active member (the one pane that renders).
 function CanvasGroupLeds({
   group,
+  dropTargetRef,
 }: {
   group: TilingRenderTileGroupContext;
+  dropTargetRef: React.RefCallback<HTMLElement | null>;
 }): React.ReactElement {
   return (
-    <span className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden">
+    <span
+      ref={dropTargetRef}
+      className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden"
+    >
       <span
         aria-hidden
         className="shrink-0 font-mono text-[9px] uppercase tracking-[0.18em] text-slate-400"
@@ -284,6 +289,7 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
     >
       <TilingDragHandle
         pane={args}
+        ref={args.groupDropTargetRef}
         className={`${HEADER_RAIL} ${
           args.isFocused ? "bg-white" : ""
         } ${
@@ -403,7 +409,9 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
             {index}
           </span>
         </span>
-        {args.group != null ? <CanvasGroupLeds group={args.group} /> : null}
+        {args.group != null ? (
+          <CanvasGroupLeds group={args.group} dropTargetRef={args.groupDropTargetRef} />
+        ) : null}
         {metrics != null ? (
           <span
             aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(

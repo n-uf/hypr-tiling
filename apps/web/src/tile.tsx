@@ -53,11 +53,16 @@ function dropStateRing(args: TilingRenderTileProps): string {
 // (`group.ungroup`). Only the group's active member renders, so this shows once.
 function MosaicGroupSwitcher({
   group,
+  dropTargetRef,
 }: {
   group: TilingRenderTileGroupContext;
+  dropTargetRef: React.RefCallback<HTMLElement | null>;
 }): React.ReactElement {
   return (
-    <span className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden">
+    <span
+      ref={dropTargetRef}
+      className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden"
+    >
       <span
         aria-hidden
         className="shrink-0 font-mono text-[9px] uppercase tracking-[0.2em] text-stone-600"
@@ -135,6 +140,7 @@ export function DocTile(args: TilingRenderTileProps): React.ReactElement {
       className={`group flex h-full max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border bg-[#121316] outline-none shadow-[0_18px_40px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)] ring-offset-0 transition-[border-color,box-shadow,opacity] duration-200 ${border} ${ring}`}
     >
       <header
+        ref={args.groupDropTargetRef}
         onPointerDown={args.onHandlePointerDown}
         onClick={(event: React.MouseEvent<HTMLElement>): void => {
           // Alt/Opt+click toggles this pane's multi-selection membership
@@ -245,7 +251,9 @@ export function DocTile(args: TilingRenderTileProps): React.ReactElement {
         >
           {ordinal}
         </span>
-        {args.group != null ? <MosaicGroupSwitcher group={args.group} /> : null}
+        {args.group != null ? (
+          <MosaicGroupSwitcher group={args.group} dropTargetRef={args.groupDropTargetRef} />
+        ) : null}
         {metrics != null ? (
           <span
             aria-label={`${metrics.chars.toLocaleString("en-US")} characters, ${metrics.words.toLocaleString(
