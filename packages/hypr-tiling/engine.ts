@@ -289,3 +289,42 @@ export {
   type TilingWorkspaceTransitionMode,
   type TilingWorkspaceTransitionTransform,
 } from "./engine/workspace-transition";
+// N1 — workspace swipe navigation (pure FSM + framework-free port contracts)
+export {
+  TILING_WORKSPACE_SWIPE_DEFAULTS,
+  TILING_WORKSPACE_SWIPE_EMPTY_CONTEXT,
+  TILING_WORKSPACE_SWIPE_IDLE_SNAPSHOT,
+  TILING_WORKSPACE_SWIPE_INITIAL_STATE,
+  hasSwipeNeighbour,
+  resolveSwipeArming,
+  resolveWorkspaceSwipeConfig,
+  shouldCommitSwipe,
+  swipeCommitCommand,
+  swipeProgressOfTravel,
+  swipeTargetOfTravel,
+  workspaceSwipeReducer,
+  workspaceSwipeSnapshot,
+  type TilingWorkspaceSwipeConfig,
+  type TilingWorkspaceSwipeContext,
+  type TilingWorkspaceSwipeEvent,
+  type TilingWorkspaceSwipeInput,
+  type TilingWorkspaceSwipeOutcome,
+  type TilingWorkspaceSwipePhase,
+  type TilingWorkspaceSwipeSnapshot,
+  type TilingWorkspaceSwipeState,
+  type TilingWorkspaceSwipeTarget,
+} from "./engine/workspace-navigation";
+export { resolveWorkspaceSwitchCapability } from "./engine/interaction-capabilities";
+export type {
+  ResolvedTilingWorkspaceSwitchCapability,
+  TilingWorkspaceSwitchCapability,
+} from "./engine/types";
+export type {
+  ScrollChainAxis,
+  ScrollChainDirection,
+  ScrollChainPort,
+  TouchInputSample,
+  WheelInputSample,
+  WheelTouchInputListener,
+  WheelTouchInputPort,
+} from "./engine/wheel-touch-port";

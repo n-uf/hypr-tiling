@@ -51,7 +51,23 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   keyBindings: { bindings: [], replaceDefaults: false },
   masterLayout: true,
   grouping: { enable: true, showGroupTabStrip: true },
-  workspaces: { enable: true, followMovedLeaf: false },
+  workspaces: {
+    enable: true,
+    followMovedLeaf: false,
+    switch: {
+      wheelSwipe: false,
+      touchSwipe: false,
+      swipe: {
+        thresholdPx: 24,
+        commitFraction: 0.35,
+        commitVelocityPxMs: 0.6,
+        wheelIdleMs: 120,
+        lockoutMs: 350,
+        wrap: false,
+        widthPx: 800,
+      },
+    },
+  },
 };
 
 describe("resolveInteractionCapabilities (defaulting)", (): void => {
@@ -565,14 +581,13 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     expect(resolveInteractionCapabilities(once)).toEqual(once);
   });
 
-  it("defaults workspaces to enabled with followMovedLeaf false", (): void => {
-    expect(resolveInteractionCapabilities(undefined).workspaces).toEqual({
-      enable: true,
-      followMovedLeaf: false,
-    });
-    expect(resolveInteractionCapabilities({}).workspaces).toEqual({
-      enable: true,
-      followMovedLeaf: false,
+  it("defaults workspaces to enabled with followMovedLeaf false and gesture switching off", (): void => {
+    expect(resolveInteractionCapabilities(undefined).workspaces).toEqual(RESOLVED_DEFAULTS.workspaces);
+    expect(resolveInteractionCapabilities({}).workspaces).toEqual(RESOLVED_DEFAULTS.workspaces);
+    expect(resolveInteractionCapabilities({}).workspaces.switch).toEqual({
+      wheelSwipe: false,
+      touchSwipe: false,
+      swipe: RESOLVED_DEFAULTS.workspaces.switch.swipe,
     });
   });
 
@@ -580,19 +595,38 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     expect(resolveInteractionCapabilities({ workspaces: true })).toEqual(RESOLVED_DEFAULTS);
     expect(resolveInteractionCapabilities({ workspaces: false })).toEqual({
       ...RESOLVED_DEFAULTS,
-      workspaces: { enable: false, followMovedLeaf: false },
+      workspaces: { ...RESOLVED_DEFAULTS.workspaces, enable: false },
     });
   });
 
   it("merges a partial workspaces object field-by-field over the defaults", (): void => {
     expect(resolveInteractionCapabilities({ workspaces: { followMovedLeaf: true } })).toEqual({
       ...RESOLVED_DEFAULTS,
-      workspaces: { enable: true, followMovedLeaf: true },
+      workspaces: { ...RESOLVED_DEFAULTS.workspaces, followMovedLeaf: true },
     });
     expect(resolveInteractionCapabilities({ workspaces: { enable: false } })).toEqual({
       ...RESOLVED_DEFAULTS,
-      workspaces: { enable: false, followMovedLeaf: false },
+      workspaces: { ...RESOLVED_DEFAULTS.workspaces, enable: false },
     });
+  });
+
+  it("resolves workspaces.switch: booleans, a partial swipe config, and touch independently", (): void => {
+    const swipeDefaults = RESOLVED_DEFAULTS.workspaces.switch.swipe;
+    expect(resolveInteractionCapabilities({ workspaces: { switch: { wheelSwipe: true } } }).workspaces.switch)
+      .toEqual({ wheelSwipe: true, touchSwipe: false, swipe: swipeDefaults });
+    expect(
+      resolveInteractionCapabilities({
+        workspaces: { switch: { wheelSwipe: { commitFraction: 0.5, wrap: true }, touchSwipe: true } },
+      }).workspaces.switch,
+    ).toEqual({
+      wheelSwipe: true,
+      touchSwipe: true,
+      swipe: { ...swipeDefaults, commitFraction: 0.5, wrap: true },
+    });
+    expect(resolveInteractionCapabilities({ workspaces: { switch: { touchSwipe: true } } }).workspaces.switch)
+      .toEqual({ wheelSwipe: false, touchSwipe: true, swipe: swipeDefaults });
+    expect(resolveInteractionCapabilities({ workspaces: { switch: { wheelSwipe: false } } }).workspaces.switch)
+      .toEqual(RESOLVED_DEFAULTS.workspaces.switch);
   });
 
   it("is idempotent when re-resolving a resolved object", (): void => {

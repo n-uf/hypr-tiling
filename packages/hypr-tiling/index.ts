@@ -343,3 +343,37 @@ export {
   captureViewClone,
   type CapturedViewClone,
 } from "./react/dom-view-capture";
+// N1 — workspace swipe navigation
+export {
+  TilingWorkspaceSwipeScope,
+  useWorkspaceSwipe,
+} from "./react/use-workspace-swipe";
+export {
+  TILING_WORKSPACE_SWIPE_DEFAULTS,
+  type TilingWorkspaceSwipeConfig,
+  type TilingWorkspaceSwipePhase,
+  type TilingWorkspaceSwipeSnapshot,
+  type TilingWorkspaceSwipeTarget,
+} from "./engine/workspace-navigation";
+export type {
+  ResolvedTilingWorkspaceSwitchCapability,
+  TilingWorkspaceSwitchCapability,
+} from "./engine/types";
+export {
+  canElementScrollFurther,
+  createDomScrollChainPort,
+} from "./react/dom-scroll-chain-port";
+export {
+  createDomWheelTouchPort,
+  normaliseWheelDelta,
+  type DomWheelTouchPortOptions,
+} from "./react/dom-wheel-touch-port";
+export type {
+  ScrollChainAxis,
+  ScrollChainDirection,
+  ScrollChainPort,
+  TouchInputSample,
+  WheelInputSample,
+  WheelTouchInputListener,
+  WheelTouchInputPort,
+} from "./engine/wheel-touch-port";
