@@ -4,8 +4,10 @@ import {
   TilingWorkspaceSwipeScope,
   WORKSPACE_KEY_BINDINGS,
   queryTilingLayout,
+  resetWorkspaceLayout,
   useTilingWorkspaceSetController,
   useTilingWorkspaceTabs,
+  workspaceSetEquals,
   type TilingCommandHandle,
   type TilingInteractionCapabilities,
   type TilingLayoutConfig,
@@ -35,12 +37,10 @@ import { HomeShortcuts } from "./shortcuts";
 import { HomeWorkspaceTabStrip } from "./home-workspace-tabs";
 import {
   clearHomeWorkspaceSet,
-  createHomeWorkspaceSet,
-  HOME_WORKSPACE_ID_HOME,
+  HOME_WORKSPACE_SEED,
   mintHomeWorkspaceId,
   nextHomeWorkspaceName,
   readHomeWorkspaceSet,
-  workspaceSetEquals,
   writeHomeWorkspaceSet,
 } from "./home-workspaces";
 import { MobileHome } from "./mobile-home/mobile-home";
@@ -277,8 +277,10 @@ function HomeTopBar({
   isMobile,
   mobileMode,
   onMobileModeChange,
-  onResetLayout,
-  resetDisabled,
+  onResetWorkspace,
+  onResetAll,
+  resetWorkspaceDisabled,
+  resetAllDisabled,
 }: {
   skin: HomeSkin;
   onSkinChange: (next: HomeSkin) => void;
@@ -286,8 +288,10 @@ function HomeTopBar({
   isMobile: boolean;
   mobileMode: MobileHomeMode;
   onMobileModeChange: (mode: MobileHomeMode) => void;
-  onResetLayout: () => void;
-  resetDisabled: boolean;
+  onResetWorkspace: () => void;
+  onResetAll: () => void;
+  resetWorkspaceDisabled: boolean;
+  resetAllDisabled: boolean;
 }): React.ReactElement {
   const tokens: SkinChromeTokens = SKIN_CHROME[skin];
 
@@ -318,15 +322,26 @@ function HomeTopBar({
         tabs={workspaceTabs.tabs}
         tablistProps={workspaceTabs.tablistProps}
       />
-      <div className={tokens.switchGroup}>
+      <div className={tokens.switchGroup} role="group" aria-label="Reset layout">
         <button
           type="button"
-          aria-label="Reset layout"
-          disabled={resetDisabled}
-          onClick={onResetLayout}
-          className={resetDisabled ? tokens.resetDisabled : tokens.resetEnabled}
+          aria-label="Reset workspace"
+          disabled={resetWorkspaceDisabled}
+          onClick={onResetWorkspace}
+          className={
+            resetWorkspaceDisabled ? tokens.resetDisabled : tokens.resetEnabled
+          }
         >
-          Reset layout
+          Reset workspace
+        </button>
+        <button
+          type="button"
+          aria-label="Reset all"
+          disabled={resetAllDisabled}
+          onClick={onResetAll}
+          className={resetAllDisabled ? tokens.resetDisabled : tokens.resetEnabled}
+        >
+          Reset all
         </button>
       </div>
       <div
@@ -428,8 +443,9 @@ function HomeBottomBar({
   focusedLeafId,
   maximizedLeafId,
   isCoarsePointer,
-  onResetLayout,
-  resetDisabled,
+  resetWorkspaceDisabled,
+  resetAllDisabled,
+  onResetCommand,
 }: {
   skin: HomeSkin;
   commandHandleRef: React.RefObject<TilingCommandHandle | null>;
@@ -439,8 +455,9 @@ function HomeBottomBar({
   focusedLeafId: string | null;
   maximizedLeafId: string | null;
   isCoarsePointer: boolean;
-  onResetLayout: () => void;
-  resetDisabled: boolean;
+  resetWorkspaceDisabled: boolean;
+  resetAllDisabled: boolean;
+  onResetCommand: (scope: "workspace" | "all") => void;
 }): React.ReactElement {
   const tokens: SkinBottomBarTokens = SKIN_BOTTOM_BAR[skin];
 
@@ -456,8 +473,9 @@ function HomeBottomBar({
           maximizedLeafId={maximizedLeafId}
           interaction={interaction}
           skin={skin}
-          onResetLayout={onResetLayout}
-          resetDisabled={resetDisabled}
+          resetWorkspaceDisabled={resetWorkspaceDisabled}
+          resetAllDisabled={resetAllDisabled}
+          onResetCommand={onResetCommand}
         />
       )}
       {isCoarsePointer ? null : (
@@ -478,7 +496,7 @@ export function HomePage({
   // Seed on first paint (SSR + hydration). Storage is applied after mount so
   // the prerendered tree stays deterministic: workspace 1 (Home) is active.
   const [workspaceDocument, setWorkspaceDocument] =
-    React.useState<TilingWorkspaceSet>(createHomeWorkspaceSet);
+    React.useState<TilingWorkspaceSet>(HOME_WORKSPACE_SEED);
   const [focusedLeafId, setFocusedLeafId] = React.useState<string | null>(
     INITIAL_FOCUSED_LEAF_ID,
   );
@@ -491,7 +509,6 @@ export function HomePage({
   const [switchFlashNonce, setSwitchFlashNonce] = React.useState<number>(0);
   const commandHandleRef = React.useRef<TilingCommandHandle | null>(null);
   const hydratedStorageRef = React.useRef<boolean>(false);
-  const ignoreSwitchAfterResetRef = React.useRef<boolean>(false);
   // SSR and the hydration pass must use `"slot"` so pane bodies land in the HTML;
   // switch to `"stable"` after mount so tile-keyed state survives workspace changes.
   const [paneIdentity, setPaneIdentity] =
@@ -502,12 +519,6 @@ export function HomePage({
 
   const onWorkspaceSwitch = React.useCallback(
     (event: TilingWorkspaceSwitchEvent): void => {
-      if (ignoreSwitchAfterResetRef.current) {
-        ignoreSwitchAfterResetRef.current = false;
-        if (event.to === HOME_WORKSPACE_ID_HOME) {
-          return;
-        }
-      }
       setInspectorEvent({ kind: "switch", event });
       setSwitchFlashNonce((nonce: number): number => nonce + 1);
     },
@@ -529,7 +540,11 @@ export function HomePage({
   const onWorkspaceCommit = React.useCallback(
     (next: TilingWorkspaceSet): void => {
       setWorkspaceDocument(next);
-      writeHomeWorkspaceSet(next);
+      if (workspaceSetEquals(next, HOME_WORKSPACE_SEED)) {
+        clearHomeWorkspaceSet();
+      } else {
+        writeHomeWorkspaceSet(next);
+      }
     },
     [],
   );
@@ -541,6 +556,7 @@ export function HomePage({
       mintWorkspaceId: mintHomeWorkspaceId,
       nextWorkspaceName: nextHomeWorkspaceName,
       maxWorkspaces: 4,
+      defaults: HOME_WORKSPACE_SEED,
     });
 
   const workspaceTabs: UseTilingWorkspaceTabsResult = useTilingWorkspaceTabs({
@@ -549,27 +565,33 @@ export function HomePage({
     theme: skin === "canvas" ? CANVAS_THEME : undefined,
   });
 
-  const seedWorkspaceSet: TilingWorkspaceSet = React.useMemo(
-    (): TilingWorkspaceSet => createHomeWorkspaceSet(),
-    [],
-  );
-  const resetDisabled: boolean = workspaceSetEquals(
-    workspaceController.set,
-    seedWorkspaceSet,
-  );
+  const resetWorkspaceDisabled: boolean =
+    resetWorkspaceLayout(
+      workspaceController.set,
+      HOME_WORKSPACE_SEED,
+      workspaceController.set.activeId,
+    ) === workspaceController.set;
+  const resetAllDisabled: boolean = workspaceController.atDefaults;
 
-  const onResetLayout = React.useCallback((): void => {
-    const seed: TilingWorkspaceSet = createHomeWorkspaceSet();
-    ignoreSwitchAfterResetRef.current = true;
-    workspaceController.onWorkspacesChange(seed);
-    workspaceController.flush();
-    setWorkspaceDocument(seed);
-    clearHomeWorkspaceSet();
-    setFocusedLeafId(INITIAL_FOCUSED_LEAF_ID);
-    setMaximizedLeafId(null);
-    setInspectorEvent({ kind: "reset" });
-    setSwitchFlashNonce((nonce: number): number => nonce + 1);
-  }, [workspaceController]);
+  const applyReset = React.useCallback(
+    (scope: "workspace" | "all"): void => {
+      const seated: TilingWorkspace | undefined =
+        workspaceController.set.workspaces.find(
+          (workspace: TilingWorkspace): boolean =>
+            workspace.id === workspaceController.set.activeId,
+        );
+      const workspaceName: string =
+        seated?.name ?? workspaceController.set.activeId;
+      workspaceController.reset(scope);
+      setInspectorEvent(
+        scope === "workspace"
+          ? { kind: "reset-workspace", workspaceName }
+          : { kind: "reset-all" },
+      );
+      setSwitchFlashNonce((nonce: number): number => nonce + 1);
+    },
+    [workspaceController],
+  );
 
   React.useEffect((): void => {
     if (hydratedStorageRef.current) {
@@ -738,8 +760,14 @@ export function HomePage({
           isMobile={isMobile}
           mobileMode={mobileMode}
           onMobileModeChange={onMobileModeChange}
-          onResetLayout={onResetLayout}
-          resetDisabled={resetDisabled}
+          onResetWorkspace={(): void => {
+            applyReset("workspace");
+          }}
+          onResetAll={(): void => {
+            applyReset("all");
+          }}
+          resetWorkspaceDisabled={resetWorkspaceDisabled}
+          resetAllDisabled={resetAllDisabled}
         />
         <div
           className="min-h-0 min-w-0 flex-1"
@@ -770,6 +798,7 @@ export function HomePage({
               ref={commandHandleRef}
               workspaces={workspaceController.set}
               onWorkspacesChange={workspaceController.onWorkspacesChange}
+              workspaceDefaults={HOME_WORKSPACE_SEED}
               tiles={tiles}
               config={LAYOUT_CONFIG}
               interaction={interaction}
@@ -815,8 +844,9 @@ export function HomePage({
             focusedLeafId={focusedLeafId}
             maximizedLeafId={maximizedLeafId}
             isCoarsePointer={isCoarsePointer}
-            onResetLayout={onResetLayout}
-            resetDisabled={resetDisabled}
+            resetWorkspaceDisabled={resetWorkspaceDisabled}
+            resetAllDisabled={resetAllDisabled}
+            onResetCommand={applyReset}
           />
         )}
       </TilingWorkspaceSwipeScope>

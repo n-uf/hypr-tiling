@@ -126,6 +126,9 @@ export function createHomeWorkspaceSet(): TilingWorkspaceSet {
   };
 }
 
+/** Seed set the homepage resets to. Stable reference for `defaults` / `workspaceDefaults`. */
+export const HOME_WORKSPACE_SEED: TilingWorkspaceSet = createHomeWorkspaceSet();
+
 interface HomeWorkspaceStorageEnvelope {
   readonly version: number;
   readonly set: TilingWorkspaceSet;
@@ -271,129 +274,6 @@ export function clearHomeWorkspaceSet(): void {
   } catch {
     // Private-mode / blocked storage: in-memory reset still stands.
   }
-}
-
-interface NormalisedSizing {
-  readonly width: string | null;
-  readonly height: string | null;
-  readonly widthPx: number | null;
-  readonly heightPx: number | null;
-}
-
-interface NormalisedLeaf {
-  readonly kind: "leaf";
-  readonly id: string;
-  readonly tileId: string;
-  readonly collapsed: boolean;
-  readonly sizing: NormalisedSizing | null;
-}
-
-interface NormalisedSplit {
-  readonly kind: "split";
-  readonly id: string;
-  readonly axis: string;
-  readonly ratio: number;
-  readonly first: NormalisedLayout;
-  readonly second: NormalisedLayout;
-  readonly layoutMode: string;
-  readonly masterCount: number | null;
-  readonly masterOrientation: string | null;
-}
-
-interface NormalisedGroup {
-  readonly kind: "group";
-  readonly id: string;
-  readonly activeMemberId: string;
-  readonly members: ReadonlyArray<NormalisedLeaf>;
-}
-
-type NormalisedLayout = NormalisedLeaf | NormalisedSplit | NormalisedGroup;
-
-interface NormalisedWorkspace {
-  readonly id: string;
-  readonly name: string;
-  readonly layout: NormalisedLayout | null;
-}
-
-interface NormalisedWorkspaceSet {
-  readonly activeId: string;
-  readonly workspaces: ReadonlyArray<NormalisedWorkspace>;
-}
-
-function normalisedSizing(
-  sizing: TilingLayoutNode["sizing"],
-): NormalisedSizing | null {
-  if (sizing == null) {
-    return null;
-  }
-  return {
-    width: sizing.width ?? null,
-    height: sizing.height ?? null,
-    widthPx: sizing.widthPx ?? null,
-    heightPx: sizing.heightPx ?? null,
-  };
-}
-
-function normalisedLeaf(node: Extract<TilingLayoutNode, { kind: "leaf" }>): NormalisedLeaf {
-  return {
-    kind: "leaf",
-    id: node.id,
-    tileId: node.tileId,
-    collapsed: node.collapsed === true,
-    sizing: normalisedSizing(node.sizing),
-  };
-}
-
-function normalisedLayoutNode(node: TilingLayoutNode): NormalisedLayout {
-  if (node.kind === "leaf") {
-    return normalisedLeaf(node);
-  }
-  if (node.kind === "group") {
-    return {
-      kind: "group",
-      id: node.id,
-      activeMemberId: node.activeMemberId,
-      members: node.members.map(normalisedLeaf),
-    };
-  }
-  return {
-    kind: "split",
-    id: node.id,
-    axis: node.axis,
-    ratio: node.ratio,
-    first: normalisedLayoutNode(node.first),
-    second: normalisedLayoutNode(node.second),
-    layoutMode: node.layoutMode ?? "dwindle",
-    masterCount: node.masterCount ?? null,
-    masterOrientation: node.masterOrientation ?? null,
-  };
-}
-
-function normalisedLayout(node: TilingLayoutNode | null): NormalisedLayout | null {
-  return node == null ? null : normalisedLayoutNode(node);
-}
-
-function normalisedWorkspaceSet(set: TilingWorkspaceSet): NormalisedWorkspaceSet {
-  return {
-    activeId: set.activeId,
-    workspaces: set.workspaces.map(
-      (workspace: TilingWorkspace): NormalisedWorkspace => ({
-        id: workspace.id,
-        name: workspace.name,
-        layout: normalisedLayout(workspace.layout),
-      }),
-    ),
-  };
-}
-
-export function workspaceSetEquals(
-  left: TilingWorkspaceSet,
-  right: TilingWorkspaceSet,
-): boolean {
-  return (
-    JSON.stringify(normalisedWorkspaceSet(left)) ===
-    JSON.stringify(normalisedWorkspaceSet(right))
-  );
 }
 
 export function mintHomeWorkspaceId(): string {

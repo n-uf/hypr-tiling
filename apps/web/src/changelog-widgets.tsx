@@ -373,7 +373,8 @@ const INSPECTOR_FLASH_MS: number = 640;
 
 export type HomeInspectorEvent =
   | { readonly kind: "switch"; readonly event: TilingWorkspaceSwitchEvent }
-  | { readonly kind: "reset" };
+  | { readonly kind: "reset-workspace"; readonly workspaceName: string }
+  | { readonly kind: "reset-all" };
 
 function inspectorEventLine(
   workspaceSet: TilingWorkspaceSet,
@@ -382,8 +383,11 @@ function inspectorEventLine(
   if (event == null) {
     return "none";
   }
-  if (event.kind === "reset") {
-    return "reset \u2192 seed";
+  if (event.kind === "reset-workspace") {
+    return `reset workspace ${event.workspaceName.toLowerCase()}`;
+  }
+  if (event.kind === "reset-all") {
+    return "reset all";
   }
   return `${workspaceName(workspaceSet, event.event.from).toLowerCase()} \u2192 ${workspaceName(workspaceSet, event.event.to).toLowerCase()} via ${event.event.via}`;
 }

@@ -643,24 +643,30 @@ function ShortcutChip({
 // dispatching a REAL typed tiling command — but laid out as a dense, horizontally
 // scrollable single row of keycap chips grouped by section. Returns `null` when
 // nothing is actionable so the bottom bar lays out cleanly without an empty gap.
-function ResetLayoutChip({
+function ResetCommandChip({
   tokens,
+  label,
+  command,
   disabled,
-  onReset,
+  onDispatch,
 }: {
   tokens: ShortcutBarTokens;
+  label: string;
+  command: TilingCommand;
   disabled: boolean;
-  onReset: () => void;
+  onDispatch: (command: TilingCommand) => void;
 }): React.ReactElement {
   return (
     <button
       type="button"
-      aria-label="Reset layout"
+      aria-label={label}
       disabled={disabled}
-      onClick={onReset}
+      onClick={(): void => {
+        onDispatch(command);
+      }}
       className={disabled ? tokens.buttonDisabled : tokens.button}
     >
-      <span className={tokens.kbd}>Reset layout</span>
+      <span className={tokens.kbd}>{label}</span>
     </button>
   );
 }
@@ -673,8 +679,9 @@ export function HomeShortcuts({
   maximizedLeafId,
   interaction,
   skin,
-  onResetLayout,
-  resetDisabled,
+  resetWorkspaceDisabled,
+  resetAllDisabled,
+  onResetCommand,
 }: {
   commandHandleRef: React.RefObject<TilingCommandHandle | null>;
   layout: TilingLayoutNode | null;
@@ -683,8 +690,9 @@ export function HomeShortcuts({
   maximizedLeafId: string | null;
   interaction?: TilingInteractionCapabilities;
   skin: ShortcutSkin;
-  onResetLayout: () => void;
-  resetDisabled: boolean;
+  resetWorkspaceDisabled: boolean;
+  resetAllDisabled: boolean;
+  onResetCommand: (scope: "workspace" | "all") => void;
 }): React.ReactElement | null {
   const tokens: ShortcutBarTokens = SHORTCUT_BAR_SKIN[skin];
   const capabilities: ResolvedTilingInteractionCapabilities = React.useMemo(
@@ -708,8 +716,14 @@ export function HomeShortcuts({
   const dispatch = React.useCallback(
     (command: TilingCommand): void => {
       commandHandleRef.current?.dispatch(command);
+      if (command.kind === "reset-workspace") {
+        onResetCommand("workspace");
+      }
+      if (command.kind === "reset-workspaces") {
+        onResetCommand("all");
+      }
     },
-    [commandHandleRef],
+    [commandHandleRef, onResetCommand],
   );
 
   const visibleSections: ReadonlyArray<ShortcutSection> = sections.filter(
@@ -722,10 +736,19 @@ export function HomeShortcuts({
       aria-label="keyboard shortcuts"
       className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      <ResetLayoutChip
+      <ResetCommandChip
         tokens={tokens}
-        disabled={resetDisabled}
-        onReset={onResetLayout}
+        label="Reset workspace"
+        command={{ kind: "reset-workspace" }}
+        disabled={resetWorkspaceDisabled}
+        onDispatch={dispatch}
+      />
+      <ResetCommandChip
+        tokens={tokens}
+        label="Reset all"
+        command={{ kind: "reset-workspaces" }}
+        disabled={resetAllDisabled}
+        onDispatch={dispatch}
       />
       {visibleSections.length > 0 ? (
         <span aria-hidden className={tokens.divider} />
