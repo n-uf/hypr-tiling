@@ -1,19 +1,26 @@
 import { useState, type ReactElement, type ReactNode } from "react";
 import {
-  TilingRenderer,
-  useTilingWorkspaceTabs,
-  workspaceSetOfLayout,
-  WORKSPACE_KEY_BINDINGS,
   DEFAULT_TILING_LAYOUT_CONFIG,
+  TilingRenderer,
+  TilingWorkspaceSwipeScope,
+  WORKSPACE_KEY_BINDINGS,
+  useTilingWorkspaceSetController,
+  useTilingWorkspaceTabs,
+  useWorkspaceSwipe,
+  workspaceSetOfLayout,
   type TilingLayoutNode,
-  type TilingTile,
-  type TilingWorkspaceSet,
   type TilingRenderTileProps,
+  type TilingTile,
+  type TilingWorkspace,
+  type TilingWorkspaceSet,
+  type TilingWorkspaceSetCommitReason,
+  type TilingWorkspaceSwitchEvent,
+  type UseTilingWorkspaceTabsResult,
 } from "@n-uf/hypr-tiling";
 
-// Several layout trees over one tile pool: pass `workspaces` + `onWorkspacesChange`
-// instead of `layout` + `onLayoutChange`. The whole pool goes in `tiles`; opt into
-// swipe, slide transition, and spring-loaded tab drop through `interaction.workspaces`.
+// Several layout trees over one tile pool: the set controller owns the
+// persisted document + in-flight tree overlays; the tab strip is the native
+// drop target; swipe / keymap / spring-load ride the same TilingCommand path.
 
 const tiles: TilingTile[] = [
   { id: "a", title: "Board" },
@@ -29,43 +36,85 @@ const seedLayout: TilingLayoutNode = {
   second: { kind: "leaf", id: "r", tileId: "b" },
 };
 
+function WorkspaceTabStrip({
+  tabs,
+  onCreate,
+}: {
+  readonly tabs: UseTilingWorkspaceTabsResult;
+  readonly onCreate: () => void;
+}): ReactElement {
+  const swipe = useWorkspaceSwipe();
+  return (
+    <div {...tabs.tablistProps} data-swipe-progress={String(swipe.progress)}>
+      {tabs.tabs.map((tab) => (
+        <button key={tab.workspace.id} {...tab.tabProps}>
+          {tab.workspace.name}
+        </button>
+      ))}
+      <button type="button" onClick={onCreate}>
+        +
+      </button>
+    </div>
+  );
+}
+
 export function WorkspacesExample(): ReactElement {
-  const [set, setSet] = useState<TilingWorkspaceSet>(() =>
+  const [persisted, setPersisted] = useState<TilingWorkspaceSet>(() =>
     workspaceSetOfLayout(seedLayout),
   );
+  const ctl = useTilingWorkspaceSetController({
+    value: persisted,
+    onCommit: (
+      next: TilingWorkspaceSet,
+      _reason: TilingWorkspaceSetCommitReason,
+    ): void => {
+      setPersisted(next);
+    },
+    mintWorkspaceId: (): string => crypto.randomUUID(),
+    nextWorkspaceName: (existing: ReadonlyArray<TilingWorkspace>): string =>
+      `Workspace ${existing.length + 1}`,
+  });
   const tabs = useTilingWorkspaceTabs({
-    workspaces: set,
-    onWorkspacesChange: setSet,
+    workspaces: ctl.set,
+    onWorkspacesChange: ctl.onWorkspacesChange,
   });
   return (
-    <>
-      <div {...tabs.tablistProps}>
-        {tabs.tabs.map((tab) => (
-          <button key={tab.workspace.id} {...tab.tabProps}>
-            {tab.workspace.name}
-          </button>
-        ))}
-      </div>
+    <TilingWorkspaceSwipeScope>
+      <WorkspaceTabStrip
+        tabs={tabs}
+        onCreate={(): void => {
+          ctl.create();
+        }}
+      />
       <TilingRenderer
-        workspaces={set}
-        onWorkspacesChange={setSet}
+        workspaces={ctl.set}
+        onWorkspacesChange={ctl.onWorkspacesChange}
         tiles={tiles}
         config={DEFAULT_TILING_LAYOUT_CONFIG}
+        paneIdentity="stable"
         interaction={{
           keyBindings: { bindings: [...WORKSPACE_KEY_BINDINGS] },
           workspaces: {
-            switch: { transition: "slide", wheelSwipe: { modifier: "meta" } },
+            followMovedLeaf: true,
+            switch: {
+              transition: "slide",
+              wheelSwipe: { modifier: "meta" },
+              touchSwipe: true,
+            },
             springLoad: { dwellMs: 500 },
           },
         }}
-        onWorkspaceSwitch={() => {
-          /* from / to / via: command | swipe | spring-load | reveal | key */
+        onWorkspaceSwitch={(_event: TilingWorkspaceSwitchEvent): void => {
+          /* via: key | command | swipe | spring-load | reveal | tab-drop */
+        }}
+        onMoveLeaf={(): void => {
+          /* do not switch from here — followMovedLeaf already switched */
         }}
         {...tabs.rendererProps}
         renderTile={({ tile }: TilingRenderTileProps): ReactNode => (
           <div style={{ padding: 12, fontSize: 13 }}>{tile.title}</div>
         )}
       />
-    </>
+    </TilingWorkspaceSwipeScope>
   );
 }

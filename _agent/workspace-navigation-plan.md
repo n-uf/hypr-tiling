@@ -258,12 +258,21 @@ hypr-tiling **21–26**. S4 3–4 · S5 1 · regression 1 → DashAI **5–6**. 
 - Final report to the coordinator: commit hashes with subjects, files
   touched, new public symbols, test counts, anything left for the next wave.
 
-## Status — 2026-09-23
+## Status — 2026-09-24
 
-Programme baseline landed on `integration/workspace-nav` @ `4c59025` (prep for
-calendar release `26.9.4`; R1 release note + version bump on `worker/r1-release`,
-not yet merged to `main`). Final gate on integration head: **63 test suites / 1311
-tests** (`pnpm --filter @n-uf/hypr-tiling test`).
+Library navigation shipped on `main` as calendar releases. H5–H8, H6, H7,
+N1–N3, and R1 landed in **26.9.4**; 26.9.5 / 26.9.6 are follow-ups on the
+same surface. S4 / S5 (DashAI cut-over in `starpay-app`) remain consumer
+work after publish.
+
+| Release | What landed |
+| --- | --- |
+| **26.9.4** | H5 tile-keyed ops + `revealTile`; H8 commands / `WORKSPACE_KEY_BINDINGS` / `onWorkspaceSwitch`; H7 `useTilingWorkspaceSetController`; H6 pool renderer / `orphanTiles` / `inactiveWorkspaces`; N1 swipe; N2 slide/fade transition; N3 spring-load + drag `REARM` |
+| **26.9.5** | `TilingWorkspaceSwipeConfig.modifier`; `WheelInputSample` modifier flags (breaking for custom ports); sequence-start gating; whole-window horizontal lock |
+| **26.9.6** | Drag-source parked in the stable pool through dragging/settling; tab drop honours `followMovedLeaf` in one `onWorkspacesChange`; `TilingWorkspaceSwitchVia` gains `"tab-drop"` |
+
+Historical integration ledger (2026-09-23, `integration/workspace-nav` @
+`4c59025`, before the 26.9.4 publish):
 
 | Item | Landed on `integration/workspace-nav` | Worker / tip commit |
 | --- | --- | --- |
@@ -275,12 +284,4 @@ tests** (`pnpm --filter @n-uf/hypr-tiling test`).
 | **N2** switch transition | first-parent `67343b0`, `71f9a9e`, … | `67343b0` on `worker/n2-transition` |
 | **N3** spring-load engine | `275fedf`, `3e6ef9f`, `70c4cbc` | `275fedf` api reports + changelog for N3 engine half |
 | **N3** spring-load wiring | `fd9488c`, `1a46134`, `0fccefd`, `4c59025` | `4c59025` docs + api reports (N3 wiring) |
-| **R1** release `26.9.4` | in progress (`worker/r1-release`) | changelog + readme + docs site + `package.json` bump |
-
-**Operator steps remaining:** push `integration/workspace-nav` and landed
-`worker/*` branches; fast-forward `main` from integration; from
-`packages/hypr-tiling` run `pnpm release` (publish `@n-uf/hypr-tiling@26.9.4`);
-then **S4** (DashAI bump + `useTilingWorkspaceSetController` + pool `tiles` +
-delete hand-rolled set ops) and **S5** (enable swipe / slide / spring-load,
-`useWorkspaceSwipe` tab indicator, terminal chords, `reveal-tile`) in
-`starpay-app`.
+| **R1** release `26.9.4` | published on `main` | changelog + readme + docs site + `package.json` bump |

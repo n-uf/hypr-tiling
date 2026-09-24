@@ -37,6 +37,7 @@ import { CommandBarExample } from "./docs-examples/command-bar";
 import { GroupSplitMaximizeExample } from "./docs-examples/group-split-maximize";
 import { DashboardApp } from "./docs-examples/dashboard-app";
 import { TerminalGridApp } from "./docs-examples/terminal-grid";
+import { WorkspacesExample } from "./docs-examples/workspaces";
 
 // The prerendered /docs route: a TASK-FIRST consumer documentation experience.
 // A "consumer" is a developer who USES `@n-uf/hypr-tiling` in their app; the docs
@@ -1465,6 +1466,8 @@ export function DocsPage({
                 </>
               }
               exampleId="workspaces"
+              demo={<WorkspacesExample />}
+              demoHeight={320}
               knobs={
                 <>
                   Pass <Code>workspaces</Code> +{" "}
@@ -1485,9 +1488,15 @@ export function DocsPage({
                   <Code>interaction.workspaces</Code> (
                   <Code>switch.wheelSwipe</Code>
                   {" "}
-                  (optional <Code>modifier: &quot;meta&quot;</Code>),{" "}
+                  (optional <Code>modifier: &quot;meta&quot;</Code>; sequence-start
+                  gating + whole-window horizontal lock apply regardless),{" "}
                   <Code>switch.transition</Code>,{" "}
-                  <Code>springLoad</Code>). For a persisted document use{" "}
+                  <Code>springLoad</Code>).{" "}
+                  <Code>followMovedLeaf: true</Code> moves and switches in one{" "}
+                  <Code>onWorkspacesChange</Code> (
+                  <Code>onWorkspaceSwitch</Code>{" "}
+                  <Code>via: &quot;tab-drop&quot;</Code>) — do not switch again
+                  from <Code>onMoveLeaf</Code>. For a persisted document use{" "}
                   <Code>useTilingWorkspaceSetController</Code> (
                   <Code>value</Code> / <Code>onCommit</Code>, debounced tree
                   edits). Set-wide orphan handling:{" "}
@@ -1501,6 +1510,7 @@ export function DocsPage({
                 "useTilingWorkspaceSetController",
                 "useWorkspaceSwipe",
                 "TilingCommandGates",
+                "TilingWorkspaceSwitchVia",
               ]}
             />
 

@@ -108,6 +108,11 @@ export const FEATURE_FACTS: ReadonlyArray<FeatureFact> = [
     detail: "Save and heal the tree on load.",
     group: "recent",
   },
+  {
+    term: "Workspaces",
+    detail: "Several layout trees over one tile pool.",
+    group: "recent",
+  },
 ];
 
 export const FEATURE_CORE: ReadonlyArray<FeatureFact> = FEATURE_FACTS.filter(
@@ -136,6 +141,11 @@ export const SEO_FAQ_ITEMS: ReadonlyArray<SeoFaqItem> = [
     question: "Can I control layout state myself?",
     answer:
       "Yes. TilingRenderer is controlled: your app owns the layout tree and applies updates via onLayoutChange.",
+  },
+  {
+    question: "Does hypr-tiling support multiple workspaces over one tile pool?",
+    answer:
+      "Yes. Pass workspaces + onWorkspacesChange (TilingWorkspaceSet) instead of layout + onLayoutChange. useTilingWorkspaceTabs, useTilingWorkspaceSetController, WORKSPACE_KEY_BINDINGS, swipe, slide/fade transition, and spring-load tab drop ship on the public API (26.9.3–26.9.6).",
   },
 ];
 
@@ -178,11 +188,6 @@ interface RoadmapItem {
 // unmissable so the page never misrepresents today's capabilities.
 export const ROADMAP_ITEMS: ReadonlyArray<RoadmapItem> = [
   {
-    term: "Native workspaces",
-    detail:
-      "WorkspaceSet is in design, not exported. Compact ghost and external drop already ship.",
-  },
-  {
     term: "Framework-agnostic core",
     detail: "Vanilla TypeScript engine; no React required.",
   },
@@ -200,9 +205,7 @@ export const ROADMAP_ITEMS: ReadonlyArray<RoadmapItem> = [
   },
 ];
 
-export const ROADMAP_REST: ReadonlyArray<RoadmapItem> = ROADMAP_ITEMS.filter(
-  (item: RoadmapItem): boolean => item.term !== "Native workspaces",
-);
+export const ROADMAP_REST: ReadonlyArray<RoadmapItem> = ROADMAP_ITEMS;
 
 interface DocPaneSpec {
   readonly id: string;
@@ -357,21 +360,29 @@ export const INSTALL_CONTROLLED_PARAGRAPH: DocParagraph = [
   ".",
 ];
 
-export const WORKSPACES_HEADING: string = "Workspaces — in design";
+export const WORKSPACES_HEADING: string = "Workspaces";
 export const WORKSPACES_LEAD: DocParagraph = [
-  "A workspace is one layout tree. A workspace set is several trees, one active: a leaf lives in exactly one tree unless it is pinned, and a workspace tab is a drop target for a pane drag.",
+  "A workspace is one layout tree. A workspace set (",
+  { code: "TilingWorkspaceSet" },
+  ") is several trees over one tile pool, one active. Tab drop, swipe, keymap, and spring-load are engine-owned.",
 ];
 export const WORKSPACES_SHIPPED: DocParagraph = [
-  "WorkspaceSet is ",
-  { em: "not" },
-  " an exported API. What already ships in 26.9.2: compact ghost (",
-  { code: "dragGhostMode" },
-  "), host-reported ",
-  { code: "externalDragHover" },
-  ", and claim-before-settle ",
-  { code: "onExternalDrop" },
+  "Pass ",
+  { code: "workspaces" },
+  " + ",
+  { code: "onWorkspacesChange" },
+  " instead of ",
+  { code: "layout" },
+  " + ",
+  { code: "onLayoutChange" },
+  ". Pair with ",
+  { code: "useTilingWorkspaceTabs" },
+  ", ",
+  { code: "useTilingWorkspaceSetController" },
+  ", and ",
+  { code: "WORKSPACE_KEY_BINDINGS" },
   ". ",
-  { link: "26.9.2 notes", href: "/docs#changelog-26-9-2" },
+  { link: "Workspaces how-to", href: "/docs#howto-workspaces" },
   ".",
 ];
 export const WORKSPACES_ALSO_PLANNED: string = "Also planned";
@@ -568,7 +579,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     title: "features",
     accent: "amber",
     summary:
-      "Core: split tree, drag & drop, resize, tab groups, keyboard. Since 26.9.x: pane collapse, compact ghost, drag chrome, pane identity, persist layout.",
+      "Core: split tree, drag & drop, resize, tab groups, keyboard. Since 26.9.x: pane collapse, compact ghost, drag chrome, pane identity, persist layout, workspaces (TilingWorkspaceSet).",
     content: (
       <div className="flex flex-col gap-4">
         <SectionHeading>Ships today</SectionHeading>
@@ -588,7 +599,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     title: "workspaces",
     accent: "amber",
     summary:
-      "Workspaces — in design. A workspace is one layout tree; a workspace set is several trees, one active, with pin and workspace-tab drop. WorkspaceSet is not an exported API. 26.9.2 already ships dragGhostMode, externalDragHover, and onExternalDrop.",
+      "Workspaces: TilingWorkspaceSet over one tile pool. Pass workspaces + onWorkspacesChange; useTilingWorkspaceTabs for tablist and tab drop; useTilingWorkspaceSetController for a persisted set; WORKSPACE_KEY_BINDINGS, swipe, slide/fade transition, spring-load. Shipped 26.9.3–26.9.6.",
     content: (
       <div className="flex flex-col gap-4">
         <SectionHeading>{WORKSPACES_HEADING}</SectionHeading>
@@ -793,7 +804,7 @@ export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
     title: "Changelog",
     section: "changelog",
     summary:
-      "Release notes for @n-uf/hypr-tiling, newest first, rendered from packages/hypr-tiling/CHANGELOG.md. Calendar versioning (YY.M.R) cannot signal a SemVer major — breaking changes are flagged in the notes. Includes Unreleased plus 26.9.2 (compact ghost, external drop claim, titlebar-only pane collapse), 26.9.1 (overlay portal), 26.9.0 (dragChrome, paneIdentity), 26.7.2 (persisted layout, titlebar slot, layout integrity), 26.7.1, and 26.7.0. Native workspaces / WorkspaceSet are design-only.",
+      "Release notes for @n-uf/hypr-tiling, newest first, rendered from packages/hypr-tiling/CHANGELOG.md. Calendar versioning (YY.M.R) cannot signal a SemVer major — breaking changes are flagged in the notes. Includes Unreleased plus 26.9.6 (drag-source pool parking, tab-drop follow), 26.9.5 (swipe gates), 26.9.4 (workspace navigation), 26.9.3 (TilingWorkspaceSet), 26.9.2 (compact ghost, external drop claim, titlebar-only pane collapse), 26.9.1 (overlay portal), 26.9.0 (dragChrome, paneIdentity), 26.7.2 (persisted layout, titlebar slot, layout integrity), 26.7.1, and 26.7.0.",
   },
   {
     id: "reference",

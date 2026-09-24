@@ -2507,13 +2507,16 @@ export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonPro
   renderEmptyWorkspace?: (workspace: TilingWorkspace) => React.ReactNode;
   /**
    * Fired beside {@link TilingRendererWorkspaceSetProps.onWorkspacesChange}
-   * whenever `activeId` changes through the renderer. `via` is `"tab"` for a
-   * tab strip, `"key"` for a keymap binding, `"command"` for an imperative
-   * `dispatch`, `"reveal"` for `reveal-tile`, `"swipe"` for a trackpad /
-   * touch swipe (`interaction.workspaces.switch`), `"spring-load"` for a
-   * spring-loaded tab drop (`interaction.workspaces.springLoad`; fired
-   * beside {@link TilingRendererWorkspaceSetProps.onMoveLeaf}). `"tab"` is
-   * reserved for a host tab strip.
+   * whenever `activeId` changes through the renderer. `via` is `"key"` for a
+   * keymap binding, `"command"` for an imperative `dispatch`, `"reveal"` for
+   * `reveal-tile`, `"swipe"` for a trackpad / touch swipe
+   * (`interaction.workspaces.switch`), `"spring-load"` for a spring-loaded
+   * tab drop (`interaction.workspaces.springLoad`; fired beside
+   * {@link TilingRendererWorkspaceSetProps.onMoveLeaf}), `"tab-drop"` for a
+   * plain tab release with `followMovedLeaf: true` (move + switch in one
+   * `onWorkspacesChange`; do not switch again from `onMoveLeaf`). `"tab"` is
+   * reserved for a host tab strip that routes through the same dispatch path
+   * (a strip that calls `switch-workspace` is reported as `"command"`).
    */
   onWorkspaceSwitch?: (event: TilingWorkspaceSwitchEvent) => void;
   /**

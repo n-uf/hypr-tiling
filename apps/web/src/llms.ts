@@ -43,6 +43,12 @@ export function buildLlmsTxt(): string {
     lines.push(`- ${fact.term}: ${fact.detail}`);
   }
   lines.push("");
+  lines.push("## Workspaces API");
+  lines.push("");
+  lines.push(
+    "Several layout trees over one tile pool. Pass `workspaces` + `onWorkspacesChange` (`TilingWorkspaceSet`) instead of `layout` + `onLayoutChange`. Pure set ops: `createWorkspace`, `renameWorkspace`, `deleteWorkspace`, `switchWorkspace`, `cycleWorkspace`, `moveLeafToWorkspace`, `showInWorkspace`, `hideFromWorkspace`, tile-keyed `moveTileToWorkspace` / `showTileInWorkspace` / `hideTileFromWorkspace` / `removeTile` / `revealTile`, `queryWorkspaceSet`, `workspaceSetIssues`, `repairWorkspaceSet`. Host chrome: `useTilingWorkspaceTabs` (tablist + native tab drop via `rendererProps`), `useTilingWorkspaceSetController` (debounced persisted set: value/onCommit/create/rename/remove/switch/moveTile/reveal/flush/pending), `WORKSPACE_KEY_BINDINGS` (Alt+1..9, Alt+Arrow, Alt+Shift+Arrow). Renderer set-mode: `tiles` is the whole pool, `orphanTiles`, `inactiveWorkspaces`, `paneIdentity: \"stable\"`. Swipe: `interaction.workspaces.switch.{wheelSwipe,touchSwipe,transition}` with 26.9.5 `modifier` + sequence-start gating; `useWorkspaceSwipe` / `TilingWorkspaceSwipeScope`. Spring-load: `interaction.workspaces.springLoad`. Switch events: `onWorkspaceSwitch` + `TilingWorkspaceSwitchVia` (`key` | `command` | `swipe` | `spring-load` | `reveal` | `tab-drop`; `tab` reserved). With `followMovedLeaf: true`, tab drop moves and switches in one `onWorkspacesChange` — hosts must not switch again from `onMoveLeaf`. Recipe: /docs#howto-workspaces.",
+  );
+  lines.push("");
   lines.push("## Roadmap (planned, not yet shipped)");
   lines.push("");
   for (const item of ROADMAP_ITEMS) {

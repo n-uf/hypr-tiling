@@ -414,6 +414,8 @@ function Dashboard() {
   `workspaceSetIssues`, `repairWorkspaceSet`. `TilingWorkspacePlacement` adds
   `{ kind: "region"; region: "start" | "end" }` for reading-order ends.
   Limits: `TILING_WORKSPACES_MAX` (12), `TILING_WORKSPACE_NAME_MAX_CHARS` (40).
+  A leaf may sit in several trees (`showInWorkspace`); there is no pin table
+  (`TilingLeafPin` did not ship).
 - **Renderer** — `workspaces` + `onWorkspacesChange` replace `layout` +
   `onLayoutChange`. Uncontrolled focus / maximize are remembered per
   workspace; a drag in flight is cancelled when the active workspace
@@ -463,10 +465,14 @@ function Dashboard() {
 ### Workspace set controller
 
 A persisted document (`value` / `onCommit`) plus in-flight tree overlays.
-Tree edits coalesce for `treeDebounceMs` (default 400); create / rename /
-delete / switch commit at once; `readOnly` keeps switches local. Pass
-`ctl.set` and `ctl.onWorkspacesChange` to both the renderer and the tab
-strip.
+Tree edits coalesce for `treeDebounceMs` (default 400) and commit as
+`"tree"`; `create` / `rename` / `remove` / `switch` commit immediately as
+`"lifecycle"`; `moveTile` as `"move"`; `reveal` as `"reveal"` when
+`changed !== "none"`. `readOnly` keeps switches local and commits nothing.
+`maxWorkspaces` caps `create()` (default `TILING_WORKSPACES_MAX`).
+`ctl.flush()` commits pending trees now; `ctl.pending` is `true` while a
+tree debounce is open. Pass `ctl.set` and `ctl.onWorkspacesChange` to both
+the renderer and the tab strip.
 
 ```tsx
 import {
@@ -538,6 +544,13 @@ Dispatch from app code: `commandRef.current?.dispatch({ kind: "switch-workspace"
 `{ kind: "cycle-workspace", direction: "next" }`, `{ kind: "move-leaf-to-workspace", … }`,
 `{ kind: "reveal-tile", tileId }`. `reveal-tile` prefers the active workspace when
 it already shows the tile.
+
+`onWorkspaceSwitch` fires beside `onWorkspacesChange` when `activeId` changes
+through the renderer. `TilingWorkspaceSwitchVia`: `"key"` (keymap),
+`"command"` (imperative `dispatch`, including a host tab strip that calls
+`switch-workspace`), `"swipe"`, `"spring-load"`, `"reveal"`, `"tab-drop"`
+(plain tab release with `followMovedLeaf: true`). `"tab"` is reserved (not
+emitted; a strip that dispatches `switch-workspace` is `"command"`).
 
 ### Workspace switch transition
 
@@ -658,6 +671,29 @@ the dwell; releasing or cancelling mid-dwell runs the ordinary tab drop /
 cancel. The dwell FSM (`springLoadReducer`) and the drag `REARM` edge ship on
 `@n-uf/hypr-tiling/engine`.
 
+### Migration from a per-workspace `layouts` map
+
+Hosts that kept `Record<workspaceId, TilingLayoutNode>` plus `activeId` (and
+remounted the renderer with `key={activeId}`) replace that map with one
+`TilingWorkspaceSet`:
+
+```ts
+const set: TilingWorkspaceSet = {
+  workspaces: Object.entries(layouts).map(([id, layout]) => ({
+    id,
+    name: names[id] ?? id,
+    layout,
+  })),
+  activeId,
+};
+```
+
+Pass `workspaces` + `onWorkspacesChange` (or `useTilingWorkspaceSetController`)
+and drop the remount key. `tiles` is the whole pool — do not slice to the
+active tree. Tab drop with `followMovedLeaf: true` already switches in the
+same `onWorkspacesChange` (`via: "tab-drop"`) — do not call `switchWorkspace`
+from `onMoveLeaf`.
+
 ## Features
 
 - **Drag/drop rearrange** — Hyprland-style live drag; the move commits on
@@ -678,10 +714,13 @@ cancel. The dwell FSM (`springLoadReducer`) and the drag `REARM` edge ship on
 - **Titlebar-only pane collapse** — opt-in `paneTitleBarControls.collapse`
   pins a pane to its chrome extent; `resizeFloor` defaults to `"chrome"`;
   `onPaneCollapsedChange` / `minBBoxPx` travel with the leaf.
+- **Workspaces** — several layout trees over one tile pool
+  (`TilingWorkspaceSet`): set ops, `useTilingWorkspaceSetController`,
+  `useTilingWorkspaceTabs` + native tab drop, `WORKSPACE_KEY_BINDINGS`,
+  swipe / slide-fade transition / spring-load. See Workspaces above.
 - **Compact drag ghost** — `dragGhostMode` (`footprint` / `compact` / `auto`),
   host-reported `externalDragHover`, and `onExternalDrop` claim-before-settle.
-  This is the shipped subset of the WorkspaceSet drag design; native
-  workspaces are not exported.
+  In set mode a `kind: "workspace-tab"` hover is an engine-owned drop target.
 - **Stable pane identity** — host pane content survives drag → drop → settle
   and every other tree edit without remounting (`paneIdentity`).
 - **Persisted layout adapter** — `createPersistedTilingLayout` saves the tree
@@ -704,10 +743,6 @@ Any screen with several panes the user rearranges:
 
 These are **planned** directions, not shipped. React + DOM only today.
 
-- **Native workspaces** — a workspace is one layout tree; a workspace set is
-  several trees, one active, with pin and workspace-tab drop. `WorkspaceSet` is
-  in design, not exported. Compact ghost + external drop already ship (26.9.2).
-  Design record: `_agent/workspace-set-concept.md`.
 - **Framework-agnostic core** — a dependency-free vanilla TypeScript core so the
   tiling engine runs without any framework: the layout tree, the drag/FLIP state
   machine, and the self-healing recovery logic decoupled from React, ready to

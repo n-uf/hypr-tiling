@@ -378,3 +378,20 @@ rebase-loop push to `main`. Stages: 0 doc · 1 layering/rename · 2 facade ·
 3. **`queryTilingLayout` as a new DTO vs. promoting the raw walkers.** Chosen to
    lift a single read facade rather than promote 5 raw walkers. Borderline: some
    consumers may prefer the granular walkers; they remain available on `./engine`.
+
+---
+
+## 11. Workspace set on the `.` facade (shipped 26.9.3–26.9.6)
+
+Workspace-set types, pure ops, integrity/repair, renderer set-mode props,
+`useTilingWorkspaceTabs`, `useTilingWorkspaceSetController`,
+`WORKSPACE_KEY_BINDINGS`, swipe/transition/spring-load hooks, and
+`TilingWorkspaceSwitchEvent` / `TilingWorkspaceSwitchVia` are **on the `.`
+facade** (and the same ops on `./engine`). They follow the existing dual-export
+precedent of `createPersistedTilingLayout`. This document's Stage-2 keep-list
+predates that surface; do not read the keep-list as excluding workspaces.
+
+Not on `.`: pin table / `TilingLeafPin`, `createPersistedTilingWorkspaceSet`
+(divergence 8 in `_agent/workspace-set-concept.md`). Engine-grade swipe FSM
+helpers (`workspaceSwipeReducer`, …) stay on `./engine` except the host-facing
+hooks.

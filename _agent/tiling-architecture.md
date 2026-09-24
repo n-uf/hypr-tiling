@@ -61,6 +61,37 @@ Pure modules own all deterministic behavior:
 
 The renderer composes these pure functions and keeps transient UI state (hover, active drag, focused pane) local to rendering concerns.
 
+### Workspace set mode (shipped 26.9.3–26.9.6)
+
+`TilingRenderer` accepts either `layout` + `onLayoutChange` (single tree) or
+`workspaces` + `onWorkspacesChange` (`TilingWorkspaceSet`: ordered
+`{ id, name, layout }[]` plus `activeId`). Set ops, integrity, and repair
+live in `engine/workspace-set.ts`. Navigation (tile-keyed movers, commands,
+keymap, swipe, transition, spring-load, tab-drop follow) lives in
+`engine/workspace-navigation.ts`, `engine/workspace-spring-load.ts`,
+`engine/workspace-set-controller.ts`, and the set-mode wrapper in
+`react/tiling-renderer.tsx`. Host chrome: `useTilingWorkspaceTabs` (tab
+strip + native drop), `useTilingWorkspaceSetController` (debounced persisted
+set), `useWorkspaceSwipe` / `TilingWorkspaceSwipeScope`.
+
+```text
+[Host chrome]
+  tabs / keymap / swipe / tab-drop
+  -> [TilingCommand | set op]
+  -> [onWorkspacesChange(nextSet) + onWorkspaceSwitch({ via })]
+  -> [consumer-controlled TilingWorkspaceSet]
+  -> [re-render active tree]
+```
+
+`via` is `TilingWorkspaceSwitchVia`: `"key"` | `"command"` | `"swipe"` |
+`"spring-load"` | `"reveal"` | `"tab-drop"` (`"tab"` reserved). With
+`followMovedLeaf: true`, tab drop moves and switches in one
+`onWorkspacesChange`; hosts must not switch again from `onMoveLeaf`.
+
+Directory tree above is historical (pre-`engine/` rename). Current layout:
+`engine/` (framework-free) + `react/` (renderer + hooks) + `index.ts` (`.`
+facade). Workspace-set symbols are on `.` and `./engine`.
+
 ## Usage/Integration
 
 ### Minimal integration

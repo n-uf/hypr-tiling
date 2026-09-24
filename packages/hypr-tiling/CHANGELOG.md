@@ -8,7 +8,14 @@ the version number alone does not flag them.
 
 ## Unreleased
 
-Nothing pending.
+### Docs
+
+- Workspace navigation (26.9.3–26.9.6) documented across the package README,
+  root README, agent records, and docs site: set ops, set controller, renderer
+  set-mode, tab strip, commands/keymap, swipe gates, transitions, and switch
+  `via` including `"tab-drop"`. Hosts must not switch again from `onMoveLeaf`.
+  Changelog restores the missing `## 26.9.4` heading so 26.9.5 and 26.9.4 stay
+  distinct.
 
 ## 26.9.6 — 2026-09-24
 
@@ -48,6 +55,7 @@ ignores `modifier`.
 - **Behaviour change (tightening): whole-window horizontal lock.** `|dx| > 2·|dy|` still applies per sample at arming; the same ratio must also hold on the accumulated `armed` window (`|travelDy| ≤ |travelPx| / 2`) until travel reaches `thresholdPx`. A gradually diagonal path is rejected and the run claimed by scroll. Once `tracking`, vertical drift is still tolerated.
 - **`switch.wheelSwipe: { modifier: "meta" }`** resolves into `switch.swipe.modifier` through the existing partial-config path (`resolveWorkspaceSwipeConfig`).
 
+## 26.9.4 — 2026-09-23
 
 Engine-owned workspace navigation on top of the 26.9.3 workspace set: tile-keyed
 set ops and `revealTile`, typed workspace commands and an opt-in keymap fragment,

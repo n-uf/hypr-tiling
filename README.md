@@ -143,15 +143,14 @@ Since 26.9.x:
 - **Drag chrome** — themeable ghost; `overlayPortalContainer` for tokens.
 - **Pane identity** — same React instance through drag and drop.
 - **Persist layout** — save and heal the tree on load.
+- **Workspaces** — several layout trees over one tile pool
+  (`TilingWorkspaceSet`); tab drop, swipe, keymap. See the
+  [package README Workspaces section](packages/hypr-tiling/README.md#workspaces).
 
 ## Roadmap
 
 These are **planned** directions, not shipped. React + DOM only today.
 
-- **Native workspaces** — a workspace is one layout tree; a workspace set is
-  several trees, one active, with pin and workspace-tab drop. `WorkspaceSet` is
-  in design, not exported. Compact ghost + external drop already ship (26.9.2).
-  Design record: [`_agent/workspace-set-concept.md`](_agent/workspace-set-concept.md).
 - **Framework-agnostic core** — vanilla TypeScript engine; no React required.
 - **Framework adapters** — Vue, Svelte, Solid, Angular, and Web Components.
 - **Canvas backend** — optional GPU path for dense pane counts.

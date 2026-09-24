@@ -1,18 +1,22 @@
 # Workspace set — `@n-uf/hypr-tiling` native-workspaces design
 
-Durable reference for making **workspaces a native engine concept** in
-`@n-uf/hypr-tiling`: a set of layout trees, one active, where a leaf lives in
-exactly one tree unless it is pinned, and where the drag model knows a
-"workspace tab" as a first-class drop target. Today the renderer knows one tree
-(`TilingRendererProps.layout`) and the main consumer — DashAI in
-`starpay-app/packages/dashai` — re-implements workspaces app-side
+Durable reference for the workspace-set design. **Library half shipped** as
+`26.9.3` (`TilingWorkspaceSet`, set ops, renderer set mode, tab drop,
+`useTilingWorkspaceTabs`); navigation shipped as `26.9.4`–`26.9.6` (tile-keyed
+ops, commands/keymap, set controller, pool renderer, swipe, transition,
+spring-load, tab-drop follow). See `_agent/workspace-navigation-plan.md` for
+the navigation ledger. Later sections describe the intended model; §8.5
+records what landed and where it diverged; §8.6 records post-26.9.3 follow-ups.
+
+The first consumer cut-over target is DashAI in
+`starpay-app/packages/dashai` (S4/S5 after publish). Until that cut-over it
+still re-implements some workspace chrome app-side
 (`core/schema/workspaces.ts`: `DashboardWorkspace`, `activeWorkspaceOf`,
 `workspaceIdsShowingItem`, `moveItem`; `react/renderer/workspace-switcher.tsx`
 tab strip; a per-workspace `layouts` map and a `key={activeWorkspaceId}`
 remount in `react/renderer/dashboard-renderer.tsx`).
 
-Design-only record: no library code, no app code. It sits alongside the
-package design records in `packages/hypr-tiling/_agent/`
+Sits alongside the package design records in `packages/hypr-tiling/_agent/`
 (`public-api-boundary-design.md` for the `.` / `./engine` entry contract,
 `core-extraction-design.md` for the host-port vocabulary,
 `drag-subsystem-audit.md` for the drag FSM invariants INV-R1..R4).
@@ -957,6 +961,24 @@ the landed H3 + H4; the table's H4 persisted envelope v2 did **not** land
     (`isCollapsed` / `onToggleCollapse` / `collapseEnabled`…); the
     CHANGELOG folds that "Unreleased" block into `26.9.3` (initially
     mis-published as `26.10.0`).
+
+### 8.6 Navigation follow-ups shipped after 26.9.3
+
+Recorded so this design is not read as the current API:
+
+- **`inactiveWorkspaces`** shipped in 26.9.4 (`"unmount"` | `"keep-mounted"`).
+  Divergence 4 and Q8 are closed.
+- **Tile-keyed set ops + `revealTile`**, workspace commands /
+  `WORKSPACE_KEY_BINDINGS`, `useTilingWorkspaceSetController`, swipe +
+  transition + spring-load (`REARM`) shipped in 26.9.4. Q7 (spring-load
+  deferred) is closed.
+- **Swipe modifier + sequence-start gating + whole-window horizontal lock**
+  shipped in 26.9.5.
+- **Drag-source pool parking + `followMovedLeaf` tab-drop in one
+  `onWorkspacesChange` + `via: "tab-drop"`** shipped in 26.9.6. Hosts must
+  not switch from `onMoveLeaf`.
+- **Pin table / `TilingLeafPin` / persisted envelope v2** still not shipped
+  (divergences 1 and 8 stand).
 
 ---
 
