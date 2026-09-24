@@ -22,11 +22,14 @@ import {
   removeTile,
   renameWorkspace,
   repairWorkspaceSet,
+  resetWorkspaceLayout,
+  resetWorkspaceSet,
   revealTile,
   setWorkspaceLayout,
   showInWorkspace,
   showTileInWorkspace,
   switchWorkspace,
+  workspaceSetEquals,
   workspaceSetIssues,
   workspaceSetOfLayout,
   type TilingHideTileResult,
@@ -172,6 +175,126 @@ describe("workspace set — construction, names, switch", (): void => {
     expect(setWorkspaceLayout(set, "nope", null)).toBe(set);
     expect(setWorkspaceLayout(set, "ops", split("r", "horizontal", leaf("x"), leaf("x")))).toBe(set);
     expect(setWorkspaceLayout(set, "ops", null).workspaces[1].layout).toBeNull();
+  });
+});
+
+describe("workspace set — reset + workspaceSetEquals", (): void => {
+  it("workspaceSetEquals compares ids, names, activeId, and persisted layout fields", (): void => {
+    const set: TilingWorkspaceSet = twoWorkspaces();
+    expect(workspaceSetEquals(set, set)).toBe(true);
+    expect(workspaceSetEquals(set, { ...set })).toBe(true);
+    expect(workspaceSetEquals(set, { ...set, activeId: "ops" })).toBe(false);
+    expect(workspaceSetEquals(set, { ...set, workspaces: [...set.workspaces].reverse() })).toBe(false);
+    const renamed: TilingWorkspaceSet = {
+      ...set,
+      workspaces: [set.workspaces[0], { ...set.workspaces[1], name: "Finance" }],
+    };
+    expect(workspaceSetEquals(set, renamed)).toBe(false);
+    const resized: TilingWorkspaceSet = {
+      ...set,
+      workspaces: [
+        {
+          ...set.workspaces[0],
+          layout: split("root", "horizontal", leaf("a"), split("s2", "vertical", leaf("b"), leaf("c")), 0.4),
+        },
+        set.workspaces[1],
+      ],
+    };
+    expect(workspaceSetEquals(set, resized)).toBe(false);
+    const collapsed: TilingLeafNode = { ...leaf("d"), collapsed: true, collapsedDimension: "width" };
+    const withFlags: TilingWorkspaceSet = {
+      ...set,
+      workspaces: [set.workspaces[0], { ...set.workspaces[1], layout: split("root", "horizontal", leaf("c"), collapsed) }],
+    };
+    const withFlagsCopy: TilingWorkspaceSet = {
+      ...set,
+      workspaces: [
+        set.workspaces[0],
+        {
+          ...set.workspaces[1],
+          layout: split("root", "horizontal", leaf("c"), { ...leaf("d"), collapsed: true, collapsedDimension: "width" }),
+        },
+      ],
+    };
+    expect(workspaceSetEquals(withFlags, withFlagsCopy)).toBe(true);
+    expect(workspaceSetEquals(set, withFlags)).toBe(false);
+  });
+
+  it("resetWorkspaceLayout replaces one workspace from defaults and keeps activeId", (): void => {
+    const defaults: TilingWorkspaceSet = twoWorkspaces();
+    const edited: TilingWorkspaceSet = {
+      ...defaults,
+      activeId: "ops",
+      workspaces: [
+        { ...defaults.workspaces[0], name: "Main edited", layout: leaf("z") },
+        { ...defaults.workspaces[1], name: "Ops edited", layout: leaf("y") },
+      ],
+    };
+    const resetActive: TilingWorkspaceSet = resetWorkspaceLayout(edited, defaults);
+    expect(resetActive.activeId).toBe("ops");
+    expect(resetActive.workspaces[1].name).toBe("Ops");
+    expect(resetActive.workspaces[1].layout).toEqual(defaults.workspaces[1].layout);
+    expect(resetActive.workspaces[0]).toBe(edited.workspaces[0]);
+    const resetMain: TilingWorkspaceSet = resetWorkspaceLayout(edited, defaults, "main");
+    expect(resetMain.activeId).toBe("ops");
+    expect(resetMain.workspaces[0].name).toBe("Main");
+    expect(resetMain.workspaces[0].layout).toEqual(defaults.workspaces[0].layout);
+    expect(resetMain.workspaces[1]).toBe(edited.workspaces[1]);
+  });
+
+  it("resetWorkspaceLayout clears layout and keeps the name when defaults have no such id", (): void => {
+    const defaults: TilingWorkspaceSet = workspaceSetOfLayout(leaf("a"));
+    const set: TilingWorkspaceSet = createWorkspace(defaults, { id: "ops", name: "Ops", layout: leaf("b") });
+    const reset: TilingWorkspaceSet = resetWorkspaceLayout(set, defaults, "ops");
+    expect(reset.workspaces[1].name).toBe("Ops");
+    expect(reset.workspaces[1].layout).toBeNull();
+    expect(reset.activeId).toBe("main");
+    expect(resetWorkspaceLayout(set, defaults, "nope")).toBe(set);
+  });
+
+  it("resetWorkspaceLayout returns the same reference when nothing changes", (): void => {
+    const set: TilingWorkspaceSet = twoWorkspaces();
+    expect(resetWorkspaceLayout(set, set)).toBe(set);
+    expect(resetWorkspaceLayout(set, twoWorkspaces(), "ops")).toBe(set);
+    const alreadyNull: TilingWorkspaceSet = createWorkspace(workspaceSetOfLayout(leaf("a")), {
+      id: "ops",
+      name: "Ops",
+    });
+    expect(resetWorkspaceLayout(alreadyNull, workspaceSetOfLayout(leaf("a")), "ops")).toBe(alreadyNull);
+  });
+
+  it("resetWorkspaceSet restores defaults and keeps the current activeId when present", (): void => {
+    const defaults: TilingWorkspaceSet = twoWorkspaces();
+    const edited: TilingWorkspaceSet = {
+      workspaces: [
+        { id: "main", name: "Main edited", layout: leaf("z") },
+        { id: "ops", name: "Ops edited", layout: leaf("y") },
+      ],
+      activeId: "ops",
+    };
+    const reset: TilingWorkspaceSet = resetWorkspaceSet(edited, defaults);
+    expect(reset.workspaces).toBe(defaults.workspaces);
+    expect(reset.activeId).toBe("ops");
+    expect(reset).not.toBe(defaults);
+    const defaultsOnOps: TilingWorkspaceSet = { ...defaults, activeId: "ops" };
+    expect(resetWorkspaceSet(edited, defaultsOnOps)).toBe(defaultsOnOps);
+  });
+
+  it("resetWorkspaceSet falls back to defaults.activeId when the current id is absent", (): void => {
+    const defaults: TilingWorkspaceSet = workspaceSetOfLayout(leaf("a"));
+    const set: TilingWorkspaceSet = {
+      workspaces: [{ id: "gone", name: "Gone", layout: leaf("z") }],
+      activeId: "gone",
+    };
+    const reset: TilingWorkspaceSet = resetWorkspaceSet(set, defaults);
+    expect(reset).toBe(defaults);
+    expect(reset.activeId).toBe("main");
+  });
+
+  it("resetWorkspaceSet returns the same reference when already equal", (): void => {
+    const set: TilingWorkspaceSet = twoWorkspaces();
+    expect(resetWorkspaceSet(set, twoWorkspaces())).toBe(set);
+    expect(resetWorkspaceSet(set, set)).toBe(set);
   });
 });
 

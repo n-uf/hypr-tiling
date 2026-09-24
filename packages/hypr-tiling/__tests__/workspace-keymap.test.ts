@@ -70,6 +70,8 @@ describe("WORKSPACE_KEY_BINDINGS (opt-in fragment, not in defaults)", (): void =
     expect(defaultKinds).not.toContain("cycle-workspace");
     expect(defaultKinds).not.toContain("move-leaf-to-workspace");
     expect(defaultKinds).not.toContain("reveal-tile");
+    expect(defaultKinds).not.toContain("reset-workspace");
+    expect(defaultKinds).not.toContain("reset-workspaces");
     expect(TILING_KEYMAP_DEFAULTS.focusLeft.code).toBe("ArrowLeft");
     expect(TILING_KEYMAP_DEFAULTS.focusLeft.alt).toBe(false);
     expect(matchKeyBinding(keyEvent("ArrowLeft", { alt: true }), defaultKeyBindings(resolveKeymap(undefined)))).toBeNull();

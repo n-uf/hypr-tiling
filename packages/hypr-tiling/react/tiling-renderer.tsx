@@ -222,6 +222,8 @@ import {
   moveLeafToWorkspace,
   queryWorkspaceSet,
   repairWorkspaceSet,
+  resetWorkspaceLayout,
+  resetWorkspaceSet,
   revealTile,
   setWorkspaceLayout,
   switchWorkspace,
@@ -4537,7 +4539,9 @@ interface TilingWorkspaceCommandBridge {
           | "switch-workspace"
           | "cycle-workspace"
           | "move-leaf-to-workspace"
-          | "reveal-tile";
+          | "reveal-tile"
+          | "reset-workspace"
+          | "reset-workspaces";
       }
     >,
     via: TilingWorkspaceCommandDispatchVia,
@@ -10222,7 +10226,7 @@ class WorkspaceSwitchSentinel extends React.Component<WorkspaceSwitchSentinelPro
  * back into the set (`setWorkspaceLayout`). Owns the per-workspace focus /
  * maximize memory for the uncontrolled case and the native workspace-tab drop
  * settle (`moveLeafToWorkspace` on a `kind: "workspace-tab"` hover). Dispatches
- * the four workspace commands through the same inner `dispatchCommand` router
+ * the workspace commands through the same inner `dispatchCommand` router
  * (empty-workspace fallback applies them locally when no inner renderer is
  * mounted).
  */
@@ -10248,6 +10252,7 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
     mintLeafId,
     onIntegrityIssues,
     inactiveWorkspaces = "unmount",
+    workspaceDefaults,
     ...rest
   }: TilingRendererWorkspaceSetProps & TilingRendererObservabilityProps,
   ref: React.ForwardedRef<TilingCommandHandle>,
@@ -10318,6 +10323,8 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
 
   const workspacesRef = React.useRef<TilingWorkspaceSet>(workspaces);
   workspacesRef.current = workspaces;
+  const workspaceDefaultsRef = React.useRef<TilingWorkspaceSet | undefined>(workspaceDefaults);
+  workspaceDefaultsRef.current = workspaceDefaults;
   const onWorkspacesChangeRef = React.useRef(onWorkspacesChange);
   onWorkspacesChangeRef.current = onWorkspacesChange;
   const onMoveLeafRef = React.useRef(onMoveLeaf);
@@ -10579,7 +10586,9 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
             | "switch-workspace"
             | "cycle-workspace"
             | "move-leaf-to-workspace"
-            | "reveal-tile";
+            | "reveal-tile"
+            | "reset-workspace"
+            | "reset-workspaces";
         }
       >,
       via: TilingWorkspaceCommandDispatchVia,
@@ -10659,6 +10668,26 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
           next = revealed.set;
           revealLeafId = revealed.leafId;
           revealWorkspaceId = revealed.workspaceId;
+          break;
+        }
+        case "reset-workspace": {
+          const defaults: TilingWorkspaceSet | undefined = workspaceDefaultsRef.current;
+          if (defaults == null) {
+            return false;
+          }
+          next = resetWorkspaceLayout(
+            current,
+            defaults,
+            command.workspaceId ?? current.activeId,
+          );
+          break;
+        }
+        case "reset-workspaces": {
+          const defaults: TilingWorkspaceSet | undefined = workspaceDefaultsRef.current;
+          if (defaults == null) {
+            return false;
+          }
+          next = resetWorkspaceSet(current, defaults);
           break;
         }
       }

@@ -410,7 +410,8 @@ function Dashboard() {
   there), `switchWorkspace`, `cycleWorkspace`, `setWorkspaceLayout`,
   `moveLeafToWorkspace(set, leafId, to, placement?)`, `showInWorkspace`,
   `hideFromWorkspace`, tile-keyed `moveTileToWorkspace`, `showTileInWorkspace`,
-  `hideTileFromWorkspace`, `removeTile`, `revealTile`, `queryWorkspaceSet`,
+  `hideTileFromWorkspace`, `removeTile`, `revealTile`, `resetWorkspaceLayout`,
+  `resetWorkspaceSet`, `workspaceSetEquals`, `queryWorkspaceSet`,
   `workspaceSetIssues`, `repairWorkspaceSet`. `TilingWorkspacePlacement` adds
   `{ kind: "region"; region: "start" | "end" }` for reading-order ends.
   Limits: `TILING_WORKSPACES_MAX` (12), `TILING_WORKSPACE_NAME_MAX_CHARS` (40).
@@ -516,6 +517,43 @@ function Dashboard({ persisted, persist, readOnly, tiles }) {
 }
 ```
 
+### Reset to defaults
+
+Two modes, both keep the visitor on the workspace they are looking at
+(`activeId` never changes). Pass the seed as `workspaceDefaults` on the
+renderer (without it, the reset commands are no-ops) and as `defaults` on
+the controller.
+
+- `resetWorkspaceLayout(set, defaults, workspaceId?)` / `{ kind: "reset-workspace"; workspaceId? }`
+  — replace **one** workspace's `layout` and `name` from the seed workspace
+  of the same id (`workspaceId` omitted → `set.activeId`). If the seed has
+  no such id, that workspace's `layout` becomes `null` and its name is kept.
+- `resetWorkspaceSet(set, defaults)` / `{ kind: "reset-workspaces" }` —
+  replace the **whole** set from the seed, keeping `set.activeId` when that
+  id exists in the seed.
+- Controller: `ctl.reset("workspace" | "all", workspaceId?)` commits
+  immediately (same path as `switch`, not tree-debounced) and returns
+  `false` when nothing changed or `defaults` is omitted. `ctl.atDefaults`
+  is `true` when `workspaceSetEquals(ctl.set, defaults)` (`false` with no
+  defaults). No default key bindings — host opt-in only.
+
+```tsx
+const ctl = useTilingWorkspaceSetController({
+  value: persisted,
+  defaults: SEED,
+  onCommit: persist,
+  mintWorkspaceId: () => crypto.randomUUID(),
+  nextWorkspaceName: (existing) => `Workspace ${existing.length + 1}`,
+});
+
+<TilingRenderer
+  workspaces={ctl.set}
+  workspaceDefaults={SEED}
+  onWorkspacesChange={ctl.onWorkspacesChange}
+  tiles={tiles}
+/>;
+```
+
 ### Workspace commands & keymap
 
 Workspace navigation is typed `TilingCommand` surface — same handle as layout
@@ -542,8 +580,9 @@ import { TilingRenderer, WORKSPACE_KEY_BINDINGS } from "@n-uf/hypr-tiling";
 
 Dispatch from app code: `commandRef.current?.dispatch({ kind: "switch-workspace", workspaceId })`,
 `{ kind: "cycle-workspace", direction: "next" }`, `{ kind: "move-leaf-to-workspace", … }`,
-`{ kind: "reveal-tile", tileId }`. `reveal-tile` prefers the active workspace when
-it already shows the tile.
+`{ kind: "reveal-tile", tileId }`, `{ kind: "reset-workspace" }`, `{ kind: "reset-workspaces" }`.
+`reveal-tile` prefers the active workspace when it already shows the tile.
+Reset commands require `workspaceDefaults` and keep `activeId`.
 
 `onWorkspaceSwitch` fires beside `onWorkspacesChange` when `activeId` changes
 through the renderer. `TilingWorkspaceSwitchVia`: `"key"` (keymap),

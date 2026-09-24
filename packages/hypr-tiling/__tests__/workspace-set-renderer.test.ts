@@ -697,6 +697,94 @@ describe("TilingRenderer workspace-set mode — workspace command dispatch (H8)"
     expect(onWorkspacesChange.mock.calls[0][0].activeId).toBe("main");
     expect(onWorkspaceSwitch).toHaveBeenCalledWith({ from: "spare", to: "main", via: "command" });
   });
+
+  it("reset-workspace / reset-workspaces are no-ops without workspaceDefaults", (): void => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onWorkspaceSwitch = jest.fn((_event: TilingWorkspaceSwitchEvent): void => {});
+    const handleRef: React.RefObject<TilingCommandHandle | null> = React.createRef<TilingCommandHandle>();
+    render(
+      React.createElement(Harness, {
+        workspaces: threeWorkspaces("ops"),
+        onWorkspacesChange,
+        onWorkspaceSwitch,
+        handleRef,
+      }),
+    );
+    act((): void => {
+      handleRef.current?.dispatch({ kind: "reset-workspace" });
+      handleRef.current?.dispatch({ kind: "reset-workspaces" });
+    });
+    expect(onWorkspacesChange).not.toHaveBeenCalled();
+    expect(onWorkspaceSwitch).not.toHaveBeenCalled();
+  });
+
+  it("reset-workspace restores one workspace from workspaceDefaults and keeps activeId", (): void => {
+    const seed: TilingWorkspaceSet = threeWorkspaces("main");
+    const edited: TilingWorkspaceSet = {
+      ...seed,
+      activeId: "ops",
+      workspaces: [
+        { ...seed.workspaces[0], layout: leaf("z") },
+        { ...seed.workspaces[1], name: "Ops edited", layout: leaf("y") },
+        seed.workspaces[2],
+      ],
+    };
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onWorkspaceSwitch = jest.fn((_event: TilingWorkspaceSwitchEvent): void => {});
+    const handleRef: React.RefObject<TilingCommandHandle | null> = React.createRef<TilingCommandHandle>();
+    render(
+      React.createElement(Harness, {
+        workspaces: edited,
+        workspaceDefaults: seed,
+        onWorkspacesChange,
+        onWorkspaceSwitch,
+        handleRef,
+      }),
+    );
+    act((): void => {
+      handleRef.current?.dispatch({ kind: "reset-workspace" });
+    });
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+    expect(onWorkspaceSwitch).not.toHaveBeenCalled();
+    const next: TilingWorkspaceSet = onWorkspacesChange.mock.calls[0][0];
+    expect(next.activeId).toBe("ops");
+    expect(next.workspaces[1].name).toBe("Ops");
+    expect(next.workspaces[1].layout).toEqual(seed.workspaces[1].layout);
+    expect(next.workspaces[0].layout).toEqual(edited.workspaces[0].layout);
+  });
+
+  it("reset-workspaces restores the seed set and keeps the current activeId", (): void => {
+    const seed: TilingWorkspaceSet = threeWorkspaces("main");
+    const edited: TilingWorkspaceSet = {
+      workspaces: [
+        { ...seed.workspaces[0], layout: leaf("z") },
+        { ...seed.workspaces[1], layout: leaf("y") },
+        seed.workspaces[2],
+      ],
+      activeId: "ops",
+    };
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onWorkspaceSwitch = jest.fn((_event: TilingWorkspaceSwitchEvent): void => {});
+    const handleRef: React.RefObject<TilingCommandHandle | null> = React.createRef<TilingCommandHandle>();
+    render(
+      React.createElement(Harness, {
+        workspaces: edited,
+        workspaceDefaults: seed,
+        onWorkspacesChange,
+        onWorkspaceSwitch,
+        handleRef,
+      }),
+    );
+    act((): void => {
+      handleRef.current?.dispatch({ kind: "reset-workspaces" });
+    });
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+    expect(onWorkspaceSwitch).not.toHaveBeenCalled();
+    const next: TilingWorkspaceSet = onWorkspacesChange.mock.calls[0][0];
+    expect(next.activeId).toBe("ops");
+    expect(next.workspaces[0].layout).toEqual(seed.workspaces[0].layout);
+    expect(next.workspaces[1].layout).toEqual(seed.workspaces[1].layout);
+  });
 });
 
 describe("TilingRenderer single-layout mode is unchanged", (): void => {

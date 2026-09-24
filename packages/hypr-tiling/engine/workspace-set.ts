@@ -25,7 +25,10 @@ import type {
   TilingGroupNode,
   TilingLayoutNode,
   TilingLeafNode,
+  TilingMinBBoxPx,
   TilingPaneCycleDirection,
+  TilingPaneSizing,
+  TilingSplitNode,
   TilingWorkspacePlacement,
 } from "./types";
 
@@ -356,6 +359,142 @@ export function setWorkspaceLayout(
     return set;
   }
   return replaceLayoutAt(set, id, layout);
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Reset to defaults
+// ───────────────────────────────────────────────────────────────────────────
+
+function paneSizingEquals(a: TilingPaneSizing | undefined, b: TilingPaneSizing | undefined): boolean {
+  if (a === b) {
+    return true;
+  }
+  return a?.width === b?.width && a?.height === b?.height && a?.widthPx === b?.widthPx && a?.heightPx === b?.heightPx;
+}
+
+function minBBoxEquals(a: TilingMinBBoxPx | undefined, b: TilingMinBBoxPx | undefined): boolean {
+  if (a === b) {
+    return true;
+  }
+  return a?.widthPx === b?.widthPx && a?.heightPx === b?.heightPx;
+}
+
+function leafPayloadEquals(a: TilingLeafNode, b: TilingLeafNode): boolean {
+  return (
+    a.id === b.id &&
+    a.tileId === b.tileId &&
+    paneSizingEquals(a.sizing, b.sizing) &&
+    minBBoxEquals(a.minBBoxPx, b.minBBoxPx) &&
+    a.resizeFloor === b.resizeFloor &&
+    a.collapsed === b.collapsed &&
+    paneSizingEquals(a.collapsedRestore, b.collapsedRestore) &&
+    a.collapsedDimension === b.collapsedDimension
+  );
+}
+
+/** Structural equality of two persisted layout trees (or both `null`). */
+function layoutsEqual(a: TilingLayoutNode | null, b: TilingLayoutNode | null): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (a == null || b == null || a.kind !== b.kind) {
+    return false;
+  }
+  if (a.kind === "leaf" && b.kind === "leaf") {
+    return leafPayloadEquals(a, b);
+  }
+  if (a.kind === "group" && b.kind === "group") {
+    return (
+      a.id === b.id &&
+      a.activeMemberId === b.activeMemberId &&
+      paneSizingEquals(a.sizing, b.sizing) &&
+      a.members.length === b.members.length &&
+      a.members.every((member: TilingLeafNode, index: number): boolean =>
+        leafPayloadEquals(member, b.members[index]),
+      )
+    );
+  }
+  const left: TilingSplitNode = a as TilingSplitNode;
+  const right: TilingSplitNode = b as TilingSplitNode;
+  return (
+    left.id === right.id &&
+    left.axis === right.axis &&
+    left.ratio === right.ratio &&
+    left.gapPx === right.gapPx &&
+    left.minPaneSizePx === right.minPaneSizePx &&
+    paneSizingEquals(left.sizing, right.sizing) &&
+    left.layoutMode === right.layoutMode &&
+    left.masterCount === right.masterCount &&
+    left.masterOrientation === right.masterOrientation &&
+    layoutsEqual(left.first, right.first) &&
+    layoutsEqual(left.second, right.second)
+  );
+}
+
+/**
+ * Structural equality of two workspace sets: tab-order ids, names, `activeId`,
+ * and every persisted layout-tree field (leaf ids / tile ids / sizing /
+ * collapse / min-bbox, split axis / ratio / children / master flags, group
+ * ids / members / active tab). Same-reference inputs are equal.
+ */
+export function workspaceSetEquals(a: TilingWorkspaceSet, b: TilingWorkspaceSet): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (a.activeId !== b.activeId || a.workspaces.length !== b.workspaces.length) {
+    return false;
+  }
+  for (let index: number = 0; index < a.workspaces.length; index += 1) {
+    const left: TilingWorkspace = a.workspaces[index];
+    const right: TilingWorkspace = b.workspaces[index];
+    if (left.id !== right.id || left.name !== right.name || !layoutsEqual(left.layout, right.layout)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Replace ONE workspace's `layout` and `name` from the workspace of the same
+ * id in `defaults`. `activeId` is unchanged. When `defaults` has no such id,
+ * the workspace's `layout` becomes `null` and its name is kept. Unchanged
+ * (same reference) when the id is unknown or the workspace already matches.
+ */
+export function resetWorkspaceLayout(
+  set: TilingWorkspaceSet,
+  defaults: TilingWorkspaceSet,
+  workspaceId: string = set.activeId,
+): TilingWorkspaceSet {
+  const index: number = workspaceIndex(set, workspaceId);
+  if (index === -1) {
+    return set;
+  }
+  const current: TilingWorkspace = set.workspaces[index];
+  const seed: TilingWorkspace | null = workspaceById(defaults, workspaceId);
+  const nextLayout: TilingLayoutNode | null = seed?.layout ?? null;
+  const nextName: string = seed?.name ?? current.name;
+  if (current.name === nextName && layoutsEqual(current.layout, nextLayout)) {
+    return set;
+  }
+  const workspaces: TilingWorkspace[] = [...set.workspaces];
+  workspaces[index] = { ...current, name: nextName, layout: nextLayout };
+  return { ...set, workspaces };
+}
+
+/**
+ * Replace the whole set with `defaults`, keeping `set.activeId` when that id
+ * exists in `defaults` (otherwise `defaults.activeId`). Same reference when
+ * the result is already structurally equal to `set`.
+ */
+export function resetWorkspaceSet(
+  set: TilingWorkspaceSet,
+  defaults: TilingWorkspaceSet,
+): TilingWorkspaceSet {
+  const activeId: TilingWorkspaceId =
+    workspaceById(defaults, set.activeId) != null ? set.activeId : defaults.activeId;
+  const next: TilingWorkspaceSet =
+    defaults.activeId === activeId ? defaults : { ...defaults, activeId };
+  return workspaceSetEquals(set, next) ? set : next;
 }
 
 // ───────────────────────────────────────────────────────────────────────────

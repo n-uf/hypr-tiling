@@ -145,6 +145,9 @@ describe("workspace commands (H8 gate + kind map)", (): void => {
     { kind: "move-leaf-to-workspace", workspaceId: "ops" },
     { kind: "move-leaf-to-workspace", direction: "previous", follow: true },
     { kind: "reveal-tile", tileId: "a" },
+    { kind: "reset-workspace" },
+    { kind: "reset-workspace", workspaceId: "ops" },
+    { kind: "reset-workspaces" },
   ];
 
   it("maps every workspace command to workspacesEnabled", (): void => {

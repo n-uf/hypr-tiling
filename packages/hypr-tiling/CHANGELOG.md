@@ -8,6 +8,27 @@ the version number alone does not flag them.
 
 ## Unreleased
 
+### Workspaces — reset to defaults
+
+Additive. No default key bindings; hosts opt in.
+
+- `resetWorkspaceLayout(set, defaults, workspaceId?)` — replace one
+  workspace's `layout` and `name` from the seed workspace of the same id
+  (`workspaceId` omitted → `set.activeId`). Missing seed id → `layout: null`,
+  name kept. `activeId` unchanged. Same-reference when nothing changes.
+- `resetWorkspaceSet(set, defaults)` — restore the seed set, keeping
+  `set.activeId` when that id exists in the seed. Same-reference when
+  already equal.
+- `workspaceSetEquals(a, b)` — structural equality over ids, names,
+  `activeId`, and persisted layout trees.
+- Commands `{ kind: "reset-workspace"; workspaceId? }` and
+  `{ kind: "reset-workspaces" }`, gated by `workspacesEnabled` and the
+  renderer `workspaceDefaults` seed (no-op without the seed). Emit through
+  `onWorkspacesChange`; never fire `onWorkspaceSwitch`.
+- `TilingRenderer` set-mode prop `workspaceDefaults?: TilingWorkspaceSet`.
+- Controller `defaults` option, `reset("workspace" | "all", workspaceId?)`,
+  and `atDefaults`.
+
 ### Docs
 
 - Workspace navigation (26.9.3–26.9.6) documented across the package README,

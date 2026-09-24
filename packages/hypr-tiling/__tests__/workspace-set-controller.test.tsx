@@ -70,6 +70,7 @@ interface RenderControllerOptions {
   readonly maxWorkspaces?: number;
   readonly treeDebounceMs?: number;
   readonly applyCommits?: boolean;
+  readonly defaults?: TilingWorkspaceSet;
 }
 
 interface RenderedController {
@@ -94,6 +95,7 @@ function renderController(options: RenderControllerOptions = {}): RenderedContro
       readOnly: options.readOnly,
       maxWorkspaces: options.maxWorkspaces,
       treeDebounceMs: options.treeDebounceMs,
+      defaults: options.defaults,
       mintWorkspaceId: (): string => {
         minted += 1;
         return `ws-${minted}`;
@@ -444,5 +446,72 @@ describe("useTilingWorkspaceSetController", (): void => {
       rendered.result.current.moveTile("missing", "ops");
     });
     expect(rendered.onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("reset restores one workspace or the whole set immediately and reports atDefaults", (): void => {
+    const seed: TilingWorkspaceSet = twoWorkspaces("main");
+    const edited: TilingWorkspaceSet = {
+      workspaces: [
+        { id: "main", name: "Main edited", layout: leaf("z") },
+        { id: "ops", name: "Ops edited", layout: leaf("y") },
+      ],
+      activeId: "ops",
+    };
+    const rendered: RenderedController = renderController({
+      value: edited,
+      defaults: seed,
+      applyCommits: true,
+    });
+    expect(rendered.result.current.atDefaults).toBe(false);
+    let changed: boolean = false;
+    act((): void => {
+      changed = rendered.result.current.reset("workspace");
+    });
+    expect(changed).toBe(true);
+    expect(rendered.onCommit).toHaveBeenCalledTimes(1);
+    expect(rendered.commits[0].reason).toBe("lifecycle");
+    expect(rendered.result.current.set.activeId).toBe("ops");
+    expect(rendered.result.current.set.workspaces[1].name).toBe("Ops");
+    expect(rendered.result.current.set.workspaces[1].layout).toEqual(seed.workspaces[1].layout);
+    expect(rendered.result.current.set.workspaces[0].name).toBe("Main edited");
+    expect(rendered.result.current.atDefaults).toBe(false);
+    act((): void => {
+      changed = rendered.result.current.reset("all");
+    });
+    expect(changed).toBe(true);
+    expect(rendered.onCommit).toHaveBeenCalledTimes(2);
+    expect(rendered.result.current.set.activeId).toBe("ops");
+    expect(rendered.result.current.set.workspaces[0].layout).toEqual(seed.workspaces[0].layout);
+    expect(rendered.result.current.atDefaults).toBe(false);
+    const atSeed: RenderedController = renderController({ value: seed, defaults: seed });
+    expect(atSeed.result.current.atDefaults).toBe(true);
+    act((): void => {
+      changed = atSeed.result.current.reset("all");
+    });
+    expect(changed).toBe(false);
+    expect(atSeed.onCommit).not.toHaveBeenCalled();
+  });
+
+  it("reset returns false without defaults or when read-only; atDefaults is false without defaults", (): void => {
+    const edited: TilingWorkspaceSet = withWorkspaceLayout(twoWorkspaces("ops"), "ops", leaf("y"));
+    const none: RenderedController = renderController({ value: edited });
+    expect(none.result.current.atDefaults).toBe(false);
+    let changed: boolean = true;
+    act((): void => {
+      changed = none.result.current.reset("all");
+    });
+    expect(changed).toBe(false);
+    expect(none.onCommit).not.toHaveBeenCalled();
+    const frozen: RenderedController = renderController({
+      value: edited,
+      defaults: twoWorkspaces(),
+      readOnly: true,
+    });
+    expect(frozen.result.current.atDefaults).toBe(false);
+    act((): void => {
+      changed = frozen.result.current.reset("workspace");
+    });
+    expect(changed).toBe(false);
+    expect(frozen.onCommit).not.toHaveBeenCalled();
   });
 });

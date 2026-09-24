@@ -157,7 +157,7 @@ export function isMultiSelectModifierActive(event: MultiSelectModifierState): bo
 
 // @public
 export function isWorkspaceNavigationCommand(command: TilingCommand): command is Extract<TilingCommand, {
-    kind: "switch-workspace" | "cycle-workspace" | "move-leaf-to-workspace" | "reveal-tile";
+    kind: "switch-workspace" | "cycle-workspace" | "move-leaf-to-workspace" | "reveal-tile" | "reset-workspace" | "reset-workspaces";
 }>;
 
 // @public
@@ -215,6 +215,12 @@ export interface RepairWorkspaceSetOptions extends WorkspaceSetIntegrityOptions 
     readonly orphanPlacement?: TilingWorkspacePlacement;
     readonly orphanWorkspaceId?: TilingWorkspaceId;
 }
+
+// @public
+export function resetWorkspaceLayout(set: TilingWorkspaceSet, defaults: TilingWorkspaceSet, workspaceId?: string): TilingWorkspaceSet;
+
+// @public
+export function resetWorkspaceSet(set: TilingWorkspaceSet, defaults: TilingWorkspaceSet): TilingWorkspaceSet;
 
 // @public
 export function resolveDragChrome(theme: TilingTheme): TilingThemeDragChromeTokens;
@@ -654,6 +660,26 @@ export type TilingCommand = {
 } | {
     kind: "reveal-tile";
     tileId: string;
+}
+/**
+* Replace one workspace's `layout` (and `name`) from
+* {@link TilingRendererWorkspaceSetProps.workspaceDefaults}. `workspaceId`
+* omitted → the active workspace. `activeId` is unchanged (no switch
+* transition). No-op without `workspaceDefaults`. Host opt-in — no default
+* key binding.
+*/
+| {
+    kind: "reset-workspace";
+    workspaceId?: string;
+}
+/**
+* Replace the whole set from
+* {@link TilingRendererWorkspaceSetProps.workspaceDefaults}, keeping the
+* current `activeId` when that id exists in the seed. No-op without
+* `workspaceDefaults`. Host opt-in — no default key binding.
+*/
+| {
+    kind: "reset-workspaces";
 };
 
 // @public
@@ -1081,6 +1107,7 @@ export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonPro
     onWorkspaceSwitch?: (event: TilingWorkspaceSwitchEvent) => void;
     orphanTiles?: TilingOrphanTilePolicy;
     renderEmptyWorkspace?: (workspace: TilingWorkspace) => React_2.ReactNode;
+    workspaceDefaults?: TilingWorkspaceSet;
     workspaces: TilingWorkspaceSet;
 }
 
@@ -1391,6 +1418,7 @@ export type TilingWorkspaceSetCommitReason = "tree" | "lifecycle" | "move" | "re
 
 // @public
 export interface TilingWorkspaceSetController {
+    readonly atDefaults: boolean;
     readonly create: () => TilingWorkspaceId | null;
     readonly flush: () => void;
     readonly moveTile: (tileId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement) => void;
@@ -1398,6 +1426,7 @@ export interface TilingWorkspaceSetController {
     readonly pending: boolean;
     readonly remove: (id: TilingWorkspaceId) => ReadonlyArray<string>;
     readonly rename: (id: TilingWorkspaceId, name: string) => void;
+    readonly reset: (scope: "workspace" | "all", workspaceId?: string) => boolean;
     readonly reveal: (tileId: string) => TilingRevealTileResult | null;
     readonly set: TilingWorkspaceSet;
     readonly switch: (id: TilingWorkspaceId) => void;
@@ -1405,6 +1434,7 @@ export interface TilingWorkspaceSetController {
 
 // @public
 export interface TilingWorkspaceSetControllerOptions {
+    readonly defaults?: TilingWorkspaceSet;
     readonly maxWorkspaces?: number;
     readonly mintWorkspaceId: () => string;
     readonly nextWorkspaceName: (existing: ReadonlyArray<TilingWorkspace>) => string;
@@ -1732,6 +1762,9 @@ export interface WheelTouchInputPort {
 
 // @public
 export const WORKSPACE_KEY_BINDINGS: ReadonlyArray<TilingKeyBinding>;
+
+// @public
+export function workspaceSetEquals(a: TilingWorkspaceSet, b: TilingWorkspaceSet): boolean;
 
 // @public
 export interface WorkspaceSetIntegrityOptions {

@@ -320,7 +320,7 @@ export function isStructurallyValidLayout(node: TilingLayoutNode): boolean;
 
 // @public
 export function isWorkspaceNavigationCommand(command: TilingCommand): command is Extract<TilingCommand, {
-    kind: "switch-workspace" | "cycle-workspace" | "move-leaf-to-workspace" | "reveal-tile";
+    kind: "switch-workspace" | "cycle-workspace" | "move-leaf-to-workspace" | "reveal-tile" | "reset-workspace" | "reset-workspaces";
 }>;
 
 // @public
@@ -465,6 +465,12 @@ export interface RepairWorkspaceSetOptions extends WorkspaceSetIntegrityOptions 
     readonly orphanPlacement?: TilingWorkspacePlacement;
     readonly orphanWorkspaceId?: TilingWorkspaceId;
 }
+
+// @public
+export function resetWorkspaceLayout(set: TilingWorkspaceSet, defaults: TilingWorkspaceSet, workspaceId?: string): TilingWorkspaceSet;
+
+// @public
+export function resetWorkspaceSet(set: TilingWorkspaceSet, defaults: TilingWorkspaceSet): TilingWorkspaceSet;
 
 // @public
 export function resolveDragCursorPresentation(resolvedTarget: DragResolvedTarget | null, sourceLeafId: string): DragCursorPresentation;
@@ -1246,6 +1252,9 @@ export interface WheelTouchInputPort {
 
 // @public
 export const WORKSPACE_KEY_BINDINGS: ReadonlyArray<TilingKeyBinding>;
+
+// @public
+export function workspaceSetEquals(a: TilingWorkspaceSet, b: TilingWorkspaceSet): boolean;
 
 // @public
 export interface WorkspaceSetIntegrityOptions {

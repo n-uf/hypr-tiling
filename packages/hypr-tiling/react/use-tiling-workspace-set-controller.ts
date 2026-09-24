@@ -21,8 +21,11 @@ import {
   deleteWorkspace,
   moveTileToWorkspace,
   renameWorkspace,
+  resetWorkspaceLayout,
+  resetWorkspaceSet,
   revealTile,
   switchWorkspace,
+  workspaceSetEquals,
   TILING_WORKSPACES_MAX,
   type TilingDeleteWorkspaceResult,
   type TilingRevealTileResult,
@@ -50,6 +53,12 @@ export interface TilingWorkspaceSetControllerOptions {
   readonly nextWorkspaceName: (existing: ReadonlyArray<TilingWorkspace>) => string;
   /** Optional cap for `create()` (host concern). Default `TILING_WORKSPACES_MAX`. */
   readonly maxWorkspaces?: number;
+  /**
+   * Seed set for {@link TilingWorkspaceSetController.reset} and
+   * {@link TilingWorkspaceSetController.atDefaults}. Absent → `reset` returns
+   * `false` and `atDefaults` is `false`.
+   */
+  readonly defaults?: TilingWorkspaceSet;
 }
 
 /**
@@ -87,6 +96,19 @@ export interface TilingWorkspaceSetController {
    * seated nowhere.
    */
   readonly reveal: (tileId: string) => TilingRevealTileResult | null;
+  /**
+   * Restore the seed: `"workspace"` replaces one workspace (`workspaceId`
+   * omitted → the viewed `activeId`); `"all"` replaces the whole set while
+   * keeping the current `activeId` when that id exists in `defaults`.
+   * Immediate commit (reason `"lifecycle"`), not tree-debounced. `false`
+   * when there are no defaults, the host is read-only, or nothing changed.
+   */
+  readonly reset: (scope: "workspace" | "all", workspaceId?: string) => boolean;
+  /**
+   * `true` when the viewed set is structurally equal to `defaults`.
+   * `false` when `defaults` is omitted.
+   */
+  readonly atDefaults: boolean;
   /** Commit pending trees now (reason `"tree"`). */
   readonly flush: () => void;
   /** `true` while trees are awaiting a `"tree"` commit. */
@@ -139,6 +161,7 @@ export function useTilingWorkspaceSetController(
     mintWorkspaceId,
     nextWorkspaceName,
     maxWorkspaces = TILING_WORKSPACES_MAX,
+    defaults,
   } = options;
 
   const [localTrees, setLocalTrees] = React.useState<
@@ -170,6 +193,8 @@ export function useTilingWorkspaceSetController(
   nextWorkspaceNameRef.current = nextWorkspaceName;
   const maxWorkspacesRef = React.useRef<number>(maxWorkspaces);
   maxWorkspacesRef.current = maxWorkspaces;
+  const defaultsRef = React.useRef<TilingWorkspaceSet | undefined>(defaults);
+  defaultsRef.current = defaults;
 
   const viewed: TilingWorkspaceSet = React.useMemo(
     (): TilingWorkspaceSet => viewedWorkspaceSet(baseSet, localTrees, localActiveId),
@@ -439,6 +464,34 @@ export function useTilingWorkspaceSetController(
     [emit, emitFlushedIfChanged, replaceLocalTrees, withPendingFlushed],
   );
 
+  const reset = React.useCallback(
+    (scope: "workspace" | "all", workspaceId?: string): boolean => {
+      if (readOnlyRef.current) {
+        return false;
+      }
+      const seed: TilingWorkspaceSet | undefined = defaultsRef.current;
+      if (seed == null) {
+        return false;
+      }
+      const original: TilingWorkspaceSet = baseSetRef.current;
+      const base: TilingWorkspaceSet = withPendingFlushed();
+      const next: TilingWorkspaceSet =
+        scope === "all"
+          ? resetWorkspaceSet(base, seed)
+          : resetWorkspaceLayout(base, seed, workspaceId ?? base.activeId);
+      if (next === base) {
+        emitFlushedIfChanged(original, base);
+        return false;
+      }
+      emit(next, "lifecycle");
+      return true;
+    },
+    [emit, emitFlushedIfChanged, withPendingFlushed],
+  );
+
+  const atDefaults: boolean =
+    defaults != null && workspaceSetEquals(viewed, defaults);
+
   const flush = React.useCallback((): void => {
     const original: TilingWorkspaceSet = baseSetRef.current;
     const next: TilingWorkspaceSet = withPendingFlushed();
@@ -516,6 +569,8 @@ export function useTilingWorkspaceSetController(
     switch: switchTo,
     moveTile,
     reveal,
+    reset,
+    atDefaults,
     flush,
     pending,
   };

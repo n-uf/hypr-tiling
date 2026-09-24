@@ -593,7 +593,22 @@ export type TilingCommand =
       placement?: TilingWorkspacePlacement;
       follow?: boolean;
     }
-  | { kind: "reveal-tile"; tileId: string };
+  | { kind: "reveal-tile"; tileId: string }
+  /**
+   * Replace one workspace's `layout` (and `name`) from
+   * {@link TilingRendererWorkspaceSetProps.workspaceDefaults}. `workspaceId`
+   * omitted → the active workspace. `activeId` is unchanged (no switch
+   * transition). No-op without `workspaceDefaults`. Host opt-in — no default
+   * key binding.
+   */
+  | { kind: "reset-workspace"; workspaceId?: string }
+  /**
+   * Replace the whole set from
+   * {@link TilingRendererWorkspaceSetProps.workspaceDefaults}, keeping the
+   * current `activeId` when that id exists in the seed. No-op without
+   * `workspaceDefaults`. Host opt-in — no default key binding.
+   */
+  | { kind: "reset-workspaces" };
 
 /**
  * How a workspace switch was initiated through the renderer. `"swipe"` is a
@@ -1076,11 +1091,13 @@ export interface TilingInteractionCapabilities {
    */
   grouping?: boolean | TilingGroupingCapability;
   /**
-   * Workspace-set navigation commands (`switch-workspace`, `cycle-workspace`,
-   * `move-leaf-to-workspace`, `reveal-tile`). A bare boolean is shorthand for
+   * Workspace-set navigation and reset commands (`switch-workspace`,
+   * `cycle-workspace`, `move-leaf-to-workspace`, `reveal-tile`,
+   * `reset-workspace`, `reset-workspaces`). A bare boolean is shorthand for
    * `{ enable }`. Default `enable: true` (like the other capabilities); the
    * renderer still forces the command gate off in single-layout mode (no
-   * `workspaces` prop), so a dispatch there is a no-op. `followMovedLeaf`
+   * `workspaces` prop), so a dispatch there is a no-op. Reset commands
+   * additionally no-op without `workspaceDefaults`. `followMovedLeaf`
    * is the default `follow` on `move-leaf-to-workspace` when the command
    * omits it (Hyprland `movetoworkspace` vs `movetoworkspacesilent`); default
    * `false`.
@@ -2566,6 +2583,13 @@ export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonPro
    * workspace (`layout: null`) unmounts the tree — and with it the pool.
    */
   inactiveWorkspaces?: TilingInactiveWorkspacesMode;
+  /**
+   * Seed set for `reset-workspace` / `reset-workspaces`. Absent → those
+   * commands are no-ops (return false). Hosts that persist a visitor-edited
+   * set pass the original seed here so reset can restore one workspace or
+   * the whole set without switching `activeId`.
+   */
+  workspaceDefaults?: TilingWorkspaceSet;
 }
 
 /**
