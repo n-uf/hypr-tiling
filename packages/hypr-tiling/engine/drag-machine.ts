@@ -49,8 +49,11 @@ export const DRAG_TOUCH_SCROLL_ESCAPE_PX: number = 10;
 /** The pointer device classes the FSM distinguishes (mouse/pen vs touch). */
 export type DragPointerType = "mouse" | "pen" | "touch";
 
+/** A window-client point (CSS px) as the drag FSM tracks it. */
 export interface DragMachinePoint {
+  /** Horizontal window-client coordinate. */
   x: number;
+  /** Vertical window-client coordinate. */
   y: number;
 }
 
@@ -123,6 +126,10 @@ export type DragSettleOutcome = "commit" | "cancel" | "claimed";
  *   commits (`onLayoutChange`), cancels (revert to the original layout +
  *   fly-back), or was `claimed` by the host (`onExternalDrop` — no fly-back,
  *   no in-tree commit). Always transitions to `idle` on `SETTLE_DONE`.
+ *
+ * `idle` has a second entry edge into `dragging`: {@link DragRearmEvent}
+ * (`REARM`), the spring-loaded tab drop's continuation drag on the leaf's new
+ * seat under the still-held pointer. It is the only edge that skips `armed`.
  */
 export type DragMachineState =
   | { phase: "idle" }
@@ -180,9 +187,87 @@ export type DragMachineEvent =
   | { type: "ESCAPE" }
   | { type: "BLUR" }
   | { type: "VISIBILITY_HIDDEN" }
-  | { type: "SETTLE_DONE" };
+  | { type: "SETTLE_DONE" }
+  | DragRearmEvent;
+
+/**
+ * `REARM` — start a NEW drag on `sourceLeafId` at the CURRENT pointer position
+ * without a fresh `pointerdown`. The spring-loaded workspace-tab drop
+ * (`engine/workspace-spring-load.ts`, plan N3) ends the running drag as a
+ * `claimed` external commit (`moveLeafToWorkspace`), the set switches to the
+ * destination workspace, and the still-held pointer must keep dragging the
+ * leaf from its NEW seat — so the machine needs an edge from `idle` straight
+ * into `dragging` that carries the pointer identity of the button that is
+ * still down.
+ *
+ * Accepted ONLY in `idle` (see {@link canRearmDrag}); ignored in every other
+ * phase, so a `REARM` can never fork a live drag or skip a pending settle
+ * teardown (the settle effect must have run `SETTLE_DONE` first — that is
+ * where the renderer releases the old seat / latch cluster and strips the old
+ * tree's transient styles, INV-R1). The event carries a footprint measured on
+ * the NEW tree: nothing from the previous drag's `anchorFootprint`,
+ * `resolvedTarget` or `ghostFootprint` survives into the re-armed state, so a
+ * cancel after a rearm flies back to the leaf's new seat, never to the old
+ * workspace.
+ *
+ * `tileId` is informational for the host bridge (the renderer rebuilds the
+ * ghost snapshot from it); the reducer itself is leaf-keyed and ignores it.
+ */
+export interface DragRearmEvent {
+  /** Discriminant. */
+  type: "REARM";
+  /** The pointer that is still held down (the pointer the claimed drag ran on). */
+  pointerId: number;
+  /** Its device class; `touchDrag` is derived from it exactly as on `POINTER_DOWN`. */
+  pointerType: DragPointerType;
+  /** The leaf to drag from its seat in the NEW tree. */
+  sourceLeafId: string;
+  /** The tile the leaf carries — for the renderer's ghost snapshot; unused by the reducer. */
+  tileId?: string;
+  /** The leaf's footprint measured on the NEW tree (its seat after the move). */
+  anchorFootprint: TilingPaneFootprint;
+  /**
+   * Grab offset inside `anchorFootprint`. Omitted → {@link rearmPointerAnchorOffset}
+   * (the pointer's own offset when it is inside the footprint, else its centre).
+   */
+  pointerAnchorOffset?: DragMachinePoint;
+  /** The pointer's CURRENT window-client position — the re-armed drag's first sample. */
+  client: DragMachinePoint;
+}
 
 export const DRAG_MACHINE_INITIAL_STATE: DragMachineState = { phase: "idle" };
+
+/**
+ * The phase gate of {@link DragRearmEvent}: `true` iff the machine is `idle`.
+ * The set-mode wrapper consults it before dispatching `REARM` so a spring-load
+ * whose settle has not finished (`settling`), or that races a fresh press
+ * (`armed` / `dragging`), is dropped rather than queued.
+ */
+export function canRearmDrag(state: DragMachineState): boolean {
+  return state.phase === "idle";
+}
+
+/**
+ * The grab offset a re-armed drag uses when the host does not supply one. The
+ * pointer is typically OUTSIDE the leaf's new seat at rearm time (it is still
+ * over the workspace tab), so a raw `client − footprint.origin` offset would be
+ * negative / oversized and the footprint ghost would trail far from the
+ * cursor. Inside the footprint the real offset is kept (the grab feels
+ * continuous); outside, the ghost is centred under the pointer.
+ */
+export function rearmPointerAnchorOffset(
+  anchorFootprint: TilingPaneFootprint,
+  client: DragMachinePoint,
+): DragMachinePoint {
+  const dx: number = client.x - anchorFootprint.left;
+  const dy: number = client.y - anchorFootprint.top;
+  const inside: boolean =
+    dx >= 0 && dy >= 0 && dx <= anchorFootprint.width && dy <= anchorFootprint.height;
+  if (inside) {
+    return { x: dx, y: dy };
+  }
+  return { x: anchorFootprint.width / 2, y: anchorFootprint.height / 2 };
+}
 
 /** Euclidean travel from the pickup origin has reached the pickup threshold. */
 export function hasCrossedPickupThreshold(
@@ -682,6 +767,26 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
           anchorFootprint: event.anchorFootprint,
           pointerAnchorOffset: event.pointerAnchorOffset,
           originClient: event.originClient,
+        };
+      }
+      if (event.type === "REARM") {
+        // Spring-load continuation: the previous drag settled `claimed` and
+        // reached `idle` (settle teardown done); the pointer is still held.
+        // Enter `dragging` directly on the leaf's NEW seat — every footprint is
+        // from the event (the new tree), `resolvedTarget` starts null, so no
+        // state of the old tree's drag survives.
+        const pointerAnchorOffset: DragMachinePoint =
+          event.pointerAnchorOffset ?? rearmPointerAnchorOffset(event.anchorFootprint, event.client);
+        return {
+          phase: "dragging",
+          pointerId: event.pointerId,
+          pointerType: event.pointerType,
+          touchDrag: event.pointerType === "touch",
+          sourceLeafId: event.sourceLeafId,
+          anchorFootprint: event.anchorFootprint,
+          pointerAnchorOffset,
+          ghostFootprint: ghostFootprintAt(event.anchorFootprint, pointerAnchorOffset, event.client),
+          resolvedTarget: null,
         };
       }
       return state;

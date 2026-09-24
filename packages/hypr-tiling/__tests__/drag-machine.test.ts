@@ -36,6 +36,9 @@ import {
   shouldSuppressCompetingCancel,
   EMPTY_COMMITTABLE_SEAT_FALLBACK,
   type CommittableSeatFallback,
+  canRearmDrag,
+  rearmPointerAnchorOffset,
+  type DragRearmEvent,
 } from "../engine/drag-machine";
 import { createDragWatchdog } from "../engine/drag-recovery";
 import { collectGroups, findGroupContainingLeaf, findLeafById, groupLeaves, insertLeafAdjacent, readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../engine/state";
@@ -1313,6 +1316,248 @@ describe("drag-machine — commit latch wins over competing cancel (throttling s
     expect(state.phase).toBe("settling");
     if (state.phase === "settling") {
       expect(state.outcome).toBe("cancel");
+    }
+  });
+});
+
+describe("drag-machine — REARM (spring-load commit-and-rearm continuation drag, N3)", (): void => {
+  /** The leaf's footprint in its NEW seat (the destination workspace's tree). */
+  const NEW_SEAT: TilingPaneFootprint = { left: 600, top: 400, width: 240, height: 180 };
+  /** The still-held pointer, over the tab strip — OUTSIDE the new seat. */
+  const HELD_POINT: { x: number; y: number } = { x: 40, y: 12 };
+
+  function rearm(overrides: Partial<DragRearmEvent> = {}): DragRearmEvent {
+    return {
+      type: "REARM",
+      pointerId: 1,
+      pointerType: "mouse",
+      sourceLeafId: "A",
+      tileId: "tile-a",
+      anchorFootprint: NEW_SEAT,
+      client: HELD_POINT,
+      ...overrides,
+    };
+  }
+
+  /** Drive a full claimed external commit: dragging → settling(claimed) → idle. */
+  function toIdleAfterClaimed(): DragMachineState {
+    let state: DragMachineState = toDragging();
+    state = dragMachineReducer(state, {
+      type: "TARGET_RESOLVED",
+      pointerId: 1,
+      resolvedTarget: makeTarget("C", "center", "swap"),
+    });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1, claimed: true });
+    expect(state.phase === "settling" && state.outcome).toBe("claimed");
+    state = dragMachineReducer(state, { type: "SETTLE_DONE" });
+    expect(state.phase).toBe("idle");
+    return state;
+  }
+
+  it("rearm after a claimed commit reached idle → dragging on the leaf's NEW seat, fresh target", (): void => {
+    const idle: DragMachineState = toIdleAfterClaimed();
+    expect(canRearmDrag(idle)).toBe(true);
+    const state: DragMachineState = dragMachineReducer(idle, rearm());
+    expect(state.phase).toBe("dragging");
+    if (state.phase === "dragging") {
+      expect(state.pointerId).toBe(1);
+      expect(state.pointerType).toBe("mouse");
+      expect(state.touchDrag).toBe(false);
+      expect(state.sourceLeafId).toBe("A");
+      // Footprints belong to the NEW tree only (no stale ANCHOR of the old drag).
+      expect(state.anchorFootprint).toEqual(NEW_SEAT);
+      expect(state.anchorFootprint).not.toEqual(ANCHOR);
+      expect(state.resolvedTarget).toBeNull();
+      // Pointer outside the seat → centred grab, ghost centred under the pointer.
+      expect(state.pointerAnchorOffset).toEqual({ x: 120, y: 90 });
+      expect(state.ghostFootprint).toEqual({ left: -80, top: -78, width: 240, height: 180 });
+    }
+  });
+
+  it("rearm from the pristine initial idle state is accepted too (the gate is the phase, not history)", (): void => {
+    const state: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, rearm());
+    expect(state.phase).toBe("dragging");
+  });
+
+  it("an explicit pointerAnchorOffset is honoured verbatim", (): void => {
+    const state: DragMachineState = dragMachineReducer(
+      toIdleAfterClaimed(),
+      rearm({ pointerAnchorOffset: { x: 5, y: 7 } }),
+    );
+    expect(state.phase === "dragging" && state.pointerAnchorOffset).toEqual({ x: 5, y: 7 });
+    expect(state.phase === "dragging" && state.ghostFootprint).toEqual({
+      left: HELD_POINT.x - 5,
+      top: HELD_POINT.y - 7,
+      width: 240,
+      height: 180,
+    });
+  });
+
+  it("a touch rearm derives touchDrag exactly like POINTER_DOWN", (): void => {
+    const state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm({ pointerType: "touch", pointerId: 7 }));
+    expect(state.phase).toBe("dragging");
+    if (state.phase === "dragging") {
+      expect(state.touchDrag).toBe(true);
+      expect(state.pointerId).toBe(7);
+    }
+  });
+
+  it("rearmPointerAnchorOffset: keeps the real offset inside the footprint, centres outside", (): void => {
+    expect(rearmPointerAnchorOffset(NEW_SEAT, { x: 610, y: 450 })).toEqual({ x: 10, y: 50 });
+    // Edges are inclusive.
+    expect(rearmPointerAnchorOffset(NEW_SEAT, { x: 600, y: 400 })).toEqual({ x: 0, y: 0 });
+    expect(rearmPointerAnchorOffset(NEW_SEAT, { x: 840, y: 580 })).toEqual({ x: 240, y: 180 });
+    // Outside on any side → centre.
+    expect(rearmPointerAnchorOffset(NEW_SEAT, HELD_POINT)).toEqual({ x: 120, y: 90 });
+    expect(rearmPointerAnchorOffset(NEW_SEAT, { x: 841, y: 450 })).toEqual({ x: 120, y: 90 });
+    expect(rearmPointerAnchorOffset(NEW_SEAT, { x: 700, y: 399 })).toEqual({ x: 120, y: 90 });
+  });
+
+  it("rearm while dragging is ignored (same reference) — it can never fork a live drag", (): void => {
+    const dragging: DragMachineState = toDragging();
+    expect(canRearmDrag(dragging)).toBe(false);
+    expect(dragMachineReducer(dragging, rearm())).toBe(dragging);
+    // Same for a foreign pointer id.
+    expect(dragMachineReducer(dragging, rearm({ pointerId: 9 }))).toBe(dragging);
+  });
+
+  it("rearm while armed is ignored (same reference)", (): void => {
+    const armed: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, pointerDown());
+    expect(canRearmDrag(armed)).toBe(false);
+    expect(dragMachineReducer(armed, rearm())).toBe(armed);
+  });
+
+  it("rearm while settling (claimed / commit / cancel) is ignored — the settle teardown must run first", (): void => {
+    let claimed: DragMachineState = toDragging();
+    claimed = dragMachineReducer(claimed, { type: "POINTER_UP", pointerId: 1, claimed: true });
+    expect(claimed.phase).toBe("settling");
+    expect(canRearmDrag(claimed)).toBe(false);
+    expect(dragMachineReducer(claimed, rearm())).toBe(claimed);
+
+    let commit: DragMachineState = toDragging();
+    commit = dragMachineReducer(commit, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("C", "center", "swap") });
+    commit = dragMachineReducer(commit, { type: "POINTER_UP", pointerId: 1 });
+    expect(commit.phase === "settling" && commit.outcome).toBe("commit");
+    expect(dragMachineReducer(commit, rearm())).toBe(commit);
+
+    const cancel: DragMachineState = dragMachineReducer(toDragging(), { type: "ESCAPE" });
+    expect(cancel.phase === "settling" && cancel.outcome).toBe("cancel");
+    expect(dragMachineReducer(cancel, rearm())).toBe(cancel);
+  });
+
+  it("after rearm, a move updates the ghost and a resolved target commits in the NEW tree", (): void => {
+    let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm());
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 700, y: 500 } });
+    expect(state.phase === "dragging" && state.ghostFootprint).toEqual({ left: 580, top: 410, width: 240, height: 180 });
+    const target: DragResolvedTarget = makeTarget("B", "center", "swap");
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: target });
+    expect(activeResolvedTarget(state)?.leafId).toBe("B");
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase).toBe("settling");
+    if (state.phase === "settling") {
+      expect(state.outcome).toBe("commit");
+      expect(state.resolvedTarget?.leafId).toBe("B");
+    }
+    expect(dragMachineReducer(state, { type: "SETTLE_DONE" }).phase).toBe("idle");
+  });
+
+  it("after rearm, a release with no target cancels — fly-back targets the NEW seat, never the old workspace", (): void => {
+    let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm());
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 300, y: 300 } });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase).toBe("settling");
+    if (state.phase === "settling") {
+      expect(state.outcome).toBe("cancel");
+      expect(state.toFootprint).toEqual(NEW_SEAT);
+      expect(state.fromFootprint).toEqual({ left: 180, top: 210, width: 240, height: 180 });
+    }
+  });
+
+  it("every recovery / interruption edge after a rearm behaves as for a fresh drag (INV-R2..R4)", (): void => {
+    const terminal: ReadonlyArray<DragMachineEvent> = [
+      { type: "POINTER_CANCEL", pointerId: 1 },
+      { type: "POINTER_CANCEL" }, // watchdog / source-vanished dispatch (no pointer id)
+      { type: "ESCAPE" },
+      { type: "BLUR" },
+      { type: "VISIBILITY_HIDDEN" },
+    ];
+    for (const event of terminal) {
+      let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm());
+      state = dragMachineReducer(state, event);
+      expect(state.phase).toBe("settling");
+      if (state.phase === "settling") {
+        expect(state.outcome).toBe("cancel");
+        expect(state.resolvedTarget).toBeNull();
+        expect(state.toFootprint).toEqual(NEW_SEAT);
+      }
+      state = dragMachineReducer(state, { type: "SETTLE_DONE" });
+      expect(state.phase).toBe("idle");
+    }
+  });
+
+  it("the M3 watchdog expiry reconciles a re-armed drag through the existing POINTER_CANCEL edge", (): void => {
+    let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm());
+    const timers: { pending: (() => void) | null } = { pending: null };
+    let nowMs: number = 0;
+    const watchdog = createDragWatchdog({
+      maxIdleMs: 5100,
+      now: (): number => nowMs,
+      scheduler: {
+        setTimer: (cb: () => void, _ms: number): number => {
+          timers.pending = cb;
+          return 1;
+        },
+        clearTimer: (_h: number): void => {
+          timers.pending = null;
+        },
+      },
+      onExpire: (): void => {
+        state = dragMachineReducer(state, { type: "POINTER_CANCEL" });
+      },
+    });
+    watchdog.progress();
+    nowMs = 5100;
+    const cb: (() => void) | null = timers.pending;
+    timers.pending = null;
+    cb?.();
+    expect(state.phase === "settling" && state.outcome).toBe("cancel");
+    expect(dragMachineReducer(state, { type: "SETTLE_DONE" }).phase).toBe("idle");
+  });
+
+  it("a foreign pointer cannot steal the re-armed drag; the owning pointer's release settles it", (): void => {
+    let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm({ pointerId: 3 }));
+    const stolen: DragMachineState = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(stolen).toBe(state);
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 3 });
+    expect(state.phase).toBe("settling");
+  });
+
+  it("a fresh POINTER_DOWN preempts a residual re-armed settle like any other", (): void => {
+    let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm());
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    state = dragMachineReducer(state, pointerDown(2));
+    expect(state.phase).toBe("armed");
+  });
+
+  it("presentation selectors see a re-armed drag as an ordinary dragging state", (): void => {
+    const state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm());
+    expect(activeDragSourceLeafId(state)).toBe("A");
+    expect(presentationDragSourceLeafId(state)).toBe("A");
+    expect(activeResolvedTarget(state)).toBeNull();
+    expect(presentationResolvedTarget(state)).toBeNull();
+  });
+
+  it("a second rearm chain (spring-load twice in one gesture) keeps only the latest seat", (): void => {
+    let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm());
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1, claimed: true });
+    state = dragMachineReducer(state, { type: "SETTLE_DONE" });
+    const THIRD_SEAT: TilingPaneFootprint = { left: 10, top: 20, width: 100, height: 50 };
+    state = dragMachineReducer(state, rearm({ anchorFootprint: THIRD_SEAT, client: { x: 15, y: 25 } }));
+    expect(state.phase).toBe("dragging");
+    if (state.phase === "dragging") {
+      expect(state.anchorFootprint).toEqual(THIRD_SEAT);
+      expect(state.pointerAnchorOffset).toEqual({ x: 5, y: 5 });
+      expect(state.ghostFootprint).toEqual({ left: 10, top: 20, width: 100, height: 50 });
     }
   });
 });
