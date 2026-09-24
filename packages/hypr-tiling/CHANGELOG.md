@@ -8,6 +8,10 @@ the version number alone does not flag them.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.9.7 — 2026-09-24
+
 ### Workspaces — reset to defaults
 
 Additive. No default key bindings; hosts opt in.
