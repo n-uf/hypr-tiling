@@ -124,8 +124,12 @@ export const CANVAS_THEME: TilingTheme = {
 };
 
 /**
- * Built-in group tab strip tokens per docs-home skin. CSS values, applied by
- * the library strip (`grouping.groupTabStrip.theme`).
+ * Built-in tab strip tokens per docs-home skin. CSS values, applied by the
+ * library strips. `HOME_GROUP_TAB_STRIP` is the quiet tier
+ * (`grouping.groupTabStrip.theme`): pill tabs in a rail, active pill a soft
+ * fill. `HOME_PANE_TAB_STRIP` (`paneSwitching.tabStrip.theme`, shown while a
+ * pane is maximized) is the solid tier: the active pill is the skin's accent
+ * with inverted text; its nested tier falls back to the quiet fill.
  */
 export const HOME_GROUP_TAB_STRIP: Record<
   "mosaic" | "editorial" | "canvas",
@@ -138,16 +142,20 @@ export const HOME_GROUP_TAB_STRIP: Record<
     tabHoverColor: "rgb(214, 211, 209)",
     tabActiveColor: "rgb(255, 251, 235)",
     tabBackground: "transparent",
-    tabActiveBackground: "rgba(252, 211, 77, 0.14)",
+    tabActiveBackground: "rgba(255, 255, 255, 0.08)",
     accent: "rgb(252, 211, 77)",
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
     fontSize: "10px",
     letterSpacing: "0.08em",
-    radius: "0px",
-    gap: "0px",
+    radius: "3px",
+    gap: "2px",
     paddingX: "8px",
     controlColor: "rgb(168, 162, 158)",
     controlHoverColor: "rgb(254, 243, 199)",
+    railBackground: "rgba(255, 255, 255, 0.02)",
+    railBorderColor: "rgba(255, 255, 255, 0.12)",
+    nestedTabActiveBackground: "rgba(255, 255, 255, 0.08)",
+    nestedTabActiveColor: "rgb(255, 251, 235)",
   },
   editorial: {
     background: "#f7f3ea",
@@ -156,16 +164,20 @@ export const HOME_GROUP_TAB_STRIP: Record<
     tabHoverColor: "#3d382e",
     tabActiveColor: "#241f17",
     tabBackground: "transparent",
-    tabActiveBackground: "transparent",
+    tabActiveBackground: "rgba(36, 31, 23, 0.08)",
     accent: "#241f17",
     fontFamily: "Fraunces, ui-serif, Georgia, serif",
     fontSize: "13px",
     letterSpacing: "0em",
-    radius: "0px",
-    gap: "4px",
+    radius: "3px",
+    gap: "2px",
     paddingX: "10px",
     controlColor: "#9c8f77",
     controlHoverColor: "#241f17",
+    railBackground: "rgba(36, 31, 23, 0.03)",
+    railBorderColor: "#e2d9c4",
+    nestedTabActiveBackground: "rgba(36, 31, 23, 0.08)",
+    nestedTabActiveColor: "#241f17",
   },
   canvas: {
     background: "rgb(248, 250, 252)",
@@ -173,16 +185,41 @@ export const HOME_GROUP_TAB_STRIP: Record<
     tabColor: "rgb(71, 85, 105)",
     tabHoverColor: "rgb(51, 65, 85)",
     tabActiveColor: "rgb(14, 116, 144)",
-    tabBackground: "#ffffff",
+    tabBackground: "transparent",
     tabActiveBackground: "rgb(236, 254, 255)",
     accent: "rgb(34, 211, 238)",
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
     fontSize: "9px",
     letterSpacing: "0.12em",
     radius: "4px",
-    gap: "4px",
-    paddingX: "6px",
+    gap: "2px",
+    paddingX: "8px",
     controlColor: "rgb(100, 116, 139)",
     controlHoverColor: "rgb(14, 116, 144)",
+    railBackground: "#ffffff",
+    railBorderColor: "rgb(226, 232, 240)",
+    nestedTabActiveBackground: "rgb(236, 254, 255)",
+    nestedTabActiveColor: "rgb(14, 116, 144)",
+  },
+};
+
+export const HOME_PANE_TAB_STRIP: Record<
+  "mosaic" | "editorial" | "canvas",
+  TilingGroupTabStripTheme
+> = {
+  mosaic: {
+    ...HOME_GROUP_TAB_STRIP.mosaic,
+    tabActiveBackground: "rgb(252, 211, 77)",
+    tabActiveColor: "rgb(12, 13, 16)",
+  },
+  editorial: {
+    ...HOME_GROUP_TAB_STRIP.editorial,
+    tabActiveBackground: "#241f17",
+    tabActiveColor: "#f7f3ea",
+  },
+  canvas: {
+    ...HOME_GROUP_TAB_STRIP.canvas,
+    tabActiveBackground: "rgb(14, 116, 144)",
+    tabActiveColor: "#ffffff",
   },
 };

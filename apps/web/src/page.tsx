@@ -36,7 +36,12 @@ import { EditorialTile } from "./editorial-tile";
 import { EditorialPaneContent } from "./content-editorial";
 import { CanvasTile } from "./canvas-tile";
 import { CanvasPaneContent } from "./content-canvas";
-import { CANVAS_THEME, CANVAS_TICKS, HOME_GROUP_TAB_STRIP } from "./canvas-theme";
+import {
+  CANVAS_THEME,
+  CANVAS_TICKS,
+  HOME_GROUP_TAB_STRIP,
+  HOME_PANE_TAB_STRIP,
+} from "./canvas-theme";
 import { HomeShortcuts } from "./shortcuts";
 import { HomeWorkspaceTabStrip } from "./home-workspace-tabs";
 import {
@@ -891,7 +896,7 @@ export function HomePage({
         showTabStrip: "maximized",
         tabStrip: {
           placement: "top",
-          theme: HOME_GROUP_TAB_STRIP[skin],
+          theme: HOME_PANE_TAB_STRIP[skin],
           renderTabLabel: (tab: TilingPaneTab): string =>
             homeTabLabel(tab.tileId, tab.title),
         },
