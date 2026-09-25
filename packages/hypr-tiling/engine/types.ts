@@ -1258,6 +1258,8 @@ export interface TilingGroupTabStripTheme {
   borderColor?: string;
   /** Inactive tab label color. */
   tabColor?: string;
+  /** Inactive tab label color on hover. */
+  tabHoverColor?: string;
   /** Active tab label color. */
   tabActiveColor?: string;
   /** Inactive tab background. */
@@ -1292,6 +1294,8 @@ export interface ResolvedTilingGroupTabStripTheme {
   borderColor: string;
   /** Inactive tab label color. */
   tabColor: string;
+  /** Inactive tab label color on hover. */
+  tabHoverColor: string;
   /** Active tab label color. */
   tabActiveColor: string;
   /** Inactive tab background. */

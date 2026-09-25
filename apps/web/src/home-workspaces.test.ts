@@ -2,7 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 import type { TilingLayoutNode, TilingWorkspaceSet } from "@n-uf/hypr-tiling";
 import { isStructurallyValidLayout } from "@n-uf/hypr-tiling/engine";
 import {
-  HOME_USES_GROUP_ID,
+  HOME_HERO_GROUP_ID,
   HOME_WORKSPACE_SEED,
   HOME_WORKSPACE_STORAGE_KEY,
   HOME_WORKSPACE_STORAGE_VERSION,
@@ -43,9 +43,9 @@ function homeLayout(set: TilingWorkspaceSet): TilingLayoutNode {
 }
 
 describe("home workspace seed", () => {
-  it("stores version 7 under the v7 key", () => {
-    expect(HOME_WORKSPACE_STORAGE_VERSION).toBe(7);
-    expect(HOME_WORKSPACE_STORAGE_KEY).toBe("hypr-tiling-home-workspaces-v7");
+  it("stores version 8 under the v8 key", () => {
+    expect(HOME_WORKSPACE_STORAGE_VERSION).toBe(8);
+    expect(HOME_WORKSPACE_STORAGE_KEY).toBe("hypr-tiling-home-workspaces-v8");
   });
 
   it("rejects a version 6 envelope", () => {
@@ -56,13 +56,13 @@ describe("home workspace seed", () => {
     expect(parseHomeWorkspaceSetBlob(raw)).toBeNull();
   });
 
-  it("keeps the column ratios and seats Use cases | Proof | Scenarios", () => {
+  it("keeps the column ratios and seats hypr-tiling | Proof | Scenarios on the hero slot", () => {
     const layout: TilingLayoutNode = homeLayout(HOME_WORKSPACE_SEED);
     const root: TilingLayoutNode | null = findNode(layout, "home-root");
     const intro: TilingLayoutNode | null = findNode(layout, "home-intro-stack");
     const features: TilingLayoutNode | null = findNode(layout, "home-features-rest");
     const install: TilingLayoutNode | null = findNode(layout, "home-install-uses");
-    const group: TilingLayoutNode | null = findNode(layout, HOME_USES_GROUP_ID);
+    const group: TilingLayoutNode | null = findNode(layout, HOME_HERO_GROUP_ID);
     expect(root?.kind).toBe("split");
     expect(intro?.kind).toBe("split");
     expect(features?.kind).toBe("split");
@@ -81,12 +81,20 @@ describe("home workspace seed", () => {
     }
     expect(group?.kind).toBe("group");
     if (group?.kind === "group") {
-      expect(group.activeMemberId).toBe("usecases");
+      expect(group.activeMemberId).toBe("intro");
       expect(group.members.map((member) => member.id)).toEqual([
-        "usecases",
+        "intro",
         "proof",
         "scenarios",
       ]);
+    }
+    if (intro?.kind === "split") {
+      expect(intro.first.id).toBe(HOME_HERO_GROUP_ID);
+      expect(intro.second.id).toBe("discoverability");
+    }
+    if (install?.kind === "split") {
+      expect(install.first.id).toBe("install");
+      expect(install.second.id).toBe("usecases");
     }
     expect(isStructurallyValidLayout(layout)).toBe(true);
   });

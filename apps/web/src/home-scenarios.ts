@@ -1,6 +1,6 @@
 import type { TilingCommand, TilingWorkspaceSet } from "@n-uf/hypr-tiling";
 import {
-  HOME_USES_GROUP_ID,
+  HOME_HERO_GROUP_ID,
   HOME_WORKSPACE_STORAGE_VERSION,
 } from "./home-workspaces";
 
@@ -125,7 +125,7 @@ export function corruptHomeWorkspaceSet(
       if (node.id === "home-intro-stack") {
         delete node.second;
       }
-      if (node.id === HOME_USES_GROUP_ID && Array.isArray(node.members)) {
+      if (node.id === HOME_HERO_GROUP_ID && Array.isArray(node.members)) {
         node.members.push({
           kind: "leaf",
           id: "missing-seat",
@@ -224,21 +224,21 @@ const SPLIT_GROUP: HomeScenario = {
   id: "split-group",
   title: "Split and group",
   description:
-    "Split the Use cases pane east, split again, group two panes, cycle the group tab, then ungroup.",
+    "Eject Proof and Scenarios from the hero group into their own panes, group the two, cycle the group tab, then ungroup.",
   finalLine: "Group created, cycled, and ungrouped.",
   steps: [
-    commandStep("split east", [
-      { kind: "focus-pane", leafId: "usecases" },
+    commandStep("eject proof", [
+      { kind: "focus-pane", leafId: "intro" },
       {
         kind: "remove-from-group",
-        groupId: HOME_USES_GROUP_ID,
+        groupId: HOME_HERO_GROUP_ID,
         memberId: "proof",
       },
     ]),
-    commandStep("split east", [
+    commandStep("eject scenarios", [
       {
         kind: "remove-from-group",
-        groupId: HOME_USES_GROUP_ID,
+        groupId: HOME_HERO_GROUP_ID,
         memberId: "scenarios",
       },
     ]),

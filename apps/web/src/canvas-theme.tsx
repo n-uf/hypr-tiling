@@ -134,7 +134,8 @@ export const HOME_GROUP_TAB_STRIP: Record<
   mosaic: {
     background: "#0c0d10",
     borderColor: "rgba(255, 255, 255, 0.08)",
-    tabColor: "rgb(120, 113, 108)",
+    tabColor: "rgb(168, 162, 158)",
+    tabHoverColor: "rgb(214, 211, 209)",
     tabActiveColor: "rgb(255, 251, 235)",
     tabBackground: "transparent",
     tabActiveBackground: "rgba(252, 211, 77, 0.14)",
@@ -151,7 +152,8 @@ export const HOME_GROUP_TAB_STRIP: Record<
   editorial: {
     background: "#f7f3ea",
     borderColor: "#ece4d2",
-    tabColor: "#9c8f77",
+    tabColor: "#5c5344",
+    tabHoverColor: "#3d382e",
     tabActiveColor: "#241f17",
     tabBackground: "transparent",
     tabActiveBackground: "transparent",
@@ -168,7 +170,8 @@ export const HOME_GROUP_TAB_STRIP: Record<
   canvas: {
     background: "rgb(248, 250, 252)",
     borderColor: "rgb(226, 232, 240)",
-    tabColor: "rgb(100, 116, 139)",
+    tabColor: "rgb(71, 85, 105)",
+    tabHoverColor: "rgb(51, 65, 85)",
     tabActiveColor: "rgb(14, 116, 144)",
     tabBackground: "#ffffff",
     tabActiveBackground: "rgb(236, 254, 255)",

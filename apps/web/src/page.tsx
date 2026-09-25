@@ -873,6 +873,9 @@ export function HomePage({
           placement: "top",
           theme: HOME_GROUP_TAB_STRIP[skin],
           renderTabLabel: (member: TilingGroupTabMember): string => {
+            if (member.tileId === "intro") {
+              return "hypr-tiling";
+            }
             if (member.tileId === "usecases") {
               return "Use cases";
             }

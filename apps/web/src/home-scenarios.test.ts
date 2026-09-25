@@ -127,8 +127,8 @@ describe("home scenarios", () => {
       recordingHost(commands, []),
     );
     expect(splitLines.slice(0, 5)).toEqual([
-      "1/5 split east",
-      "2/5 split east",
+      "1/5 eject proof",
+      "2/5 eject scenarios",
       "3/5 group panes",
       "4/5 cycle group tab",
       "5/5 ungroup",
