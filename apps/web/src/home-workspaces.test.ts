@@ -43,9 +43,9 @@ function homeLayout(set: TilingWorkspaceSet): TilingLayoutNode {
 }
 
 describe("home workspace seed", () => {
-  it("stores version 8 under the v8 key", () => {
-    expect(HOME_WORKSPACE_STORAGE_VERSION).toBe(8);
-    expect(HOME_WORKSPACE_STORAGE_KEY).toBe("hypr-tiling-home-workspaces-v8");
+  it("stores version 9 under the v9 key", () => {
+    expect(HOME_WORKSPACE_STORAGE_VERSION).toBe(9);
+    expect(HOME_WORKSPACE_STORAGE_KEY).toBe("hypr-tiling-home-workspaces-v9");
   });
 
   it("rejects a version 6 envelope", () => {
@@ -74,10 +74,10 @@ describe("home workspace seed", () => {
       expect(intro.ratio).toBe(0.675);
     }
     if (features?.kind === "split") {
-      expect(features.ratio).toBe(0.416);
+      expect(features.ratio).toBe(0.365);
     }
     if (install?.kind === "split") {
-      expect(install.ratio).toBe(0.636);
+      expect(install.ratio).toBe(0.585);
     }
     expect(group?.kind).toBe("group");
     if (group?.kind === "group") {

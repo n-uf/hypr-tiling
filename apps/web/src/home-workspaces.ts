@@ -22,9 +22,9 @@ import type {
 // instead of replaying a previous Home tree.
 
 export const HOME_WORKSPACE_STORAGE_KEY: string =
-  "hypr-tiling-home-workspaces-v8";
+  "hypr-tiling-home-workspaces-v9";
 
-export const HOME_WORKSPACE_STORAGE_VERSION: number = 8;
+export const HOME_WORKSPACE_STORAGE_VERSION: number = 9;
 
 export const HOME_HERO_GROUP_ID: string = "home-hero";
 
@@ -37,9 +37,9 @@ export const HOME_WORKSPACE_NAME_WORKSPACES: string = "Workspaces";
 export const HOME_WORKSPACE_NAME_CHANGELOG: string = "Changelog";
 
 // Root fractions: left column 0.26 (intro 0.675 / discoverability 0.325 of that
-// column), features 0.308 (0.416 of the remaining 0.74), install 0.275
-// (0.636 of what remains after features), use cases 0.157. The extra left
-// width comes from install so features and use cases keep their share.
+// column), features 0.27 (0.365 of the remaining 0.74), install 0.275
+// (0.585 of what remains after features), use cases 0.195. Features gives up
+// width to use cases; install keeps its share.
 const HOME_LAYOUT: TilingLayoutNode = {
   kind: "split",
   id: "home-root",
@@ -70,13 +70,13 @@ const HOME_LAYOUT: TilingLayoutNode = {
     kind: "split",
     id: "home-features-rest",
     axis: "horizontal",
-    ratio: 0.416,
+    ratio: 0.365,
     first: { kind: "leaf", id: "features", tileId: "features" },
     second: {
       kind: "split",
       id: "home-install-uses",
       axis: "horizontal",
-      ratio: 0.636,
+      ratio: 0.585,
       first: { kind: "leaf", id: "install", tileId: "install" },
       second: { kind: "leaf", id: "usecases", tileId: "usecases" },
     },
