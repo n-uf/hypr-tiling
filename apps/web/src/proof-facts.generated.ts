@@ -15,11 +15,11 @@ export interface ProofFacts {
 }
 
 export const PROOF_FACTS: ProofFacts = {
-  version: "26.9.9",
-  testSuites: 66,
-  tests: 1366,
-  gzipIndexBytes: 7093,
-  gzipEngineBytes: 30503,
+  version: "26.9.10",
+  testSuites: 67,
+  tests: 1387,
+  gzipIndexBytes: 7108,
+  gzipEngineBytes: 30588,
   runtimeDependencyCount: 2,
   runtimeDependencies: [
     "clsx",

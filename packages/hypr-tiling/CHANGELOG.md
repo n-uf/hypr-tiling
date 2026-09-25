@@ -9,6 +9,10 @@ the version number alone does not flag them.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.9.10 — 2026-09-24
+
 ### Tab strips — rails and pills
 
 Tabs are content-width pills in a rounded rail (2px pad / gap, 1px
