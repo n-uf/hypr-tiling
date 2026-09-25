@@ -814,7 +814,13 @@ describe("built-in group tab strip", (): void => {
     expect(tabs[1].getAttribute("data-member-index")).toBe("1");
     const label: HTMLElement | null = tabs[0].querySelector("span");
     expect(label?.style.textOverflow).toBe("ellipsis");
-    expect(tabs[0].style.transition).toContain("box-shadow");
+    expect(tabs[0].style.flex).not.toContain("1 1");
+    expect(tabs[0].style.flexGrow).not.toBe("1");
+    expect(strip.querySelector(".hpt-tab-strip-rail")).not.toBeNull();
+    expect(strip.getAttribute("data-nested")).toBeNull();
+    expect(query(container, "[data-hpt-tab-strip-nest-tick]")).toBeNull();
+    expect(strip.style.getPropertyValue("--hpt-group-tab-rail-background")).not.toBe("");
+    expect(tabs[0].style.transition).toContain("background-color");
     expect(query(container, "[data-hpt-group-eject]")).not.toBeNull();
     expect(query(container, "[data-hpt-group-ungroup]")).not.toBeNull();
     const box: HTMLElement = requireEl(container, "[data-hpt-group-content-box]");
@@ -842,6 +848,22 @@ describe("built-in group tab strip", (): void => {
       '.hpt-group-tab-strip [role="tab"][aria-selected="true"]',
     );
     expect(selected.getAttribute("data-member-index")).toBe("1");
+    act((): void => {
+      fireEvent.keyDown(selected, { key: "Home" });
+    });
+    const homeSelected: HTMLElement = requireEl(
+      container,
+      '.hpt-group-tab-strip [role="tab"][aria-selected="true"]',
+    );
+    expect(homeSelected.getAttribute("data-member-index")).toBe("0");
+    act((): void => {
+      fireEvent.keyDown(homeSelected, { key: "End" });
+    });
+    const endSelected: HTMLElement = requireEl(
+      container,
+      '.hpt-group-tab-strip [role="tab"][aria-selected="true"]',
+    );
+    expect(endSelected.getAttribute("data-member-index")).toBe("1");
   });
 
   it("ejects the active member and ungroups, and hides both controls when flagged off", (): void => {
@@ -910,7 +932,12 @@ describe("built-in group tab strip", (): void => {
         interaction: {
           grouping: {
             groupTabStrip: {
-              theme: { accent: "rgb(1, 2, 3)", background: "rgb(9, 9, 9)" },
+              theme: {
+                accent: "rgb(1, 2, 3)",
+                background: "rgb(9, 9, 9)",
+                railBackground: "rgb(4, 4, 4)",
+                nestedTabActiveBackground: "rgb(5, 5, 5)",
+              },
             },
           },
         },
@@ -919,7 +946,16 @@ describe("built-in group tab strip", (): void => {
     const strip: HTMLElement = requireEl(container, ".hpt-group-tab-strip");
     expect(strip.style.getPropertyValue("--hpt-group-tab-accent")).toBe("rgb(1, 2, 3)");
     expect(strip.style.getPropertyValue("--hpt-group-tab-strip-background")).toBe("rgb(9, 9, 9)");
+    expect(strip.style.getPropertyValue("--hpt-group-tab-rail-background")).toBe("rgb(4, 4, 4)");
+    expect(strip.style.getPropertyValue("--hpt-group-tab-nested-active-background")).toBe(
+      "rgb(5, 5, 5)",
+    );
     expect(strip.style.background).toBe("rgb(9, 9, 9)");
+    const rail: HTMLElement | null = strip.querySelector(".hpt-tab-strip-rail");
+    if (rail == null) {
+      throw new Error("expected .hpt-tab-strip-rail inside the group strip");
+    }
+    expect(rail.style.getPropertyValue("--hpt-group-tab-rail-background")).toBe("rgb(4, 4, 4)");
   });
 
   it("drops the active-indicator transition under prefers-reduced-motion", (): void => {

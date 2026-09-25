@@ -9,6 +9,22 @@ the version number alone does not flag them.
 
 ## Unreleased
 
+### Tab strips — rails and pills
+
+Tabs are content-width pills in a rounded rail (2px pad / gap, 1px
+`railBorderColor`, `radius + 2`). They never stretch; they shrink only on
+overflow (min 56px, ellipsis, `title` tooltip). The strip row keeps a hairline
+bottom border and the strip `background`. Active chrome is a pill fill, not
+the old `inset 0 2px 0 accent` top edge — `accent` is the `:focus-visible`
+outline. Group-strip defaults use a quiet pill
+(`tabActiveBackground: rgba(255,255,255,0.08)`); pane-strip defaults
+(`TILING_PANE_TAB_STRIP_THEME_DEFAULTS`) use a solid pill
+(`rgb(252, 211, 77)` / `rgb(12, 13, 16)`). Additive tokens:
+`railBackground`, `railBorderColor`, `nestedTabActiveBackground`,
+`nestedTabActiveColor`. When a group member is maximized under a visible pane
+strip, the group row is the nested tier (`data-nested="true"`, `--hpt-tab-strip-nested`,
+`height − 4`, ~18px indent, `└` tick, nested active tokens).
+
 ### Maximize
 
 - `maximize.keepGroupTabStrip` (default `true`) keeps the group tab strip when

@@ -879,7 +879,7 @@ export interface TilingPaneTab {
  * Built-in top-level pane tab strip. Shares the group-strip theme vocabulary
  * ({@link TilingGroupTabStripTheme}) and the same `role="tablist"` keyboard
  * model. Omitted fields resolve to placement `"top"`, the group-strip default
- * height, and {@link TilingGroupTabStripTheme} defaults.
+ * height, and the pane-strip theme defaults (solid active pill).
  */
 export interface TilingPaneTabStripOptions {
   /**
@@ -889,7 +889,7 @@ export interface TilingPaneTabStripOptions {
   placement?: "top" | "bottom";
   /** Strip height in CSS pixels. Default is the group-strip height (`28`). */
   height?: number;
-  /** CSS-value tokens. Omitted tokens keep the group-strip library default. */
+  /** CSS-value tokens. Omitted tokens keep the pane-strip library default. */
   theme?: TilingGroupTabStripTheme;
   /**
    * Custom tab label. Default is the tile title. The string title is always
@@ -1329,25 +1329,25 @@ export interface TilingGroupTabMember {
 
 /**
  * CSS-value tokens for the built-in group tab strip. Every field is optional;
- * omitted tokens resolve to the library default (dark row, amber active edge).
+ * omitted tokens resolve to the library default (dark row, quiet active pill).
  * Applied as CSS custom properties on the strip element.
  */
 export interface TilingGroupTabStripTheme {
   /** Strip row background. */
   background?: string;
-  /** Strip row border color. */
+  /** Strip row hairline border color. */
   borderColor?: string;
   /** Inactive tab label color. */
   tabColor?: string;
   /** Inactive tab label color on hover. */
   tabHoverColor?: string;
-  /** Active tab label color. */
+  /** Active tab label color (standalone / pane strip). */
   tabActiveColor?: string;
   /** Inactive tab background. */
   tabBackground?: string;
-  /** Active tab background. */
+  /** Active tab background (standalone / pane strip). */
   tabActiveBackground?: string;
-  /** Active-tab indicator color (top edge). */
+  /** Keyboard `:focus-visible` outline color. */
   accent?: string;
   /** Tab label font family. */
   fontFamily?: string;
@@ -1355,35 +1355,43 @@ export interface TilingGroupTabStripTheme {
   fontSize?: string;
   /** Tab label letter spacing (CSS length). */
   letterSpacing?: string;
-  /** Tab corner radius (CSS length). */
+  /** Tab (pill) corner radius (CSS length). Rail uses `radius + 2`. */
   radius?: string;
-  /** Gap between tabs (CSS length). */
+  /** Gap between pills inside the rail (CSS length). */
   gap?: string;
-  /** Horizontal padding of the strip (CSS length). */
+  /** Horizontal padding of the strip row (CSS length). */
   paddingX?: string;
   /** Eject / ungroup control color. */
   controlColor?: string;
   /** Eject / ungroup control color on hover. */
   controlHoverColor?: string;
+  /** Rounded rail background behind the pills. */
+  railBackground?: string;
+  /** Rounded rail 1px border color. Omitted → `borderColor`. */
+  railBorderColor?: string;
+  /** Active pill background when the group strip is the nested tier. */
+  nestedTabActiveBackground?: string;
+  /** Active pill label color when the group strip is the nested tier. Omitted → `tabActiveColor`. */
+  nestedTabActiveColor?: string;
 }
 
 /** Fully resolved {@link TilingGroupTabStripTheme} (every token set). */
 export interface ResolvedTilingGroupTabStripTheme {
   /** Strip row background. */
   background: string;
-  /** Strip row border color. */
+  /** Strip row hairline border color. */
   borderColor: string;
   /** Inactive tab label color. */
   tabColor: string;
   /** Inactive tab label color on hover. */
   tabHoverColor: string;
-  /** Active tab label color. */
+  /** Active tab label color (standalone / pane strip). */
   tabActiveColor: string;
   /** Inactive tab background. */
   tabBackground: string;
-  /** Active tab background. */
+  /** Active tab background (standalone / pane strip). */
   tabActiveBackground: string;
-  /** Active-tab indicator color (top edge). */
+  /** Keyboard `:focus-visible` outline color. */
   accent: string;
   /** Tab label font family. */
   fontFamily: string;
@@ -1391,16 +1399,24 @@ export interface ResolvedTilingGroupTabStripTheme {
   fontSize: string;
   /** Tab label letter spacing (CSS length). */
   letterSpacing: string;
-  /** Tab corner radius (CSS length). */
+  /** Tab (pill) corner radius (CSS length). Rail uses `radius + 2`. */
   radius: string;
-  /** Gap between tabs (CSS length). */
+  /** Gap between pills inside the rail (CSS length). */
   gap: string;
-  /** Horizontal padding of the strip (CSS length). */
+  /** Horizontal padding of the strip row (CSS length). */
   paddingX: string;
   /** Eject / ungroup control color. */
   controlColor: string;
   /** Eject / ungroup control color on hover. */
   controlHoverColor: string;
+  /** Rounded rail background behind the pills. */
+  railBackground: string;
+  /** Rounded rail 1px border color. */
+  railBorderColor: string;
+  /** Active pill background when the group strip is the nested tier. */
+  nestedTabActiveBackground: string;
+  /** Active pill label color when the group strip is the nested tier. */
+  nestedTabActiveColor: string;
 }
 
 /**

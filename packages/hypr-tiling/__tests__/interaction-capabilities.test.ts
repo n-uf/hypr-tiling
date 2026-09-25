@@ -2,14 +2,18 @@ import { describe, expect, it } from "@jest/globals";
 import {
   TILING_DASHBOARD_PRESET,
   TILING_GROUP_TAB_STRIP_DEFAULTS,
+  TILING_GROUP_TAB_STRIP_THEME_DEFAULTS,
   TILING_INTERACTION_CAPABILITY_DEFAULTS,
   TILING_PANE_TAB_STRIP_DEFAULTS,
+  TILING_PANE_TAB_STRIP_THEME_DEFAULTS,
   isResizeAxisEnabled,
+  resolveGroupTabStripTheme,
   resolveInteractionCapabilities,
 } from "../engine/interaction-capabilities";
 import { TILING_KEYMAP_DEFAULTS } from "../engine/pane-switching";
 import type {
   TilingSplitAxis,
+  ResolvedTilingGroupTabStripTheme,
   ResolvedTilingInteractionCapabilities,
   TilingResizeCapability,
 } from "../engine/types";
@@ -697,9 +701,42 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       TILING_GROUP_TAB_STRIP_DEFAULTS.theme.tabColor,
     );
     expect(resolved.grouping.groupTabStrip.renderTabLabel).toBe(label);
+    expect(resolved.grouping.groupTabStrip.theme.railBackground).toBe(
+      TILING_GROUP_TAB_STRIP_THEME_DEFAULTS.railBackground,
+    );
+    expect(resolved.grouping.groupTabStrip.theme.nestedTabActiveBackground).toBe(
+      TILING_GROUP_TAB_STRIP_THEME_DEFAULTS.nestedTabActiveBackground,
+    );
     expect(resolveInteractionCapabilities(resolved).grouping.groupTabStrip).toEqual(
       resolved.grouping.groupTabStrip,
     );
+  });
+
+  it("resolves rail and nested tokens, following borderColor and tabActiveColor when omitted", (): void => {
+    const groupQuiet: ResolvedTilingGroupTabStripTheme = resolveGroupTabStripTheme(
+      { borderColor: "rgb(1, 1, 1)", tabActiveColor: "rgb(2, 2, 2)" },
+    );
+    expect(groupQuiet.railBorderColor).toBe("rgb(1, 1, 1)");
+    expect(groupQuiet.nestedTabActiveColor).toBe("rgb(2, 2, 2)");
+    expect(groupQuiet.railBackground).toBe(TILING_GROUP_TAB_STRIP_THEME_DEFAULTS.railBackground);
+    expect(groupQuiet.tabActiveBackground).toBe(
+      TILING_GROUP_TAB_STRIP_THEME_DEFAULTS.tabActiveBackground,
+    );
+    const paneSolid: ResolvedTilingGroupTabStripTheme = resolveGroupTabStripTheme(
+      { railBackground: "rgb(9, 9, 9)", nestedTabActiveBackground: "rgb(8, 8, 8)" },
+      TILING_PANE_TAB_STRIP_THEME_DEFAULTS,
+    );
+    expect(paneSolid.tabActiveBackground).toBe(
+      TILING_PANE_TAB_STRIP_THEME_DEFAULTS.tabActiveBackground,
+    );
+    expect(paneSolid.tabActiveColor).toBe(TILING_PANE_TAB_STRIP_THEME_DEFAULTS.tabActiveColor);
+    expect(paneSolid.railBackground).toBe("rgb(9, 9, 9)");
+    expect(paneSolid.nestedTabActiveBackground).toBe("rgb(8, 8, 8)");
+    expect(TILING_GROUP_TAB_STRIP_THEME_DEFAULTS.tabActiveBackground).toBe(
+      "rgba(255, 255, 255, 0.08)",
+    );
+    expect(TILING_PANE_TAB_STRIP_THEME_DEFAULTS.tabActiveBackground).toBe("rgb(252, 211, 77)");
+    expect(TILING_PANE_TAB_STRIP_THEME_DEFAULTS.tabActiveColor).toBe("rgb(12, 13, 16)");
   });
 
   it("is idempotent over grouping (re-resolving a resolved grouping object)", (): void => {

@@ -270,8 +270,12 @@ export interface ResolvedTilingGroupTabStripTheme {
     fontSize: string;
     gap: string;
     letterSpacing: string;
+    nestedTabActiveBackground: string;
+    nestedTabActiveColor: string;
     paddingX: string;
     radius: string;
+    railBackground: string;
+    railBorderColor: string;
     tabActiveBackground: string;
     tabActiveColor: string;
     tabBackground: string;
@@ -487,6 +491,9 @@ export const TILING_MAIN_WORKSPACE_ID: TilingWorkspaceId;
 
 // @public
 export const TILING_MAIN_WORKSPACE_NAME: string;
+
+// @public
+export const TILING_PANE_TAB_STRIP_THEME_DEFAULTS: ResolvedTilingGroupTabStripTheme;
 
 // @public
 export const TILING_SPRING_LOAD_DEFAULTS: TilingSpringLoadConfig;
@@ -866,8 +873,12 @@ export interface TilingGroupTabStripTheme {
     fontSize?: string;
     gap?: string;
     letterSpacing?: string;
+    nestedTabActiveBackground?: string;
+    nestedTabActiveColor?: string;
     paddingX?: string;
     radius?: string;
+    railBackground?: string;
+    railBorderColor?: string;
     tabActiveBackground?: string;
     tabActiveColor?: string;
     tabBackground?: string;

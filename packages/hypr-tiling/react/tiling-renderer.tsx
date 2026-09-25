@@ -321,6 +321,7 @@ import { cn } from "./cn";
 import {
   GroupTabStrip,
   TabStrip,
+  tabStripRenderedHeight,
   type GroupTabStripMember,
   type TabStripItem,
 } from "./group-tab-strip";
@@ -4429,6 +4430,7 @@ function PaneTabStrip({
       }}
       trailing={null}
       tabIndexAttrName={null}
+      nested={false}
     />
   );
 }
@@ -9431,7 +9433,19 @@ const TilingRendererComponent = React.forwardRef<
           interactionCapabilities.grouping.groupTabStrip;
         const showStrip: boolean =
           showGroupTabStrip && groupNode.members.length >= 2;
-        const stripHeightPx: number = showStrip ? groupTabStrip.height : 0;
+        // Nested tier: this group is painted at viewport size under the pane
+        // strip (maximized member of a group). Standalone group strips stay
+        // full-height and unindented.
+        const isNestedGroupStrip: boolean =
+          showPaneTabStrip &&
+          keepGroupTabStrip &&
+          activeMaximizedLeafId != null &&
+          groupNode.members.some(
+            (member: TilingLeafNode): boolean => member.id === activeMaximizedLeafId,
+          );
+        const stripHeightPx: number = showStrip
+          ? tabStripRenderedHeight(groupTabStrip.height, isNestedGroupStrip)
+          : 0;
         const memberHeightPx: number = Math.max(
           0,
           containerHeightPx - stripHeightPx,
@@ -9461,6 +9475,7 @@ const TilingRendererComponent = React.forwardRef<
             isGroupingEnabled={isGroupingEnabled}
             isMergeTarget={isGroupMergeTarget}
             prefersReducedMotion={prefersReducedMotion}
+            nested={isNestedGroupStrip}
             setRef={(element: HTMLDivElement | null): void => {
               setGroupTabStripRef(groupNode.id, element);
             }}
@@ -10010,6 +10025,8 @@ const TilingRendererComponent = React.forwardRef<
       dispatchCommand,
       isGroupingEnabled,
       showGroupTabStrip,
+      showPaneTabStrip,
+      keepGroupTabStrip,
       interactionCapabilities,
       prefersReducedMotion,
       groupContextByActiveLeafId,

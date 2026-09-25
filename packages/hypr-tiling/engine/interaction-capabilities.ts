@@ -41,8 +41,8 @@ import type {
 } from "./types";
 
 /**
- * Default CSS tokens for the built-in group tab strip: a dark row with an
- * amber active-tab edge. Hosts override any subset via `groupTabStrip.theme`.
+ * Default CSS tokens for the built-in group tab strip: a dark row with a
+ * quiet active pill. Hosts override any subset via `groupTabStrip.theme`.
  */
 export const TILING_GROUP_TAB_STRIP_THEME_DEFAULTS: ResolvedTilingGroupTabStripTheme = {
   background: "rgba(0, 0, 0, 0.45)",
@@ -51,7 +51,7 @@ export const TILING_GROUP_TAB_STRIP_THEME_DEFAULTS: ResolvedTilingGroupTabStripT
   tabHoverColor: "rgb(226, 232, 240)",
   tabActiveColor: "rgb(255, 251, 235)",
   tabBackground: "transparent",
-  tabActiveBackground: "rgba(252, 211, 77, 0.16)",
+  tabActiveBackground: "rgba(255, 255, 255, 0.08)",
   accent: "rgb(252, 211, 77)",
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   fontSize: "10px",
@@ -61,6 +61,22 @@ export const TILING_GROUP_TAB_STRIP_THEME_DEFAULTS: ResolvedTilingGroupTabStripT
   paddingX: "6px",
   controlColor: "rgb(168, 162, 158)",
   controlHoverColor: "rgb(254, 243, 199)",
+  railBackground: "rgba(255, 255, 255, 0.02)",
+  railBorderColor: "rgba(255, 255, 255, 0.1)",
+  nestedTabActiveBackground: "rgba(255, 255, 255, 0.08)",
+  nestedTabActiveColor: "rgb(255, 251, 235)",
+};
+
+/**
+ * Default CSS tokens for the top-level pane tab strip: same row as the group
+ * strip, with a solid active pill. Hosts override any subset via
+ * `paneSwitching.tabStrip.theme`.
+ */
+export const TILING_PANE_TAB_STRIP_THEME_DEFAULTS: ResolvedTilingGroupTabStripTheme = {
+  ...TILING_GROUP_TAB_STRIP_THEME_DEFAULTS,
+  tabActiveBackground: "rgb(252, 211, 77)",
+  tabActiveColor: "rgb(12, 13, 16)",
+  nestedTabActiveColor: "rgb(12, 13, 16)",
 };
 
 /** Default built-in strip: top of the pane, 28px, eject and ungroup shown. */
@@ -72,11 +88,11 @@ export const TILING_GROUP_TAB_STRIP_DEFAULTS: ResolvedTilingGroupTabStripOptions
   theme: TILING_GROUP_TAB_STRIP_THEME_DEFAULTS,
 };
 
-/** Default top-level pane strip: top of the viewport, group-strip height and theme. */
+/** Default top-level pane strip: top of the viewport, group-strip height, solid pill. */
 export const TILING_PANE_TAB_STRIP_DEFAULTS: ResolvedTilingPaneTabStripOptions = {
   placement: "top",
   height: TILING_GROUP_TAB_STRIP_DEFAULTS.height,
-  theme: TILING_GROUP_TAB_STRIP_THEME_DEFAULTS,
+  theme: TILING_PANE_TAB_STRIP_THEME_DEFAULTS,
 };
 
 /**
@@ -343,19 +359,21 @@ export function resolveInteractionCapabilities(
 }
 
 /**
- * Resolve a partial {@link TilingGroupTabStripTheme} over the library
- * defaults. Shared by the group strip and the top-level pane strip.
+ * Resolve a partial {@link TilingGroupTabStripTheme} over the passed
+ * defaults (group quiet pill, or pane solid pill). Shared by both strips.
  */
 export function resolveGroupTabStripTheme(
   theme: TilingGroupTabStripTheme | undefined,
+  defaults: ResolvedTilingGroupTabStripTheme = TILING_GROUP_TAB_STRIP_THEME_DEFAULTS,
 ): ResolvedTilingGroupTabStripTheme {
-  const defaults: ResolvedTilingGroupTabStripTheme = TILING_GROUP_TAB_STRIP_THEME_DEFAULTS;
+  const borderColor: string = theme?.borderColor ?? defaults.borderColor;
+  const tabActiveColor: string = theme?.tabActiveColor ?? defaults.tabActiveColor;
   return {
     background: theme?.background ?? defaults.background,
-    borderColor: theme?.borderColor ?? defaults.borderColor,
+    borderColor,
     tabColor: theme?.tabColor ?? defaults.tabColor,
     tabHoverColor: theme?.tabHoverColor ?? defaults.tabHoverColor,
-    tabActiveColor: theme?.tabActiveColor ?? defaults.tabActiveColor,
+    tabActiveColor,
     tabBackground: theme?.tabBackground ?? defaults.tabBackground,
     tabActiveBackground: theme?.tabActiveBackground ?? defaults.tabActiveBackground,
     accent: theme?.accent ?? defaults.accent,
@@ -367,6 +385,11 @@ export function resolveGroupTabStripTheme(
     paddingX: theme?.paddingX ?? defaults.paddingX,
     controlColor: theme?.controlColor ?? defaults.controlColor,
     controlHoverColor: theme?.controlHoverColor ?? defaults.controlHoverColor,
+    railBackground: theme?.railBackground ?? defaults.railBackground,
+    railBorderColor: theme?.railBorderColor ?? borderColor,
+    nestedTabActiveBackground:
+      theme?.nestedTabActiveBackground ?? defaults.nestedTabActiveBackground,
+    nestedTabActiveColor: theme?.nestedTabActiveColor ?? tabActiveColor,
   };
 }
 
@@ -394,7 +417,7 @@ function resolvePaneTabStripOptions(
   const resolved: ResolvedTilingPaneTabStripOptions = {
     placement: options?.placement ?? defaults.placement,
     height: options?.height ?? defaults.height,
-    theme: resolveGroupTabStripTheme(options?.theme),
+    theme: resolveGroupTabStripTheme(options?.theme, TILING_PANE_TAB_STRIP_THEME_DEFAULTS),
   };
   if (options?.renderTabLabel != null) {
     resolved.renderTabLabel = options.renderTabLabel;

@@ -747,20 +747,29 @@ from `onMoveLeaf`.
 `grouping.enable` (default on) lets a drag merge panes into a stacked group.
 The built-in strip is the canonical chrome: with `grouping.showGroupTabStrip`
 left at its default `true`, a group of two or more members paints a tab row
-(`role="tablist"`) above the pane header. Active tab is full foreground with
-an accent edge; inactive tabs use `tabColor` at full opacity (hover uses
-`tabHoverColor`); labels truncate with the full title in
-the `title` attribute. Arrow keys, Home, and End move the active member (the
+(`role="tablist"`) above the pane header. Tabs are content-width and
+left-aligned inside a rounded rail — they never stretch to fill the row
+(they shrink only when the rail overflows, min-width 56px, ellipsis, full
+title in the `title` attribute). The active pill uses the quiet group tokens
+by default; inactive tabs use `tabColor` at full opacity (hover uses
+`tabHoverColor`). Arrow keys, Home, and End move the active member (the
 same `group-tab-jump` path as a click). The right end ejects the active member
 (`remove-from-group`, a sibling split) and ungroups. `groupTabStrip.showEject`
 and `groupTabStrip.showUngroup` both default to `true`; set either to `false`
 to hide that control.
 
+When a group member is maximized and the pane strip is shown, the group row
+is the nested tier: 4px shorter than the `height` token, indented ~18px,
+`data-nested="true"` / `--hpt-tab-strip-nested: true`, a `└` tick in
+`controlColor` before the rail, and the `nestedTabActive*` tokens on the
+active pill. A standalone group strip is not nested.
+
 `placement: "bottom"` draws that same row under the pane body. Either
-placement subtracts the strip height from the member content box so the body
-does not clip. The strip sits in the group's own stacking context (same layer
-as the pane header, not an overlay). The active-indicator transition is
-`none` under `prefers-reduced-motion`.
+placement subtracts the rendered strip height from the member content box so
+the body does not clip. The strip sits in the group's own stacking context
+(same layer as the pane header, not an overlay). The pill transition is
+`none` under `prefers-reduced-motion`. `accent` is the keyboard
+`:focus-visible` outline colour.
 
 | `groupTabStrip` field | Default | What it does |
 | --- | --- | --- |
@@ -768,17 +777,40 @@ as the pane header, not an overlay). The active-indicator transition is
 | `height` | `28` | Strip height in CSS pixels; subtracted from the content box |
 | `showUngroup` | `true` | Ungroup control at the right end |
 | `showEject` | `true` | Eject the active member at the right end |
-| `theme` | dark row, amber edge | CSS-value tokens (see below); omitted tokens keep the default |
+| `theme` | dark row, quiet pill | CSS-value tokens (see below); omitted tokens keep the group default |
 | `renderTabLabel` | tile title | `(member) => ReactNode`; `member` is `{ id, tileId, title, active }` |
 
 Theme tokens (`TilingGroupTabStripTheme`, all optional CSS values):
-`background`, `borderColor`, `tabColor`, `tabHoverColor`, `tabActiveColor`,
-`tabBackground`, `tabActiveBackground`, `accent` (active top edge),
-`fontFamily`, `fontSize`, `letterSpacing`, `radius`, `gap`, `paddingX`,
-`controlColor`, `controlHoverColor`. They are resolved like `dragChrome`
-(partial over defaults) and applied as inline styles plus `--hpt-group-tab-*`
-custom properties on the strip element. Default `tabColor` is
-`rgb(148, 163, 184)` on `rgba(0, 0, 0, 0.45)` (no extra opacity dim).
+
+| Token | Group default | Pane default | What it does |
+| --- | --- | --- | --- |
+| `background` | `rgba(0, 0, 0, 0.45)` | same | Strip row background |
+| `borderColor` | `rgba(255, 255, 255, 0.1)` | same | Strip hairline bottom border |
+| `tabColor` | `rgb(148, 163, 184)` | same | Inactive pill label |
+| `tabHoverColor` | `rgb(226, 232, 240)` | same | Inactive pill label on hover |
+| `tabActiveColor` | `rgb(255, 251, 235)` | `rgb(12, 13, 16)` | Active pill label (standalone) |
+| `tabBackground` | `transparent` | same | Inactive pill background |
+| `tabActiveBackground` | `rgba(255, 255, 255, 0.08)` | `rgb(252, 211, 77)` | Active pill background (standalone) |
+| `accent` | `rgb(252, 211, 77)` | same | `:focus-visible` outline |
+| `fontFamily` | `ui-monospace, SFMono-Regular, Menlo, monospace` | same | Pill label font |
+| `fontSize` | `10px` | same | Pill label size |
+| `letterSpacing` | `0.08em` | same | Pill label tracking |
+| `radius` | `0px` | same | Pill corner radius; rail is `radius + 2` |
+| `gap` | `2px` | same | Gap between pills in the rail |
+| `paddingX` | `6px` | same | Strip row horizontal padding |
+| `controlColor` | `rgb(168, 162, 158)` | same | Eject / ungroup / nest-tick |
+| `controlHoverColor` | `rgb(254, 243, 199)` | same | Controls on hover |
+| `railBackground` | `rgba(255, 255, 255, 0.02)` | same | Rounded rail fill |
+| `railBorderColor` | `borderColor` | same | Rail 1px border; omitted follows `borderColor` |
+| `nestedTabActiveBackground` | `rgba(255, 255, 255, 0.08)` | same | Active pill fill on the nested group tier |
+| `nestedTabActiveColor` | `tabActiveColor` | same | Active pill label on the nested group tier |
+
+They resolve like `dragChrome` (partial over the strip's default set —
+`TILING_GROUP_TAB_STRIP_THEME_DEFAULTS` or
+`TILING_PANE_TAB_STRIP_THEME_DEFAULTS`) and apply as inline styles plus
+`--hpt-group-tab-*` custom properties on the strip (`hpt-tab-strip`; group
+also `hpt-group-tab-strip`, pane also `hpt-pane-tab-strip`). The rail is
+`.hpt-tab-strip-rail`.
 
 A drop on a strip tab resolves `group-merge` and inserts the dragged leaf at
 that tab's index (the hovered member shifts right). A drop on the strip past
@@ -854,9 +886,10 @@ with a second maximize, `Escape`, or the header control.
 when the maximized leaf is a group member. The renderer paints the GROUP
 node at viewport size and overrides `activeMemberId` to the maximized leaf
 at render time (no `onLayoutChange`). The strip height is subtracted from
-the maximized member. `grouping.showGroupTabStrip: false` still hides the
-strip. Set `keepGroupTabStrip: false` to fill the viewport with the leaf
-alone (the previous grouped-maximize look).
+the maximized member. When the pane strip is also shown, that group row is
+the nested tier (see Tab groups). `grouping.showGroupTabStrip: false` still
+hides the strip. Set `keepGroupTabStrip: false` to fill the viewport with
+the leaf alone (the previous grouped-maximize look).
 
 ```tsx
 interaction={{
@@ -873,14 +906,16 @@ shortcuts work regardless. Clicking a tab calls `activateLeaf`, which
 switches the maximized pane while maximized.
 
 `paneSwitching.tabStrip` themes that strip with the same tokens as
-`grouping.groupTabStrip` (`TilingGroupTabStripTheme`, `--hpt-group-tab-*`).
-The strip root is `hpt-tab-strip hpt-pane-tab-strip`.
+`grouping.groupTabStrip` (`TilingGroupTabStripTheme`, `--hpt-group-tab-*`),
+resolved over `TILING_PANE_TAB_STRIP_THEME_DEFAULTS` (solid active pill).
+The strip root is `hpt-tab-strip hpt-pane-tab-strip`. Tabs are content-width
+in a rail; they never stretch.
 
 | `tabStrip` field | Default | What it does |
 | --- | --- | --- |
 | `placement` | `"top"` | `"top"` above the viewport, `"bottom"` after it |
 | `height` | group-strip height (`28`) | Strip height in CSS pixels |
-| `theme` | group-strip dark / amber | Same CSS-value tokens as `groupTabStrip.theme` |
+| `theme` | pane-strip solid pill | Same CSS-value tokens as `groupTabStrip.theme`; omitted tokens keep the pane defaults |
 | `renderTabLabel` | tile title | `(tab) => ReactNode`; `tab` is `{ leafId, tileId, title, active, maximized, ordinal, groupId, memberCount }` |
 
 The lab chrome (wordmark, theme picker, accent picker, content toggle)

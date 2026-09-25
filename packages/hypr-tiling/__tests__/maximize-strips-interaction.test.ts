@@ -303,6 +303,59 @@ describe("maximize.keepGroupTabStrip", (): void => {
     );
     expect(paneSelected.getAttribute("title")).toBe("beta");
   });
+
+  it("nests the group strip under the pane strip: data-nested, tick, quiet nested tokens", (): void => {
+    const handleRef: React.RefObject<TilingCommandHandle | null> =
+      React.createRef<TilingCommandHandle>();
+    const { container } = render(
+      React.createElement(Harness, {
+        handleRef,
+        interaction: { paneSwitching: { showTabStrip: "maximized" } },
+      }),
+    );
+    maximize(handleRef, "alpha");
+    const groupStrip: HTMLElement = requireEl(container, ".hpt-group-tab-strip");
+    const paneStrip: HTMLElement = requireEl(container, ".hpt-pane-tab-strip");
+    expect(groupStrip.getAttribute("data-nested")).toBe("true");
+    expect(groupStrip.style.getPropertyValue("--hpt-tab-strip-nested")).toBe("true");
+    expect(groupStrip.querySelector("[data-hpt-tab-strip-nest-tick]")).not.toBeNull();
+    expect(paneStrip.getAttribute("data-nested")).toBeNull();
+    expect(paneStrip.querySelector("[data-hpt-tab-strip-nest-tick]")).toBeNull();
+    const groupActive: HTMLElement = requireEl(
+      groupStrip,
+      '[role="tab"][aria-selected="true"]',
+    );
+    expect(groupActive.style.background).toBe("rgba(255, 255, 255, 0.08)");
+    expect(groupActive.style.color).toBe("rgb(255, 251, 235)");
+    expect(groupActive.style.flexGrow).not.toBe("1");
+    expect(groupActive.style.flex).not.toContain("1 1");
+    const paneActive: HTMLElement = requireEl(
+      paneStrip,
+      '[role="tab"][aria-selected="true"]',
+    );
+    expect(paneActive.style.background).toBe("rgb(252, 211, 77)");
+    expect(paneActive.style.color).toBe("rgb(12, 13, 16)");
+    expect(paneActive.style.flexGrow).not.toBe("1");
+    expect(groupStrip.querySelector(".hpt-tab-strip-rail")).not.toBeNull();
+    expect(paneStrip.querySelector(".hpt-tab-strip-rail")).not.toBeNull();
+    expect(groupStrip.style.height).toBe("24px");
+  });
+
+  it("does not nest the group strip when the pane strip is hidden", (): void => {
+    const handleRef: React.RefObject<TilingCommandHandle | null> =
+      React.createRef<TilingCommandHandle>();
+    const { container } = render(
+      React.createElement(Harness, {
+        handleRef,
+        interaction: { paneSwitching: { showTabStrip: false } },
+      }),
+    );
+    maximize(handleRef, "alpha");
+    const groupStrip: HTMLElement = requireEl(container, ".hpt-group-tab-strip");
+    expect(groupStrip.getAttribute("data-nested")).toBeNull();
+    expect(groupStrip.querySelector("[data-hpt-tab-strip-nest-tick]")).toBeNull();
+    expect(groupStrip.style.height).toBe("28px");
+  });
 });
 
 describe("paneSwitching.showTabStrip and tabStrip", (): void => {
@@ -359,7 +412,11 @@ describe("paneSwitching.showTabStrip and tabStrip", (): void => {
           paneSwitching: {
             showTabStrip: "maximized",
             tabStrip: {
-              theme: { accent: "rgb(1, 2, 3)", background: "rgb(9, 9, 9)" },
+              theme: {
+                accent: "rgb(1, 2, 3)",
+                background: "rgb(9, 9, 9)",
+                railBackground: "rgb(4, 4, 4)",
+              },
               renderTabLabel: (tab: TilingPaneTab): string => `lbl:${tab.title}`,
             },
           },
@@ -371,7 +428,12 @@ describe("paneSwitching.showTabStrip and tabStrip", (): void => {
     expect(strip.classList.contains("hpt-tab-strip")).toBe(true);
     expect(strip.style.getPropertyValue("--hpt-group-tab-accent")).toBe("rgb(1, 2, 3)");
     expect(strip.style.getPropertyValue("--hpt-group-tab-strip-background")).toBe("rgb(9, 9, 9)");
+    expect(strip.style.getPropertyValue("--hpt-group-tab-rail-background")).toBe("rgb(4, 4, 4)");
+    expect(strip.querySelector(".hpt-tab-strip-rail")).not.toBeNull();
     expect(strip.textContent).toContain("lbl:loose");
+    const tabs: NodeListOf<HTMLElement> = strip.querySelectorAll('[role="tab"]');
+    expect(tabs[0].style.flexGrow).not.toBe("1");
+    expect(tabs[0].style.flex).not.toContain("1 1");
   });
 
   it("placement bottom orders the strip after the viewport", (): void => {

@@ -85,6 +85,7 @@ export {
 export {
   TILING_DASHBOARD_PRESET,
   TILING_INTERACTION_CAPABILITY_DEFAULTS,
+  TILING_PANE_TAB_STRIP_THEME_DEFAULTS,
   resolveInteractionCapabilities,
 } from "./engine/interaction-capabilities";
 
