@@ -873,6 +873,9 @@ export function HomePage({
           placement: "top",
           theme: HOME_GROUP_TAB_STRIP[skin],
           renderTabLabel: (member: TilingGroupTabMember): string => {
+            if (member.tileId === "intro") {
+              return "HYPR-TILING";
+            }
             if (member.tileId === "usecases") {
               return "Use cases";
             }
@@ -881,6 +884,18 @@ export function HomePage({
             }
             if (member.tileId === "scenarios") {
               return "Scenarios";
+            }
+            if (member.tileId === "features") {
+              return "Features";
+            }
+            if (member.tileId === "install") {
+              return "Install";
+            }
+            if (member.tileId === "set-inspector") {
+              return "Inspector";
+            }
+            if (member.tileId === "swipe-meter") {
+              return "Swipe";
             }
             return member.title;
           },
