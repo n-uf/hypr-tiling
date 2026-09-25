@@ -9,14 +9,9 @@ the version number alone does not flag them.
 
 ## Unreleased
 
-### Tab groups — built-in strip contrast
-
-- Inactive group tabs no longer paint at `opacity: 0.55`. Label color is `tabColor` at full opacity; hover uses the new `tabHoverColor` token (`--hpt-group-tab-hover-color`). Default `tabColor` stays `rgb(148, 163, 184)` on `rgba(0, 0, 0, 0.45)`.
-- `TilingGroupTabStripTheme.tabHoverColor` is additive; omitted values keep the default `rgb(226, 232, 240)`.
-
 ### Docs
 
-- Home seed v8: the hero tile leads hypr-tiling | Use cases | Proof | Scenarios (intro active). Features | Install is a second Home group; Inspector | Swipe groups the Workspaces dogfood pair. Proof facts (suite and test counts, gzip sizes, dependencies, license, version) are generated from the package. Scenarios run through the public command dispatch and the workspace-set controller.
+- Home: the Use cases column is a tab group, Use cases | Proof | Scenarios, with Use cases active on first paint. Proof facts (suite and test counts, gzip sizes, dependencies, license, version) are generated from the package. Scenarios run through the public command dispatch and the workspace-set controller.
 
 ## 26.9.9 — 2026-09-24
 

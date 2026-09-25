@@ -5,26 +5,27 @@ import type {
 } from "@n-uf/hypr-tiling";
 
 // Seed workspace set for the docs homepage. Workspace 1 (Home) is active on
-// SSR / first paint. Home is three columns: the hero group (hypr-tiling |
-// Use cases | Proof | Scenarios, intro active) in the former intro slot,
-// then Features | Install, then the seo+llm leaf. Workspaces seats the
-// workspaces copy (left, wider) beside the Inspector | Swipe dogfood group.
+// SSR / first paint. Home is four columns: intro over discoverability in the
+// left stack, then features, install, and a Use cases | Proof | Scenarios
+// tab group (active member usecases) at full height. Column widths are tuned
+// for the four-column home grid at 1440×900; the left stack seats
+// discoverability under intro (0.675/0.325). Workspaces seats the workspaces
+// copy (left, wider) beside the set-inspector / swipe-meter dogfood pair.
 // Changelog is a four-widget dashboard: tall release timeline beside latest /
 // breaking / version. Doc tile ids match `DOC_PANES`; widget tile ids live in
-// `changelog-widgets.tsx`. Leaf id equals tile id.
+// `changelog-widgets.tsx`. Leaf id equals tile id. The use-cases column is one
+// group slot, so the column ratios stay the same as the plain leaf it replaced.
 //
 // Storage key and envelope version move together. A mismatch
 // (`parseHomeWorkspaceSetBlob`) returns null so the next visit reseeds
 // instead of replaying a previous Home tree.
 
 export const HOME_WORKSPACE_STORAGE_KEY: string =
-  "hypr-tiling-home-workspaces-v8";
+  "hypr-tiling-home-workspaces-v7";
 
-export const HOME_WORKSPACE_STORAGE_VERSION: number = 8;
+export const HOME_WORKSPACE_STORAGE_VERSION: number = 7;
 
 export const HOME_USES_GROUP_ID: string = "home-uses";
-export const HOME_DOCS_GROUP_ID: string = "home-docs";
-export const HOME_DOGFOOD_GROUP_ID: string = "home-dogfood";
 
 export const HOME_WORKSPACE_ID_HOME: string = "ws-home";
 export const HOME_WORKSPACE_ID_WORKSPACES: string = "ws-workspaces";
@@ -34,44 +35,49 @@ export const HOME_WORKSPACE_NAME_HOME: string = "Home";
 export const HOME_WORKSPACE_NAME_WORKSPACES: string = "Workspaces";
 export const HOME_WORKSPACE_NAME_CHANGELOG: string = "Changelog";
 
-// Root fractions: hero group 0.38, Features | Install 0.347 (0.56 of the
-// remaining 0.62), seo+llm 0.273. Tuned for the three-column home grid at
-// 1440×900 so the hero keeps the wide intro slot and the two remaining
-// columns stay readable.
+// Root fractions: left column 0.26 (intro 0.675 / discoverability 0.325 of that
+// column), features 0.308 (0.416 of the remaining 0.74), install 0.275
+// (0.636 of what remains after features), use cases 0.157. The extra left
+// width comes from install so features and use cases keep their share.
 const HOME_LAYOUT: TilingLayoutNode = {
   kind: "split",
   id: "home-root",
   axis: "horizontal",
-  ratio: 0.38,
+  ratio: 0.26,
   first: {
-    kind: "group",
-    id: HOME_USES_GROUP_ID,
-    activeMemberId: "intro",
-    members: [
-      { kind: "leaf", id: "intro", tileId: "intro" },
-      { kind: "leaf", id: "usecases", tileId: "usecases" },
-      { kind: "leaf", id: "proof", tileId: "proof" },
-      { kind: "leaf", id: "scenarios", tileId: "scenarios" },
-    ],
-  },
-  second: {
     kind: "split",
-    id: "home-secondary",
-    axis: "horizontal",
-    ratio: 0.56,
-    first: {
-      kind: "group",
-      id: HOME_DOCS_GROUP_ID,
-      activeMemberId: "features",
-      members: [
-        { kind: "leaf", id: "features", tileId: "features" },
-        { kind: "leaf", id: "install", tileId: "install" },
-      ],
-    },
+    id: "home-intro-stack",
+    axis: "vertical",
+    ratio: 0.675,
+    first: { kind: "leaf", id: "intro", tileId: "intro" },
     second: {
       kind: "leaf",
       id: "discoverability",
       tileId: "discoverability",
+    },
+  },
+  second: {
+    kind: "split",
+    id: "home-features-rest",
+    axis: "horizontal",
+    ratio: 0.416,
+    first: { kind: "leaf", id: "features", tileId: "features" },
+    second: {
+      kind: "split",
+      id: "home-install-uses",
+      axis: "horizontal",
+      ratio: 0.636,
+      first: { kind: "leaf", id: "install", tileId: "install" },
+      second: {
+        kind: "group",
+        id: HOME_USES_GROUP_ID,
+        activeMemberId: "usecases",
+        members: [
+          { kind: "leaf", id: "usecases", tileId: "usecases" },
+          { kind: "leaf", id: "proof", tileId: "proof" },
+          { kind: "leaf", id: "scenarios", tileId: "scenarios" },
+        ],
+      },
     },
   },
 };
@@ -83,13 +89,12 @@ const WORKSPACES_LAYOUT: TilingLayoutNode = {
   ratio: 0.62,
   first: { kind: "leaf", id: "workspaces", tileId: "workspaces" },
   second: {
-    kind: "group",
-    id: HOME_DOGFOOD_GROUP_ID,
-    activeMemberId: "set-inspector",
-    members: [
-      { kind: "leaf", id: "set-inspector", tileId: "set-inspector" },
-      { kind: "leaf", id: "swipe-meter", tileId: "swipe-meter" },
-    ],
+    kind: "split",
+    id: "workspaces-dogfood",
+    axis: "vertical",
+    ratio: 0.62,
+    first: { kind: "leaf", id: "set-inspector", tileId: "set-inspector" },
+    second: { kind: "leaf", id: "swipe-meter", tileId: "swipe-meter" },
   },
 };
 

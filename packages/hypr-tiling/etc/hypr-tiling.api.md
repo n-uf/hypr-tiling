@@ -276,7 +276,6 @@ export interface ResolvedTilingGroupTabStripTheme {
     tabActiveColor: string;
     tabBackground: string;
     tabColor: string;
-    tabHoverColor: string;
 }
 
 // @public
@@ -862,7 +861,6 @@ export interface TilingGroupTabStripTheme {
     tabActiveColor?: string;
     tabBackground?: string;
     tabColor?: string;
-    tabHoverColor?: string;
 }
 
 // @public

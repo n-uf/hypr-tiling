@@ -53,7 +53,6 @@ export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
   const activeMemberId: string =
     members.find((member: GroupTabStripMember): boolean => member.active)?.id ?? "";
   const [hoveredControl, setHoveredControl] = React.useState<"eject" | "ungroup" | null>(null);
-  const [hoveredTabId, setHoveredTabId] = React.useState<string | null>(null);
 
   React.useEffect((): void => {
     const index: number | null = pendingFocusIndex.current;
@@ -82,7 +81,6 @@ export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
     ["--hpt-group-tab-strip-background" as string]: theme.background,
     ["--hpt-group-tab-strip-border" as string]: theme.borderColor,
     ["--hpt-group-tab-color" as string]: theme.tabColor,
-    ["--hpt-group-tab-hover-color" as string]: theme.tabHoverColor,
     ["--hpt-group-tab-active-color" as string]: theme.tabActiveColor,
     ["--hpt-group-tab-background" as string]: theme.tabBackground,
     ["--hpt-group-tab-active-background" as string]: theme.tabActiveBackground,
@@ -162,12 +160,6 @@ export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
       {members.map((member: GroupTabStripMember): React.ReactElement => {
         const label: React.ReactNode =
           options.renderTabLabel != null ? options.renderTabLabel(member) : member.title;
-        const hovered: boolean = hoveredTabId === member.id;
-        const tabColor: string = member.active
-          ? theme.tabActiveColor
-          : hovered
-            ? theme.tabHoverColor
-            : theme.tabColor;
         return (
           <button
             key={member.id}
@@ -186,24 +178,16 @@ export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
             onKeyDown={(event: React.KeyboardEvent<HTMLButtonElement>): void => {
               onTabKeyDown(event, member.index);
             }}
-            onMouseEnter={(): void => {
-              setHoveredTabId(member.id);
-            }}
-            onMouseLeave={(): void => {
-              setHoveredTabId((current: string | null): string | null =>
-                current === member.id ? null : current,
-              );
-            }}
             className="hpt-group-tab flex min-w-0 items-center overflow-hidden outline-none"
             style={{
               flex: "1 1 0%",
               minWidth: TAB_MIN_WIDTH_PX,
               maxWidth: "100%",
-              color: tabColor,
+              color: member.active ? theme.tabActiveColor : theme.tabColor,
               background: member.active ? theme.tabActiveBackground : theme.tabBackground,
               borderRadius: theme.radius,
               boxShadow: member.active ? "inset 0 2px 0 var(--hpt-group-tab-accent)" : "none",
-              opacity: 1,
+              opacity: member.active ? 1 : 0.55,
               transition: indicatorTransition,
               paddingLeft: 8,
               paddingRight: 8,

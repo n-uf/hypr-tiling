@@ -1,13 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
-import type {
-  TilingLayoutNode,
-  TilingLeafNode,
-  TilingWorkspaceSet,
-} from "@n-uf/hypr-tiling";
+import type { TilingLayoutNode, TilingWorkspaceSet } from "@n-uf/hypr-tiling";
 import { isStructurallyValidLayout } from "@n-uf/hypr-tiling/engine";
 import {
-  HOME_DOCS_GROUP_ID,
-  HOME_DOGFOOD_GROUP_ID,
   HOME_USES_GROUP_ID,
   HOME_WORKSPACE_SEED,
   HOME_WORKSPACE_STORAGE_KEY,
@@ -49,63 +43,51 @@ function homeLayout(set: TilingWorkspaceSet): TilingLayoutNode {
 }
 
 describe("home workspace seed", () => {
-  it("stores version 8 under the v8 key", () => {
-    expect(HOME_WORKSPACE_STORAGE_VERSION).toBe(8);
-    expect(HOME_WORKSPACE_STORAGE_KEY).toBe("hypr-tiling-home-workspaces-v8");
+  it("stores version 7 under the v7 key", () => {
+    expect(HOME_WORKSPACE_STORAGE_VERSION).toBe(7);
+    expect(HOME_WORKSPACE_STORAGE_KEY).toBe("hypr-tiling-home-workspaces-v7");
   });
 
-  it("rejects a version 7 envelope", () => {
+  it("rejects a version 6 envelope", () => {
     const raw: string = JSON.stringify({
-      version: 7,
+      version: 6,
       set: HOME_WORKSPACE_SEED,
     });
     expect(parseHomeWorkspaceSetBlob(raw)).toBeNull();
   });
 
-  it("seats the hero group, Features | Install, and Inspector | Swipe", () => {
+  it("keeps the column ratios and seats Use cases | Proof | Scenarios", () => {
     const layout: TilingLayoutNode = homeLayout(HOME_WORKSPACE_SEED);
     const root: TilingLayoutNode | null = findNode(layout, "home-root");
-    const secondary: TilingLayoutNode | null = findNode(layout, "home-secondary");
-    const uses: TilingLayoutNode | null = findNode(layout, HOME_USES_GROUP_ID);
-    const docs: TilingLayoutNode | null = findNode(layout, HOME_DOCS_GROUP_ID);
-    const workspacesLayout: TilingLayoutNode | null =
-      HOME_WORKSPACE_SEED.workspaces[1]?.layout ?? null;
-    const dogfood: TilingLayoutNode | null = findNode(
-      workspacesLayout,
-      HOME_DOGFOOD_GROUP_ID,
-    );
+    const intro: TilingLayoutNode | null = findNode(layout, "home-intro-stack");
+    const features: TilingLayoutNode | null = findNode(layout, "home-features-rest");
+    const install: TilingLayoutNode | null = findNode(layout, "home-install-uses");
+    const group: TilingLayoutNode | null = findNode(layout, HOME_USES_GROUP_ID);
     expect(root?.kind).toBe("split");
-    expect(secondary?.kind).toBe("split");
+    expect(intro?.kind).toBe("split");
+    expect(features?.kind).toBe("split");
+    expect(install?.kind).toBe("split");
     if (root?.kind === "split") {
-      expect(root.ratio).toBe(0.38);
+      expect(root.ratio).toBe(0.26);
     }
-    if (secondary?.kind === "split") {
-      expect(secondary.ratio).toBe(0.56);
+    if (intro?.kind === "split") {
+      expect(intro.ratio).toBe(0.675);
     }
-    expect(uses?.kind).toBe("group");
-    if (uses?.kind === "group") {
-      expect(uses.activeMemberId).toBe("intro");
-      expect(
-        uses.members.map((member: TilingLeafNode): string => member.id),
-      ).toEqual(["intro", "usecases", "proof", "scenarios"]);
+    if (features?.kind === "split") {
+      expect(features.ratio).toBe(0.416);
     }
-    expect(docs?.kind).toBe("group");
-    if (docs?.kind === "group") {
-      expect(docs.activeMemberId).toBe("features");
-      expect(
-        docs.members.map((member: TilingLeafNode): string => member.id),
-      ).toEqual(["features", "install"]);
+    if (install?.kind === "split") {
+      expect(install.ratio).toBe(0.636);
     }
-    expect(dogfood?.kind).toBe("group");
-    if (dogfood?.kind === "group") {
-      expect(dogfood.activeMemberId).toBe("set-inspector");
-      expect(
-        dogfood.members.map((member: TilingLeafNode): string => member.id),
-      ).toEqual(["set-inspector", "swipe-meter"]);
+    expect(group?.kind).toBe("group");
+    if (group?.kind === "group") {
+      expect(group.activeMemberId).toBe("usecases");
+      expect(group.members.map((member) => member.id)).toEqual([
+        "usecases",
+        "proof",
+        "scenarios",
+      ]);
     }
     expect(isStructurallyValidLayout(layout)).toBe(true);
-    expect(
-      workspacesLayout == null ? false : isStructurallyValidLayout(workspacesLayout),
-    ).toBe(true);
   });
 });

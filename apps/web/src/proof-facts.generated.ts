@@ -18,8 +18,8 @@ export const PROOF_FACTS: ProofFacts = {
   version: "26.9.9",
   testSuites: 66,
   tests: 1366,
-  gzipIndexBytes: 7089,
-  gzipEngineBytes: 30515,
+  gzipIndexBytes: 7093,
+  gzipEngineBytes: 30503,
   runtimeDependencyCount: 2,
   runtimeDependencies: [
     "clsx",

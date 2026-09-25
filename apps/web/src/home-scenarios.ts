@@ -122,7 +122,7 @@ export function corruptHomeWorkspaceSet(
       if (node.id === "home-root") {
         node.ratio = 1.5;
       }
-      if (node.id === "home-secondary") {
+      if (node.id === "home-intro-stack") {
         delete node.second;
       }
       if (node.id === HOME_USES_GROUP_ID && Array.isArray(node.members)) {

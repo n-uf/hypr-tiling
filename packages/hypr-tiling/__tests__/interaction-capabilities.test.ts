@@ -609,7 +609,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
           height: 0,
           showEject: false,
           showUngroup: false,
-          theme: { accent: "rgb(1, 2, 3)", tabHoverColor: "rgb(4, 5, 6)" },
+          theme: { accent: "rgb(1, 2, 3)" },
           renderTabLabel: label,
         },
       },
@@ -619,12 +619,8 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     expect(resolved.grouping.groupTabStrip.showEject).toBe(false);
     expect(resolved.grouping.groupTabStrip.showUngroup).toBe(false);
     expect(resolved.grouping.groupTabStrip.theme.accent).toBe("rgb(1, 2, 3)");
-    expect(resolved.grouping.groupTabStrip.theme.tabHoverColor).toBe("rgb(4, 5, 6)");
     expect(resolved.grouping.groupTabStrip.theme.background).toBe(
       TILING_GROUP_TAB_STRIP_DEFAULTS.theme.background,
-    );
-    expect(resolved.grouping.groupTabStrip.theme.tabColor).toBe(
-      TILING_GROUP_TAB_STRIP_DEFAULTS.theme.tabColor,
     );
     expect(resolved.grouping.groupTabStrip.renderTabLabel).toBe(label);
     expect(resolveInteractionCapabilities(resolved).grouping.groupTabStrip).toEqual(

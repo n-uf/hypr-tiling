@@ -747,9 +747,8 @@ from `onMoveLeaf`.
 `grouping.enable` (default on) lets a drag merge panes into a stacked group.
 The built-in strip is the canonical chrome: with `grouping.showGroupTabStrip`
 left at its default `true`, a group of two or more members paints a tab row
-(`role="tablist"`) above the pane header. Active tab is full foreground with
-an accent edge; inactive tabs use `tabColor` at full opacity (hover uses
-`tabHoverColor`); labels truncate with the full title in
+(`role="tablist"`) above the pane header. Active tab is full opacity with an
+accent edge; inactive tabs are dimmed; labels truncate with the full title in
 the `title` attribute. Arrow keys, Home, and End move the active member (the
 same `group-tab-jump` path as a click). The right end ejects the active member
 (`remove-from-group`, a sibling split) and ungroups. `groupTabStrip.showEject`
@@ -772,13 +771,12 @@ as the pane header, not an overlay). The active-indicator transition is
 | `renderTabLabel` | tile title | `(member) => ReactNode`; `member` is `{ id, tileId, title, active }` |
 
 Theme tokens (`TilingGroupTabStripTheme`, all optional CSS values):
-`background`, `borderColor`, `tabColor`, `tabHoverColor`, `tabActiveColor`,
-`tabBackground`, `tabActiveBackground`, `accent` (active top edge),
-`fontFamily`, `fontSize`, `letterSpacing`, `radius`, `gap`, `paddingX`,
-`controlColor`, `controlHoverColor`. They are resolved like `dragChrome`
-(partial over defaults) and applied as inline styles plus `--hpt-group-tab-*`
-custom properties on the strip element. Default `tabColor` is
-`rgb(148, 163, 184)` on `rgba(0, 0, 0, 0.45)` (no extra opacity dim).
+`background`, `borderColor`, `tabColor`, `tabActiveColor`, `tabBackground`,
+`tabActiveBackground`, `accent` (active top edge), `fontFamily`, `fontSize`,
+`letterSpacing`, `radius`, `gap`, `paddingX`, `controlColor`,
+`controlHoverColor`. They are resolved like `dragChrome` (partial over
+defaults) and applied as inline styles plus `--hpt-group-tab-*` custom
+properties on the strip element.
 
 A drop on a strip tab resolves `group-merge` and inserts the dragged leaf at
 that tab's index (the hovered member shifts right). A drop on the strip past
