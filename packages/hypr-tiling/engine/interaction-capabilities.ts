@@ -31,6 +31,8 @@ import type {
   TilingKeymap,
   TilingMaximizeCapability,
   TilingPaneSwitchingCapability,
+  TilingPaneTabStripOptions,
+  ResolvedTilingPaneTabStripOptions,
   TilingResizeCapability,
   TilingWorkspacesCapability,
   TilingWorkspaceSwitchCapability,
@@ -67,6 +69,13 @@ export const TILING_GROUP_TAB_STRIP_DEFAULTS: ResolvedTilingGroupTabStripOptions
   height: 28,
   showUngroup: true,
   showEject: true,
+  theme: TILING_GROUP_TAB_STRIP_THEME_DEFAULTS,
+};
+
+/** Default top-level pane strip: top of the viewport, group-strip height and theme. */
+export const TILING_PANE_TAB_STRIP_DEFAULTS: ResolvedTilingPaneTabStripOptions = {
+  placement: "top",
+  height: TILING_GROUP_TAB_STRIP_DEFAULTS.height,
   theme: TILING_GROUP_TAB_STRIP_THEME_DEFAULTS,
 };
 
@@ -109,10 +118,11 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
   ghostPickupScalePercent: DEFAULT_GHOST_PICKUP_SCALE_PERCENT,
   coherentTransit: true,
   focus: true,
-  maximize: { enable: true },
+  maximize: { enable: true, keepGroupTabStrip: true },
   paneSwitching: {
     enable: true,
     showTabStrip: true,
+    tabStrip: TILING_PANE_TAB_STRIP_DEFAULTS,
     showContentToggle: false,
     showSwitcherOverlay: true,
     tabDoubleClickMaximize: true,
@@ -281,6 +291,9 @@ export function resolveInteractionCapabilities(
     focus: capabilities?.focus ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.focus,
     maximize: {
       enable: capabilities?.maximize?.enable ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.maximize.enable,
+      keepGroupTabStrip:
+        capabilities?.maximize?.keepGroupTabStrip
+        ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.maximize.keepGroupTabStrip,
     },
     paneSwitching: {
       enable:
@@ -288,6 +301,7 @@ export function resolveInteractionCapabilities(
       showTabStrip:
         capabilities?.paneSwitching?.showTabStrip
         ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.paneSwitching.showTabStrip,
+      tabStrip: resolvePaneTabStripOptions(capabilities?.paneSwitching?.tabStrip),
       showContentToggle:
         capabilities?.paneSwitching?.showContentToggle
         ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.paneSwitching.showContentToggle,
@@ -328,7 +342,11 @@ export function resolveInteractionCapabilities(
   };
 }
 
-function resolveGroupTabStripTheme(
+/**
+ * Resolve a partial {@link TilingGroupTabStripTheme} over the library
+ * defaults. Shared by the group strip and the top-level pane strip.
+ */
+export function resolveGroupTabStripTheme(
   theme: TilingGroupTabStripTheme | undefined,
 ): ResolvedTilingGroupTabStripTheme {
   const defaults: ResolvedTilingGroupTabStripTheme = TILING_GROUP_TAB_STRIP_THEME_DEFAULTS;
@@ -361,6 +379,21 @@ function resolveGroupTabStripOptions(
     height: options?.height ?? defaults.height,
     showUngroup: options?.showUngroup ?? defaults.showUngroup,
     showEject: options?.showEject ?? defaults.showEject,
+    theme: resolveGroupTabStripTheme(options?.theme),
+  };
+  if (options?.renderTabLabel != null) {
+    resolved.renderTabLabel = options.renderTabLabel;
+  }
+  return resolved;
+}
+
+function resolvePaneTabStripOptions(
+  options: TilingPaneTabStripOptions | undefined,
+): ResolvedTilingPaneTabStripOptions {
+  const defaults: ResolvedTilingPaneTabStripOptions = TILING_PANE_TAB_STRIP_DEFAULTS;
+  const resolved: ResolvedTilingPaneTabStripOptions = {
+    placement: options?.placement ?? defaults.placement,
+    height: options?.height ?? defaults.height,
     theme: resolveGroupTabStripTheme(options?.theme),
   };
   if (options?.renderTabLabel != null) {

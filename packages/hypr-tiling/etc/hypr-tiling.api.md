@@ -354,6 +354,7 @@ export interface ResolvedTilingKeymap {
 // @public
 export interface ResolvedTilingMaximizeCapability {
     enable: boolean;
+    keepGroupTabStrip: boolean;
 }
 
 // @public
@@ -362,8 +363,17 @@ export interface ResolvedTilingPaneSwitchingCapability {
     multiSelectGrouping: boolean;
     showContentToggle: boolean;
     showSwitcherOverlay: boolean;
-    showTabStrip: boolean;
+    showTabStrip: boolean | "maximized";
     tabDoubleClickMaximize: boolean;
+    tabStrip: ResolvedTilingPaneTabStripOptions;
+}
+
+// @public
+export interface ResolvedTilingPaneTabStripOptions {
+    height: number;
+    placement: "top" | "bottom";
+    renderTabLabel?: (tab: TilingPaneTab) => React_2.ReactNode;
+    theme: ResolvedTilingGroupTabStripTheme;
 }
 
 // @public
@@ -1027,6 +1037,7 @@ export type TilingMasterOrientation = "left" | "right" | "top" | "bottom";
 // @public
 export interface TilingMaximizeCapability {
     enable?: boolean;
+    keepGroupTabStrip?: boolean;
     keymap?: Pick<TilingKeymap, "toggleMaximize" | "restore">;
 }
 
@@ -1103,8 +1114,29 @@ export interface TilingPaneSwitchingCapability {
     multiSelectGrouping?: boolean;
     showContentToggle?: boolean;
     showSwitcherOverlay?: boolean;
-    showTabStrip?: boolean;
+    showTabStrip?: boolean | "maximized";
     tabDoubleClickMaximize?: boolean;
+    tabStrip?: TilingPaneTabStripOptions;
+}
+
+// @public
+export interface TilingPaneTab {
+    active: boolean;
+    groupId: string | null;
+    leafId: string;
+    maximized: boolean;
+    memberCount: number;
+    ordinal: number;
+    tileId: string;
+    title: string;
+}
+
+// @public
+export interface TilingPaneTabStripOptions {
+    height?: number;
+    placement?: "top" | "bottom";
+    renderTabLabel?: (tab: TilingPaneTab) => React_2.ReactNode;
+    theme?: TilingGroupTabStripTheme;
 }
 
 // @public

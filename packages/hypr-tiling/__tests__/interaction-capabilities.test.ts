@@ -3,6 +3,7 @@ import {
   TILING_DASHBOARD_PRESET,
   TILING_GROUP_TAB_STRIP_DEFAULTS,
   TILING_INTERACTION_CAPABILITY_DEFAULTS,
+  TILING_PANE_TAB_STRIP_DEFAULTS,
   isResizeAxisEnabled,
   resolveInteractionCapabilities,
 } from "../engine/interaction-capabilities";
@@ -31,10 +32,11 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   ghostPickupScalePercent: 90,
   coherentTransit: true,
   focus: true,
-  maximize: { enable: true },
+  maximize: { enable: true, keepGroupTabStrip: true },
   paneSwitching: {
     enable: true,
     showTabStrip: true,
+    tabStrip: TILING_PANE_TAB_STRIP_DEFAULTS,
     showContentToggle: false,
     showSwitcherOverlay: true,
     tabDoubleClickMaximize: true,
@@ -238,8 +240,69 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
   it("preserves an explicit maximize disable", (): void => {
     expect(resolveInteractionCapabilities({ maximize: { enable: false } })).toEqual({
       ...RESOLVED_DEFAULTS,
-      maximize: { enable: false },
+      maximize: { enable: false, keepGroupTabStrip: true },
     });
+  });
+
+  it("defaults maximize.keepGroupTabStrip to true", (): void => {
+    expect(resolveInteractionCapabilities(undefined).maximize.keepGroupTabStrip).toBe(true);
+    expect(resolveInteractionCapabilities({}).maximize.keepGroupTabStrip).toBe(true);
+    expect(resolveInteractionCapabilities({ maximize: { enable: true } })).toEqual(RESOLVED_DEFAULTS);
+  });
+
+  it("preserves an explicit maximize.keepGroupTabStrip false", (): void => {
+    expect(resolveInteractionCapabilities({ maximize: { keepGroupTabStrip: false } })).toEqual({
+      ...RESOLVED_DEFAULTS,
+      maximize: { enable: true, keepGroupTabStrip: false },
+    });
+  });
+
+  it("re-resolving keepGroupTabStrip is idempotent", (): void => {
+    const once: ResolvedTilingInteractionCapabilities = resolveInteractionCapabilities({
+      maximize: { keepGroupTabStrip: false },
+    });
+    expect(resolveInteractionCapabilities(once)).toEqual(once);
+  });
+
+  it("preserves showTabStrip \"maximized\"", (): void => {
+    expect(resolveInteractionCapabilities({ paneSwitching: { showTabStrip: "maximized" } })).toEqual({
+      ...RESOLVED_DEFAULTS,
+      paneSwitching: {
+        enable: true,
+        showTabStrip: "maximized",
+        tabStrip: TILING_PANE_TAB_STRIP_DEFAULTS,
+        showContentToggle: false,
+        showSwitcherOverlay: true,
+        tabDoubleClickMaximize: true,
+        multiSelectGrouping: true,
+      },
+    });
+  });
+
+  it("resolves paneSwitching.tabStrip over group-strip height and theme defaults", (): void => {
+    const resolved: ResolvedTilingInteractionCapabilities = resolveInteractionCapabilities({
+      paneSwitching: {
+        tabStrip: {
+          placement: "bottom",
+          height: 40,
+          theme: { accent: "rgb(1, 2, 3)" },
+        },
+      },
+    });
+    expect(resolved.paneSwitching.tabStrip.placement).toBe("bottom");
+    expect(resolved.paneSwitching.tabStrip.height).toBe(40);
+    expect(resolved.paneSwitching.tabStrip.theme.accent).toBe("rgb(1, 2, 3)");
+    expect(resolved.paneSwitching.tabStrip.theme.background).toBe(
+      TILING_PANE_TAB_STRIP_DEFAULTS.theme.background,
+    );
+  });
+
+  it("re-resolving paneSwitching.tabStrip is idempotent", (): void => {
+    const once: ResolvedTilingInteractionCapabilities = resolveInteractionCapabilities({
+      paneSwitching: { showTabStrip: "maximized", tabStrip: { placement: "bottom" } },
+    });
+    expect(resolveInteractionCapabilities(once)).toEqual(once);
+    expect(resolveInteractionCapabilities(RESOLVED_DEFAULTS)).toEqual(RESOLVED_DEFAULTS);
   });
 
   it("preserves an explicit pane-switching disable, tab-strip hide, content-toggle hide, and switcher-overlay hide", (): void => {
@@ -248,6 +311,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       paneSwitching: {
         enable: false,
         showTabStrip: true,
+        tabStrip: TILING_PANE_TAB_STRIP_DEFAULTS,
         showContentToggle: false,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: true,
@@ -259,6 +323,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       paneSwitching: {
         enable: true,
         showTabStrip: false,
+        tabStrip: TILING_PANE_TAB_STRIP_DEFAULTS,
         showContentToggle: false,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: true,
@@ -270,6 +335,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       paneSwitching: {
         enable: true,
         showTabStrip: true,
+        tabStrip: TILING_PANE_TAB_STRIP_DEFAULTS,
         showContentToggle: false,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: true,
@@ -281,6 +347,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       paneSwitching: {
         enable: true,
         showTabStrip: true,
+        tabStrip: TILING_PANE_TAB_STRIP_DEFAULTS,
         showContentToggle: false,
         showSwitcherOverlay: false,
         tabDoubleClickMaximize: true,
@@ -305,6 +372,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       paneSwitching: {
         enable: true,
         showTabStrip: true,
+        tabStrip: TILING_PANE_TAB_STRIP_DEFAULTS,
         showContentToggle: true,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: true,
@@ -326,6 +394,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       paneSwitching: {
         enable: true,
         showTabStrip: true,
+        tabStrip: TILING_PANE_TAB_STRIP_DEFAULTS,
         showContentToggle: false,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: false,
@@ -353,6 +422,7 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       paneSwitching: {
         enable: true,
         showTabStrip: true,
+        tabStrip: TILING_PANE_TAB_STRIP_DEFAULTS,
         showContentToggle: false,
         showSwitcherOverlay: true,
         tabDoubleClickMaximize: true,

@@ -9,6 +9,28 @@ the version number alone does not flag them.
 
 ## Unreleased
 
+### Maximize
+
+- `maximize.keepGroupTabStrip` (default `true`) keeps the group tab strip when
+  a group member is maximized: the group is painted at viewport size with a
+  render-time `activeMemberId` override (layout is not mutated). This is a
+  behaviour change for grouped leaves — strip height is subtracted from the
+  maximized member. Set `false` for the previous leaf-only maximize. The
+  top-level pane strip's group tab now labels the maximized member, not the
+  stored active member.
+
+### Pane tab strip
+
+- `paneSwitching.showTabStrip` accepts `true` / `false` / `"maximized"`.
+  `"maximized"` paints the top-level strip only while a pane is maximized.
+- `paneSwitching.tabStrip` (`placement`, `height`, `theme`, `renderTabLabel`)
+  themes that strip with the group-strip token vocabulary
+  (`--hpt-group-tab-*`, including `tabHoverColor`). Default placement `"top"`,
+  height and theme match the group strip. `"bottom"` mounts the strip after
+  the viewport. Root class `hpt-pane-tab-strip` (plus shared `hpt-tab-strip`).
+- Lab chrome (wordmark / pickers / content toggle) renders only when
+  `showTabStrip === true` and those lab hooks are present.
+
 ### Tab groups — built-in strip contrast
 
 - Inactive group tabs no longer paint at `opacity: 0.55`. Label color is `tabColor` at full opacity; hover uses the new `tabHoverColor` token (`--hpt-group-tab-hover-color`). Default `tabColor` stays `rgb(148, 163, 184)` on `rgba(0, 0, 0, 0.45)`.

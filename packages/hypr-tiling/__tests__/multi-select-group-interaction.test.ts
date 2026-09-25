@@ -837,7 +837,10 @@ describe("built-in group tab strip", (): void => {
     });
     const last: TilingLayoutNode = layouts[layouts.length - 1];
     expect(collectGroups(last)[0].activeMemberId).toBe("beta");
-    const selected: HTMLElement = requireEl(container, '[role="tab"][aria-selected="true"]');
+    const selected: HTMLElement = requireEl(
+      container,
+      '.hpt-group-tab-strip [role="tab"][aria-selected="true"]',
+    );
     expect(selected.getAttribute("data-member-index")).toBe("1");
   });
 
@@ -935,7 +938,10 @@ describe("built-in group tab strip", (): void => {
     const { container, unmount } = render(React.createElement(StripHarness, {}));
     const strip: HTMLElement = requireEl(container, ".hpt-group-tab-strip");
     expect(strip.getAttribute("data-hpt-reduced-motion")).toBe("true");
-    const active: HTMLElement = requireEl(container, '[role="tab"][aria-selected="true"]');
+    const active: HTMLElement = requireEl(
+      container,
+      '.hpt-group-tab-strip [role="tab"][aria-selected="true"]',
+    );
     // jsdom drops an inline `transition: none` back to an empty string, which
     // is the same as no transition. Either reading means the indicator is still.
     expect(active.style.transition === "none" || active.style.transition === "").toBe(true);

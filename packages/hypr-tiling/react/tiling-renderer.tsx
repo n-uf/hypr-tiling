@@ -292,6 +292,8 @@ import type {
   TilingPaneBodyRenderMode,
   TilingPaneCollapsedChangeEvent,
   TilingPaneIdentityMode,
+  TilingPaneTab,
+  ResolvedTilingPaneTabStripOptions,
   TilingPaneFootprint,
   TilingPaneHitZoneCandidateDebugState,
   TilingPaneHitZoneOverlayDebugState,
@@ -316,7 +318,12 @@ import type {
 } from "../engine/types";
 import { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "../engine/types";
 import { cn } from "./cn";
-import { GroupTabStrip, type GroupTabStripMember } from "./group-tab-strip";
+import {
+  GroupTabStrip,
+  TabStrip,
+  type GroupTabStripMember,
+  type TabStripItem,
+} from "./group-tab-strip";
 import { createDomMeasurementPort } from "./dom-measurement-port";
 import { createDomPointerCapturePort } from "./dom-pointer-capture-port";
 import { createDomStyleApplierPort } from "./dom-style-applier-port";
@@ -3778,6 +3785,29 @@ interface PaneTabDescriptor {
   accent: TilingTile["accent"];
 }
 
+/**
+ * Render-time clone: if `maximizedLeafId` is a group member, that group
+ * reports the maximized member as `activeMemberId`. The live layout is not
+ * written. Used so maximize paints the group strip and the top-level pane
+ * strip labels the maximized member.
+ */
+function layoutWithMaximizedGroupMember(
+  layout: TilingLayoutNode,
+  maximizedLeafId: string | null,
+): TilingLayoutNode {
+  if (maximizedLeafId == null) {
+    return layout;
+  }
+  const group: TilingGroupNode | null = findGroupContainingLeaf(
+    layout,
+    maximizedLeafId,
+  );
+  if (group == null || group.activeMemberId === maximizedLeafId) {
+    return layout;
+  }
+  return setActiveGroupMember(layout, group.id, maximizedLeafId);
+}
+
 interface PaneShortcutChipDescriptor {
   id: string;
   combo: string;
@@ -4220,35 +4250,17 @@ interface PaneTabStripThemePicker {
   onSelect: (themeId: TilingThemeId) => void;
 }
 
-function PaneTabStrip({
-  tabs,
-  activeFocusedLeafId,
-  activeMaximizedLeafId,
+function PaneLabChrome({
   isPaneContentVisible,
   showContentToggle,
   accentPicker,
   themePicker,
-  onSelect,
-  onTabDoubleClickMaximize,
   onPaneContentVisibilityChange,
 }: {
-  tabs: ReadonlyArray<PaneTabDescriptor>;
-  activeFocusedLeafId: string | null;
-  activeMaximizedLeafId: string | null;
   isPaneContentVisible: boolean;
   showContentToggle: boolean;
   accentPicker: PaneTabStripAccentPicker | null;
   themePicker: PaneTabStripThemePicker | null;
-  onSelect: (leafId: string) => void;
-  /**
-   * Toggle the tab's leaf maximize on a double-click of the tab, or `null` when
-   * the `tabDoubleClickMaximize` capability (or `maximize`) is disabled — in
-   * which case no double-click handler is wired and single-click activation is
-   * the only tab behavior. A real `onDoubleClick` (`dblclick`) handler is used
-   * so the single-click activation (`onSelect`) is never the surface that fires
-   * the toggle.
-   */
-  onTabDoubleClickMaximize: ((leafId: string) => void) | null;
   onPaneContentVisibilityChange: (nextVisible: boolean) => void;
 }): React.ReactElement {
   const theme: TilingTheme = useTilingTheme();
@@ -4343,51 +4355,81 @@ function PaneTabStrip({
           content
         </label>
       ) : null}
-      <div
-        role="tablist"
-        aria-label="tiling panes"
-        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
-      >
-        {tabs.map(
-          (tab: PaneTabDescriptor, tabIndex: number): React.ReactElement => {
-            const isActive: boolean = tab.leafId === activeFocusedLeafId;
-            const isMaximized: boolean = tab.leafId === activeMaximizedLeafId;
-            return (
-              <button
-                key={`pane-tab-${tab.leafId}`}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                title={`focus pane ${tab.leafId} (Alt+${tabIndex + 1})`}
-                onClick={(): void => onSelect(tab.leafId)}
-                onDoubleClick={
-                  onTabDoubleClickMaximize != null
-                    ? (): void => onTabDoubleClickMaximize(tab.leafId)
-                    : undefined
-                }
-                className={cn(
-                  theme.topBar.tabBase,
-                  isActive
-                    ? theme.resolveTabActive(tab.accent)
-                    : theme.topBar.tabInactive,
-                )}
-              >
-                <span className="font-semibold opacity-70">{tabIndex + 1}</span>
-                <span className="whitespace-nowrap">{tab.title}</span>
-                {isMaximized ? (
-                  <span
-                    className="rounded-sm border border-current/40 px-1 text-[8px] leading-none"
-                    aria-hidden
-                  >
-                    max
-                  </span>
-                ) : null}
-              </button>
-            );
-          },
-        )}
-      </div>
     </div>
+  );
+}
+
+function PaneTabStrip({
+  tabs,
+  options,
+  prefersReducedMotion,
+  onSelect,
+  onTabDoubleClickMaximize,
+}: {
+  tabs: ReadonlyArray<TilingPaneTab>;
+  options: ResolvedTilingPaneTabStripOptions;
+  prefersReducedMotion: boolean;
+  onSelect: (leafId: string) => void;
+  /**
+   * Toggle the tab's leaf maximize on a double-click of the tab, or `null` when
+   * the `tabDoubleClickMaximize` capability (or `maximize`) is disabled — in
+   * which case no double-click handler is wired and single-click activation is
+   * the only tab behavior. A real `onDoubleClick` (`dblclick`) handler is used
+   * so the single-click activation (`onSelect`) is never the surface that fires
+   * the toggle.
+   */
+  onTabDoubleClickMaximize: ((leafId: string) => void) | null;
+}): React.ReactElement {
+  const anyMaximized: boolean = tabs.some(
+    (tab: TilingPaneTab): boolean => tab.maximized,
+  );
+  const items: ReadonlyArray<TabStripItem> = tabs.map(
+    (tab: TilingPaneTab): TabStripItem => ({
+      id: tab.leafId,
+      title: tab.title,
+      selected: anyMaximized ? tab.maximized : tab.active,
+    }),
+  );
+  return (
+    <TabStrip
+      items={items}
+      theme={options.theme}
+      height={options.height}
+      prefersReducedMotion={prefersReducedMotion}
+      ariaLabel="tiling panes"
+      className="hpt-pane-tab-strip"
+      placement={options.placement}
+      placementAttrName="data-hpt-pane-tab-placement"
+      isMergeTarget={false}
+      setRef={null}
+      onActivate={(index: number): void => {
+        const tab: TilingPaneTab | undefined = tabs[index];
+        if (tab != null) {
+          onSelect(tab.leafId);
+        }
+      }}
+      onTabDoubleClick={
+        onTabDoubleClickMaximize != null
+          ? (index: number): void => {
+              const tab: TilingPaneTab | undefined = tabs[index];
+              if (tab != null) {
+                onTabDoubleClickMaximize(tab.leafId);
+              }
+            }
+          : null
+      }
+      renderItemLabel={(item: TabStripItem, index: number): React.ReactNode => {
+        const tab: TilingPaneTab | undefined = tabs[index];
+        if (tab == null) {
+          return item.title;
+        }
+        return options.renderTabLabel != null
+          ? options.renderTabLabel(tab)
+          : tab.title;
+      }}
+      trailing={null}
+      tabIndexAttrName={null}
+    />
   );
 }
 
@@ -5106,9 +5148,12 @@ const TilingRendererComponent = React.forwardRef<
     interactionCapabilities.paneTitleBarControls.collapse;
   const isPaneSwitchingEnabled: boolean =
     interactionCapabilities.paneSwitching.enable;
-  const showTabStrip: boolean =
-    isPaneSwitchingEnabled &&
+  const showTabStripMode: boolean | "maximized" =
     interactionCapabilities.paneSwitching.showTabStrip;
+  const paneTabStripOptions: ResolvedTilingPaneTabStripOptions =
+    interactionCapabilities.paneSwitching.tabStrip;
+  const keepGroupTabStrip: boolean =
+    interactionCapabilities.maximize.keepGroupTabStrip;
   const showContentToggle: boolean =
     interactionCapabilities.paneSwitching.showContentToggle;
   // Single source of truth for pane-content visibility. When the toggle control
@@ -5721,20 +5766,65 @@ const TilingRendererComponent = React.forwardRef<
     findLeafById(layout, controlledMaximizedLeafId) != null
       ? controlledMaximizedLeafId
       : null;
-  const paneTabs: ReadonlyArray<PaneTabDescriptor> = React.useMemo(
-    (): ReadonlyArray<PaneTabDescriptor> =>
-      leafIds.map((leafId: string): PaneTabDescriptor => {
-        const leaf: TilingLeafNode | null = findLeafById(layout, leafId);
+  const layoutForPaneTabs: TilingLayoutNode = React.useMemo(
+    (): TilingLayoutNode =>
+      layoutWithMaximizedGroupMember(layout, activeMaximizedLeafId),
+    [activeMaximizedLeafId, layout],
+  );
+  const paneTabLeafIds: ReadonlyArray<string> = React.useMemo(
+    (): ReadonlyArray<string> => readLeafNodeIds(layoutForPaneTabs),
+    [layoutForPaneTabs],
+  );
+  const paneStripTabs: ReadonlyArray<TilingPaneTab> = React.useMemo(
+    (): ReadonlyArray<TilingPaneTab> =>
+      paneTabLeafIds.map((leafId: string, index: number): TilingPaneTab => {
+        const leaf: TilingLeafNode | null = findLeafById(
+          layoutForPaneTabs,
+          leafId,
+        );
         const tile: TilingTile | undefined =
           leaf != null ? resolveTile(tiles, leaf.tileId) : undefined;
+        const group: TilingGroupNode | null = findGroupContainingLeaf(
+          layout,
+          leafId,
+        );
         return {
           leafId,
+          tileId: leaf?.tileId ?? leafId,
           title: tile?.title ?? leafId,
+          active: leafId === activeFocusedLeafId,
+          maximized: leafId === activeMaximizedLeafId,
+          ordinal: index + 1,
+          groupId: group?.id ?? null,
+          memberCount: group?.members.length ?? 1,
+        };
+      }),
+    [
+      activeFocusedLeafId,
+      activeMaximizedLeafId,
+      layout,
+      layoutForPaneTabs,
+      paneTabLeafIds,
+      tiles,
+    ],
+  );
+  const paneTabs: ReadonlyArray<PaneTabDescriptor> = React.useMemo(
+    (): ReadonlyArray<PaneTabDescriptor> =>
+      paneStripTabs.map((tab: TilingPaneTab): PaneTabDescriptor => {
+        const tile: TilingTile | undefined = resolveTile(tiles, tab.tileId);
+        return {
+          leafId: tab.leafId,
+          title: tab.title,
           accent: tile?.accent ?? "cyan",
         };
       }),
-    [layout, leafIds, tiles],
+    [paneStripTabs, tiles],
   );
+  const showPaneTabStrip: boolean =
+    isPaneSwitchingEnabled &&
+    paneStripTabs.length > 0 &&
+    (showTabStripMode === true ||
+      (showTabStripMode === "maximized" && activeMaximizedLeafId != null));
   // Focused tile + its current accent — the target the top-bar accent picker
   // recolors. Null when nothing is focused or the focused leaf has no tile.
   const focusedTileAccentTarget: {
@@ -5782,6 +5872,12 @@ const TilingRendererComponent = React.forwardRef<
         onSelect: onThemeChange,
       };
     }, [onThemeChange, theme.id]);
+  const showPaneLabChrome: boolean =
+    isPaneSwitchingEnabled &&
+    showTabStripMode === true &&
+    (tabStripThemePicker != null ||
+      tabStripAccentPicker != null ||
+      showContentToggle);
   const paneShortcutChips: ReadonlyArray<PaneShortcutChipDescriptor> =
     React.useMemo(
       (): ReadonlyArray<PaneShortcutChipDescriptor> =>
@@ -9938,6 +10034,14 @@ const TilingRendererComponent = React.forwardRef<
     activeMaximizedLeafId != null
       ? findLeafById(layout, activeMaximizedLeafId)
       : null;
+  const maximizedGroup: TilingGroupNode | null =
+    keepGroupTabStrip && activeMaximizedLeafId != null
+      ? findGroupContainingLeaf(layout, activeMaximizedLeafId)
+      : null;
+  const maximizedRenderNode: TilingLayoutNode | null =
+    maximizedGroup != null && activeMaximizedLeafId != null
+      ? { ...maximizedGroup, activeMemberId: activeMaximizedLeafId }
+      : maximizedLeaf;
   // In live mode the displayed tree is the derived candidate tree (the
   // destination physically reflows to the post-drop result); otherwise the prop
   // layout. The projected landing overlays (S' / T' / successor) are the
@@ -9953,8 +10057,12 @@ const TilingRendererComponent = React.forwardRef<
   // or a bailed-out render never leaks stale tiles into the pool.
   stablePaneEntriesRef.current = new Map<string, StablePaneEntry>();
   const treeElement: React.ReactElement =
-    maximizedLeaf != null
-      ? renderBranch(maximizedLeaf, viewportSize.width, viewportSize.height)
+    maximizedRenderNode != null
+      ? renderBranch(
+          maximizedRenderNode,
+          viewportSize.width,
+          viewportSize.height,
+        )
       : renderBranch(displayLayout, viewportSize.width, viewportSize.height);
   const stablePaneEntries: Map<string, StablePaneEntry> =
     stablePaneEntriesRef.current;
@@ -10059,16 +10167,23 @@ const TilingRendererComponent = React.forwardRef<
         }}
       >
         <TilingChromeStyles focusOutline={chromeFocusOutline} />
-        {showTabStrip && paneTabs.length > 0 ? (
+        {showPaneLabChrome ? (
           <div className="mb-1.5 shrink-0">
-            <PaneTabStrip
-              tabs={paneTabs}
-              activeFocusedLeafId={activeFocusedLeafId}
-              activeMaximizedLeafId={activeMaximizedLeafId}
+            <PaneLabChrome
               isPaneContentVisible={isPaneContentVisible}
               showContentToggle={showContentToggle}
               accentPicker={tabStripAccentPicker}
               themePicker={tabStripThemePicker}
+              onPaneContentVisibilityChange={setIsPaneContentVisible}
+            />
+          </div>
+        ) : null}
+        {showPaneTabStrip && paneTabStripOptions.placement === "top" ? (
+          <div className="mb-1.5 shrink-0">
+            <PaneTabStrip
+              tabs={paneStripTabs}
+              options={paneTabStripOptions}
+              prefersReducedMotion={prefersReducedMotion}
               onSelect={activateLeaf}
               onTabDoubleClickMaximize={
                 tabDoubleClickMaximizeEnabled
@@ -10077,12 +10192,12 @@ const TilingRendererComponent = React.forwardRef<
                     }
                   : null
               }
-              onPaneContentVisibilityChange={setIsPaneContentVisible}
             />
           </div>
         ) : null}
         <div
           ref={viewportRef}
+          data-hpt-viewport=""
           className={theme.root.viewport}
           // While dragging, the reflowing candidate-tree layer is made inert so
           // native hit-testing / `elementFromPoint` can NEVER re-target to a pane
@@ -10196,6 +10311,23 @@ const TilingRendererComponent = React.forwardRef<
             />
           ) : null}
         </div>
+        {showPaneTabStrip && paneTabStripOptions.placement === "bottom" ? (
+          <div className="mt-1.5 shrink-0">
+            <PaneTabStrip
+              tabs={paneStripTabs}
+              options={paneTabStripOptions}
+              prefersReducedMotion={prefersReducedMotion}
+              onSelect={activateLeaf}
+              onTabDoubleClickMaximize={
+                tabDoubleClickMaximizeEnabled
+                  ? (leafId: string): void => {
+                      dispatchCommand(tabDoubleClickMaximizeCommand(leafId));
+                    }
+                  : null
+              }
+            />
+          </div>
+        ) : null}
         {paneIdentityMode === "stable" ? (
           // AFTER the viewport (a later sibling): React runs layout work in tree
           // order, so every slot's callback ref has registered before a pane

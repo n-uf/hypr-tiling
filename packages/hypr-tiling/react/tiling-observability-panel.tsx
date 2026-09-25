@@ -1950,20 +1950,36 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 </label>
 
                 <label
-                  className="flex items-center gap-2 pl-5 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-300"
-                  title="Render the tab strip above the tiling region. Cycle/jump shortcuts still work when off."
+                  className="flex flex-col gap-1 pl-5 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-300"
+                  title="Render the top-level pane tab strip: always, only while maximized, or never. Cycle/jump shortcuts still work when hidden."
                 >
-                  <StyledCheckbox
+                  <span>tab strip</span>
+                  <select
                     disabled={!props.interactionCapabilities.paneSwitching.enable}
-                    checked={props.interactionCapabilities.paneSwitching.showTabStrip}
-                    onChange={(checked: boolean): void => props.setInteractionCapabilities(
-                      (previous: ResolvedTilingInteractionCapabilities): ResolvedTilingInteractionCapabilities => ({
-                        ...previous,
-                        paneSwitching: { ...previous.paneSwitching, showTabStrip: checked },
-                      }),
-                    )}
-                  />
-                  tab strip visible
+                    value={
+                      props.interactionCapabilities.paneSwitching.showTabStrip === "maximized"
+                        ? "maximized"
+                        : props.interactionCapabilities.paneSwitching.showTabStrip
+                          ? "true"
+                          : "false"
+                    }
+                    onChange={(event: React.ChangeEvent<HTMLSelectElement>): void => {
+                      const raw: string = event.target.value;
+                      const showTabStrip: boolean | "maximized" =
+                        raw === "maximized" ? "maximized" : raw === "true";
+                      props.setInteractionCapabilities(
+                        (previous: ResolvedTilingInteractionCapabilities): ResolvedTilingInteractionCapabilities => ({
+                          ...previous,
+                          paneSwitching: { ...previous.paneSwitching, showTabStrip },
+                        }),
+                      );
+                    }}
+                    className="w-full min-w-0 max-w-full rounded border border-white/10 bg-slate-950 px-2 py-1 font-mono text-[11px] text-slate-200"
+                  >
+                    <option value="true">always</option>
+                    <option value="maximized">maximized only</option>
+                    <option value="false">hidden</option>
+                  </select>
                 </label>
 
                 <label

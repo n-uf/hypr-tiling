@@ -844,6 +844,62 @@ clicked pane's slot. Escape clears the selection; hosts can call
 path without walking every pane's toggle. Inactive retained panes and the
 drag-ghost / drag-cancel surfaces report `multiSelectionCount: 0`.
 
+## Maximize
+
+Maximize is a non-destructive render mode: the focused pane fills the tiling
+viewport and siblings are hidden; the layout tree is not rewritten. Restore
+with a second maximize, `Escape`, or the header control.
+
+`maximize.keepGroupTabStrip` (default `true`) keeps the group's tab strip
+when the maximized leaf is a group member. The renderer paints the GROUP
+node at viewport size and overrides `activeMemberId` to the maximized leaf
+at render time (no `onLayoutChange`). The strip height is subtracted from
+the maximized member. `grouping.showGroupTabStrip: false` still hides the
+strip. Set `keepGroupTabStrip: false` to fill the viewport with the leaf
+alone (the previous grouped-maximize look).
+
+```tsx
+interaction={{
+  maximize: { enable: true, keepGroupTabStrip: true },
+}}
+```
+
+## Pane switching
+
+`paneSwitching.showTabStrip` governs the top-level pane strip (every outer
+pane, a group as one tab). `true` (default) always paints it; `false` hides
+it; `"maximized"` paints it only while a pane is maximized. Cycle / jump
+shortcuts work regardless. Clicking a tab calls `activateLeaf`, which
+switches the maximized pane while maximized.
+
+`paneSwitching.tabStrip` themes that strip with the same tokens as
+`grouping.groupTabStrip` (`TilingGroupTabStripTheme`, `--hpt-group-tab-*`).
+The strip root is `hpt-tab-strip hpt-pane-tab-strip`.
+
+| `tabStrip` field | Default | What it does |
+| --- | --- | --- |
+| `placement` | `"top"` | `"top"` above the viewport, `"bottom"` after it |
+| `height` | group-strip height (`28`) | Strip height in CSS pixels |
+| `theme` | group-strip dark / amber | Same CSS-value tokens as `groupTabStrip.theme` |
+| `renderTabLabel` | tile title | `(tab) => ReactNode`; `tab` is `{ leafId, tileId, title, active, maximized, ordinal, groupId, memberCount }` |
+
+The lab chrome (wordmark, theme picker, accent picker, content toggle)
+renders only when `showTabStrip === true` and those lab hooks are passed
+(`onThemeChange` / `onTileAccentChange` / `showContentToggle`).
+`"maximized"` is the lean strip only.
+
+```tsx
+interaction={{
+  paneSwitching: {
+    showTabStrip: "maximized",
+    tabStrip: {
+      placement: "top",
+      theme: { background: "#0c0d10", accent: "rgb(252, 211, 77)" },
+    },
+  },
+}}
+```
+
 ## Features
 
 - **Drag/drop rearrange** — Hyprland-style live drag; the move commits on

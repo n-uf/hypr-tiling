@@ -1,6 +1,7 @@
 import * as React from "react";
 import type {
   ResolvedTilingGroupTabStripOptions,
+  ResolvedTilingGroupTabStripTheme,
   TilingGroupTabMember,
 } from "../engine/types";
 import { cn } from "./cn";
@@ -26,46 +27,39 @@ export interface GroupTabStripProps {
   onUngroup: () => void;
 }
 
+/** One item the shared strip paints. `selected` drives `aria-selected`. */
+export interface TabStripItem {
+  id: string;
+  title: string;
+  selected: boolean;
+}
+
+export interface TabStripProps {
+  items: ReadonlyArray<TabStripItem>;
+  theme: ResolvedTilingGroupTabStripTheme;
+  height: number;
+  prefersReducedMotion: boolean;
+  ariaLabel: string;
+  className: string;
+  placement: "top" | "bottom";
+  placementAttrName: "data-hpt-group-tab-placement" | "data-hpt-pane-tab-placement";
+  isMergeTarget: boolean;
+  setRef: ((element: HTMLDivElement | null) => void) | null;
+  onActivate: (index: number) => void;
+  onTabDoubleClick: ((index: number) => void) | null;
+  renderItemLabel: (item: TabStripItem, index: number) => React.ReactNode;
+  trailing: React.ReactNode;
+  tabIndexAttrName: "data-member-index" | null;
+}
+
 const TAB_MIN_WIDTH_PX: number = 36;
 
-/**
- * Built-in group tab strip. Tabs truncate, arrow keys move activation, and
- * the right end ejects the active member or ungroups. Theme tokens are CSS
- * custom properties on the strip element (same resolve-then-apply path as
- * `dragChrome`).
- */
-export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
-  const {
-    groupId,
-    members,
-    options,
-    isGroupingEnabled,
-    isMergeTarget,
-    prefersReducedMotion,
-    setRef,
-    onActivate,
-    onEject,
-    onUngroup,
-  } = props;
-  const theme = options.theme;
-  const tabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
-  const pendingFocusIndex = React.useRef<number | null>(null);
-  const activeMemberId: string =
-    members.find((member: GroupTabStripMember): boolean => member.active)?.id ?? "";
-  const [hoveredControl, setHoveredControl] = React.useState<"eject" | "ungroup" | null>(null);
-  const [hoveredTabId, setHoveredTabId] = React.useState<string | null>(null);
-
-  React.useEffect((): void => {
-    const index: number | null = pendingFocusIndex.current;
-    if (index == null) {
-      return;
-    }
-    pendingFocusIndex.current = null;
-    tabRefs.current[index]?.focus();
-  }, [activeMemberId]);
-
-  const stripStyle: React.CSSProperties = {
-    height: options.height,
+function stripThemeStyle(
+  theme: ResolvedTilingGroupTabStripTheme,
+  height: number,
+): React.CSSProperties {
+  return {
+    height,
     boxSizing: "border-box",
     background: theme.background,
     borderColor: theme.borderColor,
@@ -95,20 +89,59 @@ export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
     ["--hpt-group-tab-padding-x" as string]: theme.paddingX,
     ["--hpt-group-tab-control" as string]: theme.controlColor,
     ["--hpt-group-tab-control-hover" as string]: theme.controlHoverColor,
-    ["--hpt-group-tab-strip-height" as string]: `${options.height}px`,
+    ["--hpt-group-tab-strip-height" as string]: `${height}px`,
   };
+}
+
+/**
+ * Shared `role="tablist"` strip: theme tokens as `--hpt-group-tab-*` custom
+ * properties, arrow / Home / End activation. Used by the group strip and the
+ * top-level pane strip.
+ */
+export function TabStrip(props: TabStripProps): React.ReactElement {
+  const {
+    items,
+    theme,
+    height,
+    prefersReducedMotion,
+    ariaLabel,
+    className,
+    placement,
+    placementAttrName,
+    isMergeTarget,
+    setRef,
+    onActivate,
+    onTabDoubleClick,
+    renderItemLabel,
+    trailing,
+    tabIndexAttrName,
+  } = props;
+  const tabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
+  const pendingFocusIndex = React.useRef<number | null>(null);
+  const selectedId: string =
+    items.find((item: TabStripItem): boolean => item.selected)?.id ?? "";
+  const [hoveredTabId, setHoveredTabId] = React.useState<string | null>(null);
+
+  React.useEffect((): void => {
+    const index: number | null = pendingFocusIndex.current;
+    if (index == null) {
+      return;
+    }
+    pendingFocusIndex.current = null;
+    tabRefs.current[index]?.focus();
+  }, [selectedId]);
 
   const indicatorTransition: string = prefersReducedMotion
     ? "none"
     : "box-shadow 160ms ease, color 160ms ease, background-color 160ms ease";
 
   function moveTo(index: number): void {
-    if (members.length === 0) {
+    if (items.length === 0) {
       return;
     }
-    const wrapped: number = (index + members.length) % members.length;
+    const wrapped: number = (index + items.length) % items.length;
     pendingFocusIndex.current = wrapped;
-    onActivate(wrapped + 1);
+    onActivate(wrapped);
   }
 
   function onTabKeyDown(
@@ -136,62 +169,67 @@ export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
     if (event.key === "End") {
       event.preventDefault();
       event.stopPropagation();
-      moveTo(members.length - 1);
+      moveTo(items.length - 1);
     }
   }
 
-  const showEject: boolean = isGroupingEnabled && options.showEject;
-  const showUngroup: boolean = isGroupingEnabled && options.showUngroup;
-  const activeMember: GroupTabStripMember | undefined = members.find(
-    (member: GroupTabStripMember): boolean => member.active,
-  );
+  const placementAttrs: Record<string, string> = {
+    [placementAttrName]: placement,
+  };
 
   return (
     <div
-      ref={setRef}
+      ref={setRef ?? undefined}
       role="tablist"
-      aria-label={`group ${groupId} members`}
-      data-hpt-group-tab-placement={options.placement}
+      aria-label={ariaLabel}
       data-hpt-reduced-motion={prefersReducedMotion ? "true" : "false"}
       className={cn(
-        "hpt-group-tab-strip flex shrink-0 items-stretch overflow-hidden",
+        "hpt-tab-strip flex shrink-0 items-stretch overflow-hidden",
+        className,
         isMergeTarget ? "ring-2 ring-violet-400/50" : "",
       )}
-      style={stripStyle}
+      style={stripThemeStyle(theme, height)}
+      {...placementAttrs}
     >
-      {members.map((member: GroupTabStripMember): React.ReactElement => {
-        const label: React.ReactNode =
-          options.renderTabLabel != null ? options.renderTabLabel(member) : member.title;
-        const hovered: boolean = hoveredTabId === member.id;
-        const tabColor: string = member.active
+      {items.map((item: TabStripItem, index: number): React.ReactElement => {
+        const hovered: boolean = hoveredTabId === item.id;
+        const tabColor: string = item.selected
           ? theme.tabActiveColor
           : hovered
             ? theme.tabHoverColor
             : theme.tabColor;
+        const indexAttrs: Record<string, number> =
+          tabIndexAttrName != null ? { [tabIndexAttrName]: index } : {};
         return (
           <button
-            key={member.id}
+            key={item.id}
             ref={(element: HTMLButtonElement | null): void => {
-              tabRefs.current[member.index] = element;
+              tabRefs.current[index] = element;
             }}
             type="button"
             role="tab"
-            aria-selected={member.active}
-            tabIndex={member.active ? 0 : -1}
-            data-member-index={member.index}
-            title={member.title}
+            aria-selected={item.selected}
+            tabIndex={item.selected ? 0 : -1}
+            title={item.title}
             onClick={(): void => {
-              onActivate(member.index + 1);
+              onActivate(index);
             }}
+            onDoubleClick={
+              onTabDoubleClick != null
+                ? (): void => {
+                    onTabDoubleClick(index);
+                  }
+                : undefined
+            }
             onKeyDown={(event: React.KeyboardEvent<HTMLButtonElement>): void => {
-              onTabKeyDown(event, member.index);
+              onTabKeyDown(event, index);
             }}
             onMouseEnter={(): void => {
-              setHoveredTabId(member.id);
+              setHoveredTabId(item.id);
             }}
             onMouseLeave={(): void => {
               setHoveredTabId((current: string | null): string | null =>
-                current === member.id ? null : current,
+                current === item.id ? null : current,
               );
             }}
             className="hpt-group-tab flex min-w-0 items-center overflow-hidden outline-none"
@@ -200,24 +238,66 @@ export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
               minWidth: TAB_MIN_WIDTH_PX,
               maxWidth: "100%",
               color: tabColor,
-              background: member.active ? theme.tabActiveBackground : theme.tabBackground,
+              background: item.selected ? theme.tabActiveBackground : theme.tabBackground,
               borderRadius: theme.radius,
-              boxShadow: member.active ? "inset 0 2px 0 var(--hpt-group-tab-accent)" : "none",
+              boxShadow: item.selected ? "inset 0 2px 0 var(--hpt-group-tab-accent)" : "none",
               opacity: 1,
               transition: indicatorTransition,
               paddingLeft: 8,
               paddingRight: 8,
             }}
+            {...indexAttrs}
           >
             <span
               className="min-w-0 flex-1 overflow-hidden text-left"
               style={{ textOverflow: "ellipsis", whiteSpace: "nowrap" }}
             >
-              {label}
+              {renderItemLabel(item, index)}
             </span>
           </button>
         );
       })}
+      {trailing}
+    </div>
+  );
+}
+
+/**
+ * Built-in group tab strip. Tabs truncate, arrow keys move activation, and
+ * the right end ejects the active member or ungroups. Theme tokens are CSS
+ * custom properties on the strip element (same resolve-then-apply path as
+ * `dragChrome`).
+ */
+export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
+  const {
+    groupId,
+    members,
+    options,
+    isGroupingEnabled,
+    isMergeTarget,
+    prefersReducedMotion,
+    setRef,
+    onActivate,
+    onEject,
+    onUngroup,
+  } = props;
+  const theme = options.theme;
+  const [hoveredControl, setHoveredControl] = React.useState<"eject" | "ungroup" | null>(null);
+  const showEject: boolean = isGroupingEnabled && options.showEject;
+  const showUngroup: boolean = isGroupingEnabled && options.showUngroup;
+  const activeMember: GroupTabStripMember | undefined = members.find(
+    (member: GroupTabStripMember): boolean => member.active,
+  );
+  const items: ReadonlyArray<TabStripItem> = members.map(
+    (member: GroupTabStripMember): TabStripItem => ({
+      id: member.id,
+      title: member.title,
+      selected: member.active,
+    }),
+  );
+
+  const trailing: React.ReactNode = (
+    <>
       {showEject && activeMember != null ? (
         <button
           type="button"
@@ -270,7 +350,35 @@ export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
           <UngroupGlyph />
         </button>
       ) : null}
-    </div>
+    </>
+  );
+
+  return (
+    <TabStrip
+      items={items}
+      theme={theme}
+      height={options.height}
+      prefersReducedMotion={prefersReducedMotion}
+      ariaLabel={`group ${groupId} members`}
+      className="hpt-group-tab-strip"
+      placement={options.placement}
+      placementAttrName="data-hpt-group-tab-placement"
+      isMergeTarget={isMergeTarget}
+      setRef={setRef}
+      onActivate={(index: number): void => {
+        onActivate(index + 1);
+      }}
+      onTabDoubleClick={null}
+      renderItemLabel={(item: TabStripItem, index: number): React.ReactNode => {
+        const member: GroupTabStripMember | undefined = members[index];
+        if (member == null) {
+          return item.title;
+        }
+        return options.renderTabLabel != null ? options.renderTabLabel(member) : member.title;
+      }}
+      trailing={trailing}
+      tabIndexAttrName="data-member-index"
+    />
   );
 }
 

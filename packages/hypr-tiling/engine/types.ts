@@ -686,6 +686,15 @@ export interface TilingMaximizeCapability {
   /** Enable the per-pane maximize/restore control + shortcuts. Default `true`. */
   enable?: boolean;
   /**
+   * When the maximized leaf belongs to a group, render the GROUP node at
+   * viewport size (strip above the maximized member) instead of the leaf
+   * alone. Default `true`. The group's `activeMemberId` is overridden at
+   * render time to the maximized leaf — the layout tree is not mutated.
+   * `grouping.showGroupTabStrip: false` still hides the strip. Set `false`
+   * to restore leaf-only maximize (no group chrome).
+   */
+  keepGroupTabStrip?: boolean;
+  /**
    * Per-capability keybinding overrides for `toggleMaximize` / `restore`. These
    * take precedence over the top-level `keymap`, which takes precedence over the
    * documented defaults.
@@ -702,14 +711,21 @@ export interface TilingPaneSwitchingCapability {
   /** Enable pane switching (tab strip + cycle/jump shortcuts). Default `true`. */
   enable?: boolean;
   /**
-   * Render the TOP-LEVEL tab strip (the single strip across the top of the
-   * tiling region listing every pane). Default `true`. The cycle/jump shortcuts
-   * work regardless. This flag does NOT govern the per-group tab strip a
-   * tabbed-stacking group renders above its active member — that strip is
-   * governed by `grouping.showGroupTabStrip` (see
-   * {@link TilingGroupingCapability}).
+   * Render the TOP-LEVEL tab strip (the single strip across the tiling
+   * region listing every pane). Default `true`. `true` / `false` behave as
+   * always-on / hidden; `"maximized"` renders the strip only while a pane is
+   * maximized. The cycle/jump shortcuts work regardless. This flag does NOT
+   * govern the per-group tab strip a tabbed-stacking group renders above its
+   * active member — that strip is governed by `grouping.showGroupTabStrip`
+   * (see {@link TilingGroupingCapability}).
    */
-  showTabStrip?: boolean;
+  showTabStrip?: boolean | "maximized";
+  /**
+   * Built-in top-level pane tab strip. Ignored when `showTabStrip` is
+   * `false`. Omitted fields resolve to the defaults in `tabStrip` below
+   * (placement `"top"`, group-strip height and theme).
+   */
+  tabStrip?: TilingPaneTabStripOptions;
   /**
    * Render the tab strip's pane-content visibility checkbox (the "content"
    * toggle that flips the default-tile body between content and empty). Default
@@ -811,14 +827,21 @@ export interface ResolvedTilingPaneTitleBarControlsCapability {
 export interface ResolvedTilingMaximizeCapability {
   /** Whether the maximize/restore control + shortcuts are live. */
   enable: boolean;
+  /**
+   * Whether a maximized group member renders inside its group (strip stays
+   * visible) instead of as a bare leaf.
+   */
+  keepGroupTabStrip: boolean;
 }
 
 /** Resolved pane-switching capability (no optional fields). */
 export interface ResolvedTilingPaneSwitchingCapability {
   /** Whether pane switching (tab strip + cycle/jump shortcuts) is live. */
   enable: boolean;
-  /** Whether the tab strip renders. */
-  showTabStrip: boolean;
+  /** Whether the tab strip renders: always, never, or only while maximized. */
+  showTabStrip: boolean | "maximized";
+  /** Resolved built-in pane tab strip options. */
+  tabStrip: ResolvedTilingPaneTabStripOptions;
   /** Whether the tab strip's pane-content visibility checkbox renders. */
   showContentToggle: boolean;
   /** Whether the Cmd+Tab-style switcher overlay renders while cycling. */
@@ -827,6 +850,64 @@ export interface ResolvedTilingPaneSwitchingCapability {
   tabDoubleClickMaximize: boolean;
   /** Whether Alt/Opt+click header multi-selection grouping is live. */
   multiSelectGrouping: boolean;
+}
+
+/**
+ * One entry of the top-level pane tab strip. A group contributes a single
+ * tab, labelled by the maximized-or-active member.
+ */
+export interface TilingPaneTab {
+  /** Outer-layout leaf id this tab activates. */
+  leafId: string;
+  /** Tile id that leaf displays. */
+  tileId: string;
+  /** Tile title, or the leaf id when the tile has no title. */
+  title: string;
+  /** Whether this tab's leaf is the focused pane. */
+  active: boolean;
+  /** Whether this tab's leaf is the maximized pane. */
+  maximized: boolean;
+  /** 1-based position in the strip (reading order). */
+  ordinal: number;
+  /** Group id when this tab stands for a group; `null` for a loose leaf. */
+  groupId: string | null;
+  /** Group member count when grouped; `1` for a loose leaf. */
+  memberCount: number;
+}
+
+/**
+ * Built-in top-level pane tab strip. Shares the group-strip theme vocabulary
+ * ({@link TilingGroupTabStripTheme}) and the same `role="tablist"` keyboard
+ * model. Omitted fields resolve to placement `"top"`, the group-strip default
+ * height, and {@link TilingGroupTabStripTheme} defaults.
+ */
+export interface TilingPaneTabStripOptions {
+  /**
+   * `"top"` (default) paints the strip above the tiling viewport.
+   * `"bottom"` paints the same strip under the viewport.
+   */
+  placement?: "top" | "bottom";
+  /** Strip height in CSS pixels. Default is the group-strip height (`28`). */
+  height?: number;
+  /** CSS-value tokens. Omitted tokens keep the group-strip library default. */
+  theme?: TilingGroupTabStripTheme;
+  /**
+   * Custom tab label. Default is the tile title. The string title is always
+   * the tab's `title` attribute (ellipsis tooltip).
+   */
+  renderTabLabel?: (tab: TilingPaneTab) => React.ReactNode;
+}
+
+/** Fully resolved pane tab strip options. `renderTabLabel` stays optional. */
+export interface ResolvedTilingPaneTabStripOptions {
+  /** `"top"` above the viewport, `"bottom"` under the viewport. */
+  placement: "top" | "bottom";
+  /** Strip height in CSS pixels. */
+  height: number;
+  /** Resolved CSS-value tokens (same vocabulary as the group strip). */
+  theme: ResolvedTilingGroupTabStripTheme;
+  /** Custom tab label, when the host passed one. */
+  renderTabLabel?: (tab: TilingPaneTab) => React.ReactNode;
 }
 
 /**
