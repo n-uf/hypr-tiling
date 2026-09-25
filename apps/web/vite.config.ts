@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@n-uf/hypr-tiling/devtools": resolve(__dirname, "../../packages/hypr-tiling/devtools.ts"),
+      "@n-uf/hypr-tiling/engine": resolve(__dirname, "../../packages/hypr-tiling/engine.ts"),
       "@n-uf/hypr-tiling": resolve(__dirname, "../../packages/hypr-tiling/index.ts"),
     },
   },

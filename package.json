@@ -10,6 +10,7 @@
     "build": "pnpm -r --filter './packages/*' build && pnpm --filter hypr-tiling-web build",
     "typecheck": "pnpm -r --filter './packages/*' typecheck && pnpm --filter hypr-tiling-web typecheck",
     "test": "pnpm --filter @n-uf/hypr-tiling test",
+    "check:guardrails": "pnpm --filter @n-uf/hypr-tiling check:guardrails",
     "check": "pnpm typecheck && pnpm test",
     "release": "pnpm --filter @n-uf/hypr-tiling release"
   }

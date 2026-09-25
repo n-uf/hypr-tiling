@@ -152,6 +152,40 @@ if (!existsSync(distIndex)) {
   }
 }
 
+// ── Rule 4: generated proof facts record this package version ───────────────
+const proofFactsPath = resolve(repoRoot, "apps/web/src/proof-facts.generated.ts");
+const packageVersion = JSON.parse(readFileSync(resolve(packageDir, "package.json"), "utf8")).version;
+if (!existsSync(proofFactsPath)) {
+  violations.push(
+    `proof-facts: ${relative(repoRoot, proofFactsPath)} is missing — run \`node scripts/proof-facts.mjs\`.`,
+  );
+} else {
+  const recorded = readFileSync(proofFactsPath, "utf8").match(/version:\s*"([^"]+)"/);
+  const recordedVersion = recorded?.[1];
+  if (recordedVersion !== packageVersion) {
+    violations.push(
+      `proof-facts: generated version ${JSON.stringify(recordedVersion ?? "")} !== packages/hypr-tiling/package.json version ${JSON.stringify(packageVersion)}.`,
+    );
+  }
+}
+
+// ── Rule 5: prerendered home still shows the intro headline once ────────────
+const prerenderedHome = resolve(repoRoot, "apps/web/dist/index.html");
+const introLead = "Rearrange the interface";
+if (!existsSync(prerenderedHome)) {
+  violations.push(
+    `prerender: ${relative(repoRoot, prerenderedHome)} not found — run \`pnpm --filter hypr-tiling-web build\` before the guardrails check.`,
+  );
+} else {
+  const homeHtml = readFileSync(prerenderedHome, "utf8");
+  const introCount = (homeHtml.match(/Rearrange the interface/g) ?? []).length;
+  if (introCount !== 1) {
+    violations.push(
+      `prerender: ${relative(repoRoot, prerenderedHome)} contains ${JSON.stringify(introLead)} ${introCount} times; expected 1.`,
+    );
+  }
+}
+
 if (violations.length > 0) {
   console.error(`check-guardrails: ${violations.length} violation(s):\n`);
   for (const v of violations) {
@@ -161,5 +195,5 @@ if (violations.length > 0) {
 }
 
 console.log(
-  "check-guardrails: OK — engine↛react layering, no deep consumer imports, dist/index.mjs keeps \"use client\".",
+  "check-guardrails: OK — engine↛react layering, no deep consumer imports, dist/index.mjs keeps \"use client\", proof-facts version matches the package, prerender contains the intro headline once.",
 );

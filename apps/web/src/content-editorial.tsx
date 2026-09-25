@@ -66,7 +66,7 @@ function EditorialKicker({
   );
 }
 
-function EditorialHeading({
+export function EditorialHeading({
   children,
 }: {
   children: React.ReactNode;
@@ -81,7 +81,7 @@ function EditorialHeading({
   );
 }
 
-function EditorialLead({
+export function EditorialLead({
   children,
 }: {
   children: React.ReactNode;
@@ -133,7 +133,7 @@ function EditorialPre({ children }: { children: string }): React.ReactElement {
 }
 
 // Editorial inline renderer: the same segment model, editorial decorations.
-function EditorialInline({
+export function EditorialInline({
   paragraph,
 }: {
   paragraph: DocParagraph;

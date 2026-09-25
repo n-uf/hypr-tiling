@@ -5,8 +5,10 @@
   "description": "Homepage app for hypr-tiling packages.",
   "license": "LicenseRef-PolyForm-Perimeter-1.0.1",
   "scripts": {
+    "prebuild": "node ../../scripts/proof-facts.mjs",
     "dev": "vite",
     "build": "vite build && vite build --ssr src/entry-server.tsx --outDir dist-server && node prerender.mjs",
+    "test": "node ../../packages/hypr-tiling/node_modules/jest/bin/jest.js --config jest.config.cjs --maxWorkers=2",
     "build:client": "vite build",
     "prerender": "node prerender.mjs",
     "typecheck": "tsc --project tsconfig.json",

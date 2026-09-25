@@ -21,6 +21,8 @@ import {
   type DocInline,
   type DocParagraph,
 } from "./docs";
+import { HOME_SCENARIOS, type HomeScenario } from "./home-scenarios";
+import { proofParagraphs } from "./proof-lines";
 
 // Skin-neutral per-pane content metrics for the homepage. All three skins
 // (Mosaic, Editorial, Canvas) render the SAME documentation model, so the metric
@@ -89,6 +91,11 @@ const PANE_TEXT: Record<string, string> = {
     inlineText(INTRO_KUDOS_PARAGRAPH),
   ].join(" "),
   usecases: [USECASES_LEAD, termDetailText(USE_CASES)].join(" "),
+  proof: proofParagraphs().map(inlineText).join(" "),
+  scenarios: HOME_SCENARIOS.map(
+    (scenario: HomeScenario): string =>
+      `${scenario.title} ${scenario.description} ${scenario.finalLine}`,
+  ).join(" "),
   install: [
     INSTALL_SNIPPET,
     INTEGRATION_EXAMPLE,

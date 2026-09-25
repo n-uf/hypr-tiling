@@ -8,7 +8,9 @@ import {
   useTilingWorkspaceSetController,
   useTilingWorkspaceTabs,
   workspaceSetEquals,
+  type TilingCommand,
   type TilingCommandHandle,
+  type TilingGroupTabMember,
   type TilingInteractionCapabilities,
   type TilingLayoutConfig,
   type TilingLayoutNode,
@@ -23,6 +25,7 @@ import {
 } from "@n-uf/hypr-tiling";
 import {
   buildChangelogWidgetTiles,
+  CHANGELOG_WIDGET_TILE_IDS,
   type HomeInspectorEvent,
 } from "./changelog-widgets";
 import { preloadRoute } from "./docs-route";
@@ -36,13 +39,29 @@ import { CANVAS_THEME, CANVAS_TICKS, HOME_GROUP_TAB_STRIP } from "./canvas-theme
 import { HomeShortcuts } from "./shortcuts";
 import { HomeWorkspaceTabStrip } from "./home-workspace-tabs";
 import {
+  loadHomeWorkspaceBlob,
+  type HomeLayoutHealOptions,
+  type HomeWorkspaceHealResult,
+} from "./home-layout-heal";
+import {
+  clearHomeLayoutSnapshot,
+  corruptHomeWorkspaceSet,
+  homeWorkspaceEnvelope,
+  readHomeLayoutSnapshot,
+  writeHomeLayoutSnapshot,
+  type ScenarioHost,
+} from "./home-scenarios";
+import {
   clearHomeWorkspaceSet,
   HOME_WORKSPACE_SEED,
+  HOME_WORKSPACE_STORAGE_KEY,
   mintHomeWorkspaceId,
   nextHomeWorkspaceName,
-  readHomeWorkspaceSet,
+  parseHomeWorkspaceSetBlob,
   writeHomeWorkspaceSet,
 } from "./home-workspaces";
+import { ProofPane } from "./proof-pane";
+import { ScenariosPane } from "./scenarios-pane";
 import { MobileHome } from "./mobile-home/mobile-home";
 import { MobileTopStrip } from "./mobile-home/top-strip";
 import {
@@ -84,6 +103,16 @@ const LAYOUT_CONFIG: TilingLayoutConfig = {
   gapPx: 14,
   minPaneSizePx: 180,
   handleSizePx: 8,
+};
+
+const HOME_HEAL_OPTIONS: HomeLayoutHealOptions = {
+  knownTileIds: [
+    ...DOC_PANES.map((pane): string => pane.id),
+    ...CHANGELOG_WIDGET_TILE_IDS,
+  ],
+  config: LAYOUT_CONFIG,
+  containerWidthPx: 1440,
+  containerHeightPx: 900,
 };
 
 const INITIAL_FOCUSED_LEAF_ID: string = "intro";
@@ -281,6 +310,8 @@ function HomeTopBar({
   onResetAll,
   resetWorkspaceDisabled,
   resetAllDisabled,
+  snapshotHeld,
+  onRestoreSnapshot,
 }: {
   skin: HomeSkin;
   onSkinChange: (next: HomeSkin) => void;
@@ -292,6 +323,8 @@ function HomeTopBar({
   onResetAll: () => void;
   resetWorkspaceDisabled: boolean;
   resetAllDisabled: boolean;
+  snapshotHeld: boolean;
+  onRestoreSnapshot: () => void;
 }): React.ReactElement {
   const tokens: SkinChromeTokens = SKIN_CHROME[skin];
 
@@ -323,6 +356,16 @@ function HomeTopBar({
         tablistProps={workspaceTabs.tablistProps}
       />
       <div className={tokens.switchGroup} role="group" aria-label="Reset layout">
+        {snapshotHeld ? (
+          <button
+            type="button"
+            aria-label="Restore layout snapshot"
+            onClick={onRestoreSnapshot}
+            className={tokens.resetEnabled}
+          >
+            Restore
+          </button>
+        ) : null}
         <button
           type="button"
           aria-label="Reset workspace"
@@ -515,6 +558,7 @@ export function HomePage({
   const [switchFlashNonce, setSwitchFlashNonce] = React.useState<number>(0);
   const commandHandleRef = React.useRef<TilingCommandHandle | null>(null);
   const hydratedStorageRef = React.useRef<boolean>(false);
+  const [snapshotHeld, setSnapshotHeld] = React.useState<boolean>(false);
   // SSR and the hydration pass must use `"slot"` so pane bodies land in the HTML;
   // switch to `"stable"` after mount so tile-keyed state survives workspace changes.
   const [paneIdentity, setPaneIdentity] =
@@ -604,11 +648,31 @@ export function HomePage({
       return;
     }
     hydratedStorageRef.current = true;
-    const stored: TilingWorkspaceSet | null = readHomeWorkspaceSet();
-    if (stored != null) {
-      setWorkspaceDocument(stored);
+    if (readHomeLayoutSnapshot() != null) {
+      setSnapshotHeld(true);
     }
-  }, []);
+    let raw: string | null = null;
+    try {
+      raw = window.localStorage.getItem(HOME_WORKSPACE_STORAGE_KEY);
+    } catch {
+      raw = null;
+    }
+    if (raw == null) {
+      return;
+    }
+    const healed: HomeWorkspaceHealResult | null = loadHomeWorkspaceBlob(
+      raw,
+      HOME_HEAL_OPTIONS,
+    );
+    if (healed == null) {
+      return;
+    }
+    if (healed.lines.length > 0) {
+      onWorkspaceCommit(healed.set);
+      return;
+    }
+    setWorkspaceDocument(healed.set);
+  }, [onWorkspaceCommit]);
 
   React.useEffect((): (() => void) => {
     const flush = workspaceController.flush;
@@ -621,6 +685,78 @@ export function HomePage({
       flush();
     };
   }, [workspaceController.flush]);
+
+  const workspaceSetRef = React.useRef<TilingWorkspaceSet>(workspaceController.set);
+  workspaceSetRef.current = workspaceController.set;
+  const applyResetRef = React.useRef<(scope: "workspace" | "all") => void>(
+    applyReset,
+  );
+  applyResetRef.current = applyReset;
+  const commitRef = React.useRef<(next: TilingWorkspaceSet) => void>(
+    onWorkspaceCommit,
+  );
+  commitRef.current = onWorkspaceCommit;
+
+  const restoreSnapshot = React.useCallback((): void => {
+    const raw: string | null = readHomeLayoutSnapshot();
+    if (raw == null) {
+      setSnapshotHeld(false);
+      return;
+    }
+    const parsed: TilingWorkspaceSet | null = parseHomeWorkspaceSetBlob(raw);
+    if (parsed != null) {
+      onWorkspaceCommit(parsed);
+    }
+    clearHomeLayoutSnapshot();
+    setSnapshotHeld(false);
+  }, [onWorkspaceCommit]);
+
+  const scenarioHost: ScenarioHost = {
+    atDefaults: workspaceController.atDefaults,
+    dispatch: (command: TilingCommand): void => {
+      commandHandleRef.current?.dispatch(command);
+    },
+    resetAll: (): void => {
+      applyResetRef.current("all");
+    },
+    holdSnapshot: (): void => {
+      writeHomeLayoutSnapshot(homeWorkspaceEnvelope(workspaceSetRef.current));
+      setSnapshotHeld(true);
+    },
+    writeBrokenLayout: (): void => {
+      const broken: TilingWorkspaceSet = corruptHomeWorkspaceSet(
+        workspaceSetRef.current,
+      );
+      try {
+        window.localStorage.setItem(
+          HOME_WORKSPACE_STORAGE_KEY,
+          homeWorkspaceEnvelope(broken),
+        );
+      } catch {
+        // Quota / private-mode: the heal step reports an empty key.
+      }
+    },
+    loadAndHeal: (): ReadonlyArray<string> => {
+      let raw: string | null = null;
+      try {
+        raw = window.localStorage.getItem(HOME_WORKSPACE_STORAGE_KEY);
+      } catch {
+        raw = null;
+      }
+      if (raw == null) {
+        return ["persistence key is empty"];
+      }
+      const healed: HomeWorkspaceHealResult | null = loadHomeWorkspaceBlob(
+        raw,
+        HOME_HEAL_OPTIONS,
+      );
+      if (healed == null) {
+        return ["persisted blob did not parse"];
+      }
+      commitRef.current(healed.set);
+      return healed.lines;
+    },
+  };
 
   const activeLayout: TilingLayoutNode | null = activeWorkspaceLayout(
     workspaceController.set,
@@ -666,7 +802,17 @@ export function HomePage({
   const docTiles: ReadonlyArray<TilingTile> = DOC_PANES.map(
     (pane): TilingTile => {
       const body: React.ReactNode =
-        skin === "editorial" ? (
+        pane.id === "proof" ? (
+          <ProofPane skin={skin} />
+        ) : pane.id === "scenarios" ? (
+          <ScenariosPane
+            skin={skin}
+            host={scenarioHost}
+            atDefaults={workspaceController.atDefaults}
+            snapshotHeld={snapshotHeld}
+            onRestore={restoreSnapshot}
+          />
+        ) : skin === "editorial" ? (
           <EditorialPaneContent paneId={pane.id} />
         ) : skin === "canvas" ? (
           <CanvasPaneContent paneId={pane.id} />
@@ -726,6 +872,18 @@ export function HomePage({
         groupTabStrip: {
           placement: "top",
           theme: HOME_GROUP_TAB_STRIP[skin],
+          renderTabLabel: (member: TilingGroupTabMember): string => {
+            if (member.tileId === "usecases") {
+              return "Use cases";
+            }
+            if (member.tileId === "proof") {
+              return "Proof";
+            }
+            if (member.tileId === "scenarios") {
+              return "Scenarios";
+            }
+            return member.title;
+          },
         },
       },
       resizeHandlesVisible: skin === "mosaic",
@@ -780,6 +938,8 @@ export function HomePage({
           }}
           resetWorkspaceDisabled={resetWorkspaceDisabled}
           resetAllDisabled={resetAllDisabled}
+          snapshotHeld={snapshotHeld}
+          onRestoreSnapshot={restoreSnapshot}
         />
         <div
           className="min-h-0 min-w-0 flex-1"

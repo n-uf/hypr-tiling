@@ -9,7 +9,9 @@ the version number alone does not flag them.
 
 ## Unreleased
 
-Nothing pending.
+### Docs
+
+- Home: the Use cases column is a tab group, Use cases | Proof | Scenarios, with Use cases active on first paint. Proof facts (suite and test counts, gzip sizes, dependencies, license, version) are generated from the package. Scenarios run through the public command dispatch and the workspace-set controller.
 
 ## 26.9.9 — 2026-09-24
 

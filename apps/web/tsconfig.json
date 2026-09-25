@@ -8,6 +8,7 @@
     "baseUrl": ".",
     "paths": {
       "@n-uf/hypr-tiling": ["../../packages/hypr-tiling/index.ts"],
+      "@n-uf/hypr-tiling/engine": ["../../packages/hypr-tiling/engine.ts"],
       "@n-uf/hypr-tiling/devtools": ["../../packages/hypr-tiling/devtools.ts"]
     },
     "jsx": "react-jsx",
@@ -18,5 +19,6 @@
     "resolveJsonModule": true,
     "types": ["vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }

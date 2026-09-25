@@ -76,7 +76,7 @@ function CanvasLedRow(): React.ReactElement {
 // A concise instrument section label — a lit LED, a monospace uppercase title,
 // and a hairline rule. Reads like a control-panel section header, not a display
 // headline (that departs from the Mosaic eyebrow + the Editorial serif).
-function CanvasHeading({
+export function CanvasHeading({
   children,
 }: {
   children: React.ReactNode;
@@ -97,7 +97,7 @@ function CanvasHeading({
   );
 }
 
-function CanvasLead({
+export function CanvasLead({
   children,
 }: {
   children: React.ReactNode;
@@ -149,7 +149,7 @@ function CanvasPre({ children }: { children: string }): React.ReactElement {
 }
 
 // Canvas inline renderer: the same segment model, instrument decorations.
-function CanvasInline({
+export function CanvasInline({
   paragraph,
 }: {
   paragraph: DocParagraph;

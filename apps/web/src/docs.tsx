@@ -529,6 +529,22 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     ),
   },
   {
+    id: "proof",
+    title: "Proof",
+    accent: "amber",
+    summary:
+      "Suite and test counts, gzip sizes of dist/index.mjs and dist/engine.mjs, the React-free engine entry, api-extractor reports, prerender paneIdentity, assertLayoutIntegrity and repairLayout, runtime dependencies, calendar version, and the package license.",
+    content: null,
+  },
+  {
+    id: "scenarios",
+    title: "Scenarios",
+    accent: "amber",
+    summary:
+      "Corrupt and heal, split and group, keyboard tour, and reset all. Each run dispatches public commands against the live Home layout.",
+    content: null,
+  },
+  {
     id: "install",
     title: "install",
     accent: "amber",
