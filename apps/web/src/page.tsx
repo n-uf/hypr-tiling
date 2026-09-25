@@ -12,6 +12,7 @@ import {
   type TilingCommandHandle,
   type TilingGroupTabMember,
   type TilingInteractionCapabilities,
+  type TilingPaneTab,
   type TilingLayoutConfig,
   type TilingLayoutNode,
   type TilingPaneIdentityMode,
@@ -91,11 +92,31 @@ import {
 // `mosaic` is the default, so the prerendered HTML/SEO ships the Mosaic skin;
 // the skin switch in the top bar is a client-side presentation toggle. The
 // homepage always paints its own documentation content through `renderTile` and
-// keeps the library's own pane tab strip OFF (`paneSwitching.showTabStrip: false`)
-// — the top chrome bar carries the wordmark, the workspace tab strip
-// (`useTilingWorkspaceTabs`), and the skin switch as site chrome. The home is a
+// shows the library's own pane tab strip only while a pane is maximized
+// (`paneSwitching.showTabStrip: "maximized"`) so the other tiles stay one
+// click away; at rest the top chrome bar carries the wordmark, the workspace
+// tab strip (`useTilingWorkspaceTabs`), and the skin switch as site chrome. The home is a
 // three-workspace set (Home · Workspaces · Changelog) so a first visit
 // discovers workspaces by using the page.
+
+// One label vocabulary for both library strips (group tabs and the maximized
+// pane strip). Tile ids are the `DOC_PANES` ids; anything else keeps its title.
+const HOME_TAB_LABELS: Readonly<Record<string, string>> = {
+  intro: "hypr-tiling",
+  discoverability: "SEO + LLM",
+  features: "Features",
+  install: "Install",
+  usecases: "Use cases",
+  proof: "Proof",
+  scenarios: "Scenarios",
+  workspaces: "Workspaces",
+  "set-inspector": "Inspector",
+  "swipe-meter": "Swipe",
+};
+
+function homeTabLabel(tileId: string, fallback: string): string {
+  return HOME_TAB_LABELS[tileId] ?? fallback;
+}
 
 export type HomeSkin = "mosaic" | "editorial" | "canvas";
 
@@ -866,27 +887,23 @@ export function HomePage({
   // switches.
   const interaction: TilingInteractionCapabilities = React.useMemo(
     (): TilingInteractionCapabilities => ({
-      paneSwitching: { showTabStrip: false },
+      paneSwitching: {
+        showTabStrip: "maximized",
+        tabStrip: {
+          placement: "top",
+          theme: HOME_GROUP_TAB_STRIP[skin],
+          renderTabLabel: (tab: TilingPaneTab): string =>
+            homeTabLabel(tab.tileId, tab.title),
+        },
+      },
+      maximize: { keepGroupTabStrip: true },
       grouping: {
         showGroupTabStrip: true,
         groupTabStrip: {
           placement: "top",
           theme: HOME_GROUP_TAB_STRIP[skin],
-          renderTabLabel: (member: TilingGroupTabMember): string => {
-            if (member.tileId === "intro") {
-              return "hypr-tiling";
-            }
-            if (member.tileId === "usecases") {
-              return "Use cases";
-            }
-            if (member.tileId === "proof") {
-              return "Proof";
-            }
-            if (member.tileId === "scenarios") {
-              return "Scenarios";
-            }
-            return member.title;
-          },
+          renderTabLabel: (member: TilingGroupTabMember): string =>
+            homeTabLabel(member.tileId, member.title),
         },
       },
       resizeHandlesVisible: skin === "mosaic",
