@@ -22,6 +22,12 @@ const {
   renderDocs,
   renderDocsHead,
   llmsTxt,
+  sitemapXml,
+  loadSite,
+  renderContentPage,
+  renderContentPageHead,
+  renderSectionIndex,
+  renderSectionIndexHead,
 } = await import(serverEntry);
 
 // The home ships both layouts (desktop, then mobile); the inline style shows
@@ -30,6 +36,22 @@ const appHtml = render();
 const headHtml = `${renderHead()}\n    ${renderHomeFirstPaintStyle()}`;
 const docsHtml = renderDocs();
 const docsHeadHtml = renderDocsHead();
+
+// The use-case and blog pages (apps/web/content). Every content check runs
+// again here, so a bad page stops the build with the full list of problems.
+let site;
+try {
+  site = loadSite(here, docsHtml);
+} catch (error) {
+  if (error?.name === "ContentProblemsError") {
+    console.error(error.message);
+    process.exit(1);
+  }
+  throw error;
+}
+for (const warning of site.warnings) {
+  console.warn(`content: warning: ${warning}`);
+}
 
 const template = readFileSync(templatePath, "utf8");
 
@@ -57,26 +79,6 @@ const robotsTxt = `User-agent: *
 Allow: /
 
 Sitemap: https://hypr-tiling.n-uf.com/sitemap.xml
-`;
-
-const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://hypr-tiling.n-uf.com/</loc>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>https://hypr-tiling.n-uf.com/docs</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://hypr-tiling.n-uf.com/llms.txt</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
-  </url>
-</urlset>
 `;
 
 const distSocialDir = resolve(distDir, "social");
@@ -112,10 +114,37 @@ mkdirSync(docsDir, { recursive: true });
 
 writeFileSync(templatePath, finalHtml, "utf8");
 writeFileSync(resolve(docsDir, "index.html"), docsFinalHtml, "utf8");
-writeFileSync(resolve(distDir, "llms.txt"), llmsTxt(), "utf8");
+writeFileSync(resolve(distDir, "llms.txt"), llmsTxt(site), "utf8");
 writeFileSync(resolve(distDir, "robots.txt"), robotsTxt, "utf8");
-writeFileSync(resolve(distDir, "sitemap.xml"), sitemapXml, "utf8");
+writeFileSync(resolve(distDir, "sitemap.xml"), sitemapXml(site), "utf8");
+
+// Use-case and blog pages ship no tiling app JavaScript: the template's module
+// script and its modulepreload links are dropped (the stylesheet, fonts and the
+// analytics snippet stay), so they read fully with JavaScript off.
+const staticTemplate = template
+  .replace(/<script\b[^>]*\btype="module"[^>]*>\s*<\/script>\s*/g, "")
+  .replace(/<link\b[^>]*\brel="modulepreload"[^>]*>\s*/g, "");
+if (/type="module"|modulepreload/.test(staticTemplate) || !staticTemplate.includes('rel="stylesheet"')) {
+  throw new Error("prerender: could not strip the module script from the template for the content pages");
+}
+
+function writeStaticPage(pathname, headHtml, bodyHtml) {
+  const dir = resolve(distDir, ...pathname.split("/").filter(Boolean));
+  mkdirSync(dir, { recursive: true });
+  const html = staticTemplate
+    .replace("<!--app-head-->", () => headHtml)
+    .replace("<!--app-html-->", () => bodyHtml);
+  writeFileSync(resolve(dir, "index.html"), html, "utf8");
+}
+
+const sections = [...new Set(site.pages.map((page) => page.section))];
+for (const section of sections) {
+  writeStaticPage(`/${section}`, renderSectionIndexHead(section, site), renderSectionIndex(section, site));
+}
+for (const page of site.pages) {
+  writeStaticPage(page.path, renderContentPageHead(page), renderContentPage(page, site));
+}
 
 console.log(
-  `prerender: wrote dist/index.html (${finalHtml.length} bytes), dist/docs/index.html (${docsFinalHtml.length} bytes), llms.txt, robots.txt, sitemap.xml, social image, and favicon`,
+  `prerender: wrote dist/index.html (${finalHtml.length} bytes), dist/docs/index.html (${docsFinalHtml.length} bytes), ${site.pages.length} content page(s) and ${sections.length} section index(es), llms.txt, robots.txt, sitemap.xml, social image, and favicon`,
 );

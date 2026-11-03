@@ -19,6 +19,11 @@ import {
   TWITTER_SITE_HANDLE,
 } from "./docs";
 import { buildLlmsTxt } from "./llms";
+import { ArticlePage, SectionIndexPage } from "./content-page";
+import { renderContentHead, renderSectionHead, SOFTWARE_NODE_ID } from "./content-head";
+import { buildSitemap } from "./content/sitemap";
+import type { ContentSection } from "./content/constants";
+import type { ContentPage, ContentSite } from "./content/types";
 import { homeFirstPaintCss, joinPrerenderedHomeCopies } from "./home-first-paint";
 import {
   PrerenderedHomeLayoutContext,
@@ -124,6 +129,7 @@ function structuredData(): StructuredDataGraph {
       N_UF_ORG,
       {
         "@type": "SoftwareSourceCode",
+        "@id": SOFTWARE_NODE_ID,
         name: PACKAGE_NAME,
         description: CANONICAL_DESCRIPTION,
         codeRepository: REPO_URL,
@@ -297,6 +303,30 @@ export function renderDocsHead(): string {
   ].join("\n    ");
 }
 
-export function llmsTxt(): string {
-  return buildLlmsTxt();
+export function llmsTxt(site: ContentSite): string {
+  return buildLlmsTxt(site);
 }
+
+export function sitemapXml(site: ContentSite): string {
+  return buildSitemap(site);
+}
+
+// Use-case and blog pages (see content/ and content-page.tsx): static HTML with
+// no tiling script. `prerender.mjs` writes each into the built template.
+export function renderContentPage(page: ContentPage, site: ContentSite): string {
+  return renderToString(<ArticlePage page={page} site={site} />);
+}
+
+export function renderContentPageHead(page: ContentPage): string {
+  return renderContentHead(page);
+}
+
+export function renderSectionIndex(section: ContentSection, site: ContentSite): string {
+  return renderToString(<SectionIndexPage section={section} site={site} />);
+}
+
+export function renderSectionIndexHead(section: ContentSection, site: ContentSite): string {
+  return renderSectionHead(section, site);
+}
+
+export { loadSite } from "./content/build";
