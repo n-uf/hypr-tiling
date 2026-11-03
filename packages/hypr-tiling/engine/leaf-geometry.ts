@@ -314,6 +314,94 @@ export function resolveMasterStackFootprints(
   ];
 }
 
+/**
+ * A slot box as CSS lengths: `left` / `width` resolve against the container's
+ * width, `top` / `height` against its height. @internal
+ */
+export interface TilingCssFootprint {
+  left: string;
+  top: string;
+  width: string;
+  height: string;
+}
+
+// Probe sizes for `resolveMasterStackCssFootprints`: large enough that no
+// `Math.max(0, …)` clamp in the resolver is reached.
+const CSS_PROBE_BASE_PX: number = 10_000;
+const CSS_PROBE_STEP_PX: number = 10_000;
+const CSS_PROBE_CHECK_PX: number = 37_000;
+
+function cssLength(perPx: number, offsetPx: number): string {
+  const percent: number = Math.round(perPx * 100 * 1e4) / 1e4;
+  const px: number = Math.round(offsetPx * 1e3) / 1e3;
+  if (percent === 0) {
+    return `${px}px`;
+  }
+  if (px === 0) {
+    return `${percent}%`;
+  }
+  return `calc(${percent}% ${px < 0 ? "-" : "+"} ${Math.abs(px)}px)`;
+}
+
+/**
+ * Master/stack slot boxes as CSS lengths, for a container that has no measured
+ * size yet (server render, hydration). Each edge `resolveMasterStackFootprints`
+ * returns is linear in one container dimension (`a * size + b`), so
+ * `calc(a * 100% + b px)` lands on the same box once the container has a size:
+ * a prerendered master layout paints at its real geometry and does not move
+ * when it is measured. Keyed by slot representative leaf id, like the px
+ * footprints. Null when a box is not linear in the container size (the
+ * resolver has no such case today; this keeps a future floor from producing
+ * wrong CSS).
+ * @internal
+ */
+export function resolveMasterStackCssFootprints(
+  slots: ReadonlyArray<TilingLayoutNode>,
+  config: TilingLayoutConfig,
+  params: MasterStackParams,
+): ReadonlyMap<string, TilingCssFootprint> | null {
+  const resolveAt = (widthPx: number, heightPx: number): ReadonlyMap<string, TilingPaneFootprint> =>
+    footprintsByLeafId(resolveMasterStackFootprints(slots, 0, 0, widthPx, heightPx, config, params));
+  const base: number = CSS_PROBE_BASE_PX;
+  const step: number = CSS_PROBE_STEP_PX;
+  const check: number = CSS_PROBE_CHECK_PX;
+  const atBase = resolveAt(base, base);
+  const wider = resolveAt(base + step, base);
+  const taller = resolveAt(base, base + step);
+  const atCheck = resolveAt(check, check);
+  const result: Map<string, TilingCssFootprint> = new Map<string, TilingCssFootprint>();
+  for (const [leafId, box] of atBase) {
+    const boxWider: TilingPaneFootprint | undefined = wider.get(leafId);
+    const boxTaller: TilingPaneFootprint | undefined = taller.get(leafId);
+    const boxCheck: TilingPaneFootprint | undefined = atCheck.get(leafId);
+    if (boxWider == null || boxTaller == null || boxCheck == null) {
+      return null;
+    }
+    const edge = (key: keyof TilingPaneFootprint, alongWidth: boolean): string | null => {
+      const grown: TilingPaneFootprint = alongWidth ? boxWider : boxTaller;
+      const crossGrown: TilingPaneFootprint = alongWidth ? boxTaller : boxWider;
+      if (Math.abs(crossGrown[key] - box[key]) > 0.001) {
+        return null; // depends on the other dimension
+      }
+      const slope: number = (grown[key] - box[key]) / step;
+      const offset: number = box[key] - slope * base;
+      if (Math.abs(slope * check + offset - boxCheck[key]) > 0.001) {
+        return null; // not linear
+      }
+      return cssLength(slope, offset);
+    };
+    const left: string | null = edge("left", true);
+    const width: string | null = edge("width", true);
+    const top: string | null = edge("top", false);
+    const height: string | null = edge("height", false);
+    if (left == null || width == null || top == null || height == null) {
+      return null;
+    }
+    result.set(leafId, { left, top, width, height });
+  }
+  return result;
+}
+
 /** @internal */
 export function collectLeafFootprints(
   node: TilingLayoutNode,

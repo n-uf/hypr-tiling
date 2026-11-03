@@ -3,6 +3,7 @@ import {
   collectLeafFootprints,
   collectMasterSlots,
   resolveMasterParams,
+  resolveMasterStackCssFootprints,
   resolveMasterStackFootprints,
   slotRepresentativeLeafId,
   type TilingLeafFootprint,
@@ -211,5 +212,64 @@ describe("collectLeafFootprints — master-mode arm", (): void => {
     );
     const footprints = collectLeafFootprints(tree, 0, 0, 1000, 800, GAP_FREE_CONFIG);
     expect(footprints.map((fp: TilingLeafFootprint): string => fp.leafId).sort()).toEqual(["A", "B", "C", "D"]);
+  });
+});
+
+describe("resolveMasterStackCssFootprints (geometry before measurement)", (): void => {
+  const GAPPED_CONFIG: TilingLayoutConfig = { gapPx: 6, minPaneSizePx: 44, handleSizePx: 6 };
+  const slots: ReadonlyArray<TilingLayoutNode> = [leaf("A"), leaf("B"), leaf("C"), leaf("D"), leaf("E"), leaf("F")];
+
+  // Resolve a CSS length the helper emits (`P%`, `Bpx`, `calc(P% ± Bpx)`) against a size.
+  function resolveCss(length: string, sizePx: number): number {
+    const match: RegExpMatchArray | null = length.match(
+      /^(?:calc\((-?[\d.]+)% ([+-]) ([\d.]+)px\)|(-?[\d.]+)%|(-?[\d.]+)px)$/,
+    );
+    if (match == null) {
+      throw new Error(`unexpected CSS length ${length}`);
+    }
+    if (match[1] != null) {
+      const offset: number = Number(match[3]) * (match[2] === "-" ? -1 : 1);
+      return (Number(match[1]) / 100) * sizePx + offset;
+    }
+    if (match[4] != null) {
+      return (Number(match[4]) / 100) * sizePx;
+    }
+    return Number(match[5]);
+  }
+
+  it.each([
+    ["left", 2],
+    ["right", 1],
+    ["top", 1],
+    ["bottom", 3],
+  ] as const)(
+    "%s orientation, %i master(s): the CSS boxes land on the px boxes at any container size",
+    (orientation, count): void => {
+      const params: MasterStackParams = { count, orientation, ratio: 0.94 };
+      const css = resolveMasterStackCssFootprints(slots, GAPPED_CONFIG, params);
+      expect(css).not.toBeNull();
+      for (const [widthPx, heightPx] of [[400, 777], [1280, 720], [333, 1999]] as const) {
+        const px = byId(resolveMasterStackFootprints(slots, 0, 0, widthPx, heightPx, GAPPED_CONFIG, params));
+        for (const slot of slots) {
+          const box = css?.get(slot.id);
+          const want = px.get(slot.id);
+          expect(box).toBeDefined();
+          expect(resolveCss(box?.left ?? "", widthPx)).toBeCloseTo(want?.left ?? NaN, 2);
+          expect(resolveCss(box?.width ?? "", widthPx)).toBeCloseTo(want?.width ?? NaN, 2);
+          expect(resolveCss(box?.top ?? "", heightPx)).toBeCloseTo(want?.top ?? NaN, 2);
+          expect(resolveCss(box?.height ?? "", heightPx)).toBeCloseTo(want?.height ?? NaN, 2);
+        }
+      }
+    },
+  );
+
+  it("emits the shortest form: a plain length for constant or pure-percent edges", (): void => {
+    const css = resolveMasterStackCssFootprints([leaf("A"), leaf("B")], GAP_FREE_CONFIG, {
+      count: 1,
+      orientation: "top",
+      ratio: 0.5,
+    });
+    expect(css?.get("A")).toEqual({ left: "0px", top: "0px", width: "100%", height: "50%" });
+    expect(css?.get("B")).toEqual({ left: "0px", top: "50%", width: "100%", height: "50%" });
   });
 });
