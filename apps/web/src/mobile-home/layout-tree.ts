@@ -1,4 +1,4 @@
-import type { TilingLayoutNode } from "@n-uf/hypr-tiling";
+import { queryTilingLayout, type TilingLayoutNode } from "@n-uf/hypr-tiling";
 
 // Both mobile trees carry the SAME six documentation tiles as the desktop
 // homepage tile pool (`DOC_PANES`) — the mobile concepts reorganize the
@@ -117,6 +117,17 @@ export function buildMobileMasterLayout(): TilingLayoutNode {
     },
   };
 }
+
+/**
+ * The tiles the mobile trees seat (the six documentation panes; the Master +
+ * Rail and Fullscreen + Swipe trees seat the same six). A renderer handed
+ * tiles its tree doesn't seat counts the layout as broken and rebuilds it over
+ * every tile — the master band and its rail would turn into one thin column
+ * per tile — so the mobile concepts get only these.
+ */
+export const MOBILE_HOME_TILE_IDS: ReadonlySet<string> = new Set<string>(
+  queryTilingLayout(buildMobileMasterLayout()).tileOrder,
+);
 
 /** The initially-focused leaf for every mobile concept (the `intro` pane, matching the desktop default). */
 export const MOBILE_INITIAL_LEAF_ID: string = "m-intro";
