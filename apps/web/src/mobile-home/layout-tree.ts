@@ -1,4 +1,5 @@
-import { queryTilingLayout, type TilingLayoutNode } from "@n-uf/hypr-tiling";
+import type { TilingLayoutNode } from "@n-uf/hypr-tiling";
+import { tileOrderByLeafId } from "@n-uf/hypr-tiling/engine";
 
 // Both mobile trees carry the SAME six documentation tiles as the desktop
 // homepage tile pool (`DOC_PANES`) — the mobile concepts reorganize the
@@ -126,7 +127,7 @@ export function buildMobileMasterLayout(): TilingLayoutNode {
  * per tile — so the mobile concepts get only these.
  */
 export const MOBILE_HOME_TILE_IDS: ReadonlySet<string> = new Set<string>(
-  queryTilingLayout(buildMobileMasterLayout()).tileOrder,
+  tileOrderByLeafId(buildMobileMasterLayout()),
 );
 
 /** The initially-focused leaf for every mobile concept (the `intro` pane, matching the desktop default). */
