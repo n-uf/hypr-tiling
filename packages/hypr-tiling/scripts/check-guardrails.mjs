@@ -169,7 +169,9 @@ if (!existsSync(proofFactsPath)) {
   }
 }
 
-// ── Rule 5: prerendered home still shows the intro headline once ────────────
+// ── Rule 5: prerendered home shows the intro headline once per layout ───────
+// The home ships a desktop and a mobile copy (apps/web/src/home-first-paint.ts);
+// each must carry the headline exactly once, and the page exactly one <h1>.
 const prerenderedHome = resolve(repoRoot, "apps/web/dist/index.html");
 const introLead = "Rearrange the interface";
 if (!existsSync(prerenderedHome)) {
@@ -178,11 +180,23 @@ if (!existsSync(prerenderedHome)) {
   );
 } else {
   const homeHtml = readFileSync(prerenderedHome, "utf8");
-  const introCount = (homeHtml.match(/Rearrange the interface/g) ?? []).length;
-  if (introCount !== 1) {
-    violations.push(
-      `prerender: ${relative(repoRoot, prerenderedHome)} contains ${JSON.stringify(introLead)} ${introCount} times; expected 1.`,
-    );
+  const where = relative(repoRoot, prerenderedHome);
+  const copies = homeHtml.split(/(?=<main data-home-first-paint=")/).slice(1);
+  const layouts = copies.map((copy) => copy.match(/^<main data-home-first-paint="([a-z]+)"/)?.[1]);
+  if (layouts.join(",") !== "desktop,mobile") {
+    violations.push(`prerender: ${where} has home copies [${layouts.join(", ")}]; expected [desktop, mobile].`);
+  }
+  for (const [index, copy] of copies.entries()) {
+    const introCount = (copy.match(/Rearrange the interface/g) ?? []).length;
+    if (introCount !== 1) {
+      violations.push(
+        `prerender: the ${layouts[index]} home copy in ${where} contains ${JSON.stringify(introLead)} ${introCount} times; expected 1.`,
+      );
+    }
+  }
+  const h1Count = (homeHtml.match(/<h1\b/g) ?? []).length;
+  if (h1Count !== 1) {
+    violations.push(`prerender: ${where} has ${h1Count} <h1> elements; expected 1.`);
   }
 }
 
@@ -195,5 +209,5 @@ if (violations.length > 0) {
 }
 
 console.log(
-  "check-guardrails: OK — engine↛react layering, no deep consumer imports, dist/index.mjs keeps \"use client\", proof-facts version matches the package, prerender contains the intro headline once.",
+  "check-guardrails: OK — engine↛react layering, no deep consumer imports, dist/index.mjs keeps \"use client\", proof-facts version matches the package, prerender has a desktop and a mobile home copy with the intro headline once each and one <h1>.",
 );

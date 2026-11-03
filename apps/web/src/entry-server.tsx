@@ -19,23 +19,41 @@ import {
   TWITTER_SITE_HANDLE,
 } from "./docs";
 import { buildLlmsTxt } from "./llms";
+import { homeFirstPaintCss, joinPrerenderedHomeCopies } from "./home-first-paint";
+import {
+  PrerenderedHomeLayoutContext,
+  type HomeLayout,
+} from "./mobile-home/use-viewport";
 
 const DOCS_PAGE_TITLE: string =
   "hypr-tiling documentation - guides & API reference";
 const DOCS_PAGE_DESCRIPTION: string =
   "hypr-tiling documentation: install and integration guides, the core layout and interaction model, recipes, and the generated public API reference.";
 
+function renderHome(layout: HomeLayout): string {
+  return renderToString(
+    <React.StrictMode>
+      <PrerenderedHomeLayoutContext.Provider value={layout}>
+        <HomePage />
+      </PrerenderedHomeLayoutContext.Provider>
+    </React.StrictMode>,
+  );
+}
+
 // Build-time prerender entry. `prerender.mjs` imports this, renders the homepage
 // to static HTML, and injects it (plus the SEO <head>) into the dist template so
 // the documentation content ships in the initial response. Effects do not run
 // during renderToString, so the emitted markup is the pre-measurement tree — the
-// same tree the client produces before hydration.
+// same tree the client produces before hydration. Both layouts ship, desktop
+// first; CSS shows the one that fits the viewport (see `home-first-paint.tsx`).
 export function render(): string {
-  return renderToString(
-    <React.StrictMode>
-      <HomePage />
-    </React.StrictMode>,
-  );
+  return joinPrerenderedHomeCopies(renderHome("desktop"), renderHome("mobile"));
+}
+
+// Inline <style> for the home <head>: shows only the home copy that fits the
+// viewport, before any script runs.
+export function renderHomeFirstPaintStyle(): string {
+  return `<style>${homeFirstPaintCss()}</style>`;
 }
 
 // Prerender entry for the `/docs` route. `prerender.mjs` writes this into

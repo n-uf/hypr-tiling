@@ -1,3 +1,5 @@
+import * as React from "react";
+import { useIsHydrating } from "../home-first-paint";
 import { DEFAULT_MOBILE_HOME_MODE, type MobileHomeMode } from "./types";
 
 // Namespaced so it never collides with another app's key sharing the origin
@@ -41,4 +43,29 @@ export function writeStoredMobileHomeMode(mode: MobileHomeMode): void {
   } catch {
     // Ignore storage write failures — the mode still works for the session.
   }
+}
+
+/**
+ * The mobile home mode and its setter (which persists the choice). The
+ * prerendered mobile home is the default mode, so while hydrating it starts
+ * there and applies the stored mode right after; a fresh client render reads
+ * the stored mode straight away.
+ */
+export function useMobileHomeMode(): readonly [
+  MobileHomeMode,
+  (next: MobileHomeMode) => void,
+] {
+  const hydrating: boolean = useIsHydrating();
+  const [mode, setMode] = React.useState<MobileHomeMode>(
+    (): MobileHomeMode =>
+      hydrating ? DEFAULT_MOBILE_HOME_MODE : readStoredMobileHomeMode(),
+  );
+  React.useEffect((): void => {
+    setMode(readStoredMobileHomeMode());
+  }, []);
+  const changeMode = React.useCallback((next: MobileHomeMode): void => {
+    setMode(next);
+    writeStoredMobileHomeMode(next);
+  }, []);
+  return [mode, changeMode];
 }
