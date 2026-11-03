@@ -25,6 +25,7 @@
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, relative } from "node:path";
+import { Script } from "node:vm";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(here, "..");
@@ -198,6 +199,28 @@ if (!existsSync(prerenderedHome)) {
   if (h1Count !== 1) {
     violations.push(`prerender: ${where} has ${h1Count} <h1> elements; expected 1.`);
   }
+  // The head CSS shows the copy that fits before any script runs.
+  const head = homeHtml.slice(0, homeHtml.indexOf("</head>"));
+  if (!/<style>@media[^<]*data-home-first-paint/.test(head)) {
+    violations.push(`prerender: ${where} has no first-paint <style> in its <head>.`);
+  }
+  // The inline keep script: once, right after the mobile copy, valid JS that
+  // needs nothing from the bundle (its source is a function's toString()).
+  const keepScripts = [...homeHtml.matchAll(/<\/main>(<script>\(function\(s\)\{[\s\S]*?<\/script>)/g)];
+  const mobileAt = homeHtml.indexOf('<main data-home-first-paint="mobile"');
+  if (keepScripts.length !== 1 || mobileAt < 0 || (keepScripts[0].index ?? -1) < mobileAt) {
+    violations.push(`prerender: ${where} needs exactly one inline keep script right after the mobile home copy.`);
+  } else {
+    const source = keepScripts[0][1].slice("<script>".length, -"</script>".length);
+    try {
+      new Script(source);
+    } catch (error) {
+      violations.push(`prerender: the inline keep script in ${where} does not parse: ${error.message}`);
+    }
+    if (/\b(?:require|import)\s*\(|\bimport\s|\b__[A-Za-z]+\(/.test(source)) {
+      violations.push(`prerender: the inline keep script in ${where} references module code (import/require/bundler helper).`);
+    }
+  }
 }
 
 if (violations.length > 0) {
@@ -209,5 +232,5 @@ if (violations.length > 0) {
 }
 
 console.log(
-  "check-guardrails: OK — engine↛react layering, no deep consumer imports, dist/index.mjs keeps \"use client\", proof-facts version matches the package, prerender has a desktop and a mobile home copy with the intro headline once each and one <h1>.",
+  "check-guardrails: OK — engine↛react layering, no deep consumer imports, dist/index.mjs keeps \"use client\", proof-facts version matches the package, prerender has a desktop and a mobile home copy with the intro headline once each, one <h1>, the first-paint style and a self-contained inline keep script.",
 );
