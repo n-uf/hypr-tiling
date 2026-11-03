@@ -4,6 +4,7 @@ import {
   CONTENT_SECTIONS,
   DOCS_MAIN_KEYWORD,
   HOME_MAIN_KEYWORD,
+  SITE_ORIGIN,
   sectionPath,
   type ContentSection,
 } from "./constants";
@@ -16,13 +17,13 @@ import {
   type ContentSite,
 } from "./types";
 import {
+  OG_HEIGHT,
+  OG_WIDTH,
   readFrontMatter,
   validateSite,
   type ImageInfo,
   type SiteContext,
 } from "./validate";
-
-export const SITE_ORIGIN: string = "https://hypr-tiling.n-uf.com";
 
 const SLUG_FILE: RegExp = /^([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/;
 
@@ -156,6 +157,8 @@ export interface LoadOptions {
   readonly docsAnchors: ReadonlySet<string>;
   /** `YYYY-MM-DD`; defaults to today, UTC. */
   readonly today?: string;
+  /** Skip the share-image checks: the script that renders the images needs the pages first. */
+  readonly skipImageChecks?: boolean;
 }
 
 export function todayUtc(): string {
@@ -191,7 +194,9 @@ export function loadContentSite(options: LoadOptions): ContentSite {
       [DOCS_MAIN_KEYWORD, "the docs page"],
     ]),
     inspectImage: (publicPath: string): ImageInfo | null =>
-      inspectPublicPng(options.publicRoot, publicPath),
+      options.skipImageChecks === true
+        ? { bytes: 0, width: OG_WIDTH, height: OG_HEIGHT }
+        : inspectPublicPng(options.publicRoot, publicPath),
   });
   if (result.problems.length > 0) {
     throw new ContentProblemsError(result.problems);
