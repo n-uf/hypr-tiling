@@ -1,7 +1,7 @@
 import * as React from "react";
 import {
-  CANONICAL_DESCRIPTION,
   DOCS_URL,
+  META_DESCRIPTION,
   PAGE_TITLE,
   SITE_URL,
   SOCIAL_IMAGE_URL,
@@ -102,7 +102,7 @@ export function App(): React.ReactElement {
       : PAGE_TITLE;
     const pageDescription: string = isDocs
       ? "hypr-tiling documentation: install and integration guides, the core layout and interaction model, recipes, and the generated public API reference."
-      : CANONICAL_DESCRIPTION;
+      : META_DESCRIPTION;
     const canonicalHref: string = isDocs ? DOCS_URL : SITE_URL;
 
     document.title = pageTitle;

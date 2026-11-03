@@ -8,6 +8,7 @@ import {
   DOCS_GUIDE_TOPICS,
   DOCS_URL,
   FEATURE_FACTS,
+  META_DESCRIPTION,
   PACKAGE_NAME,
   PAGE_TITLE,
   REPO_URL,
@@ -147,7 +148,7 @@ function structuredData(): StructuredDataGraph {
 // drifts from the page. Injected at the `<!--app-head-->` marker.
 export function renderHead(): string {
   const title: string = escapeHtml(PAGE_TITLE);
-  const description: string = escapeHtml(CANONICAL_DESCRIPTION);
+  const description: string = escapeHtml(META_DESCRIPTION);
   const keywords: string = escapeHtml(
     [
       "react tiling",

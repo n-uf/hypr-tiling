@@ -44,6 +44,12 @@ export const PAGE_TITLE: string = "hypr-tiling — dynamic tiling for React";
 export const CANONICAL_DESCRIPTION: string =
   "hypr-tiling is a dynamic tiling layout engine for React: a recursive split-tree renderer that lets users drag, drop, resize, group, maximize, and keyboard-control resizable panes at runtime, with a theming engine and self-healing drag recovery — inspired by the Hyprland Wayland compositor.";
 
+// The home page's <meta name="description"> and link previews: short enough that a
+// search result shows it whole (Google cuts near 155 characters). The structured
+// data and llms.txt keep CANONICAL_DESCRIPTION.
+export const META_DESCRIPTION: string =
+  "Dynamic tiling layouts for React: users drag, drop, resize, group and maximize panes at runtime, with keyboard control and themes. Inspired by Hyprland.";
+
 export const INSTALL_SNIPPET: string =
   "pnpm add @n-uf/hypr-tiling react react-dom";
 
