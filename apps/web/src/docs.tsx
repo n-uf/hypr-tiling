@@ -543,7 +543,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
       <div className="flex flex-1 flex-col gap-2">
         <div className="flex flex-col gap-2">
           <Eyebrow>dynamic tiling · for react</Eyebrow>
-          <h1 className="font-display text-[clamp(1.75rem,2.6vw,2.25rem)] font-medium leading-[1.04] tracking-[-0.015em] text-stone-50">
+          <h1 className="font-display text-[clamp(1.75rem,2.6vw,2.25rem)] min-h-[2.08em] font-medium leading-[1.04] tracking-[-0.015em] text-stone-50">
             {INTRO_H1}
           </h1>
           <p className="font-display text-[clamp(1.1rem,1.6vw,1.4rem)] font-medium leading-[1.15] tracking-[-0.01em] text-stone-200">

@@ -243,7 +243,7 @@ function IntroContent(): React.ReactElement {
           <CanvasKicker>dynamic tiling · for react</CanvasKicker>
           <CanvasLedRow />
         </div>
-        <h1 className="text-[clamp(1.5rem,2.1vw,1.85rem)] font-semibold leading-[1.05] tracking-[-0.02em] text-slate-900">
+        <h1 className="text-[clamp(1.5rem,2.1vw,1.85rem)] min-h-[2.1em] font-semibold leading-[1.05] tracking-[-0.02em] text-slate-900">
           {INTRO_H1}
         </h1>
         <p className="text-[clamp(1rem,1.4vw,1.2rem)] font-semibold leading-[1.15] tracking-[-0.01em] text-slate-700">
