@@ -62,6 +62,18 @@ interface StructuredDataGraph {
   readonly "@graph": ReadonlyArray<Record<string, unknown>>;
 }
 
+// n-uf, who makes hypr-tiling: the same node id on every n-uf site, so search
+// engines see one maker across n-uf.com and its project sites.
+const N_UF_ORG_ID: string = "https://n-uf.com/#org";
+const N_UF_ORG: Record<string, unknown> = {
+  "@type": "Organization",
+  "@id": N_UF_ORG_ID,
+  name: "n-uf",
+  url: "https://n-uf.com",
+  sameAs: ["https://github.com/n-uf"],
+};
+const N_UF_REF: Record<string, string> = { "@id": N_UF_ORG_ID };
+
 function structuredData(): StructuredDataGraph {
   const featureList: ReadonlyArray<string> = FEATURE_FACTS.map(
     (fact): string => fact.term,
@@ -91,6 +103,7 @@ function structuredData(): StructuredDataGraph {
   return {
     "@context": "https://schema.org",
     "@graph": [
+      N_UF_ORG,
       {
         "@type": "SoftwareSourceCode",
         name: PACKAGE_NAME,
@@ -100,6 +113,7 @@ function structuredData(): StructuredDataGraph {
         runtimePlatform: "React",
         url: SITE_URL,
         license: "https://polyformproject.org/licenses/perimeter/1.0.1",
+        author: N_UF_REF,
       },
       {
         "@type": "SoftwareApplication",
@@ -112,13 +126,14 @@ function structuredData(): StructuredDataGraph {
         installUrl: SITE_URL,
         featureList: featureList,
         offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+        author: N_UF_REF,
       },
       {
         "@type": "TechArticle",
         headline: PAGE_TITLE,
         description: CANONICAL_DESCRIPTION,
-        author: { "@type": "Person", name: "n-uf" },
-        publisher: { "@type": "Organization", name: "n-uf" },
+        author: N_UF_REF,
+        publisher: N_UF_REF,
         url: DOCS_URL,
         mainEntityOfPage: DOCS_URL,
         image: SOCIAL_IMAGE_URL,
@@ -211,12 +226,13 @@ export function renderDocsHead(): string {
   const docsGraph: StructuredDataGraph = {
     "@context": "https://schema.org",
     "@graph": [
+      N_UF_ORG,
       {
         "@type": "TechArticle",
         headline: DOCS_PAGE_TITLE,
         description: DOCS_PAGE_DESCRIPTION,
-        author: { "@type": "Person", name: "n-uf" },
-        publisher: { "@type": "Organization", name: "n-uf" },
+        author: N_UF_REF,
+        publisher: N_UF_REF,
         url: DOCS_URL,
         mainEntityOfPage: DOCS_URL,
         image: SOCIAL_IMAGE_URL,
