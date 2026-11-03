@@ -131,6 +131,7 @@ import {
   collectMasterSlots,
   footprintsByLeafId,
   resolveMasterParams,
+  resolveMasterStackCssFootprints,
   resolveMasterStackFootprints,
   slotRepresentativeLeafId,
 } from "../engine/leaf-geometry";
@@ -9541,6 +9542,7 @@ const TilingRendererComponent = React.forwardRef<
       if (node.layoutMode === "master") {
         const masterSlots: ReadonlyArray<TilingLayoutNode> =
           collectMasterSlots(node);
+        const masterParams = resolveMasterParams(node, masterSlots.length);
         const masterFootprints = footprintsByLeafId(
           resolveMasterStackFootprints(
             masterSlots,
@@ -9549,9 +9551,17 @@ const TilingRendererComponent = React.forwardRef<
             containerWidthPx,
             containerHeightPx,
             config,
-            resolveMasterParams(node, masterSlots.length),
+            masterParams,
           ),
         );
+        // Not measured yet (server render, hydration): place the slots with
+        // CSS calc() at the geometry the px footprints will have, so a
+        // prerendered master layout paints right away and does not move once
+        // measured. Measured: the px footprints, as before.
+        const masterCssFootprints =
+          containerWidthPx <= 1 || containerHeightPx <= 1
+            ? resolveMasterStackCssFootprints(masterSlots, config, masterParams)
+            : null;
         return (
           <section
             ref={(element: HTMLDivElement | null): void =>
@@ -9572,16 +9582,21 @@ const TilingRendererComponent = React.forwardRef<
                 if (slotFootprint == null) {
                   return null;
                 }
+                const slotCssFootprint = masterCssFootprints?.get(
+                  slotRepresentativeLeafId(slot),
+                );
                 return (
                   <div
                     key={slot.id}
                     className="absolute"
-                    style={{
-                      left: slotFootprint.left,
-                      top: slotFootprint.top,
-                      width: slotFootprint.width,
-                      height: slotFootprint.height,
-                    }}
+                    style={
+                      slotCssFootprint ?? {
+                        left: slotFootprint.left,
+                        top: slotFootprint.top,
+                        width: slotFootprint.width,
+                        height: slotFootprint.height,
+                      }
+                    }
                   >
                     {renderBranch(
                       slot,

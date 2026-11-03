@@ -9,7 +9,15 @@ the version number alone does not flag them.
 
 ## Unreleased
 
-Nothing pending.
+### Master layouts prerender
+
+A `layoutMode: "master"` split used to place its slots in px from the measured
+container, so a server render (and the hydration pass) drew every slot at 0×0:
+a prerendered master layout painted nothing until the scripts ran. Before the
+container is measured, the slots are now placed with CSS `calc()` boxes
+(`calc(a% + b px)`) derived from the same master/stack geometry, which land on
+the px boxes once measured: the layout paints in the first paint and does not
+move when it is measured. Measured rendering is unchanged.
 
 ## 26.9.10 — 2026-09-24
 
