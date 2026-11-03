@@ -106,8 +106,10 @@ function normalizeMarkdown(raw) {
   }
   let body = kept.join("\n");
   body = body.replace(/<!-- -->/g, "");
+  // Member segments may hold hyphens: quoted members such as `"aria-selected"`
+  // become `._aria-selected_.md`, so the member part allows `-` as well.
   body = body.replace(
-    /\]\(\.\/hypr-tiling\.([a-z0-9_]+)(?:\.[a-z0-9_]+)*\.md\)/g,
+    /\]\(\.\/hypr-tiling\.([a-z0-9_]+)(?:\.[a-z0-9_-]+)*\.md\)/g,
     (_match, seg) => `](#${anchorId(seg)})`,
   );
   body = body.replace(/\]\(\.\/(?:index|hypr-tiling)\.md\)/g, "](#api-reference)");
