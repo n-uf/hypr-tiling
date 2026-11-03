@@ -22,20 +22,6 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-              display: ["Fraunces", "ui-serif", "Georgia", "serif"],
-              mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "monospace"],
-            },
-          },
-        },
-      };
-    </script>
     <style>
       html,
       body {
@@ -81,6 +67,9 @@
         }
       }
     </style>
+    <!-- Tailwind, built at build time (tailwind.config.ts). It stays after the
+         inline styles above so its rules win ties, as the Play CDN's did. -->
+    <link rel="stylesheet" href="/src/index.css" />
   </head>
   <body class="m-0 text-stone-100">
     <div id="root" class="min-h-screen"><!--app-html--></div>
