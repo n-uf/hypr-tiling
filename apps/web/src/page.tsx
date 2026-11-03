@@ -70,10 +70,7 @@ import { ProofPane } from "./proof-pane";
 import { ScenariosPane } from "./scenarios-pane";
 import { MobileHome } from "./mobile-home/mobile-home";
 import { MobileTopStrip } from "./mobile-home/top-strip";
-import {
-  readStoredMobileHomeMode,
-  writeStoredMobileHomeMode,
-} from "./mobile-home/mode-storage";
+import { useMobileHomeMode } from "./mobile-home/mode-storage";
 import { type MobileHomeMode } from "./mobile-home/types";
 import {
   useIsCoarsePointer,
@@ -809,21 +806,14 @@ export function HomePage({
 
   // Mobile home mode: which of the three mobile organization concepts
   // (Master + Rail / Fullscreen + Swipe / Pocket Grid) presents on a
-  // narrow/coarse viewport. Read lazily from `localStorage` so a returning
-  // visitor's choice persists; defaults to Master + Rail (`"master"`) when
-  // unset. `isMobile` gates the mobile presentation entirely — wide/desktop
-  // viewports never see this state at all, keeping the classic dwindle demo
-  // exactly as it was.
-  const [mobileMode, setMobileMode] = React.useState<MobileHomeMode>(
-    readStoredMobileHomeMode,
-  );
+  // narrow/coarse viewport. Persisted in `localStorage` so a returning
+  // visitor's choice sticks; defaults to Master + Rail (`"master"`), which is
+  // also the mode the prerendered mobile home ships in. `isMobile` gates the
+  // mobile presentation entirely — wide/desktop viewports never see this state
+  // at all, keeping the classic dwindle demo exactly as it was.
+  const [mobileMode, onMobileModeChange] = useMobileHomeMode();
   const isMobile: boolean = useIsMobileHomeViewport();
   const isCoarsePointer: boolean = useIsCoarsePointer();
-
-  const onMobileModeChange = React.useCallback((next: MobileHomeMode): void => {
-    setMobileMode(next);
-    writeStoredMobileHomeMode(next);
-  }, []);
 
   const docTiles: ReadonlyArray<TilingTile> = DOC_PANES.map(
     (pane): TilingTile => {

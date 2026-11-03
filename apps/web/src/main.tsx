@@ -1,6 +1,11 @@
 import * as React from "react";
 import { createRoot, hydrateRoot } from "react-dom/client";
 import { App, preloadRoute } from "./app";
+import { keepPrerenderedHomeLayout } from "./home-first-paint";
+import {
+  PrerenderedHomeLayoutContext,
+  type HomeLayout,
+} from "./mobile-home/use-viewport";
 
 const container: HTMLElement | null = document.getElementById("root");
 
@@ -30,6 +35,13 @@ if (container == null) {
 const hasPrerenderedMarkup: boolean = container.firstElementChild != null;
 const path: string = window.location.pathname.replace(/\/+$/, "") || "/";
 
+// The home HTML carries a desktop and a mobile copy (CSS shows the one that
+// fits; see `home-first-paint.tsx`). Keep that one, drop the other, and hydrate
+// it with the viewport hooks pinned to its layout so the first render matches.
+const prerenderedHomeLayout: HomeLayout | null = hasPrerenderedMarkup
+  ? keepPrerenderedHomeLayout(container)
+  : null;
+
 function renderFresh(): void {
   createRoot(container as HTMLElement).render(
     <React.StrictMode>
@@ -46,7 +58,9 @@ function mount(): void {
   hydrateRoot(
     container as HTMLElement,
     <React.StrictMode>
-      <App />
+      <PrerenderedHomeLayoutContext.Provider value={prerenderedHomeLayout}>
+        <App />
+      </PrerenderedHomeLayoutContext.Provider>
     </React.StrictMode>,
   );
 }

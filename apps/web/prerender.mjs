@@ -15,11 +15,19 @@ const workspaceAssetsDir = resolve(here, "..", "..", "assets");
 const serverEntry = resolve(here, "dist-server/entry-server.mjs");
 const templatePath = resolve(distDir, "index.html");
 
-const { render, renderHead, renderDocs, renderDocsHead, llmsTxt } =
-  await import(serverEntry);
+const {
+  render,
+  renderHead,
+  renderHomeFirstPaintStyle,
+  renderDocs,
+  renderDocsHead,
+  llmsTxt,
+} = await import(serverEntry);
 
+// The home ships both layouts (desktop, then mobile); the inline style shows
+// the one that fits the viewport before any script runs.
 const appHtml = render();
-const headHtml = renderHead();
+const headHtml = `${renderHead()}\n    ${renderHomeFirstPaintStyle()}`;
 const docsHtml = renderDocs();
 const docsHeadHtml = renderDocsHead();
 
