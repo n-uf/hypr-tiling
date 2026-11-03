@@ -7,6 +7,7 @@ import {
   INSTALL_INTRO_PARAGRAPH,
   INSTALL_SNIPPET,
   INTEGRATION_EXAMPLE,
+  INTRO_H1,
   INTRO_HEADLINE_ACCENT,
   INTRO_HEADLINE_LEAD,
   INTRO_LICENSE_TAIL,
@@ -233,10 +234,13 @@ function IntroContent(): React.ReactElement {
           <CanvasKicker>dynamic tiling · for react</CanvasKicker>
           <CanvasLedRow />
         </div>
-        <h1 className="text-[clamp(1.65rem,2.3vw,2rem)] font-semibold leading-[1.05] tracking-[-0.02em] text-slate-900">
+        <h1 className="text-[clamp(1.5rem,2.1vw,1.85rem)] font-semibold leading-[1.05] tracking-[-0.02em] text-slate-900">
+          {INTRO_H1}
+        </h1>
+        <p className="text-[clamp(1rem,1.4vw,1.2rem)] font-semibold leading-[1.15] tracking-[-0.01em] text-slate-700">
           {INTRO_HEADLINE_LEAD}{" "}
           <span className="text-cyan-600">{INTRO_HEADLINE_ACCENT}</span>
-        </h1>
+        </p>
         <span aria-hidden className="h-px w-full bg-slate-200" />
       </div>
       <p className="max-w-[64ch] text-[14px] leading-[1.45] text-slate-600">
