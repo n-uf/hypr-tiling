@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/logo-light.svg">
+    <img alt="hypr-tiling by n-uf" src="docs/logo-light.svg" height="60">
+  </picture>
+</p>
+
 <h1 align="center">
   <img src="assets/hypr-tiling-logo-transparent.png" alt="hypr-tiling" width="48" align="center" />
   hypr-tiling
