@@ -62,8 +62,18 @@ export function isRealDate(value: string): boolean {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+/**
+ * Compare keywords and the text around them loosely: case, hyphens and a plural
+ * "s" do not matter, so "react-mosaic alternatives" matches "react mosaic alternative".
+ */
 export function normalizeKeyword(keyword: string): string {
-  return keyword.toLowerCase().replace(/\s+/g, " ").trim();
+  return keyword
+    .toLowerCase()
+    .replace(/-/g, " ")
+    .split(/\s+/)
+    .filter((word): boolean => word !== "")
+    .map((word): string => (word.length > 3 && word.endsWith("s") && !word.endsWith("ss") ? word.slice(0, -1) : word))
+    .join(" ");
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -372,7 +382,9 @@ export function validateSite(
   const warnings: Array<string> = [];
   const paths: ReadonlySet<string> = sitePaths(pages);
 
-  const keywordOwner = new Map<string, string>(context.reservedKeywords);
+  const keywordOwner = new Map<string, string>(
+    [...context.reservedKeywords].map(([keyword, owner]): [string, string] => [normalizeKeyword(keyword), owner]),
+  );
   for (const page of pages) {
     const key: string = normalizeKeyword(page.mainKeyword);
     const owner: string | undefined = keywordOwner.get(key);
@@ -399,7 +411,13 @@ export function validateSite(
     for (const link of page.links) {
       const href: string = link.href;
       if (/^https:\/\//i.test(href)) {
-        if (new URL(href).host === SITE_HOST) {
+        let host: string | null = null;
+        try {
+          host = new URL(href).host;
+        } catch {
+          problems.push(`${page.file}: link "${href}" is not a valid URL`);
+        }
+        if (host === SITE_HOST) {
           problems.push(`${page.file}: link "${href}" points at this site; write it as a relative path`);
         }
         continue;

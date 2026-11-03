@@ -16,6 +16,7 @@ import {
 import { CHANGELOG_MARKDOWN } from "./changelog";
 import { API_REFERENCE_SECTIONS } from "./api-reference/generated";
 import { CONTENT_SECTIONS, SECTION_LABELS } from "./content/constants";
+import { escapeLinkText } from "./content/format";
 import { pagesOf, type ContentSite } from "./content/types";
 
 // Plain-text content mirror for /llms.txt (Markdown, LLM-fetch friendly). Lives
@@ -65,7 +66,7 @@ export function buildLlmsTxt(site: ContentSite): string {
     lines.push(`## ${SECTION_LABELS[section].plural}`);
     lines.push("");
     for (const page of pages) {
-      lines.push(`- [${page.title}](${page.url}): ${page.description}`);
+      lines.push(`- [${escapeLinkText(page.title)}](${page.url}): ${page.description}`);
     }
     lines.push("");
   }
