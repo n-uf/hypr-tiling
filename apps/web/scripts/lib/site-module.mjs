@@ -4,10 +4,10 @@
 // tests cover are the checks the build runs.
 
 import { dirname, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "vite";
 
-const webRoot = resolve(dirname(new URL(import.meta.url).pathname), "..", "..");
+const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export { webRoot };
 
