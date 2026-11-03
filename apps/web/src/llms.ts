@@ -15,11 +15,13 @@ import {
 } from "./docs";
 import { CHANGELOG_MARKDOWN } from "./changelog";
 import { API_REFERENCE_SECTIONS } from "./api-reference/generated";
+import { CONTENT_SECTIONS, SECTION_LABELS } from "./content/constants";
+import { pagesOf, type ContentSite } from "./content/types";
 
 // Plain-text content mirror for /llms.txt (Markdown, LLM-fetch friendly). Lives
 // in its own module — imported only by the SSR prerender entry — so the large
 // generated API-reference bundle stays out of the homepage client chunk.
-export function buildLlmsTxt(): string {
+export function buildLlmsTxt(site: ContentSite): string {
   const lines: string[] = [];
   lines.push(`# ${PACKAGE_NAME}`);
   lines.push("");
@@ -55,6 +57,18 @@ export function buildLlmsTxt(): string {
     lines.push(`- ${item.term}: ${item.detail}`);
   }
   lines.push("");
+  for (const section of CONTENT_SECTIONS) {
+    const pages = pagesOf(site, section);
+    if (pages.length === 0) {
+      continue;
+    }
+    lines.push(`## ${SECTION_LABELS[section].plural}`);
+    lines.push("");
+    for (const page of pages) {
+      lines.push(`- [${page.title}](${page.url}): ${page.description}`);
+    }
+    lines.push("");
+  }
   lines.push(`## Documentation (${DOCS_URL})`);
   lines.push("");
   lines.push(
