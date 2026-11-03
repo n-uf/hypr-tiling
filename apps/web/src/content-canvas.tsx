@@ -17,6 +17,7 @@ import {
   LICENSE_NAME,
   LICENSE_URL,
   ROADMAP_REST,
+  introLinks,
   USE_CASES,
   USECASES_LEAD,
   WORKSPACES_ALSO_PLANNED,
@@ -27,6 +28,7 @@ import {
   WORKSPACES_SHIPPED,
   type DocInline,
   type DocParagraph,
+  type IntroLink,
 } from "./docs";
 import { CANVAS_TICKS } from "./canvas-theme";
 
@@ -189,6 +191,7 @@ export function CanvasInline({
 interface TermDetail {
   readonly term: string;
   readonly detail: string;
+  readonly link?: { readonly label: string; readonly href: string };
 }
 
 function CanvasIndex({
@@ -217,6 +220,12 @@ function CanvasIndex({
           </span>
           <span className="col-start-3 max-w-[60ch] text-[12.5px] leading-[1.7] text-slate-500">
             {item.detail}
+            {item.link != null ? (
+              <>
+                {" "}
+                <CanvasLink href={item.link.href}>{item.link.label}</CanvasLink>
+              </>
+            ) : null}
           </span>
         </li>
       ))}
@@ -249,6 +258,19 @@ function IntroContent(): React.ReactElement {
       <p className="max-w-[64ch] text-[14px] leading-[1.45] text-slate-600">
         {INTRO_REACH_PARAGRAPH}
       </p>
+      <nav
+        aria-label="Explore hypr-tiling"
+        className="flex flex-wrap items-center gap-x-2 text-[13px] leading-[1.45] text-slate-400"
+      >
+        {introLinks().map(
+          (link: IntroLink, index: number): React.ReactElement => (
+            <React.Fragment key={link.href}>
+              {index > 0 ? <span aria-hidden>·</span> : null}
+              <CanvasLink href={link.href}>{link.label}</CanvasLink>
+            </React.Fragment>
+          ),
+        )}
+      </nav>
       <footer className="mt-auto border-t border-slate-200 pt-2 text-[11px] leading-[1.4] text-slate-400">
         <CanvasLink href={LICENSE_URL}>{LICENSE_NAME}</CanvasLink>
         {INTRO_LICENSE_TAIL}

@@ -26,6 +26,15 @@ import {
   API_REFERENCE_SECTIONS,
   type ApiReferenceSection,
 } from "./api-reference/generated";
+import { CONTENT_INDEX } from "./content-index.generated";
+import {
+  entriesOf,
+  nonEmptySections,
+  SECTION_LABELS,
+  sectionPath,
+  type ContentIndexEntry,
+  type ContentSection,
+} from "./content/constants";
 import { EXAMPLE_SOURCES, type ExampleId } from "./docs-examples/sources";
 import { Quickstart } from "./docs-examples/quickstart";
 import { RenderTileExample } from "./docs-examples/render-tile";
@@ -690,6 +699,30 @@ function Sidebar({
         aria-label="Documentation"
         className="sticky top-[68px] flex max-h-[calc(100vh-84px)] flex-col gap-5 overflow-y-auto pr-2 pb-10 text-[13px]"
       >
+        {nonEmptySections(CONTENT_INDEX).map(
+          (section: ContentSection): React.ReactElement => (
+            <div key={section} className="flex flex-col gap-1.5">
+              <a
+                href={sectionPath(section)}
+                className="font-mono text-[10px] uppercase tracking-[0.28em] text-amber-300/70 transition-colors hover:text-amber-100"
+              >
+                {SECTION_LABELS[section].plural}
+              </a>
+              {entriesOf(CONTENT_INDEX, section).map(
+                (entry: ContentIndexEntry): React.ReactElement => (
+                  <a
+                    key={entry.path}
+                    href={entry.path}
+                    title={entry.title}
+                    className="block truncate rounded px-2 py-[3px] text-stone-400 transition-colors hover:text-amber-100"
+                  >
+                    {entry.title}
+                  </a>
+                ),
+              )}
+            </div>
+          ),
+        )}
         {NAV_SECTIONS.map((section): React.ReactElement => {
           if (section.collapsible === true) {
             return (
