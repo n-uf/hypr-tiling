@@ -23,3 +23,8 @@ export function formatDate(date: string): string {
 export function readingMinutes(words: number): number {
   return Math.max(1, Math.round(words / 200));
 }
+
+/** Escape the characters that would end a markdown link's text early (`[`, `]`, `(`, `)`, `\`). */
+export function escapeLinkText(text: string): string {
+  return text.replace(/[\\\[\]()]/g, (char): string => `\\${char}`);
+}

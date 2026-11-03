@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "@jest/globals";
 import { DOCS_MAIN_KEYWORD, HOME_MAIN_KEYWORD, nonEmptySections } from "./constants";
 import { splitFrontMatter } from "./front-matter";
+import { escapeLinkText } from "./format";
 import { renderIndexModule } from "./index-module";
 import { processMarkdown } from "./markdown";
 import {
@@ -13,7 +14,7 @@ import {
   type ContentFile,
 } from "./site";
 import { toIndexEntry } from "./types";
-import { readFrontMatter, type ImageInfo, type SiteContext } from "./validate";
+import { normalizeKeyword, readFrontMatter, type ImageInfo, type SiteContext } from "./validate";
 
 const TODAY = "2026-11-03";
 const GOOD_IMAGE: ImageInfo = { bytes: 60_000, width: 1200, height: 630 };
@@ -187,6 +188,28 @@ describe("front matter checks", (): void => {
   });
 });
 
+describe("keyword matching", (): void => {
+  it("ignores case, hyphens and a plural s", (): void => {
+    expect(normalizeKeyword("react-mosaic alternatives")).toBe(normalizeKeyword("React mosaic alternative"));
+    expect(normalizeKeyword("Dashboards  in React")).toBe("dashboard in react");
+    expect(normalizeKeyword("class")).toBe("class");
+  });
+
+  it("no longer warns when the hyphenated and plural forms match", (): void => {
+    const result = checkContentFiles(
+      {
+        files: [
+          file("one.md", { mainKeyword: "react mosaic alternative", title: "React-mosaic alternatives", h1: "Alternatives to react-mosaic", description: DESCRIPTION.replace("sample keyword", "react-mosaic alternatives") }, "The react-mosaic alternatives are many.\n\n## A\n"),
+        ],
+        strays: [],
+        rejected: [],
+      },
+      CONTEXT,
+    );
+    expect(result.site.warnings.filter((warning) => /mainKeyword/.test(warning))).toEqual([]);
+  });
+});
+
 describe("markdown checks", (): void => {
   it("renders headings with ids, the first paragraph as the lede, tables and code", (): void => {
     const result = processMarkdown(
@@ -219,6 +242,14 @@ describe("markdown checks", (): void => {
       expect.stringMatching(/an image in the body/),
       expect.stringMatching(/raw HTML/),
     ]);
+  });
+
+  it("only renders hrefs that are site paths, anchors or https URLs", (): void => {
+    const html = processMarkdown("[a](javascript:alert(1)) [b](//evil.example/x) [c](/ok) [d](#top)\n", "f.md").ledeHtml;
+    expect(html).not.toContain("javascript:");
+    expect(html).not.toContain("evil.example");
+    expect(html).toContain('href="/ok"');
+    expect(html).toContain('href="#top"');
   });
 
   it("opens only https links in a new tab", (): void => {
@@ -283,6 +314,12 @@ describe("page set checks", (): void => {
       expect.stringMatching(/link "..\/x" must be a relative/),
       expect.stringMatching(/link "\/docs\?a=1" has a query string/),
     ]);
+  });
+
+  it("reports a malformed https URL instead of crashing", (): void => {
+    expect(check([file("one.md", {}, "Lede.\n\n[a](https://exa mple.com/)\n\n[b](https://[bad/)\n")]).join("\n")).toMatch(
+      /is not a valid URL|must be a relative/,
+    );
   });
 
   it("allows two links to one target and fails the third, ignoring the anchor", (): void => {
@@ -395,5 +432,11 @@ describe("the generated index", (): void => {
     expect(source).not.toContain("First heading");
     expect(renderIndexModule(result.site)).toBe(source);
     expect(nonEmptySections([entry])).toEqual(["blog"]);
+  });
+});
+
+describe("llms.txt link text", (): void => {
+  it("escapes brackets and parentheses", (): void => {
+    expect(escapeLinkText("A [b] (c) \\ d")).toBe("A \\[b\\] \\(c\\) \\\\ d");
   });
 });

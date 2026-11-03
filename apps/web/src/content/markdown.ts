@@ -126,6 +126,11 @@ const renderer: RendererObject = {
   },
   link(token: Tokens.Link): string {
     const inner: string = this.parser.parseInline(token.tokens);
+    // Only site paths, same-page anchors and https URLs become hrefs; the
+    // site-level check reports anything else, and it never renders as a link.
+    if (!/^(\/(?!\/)|#|https:\/\/)/i.test(token.href)) {
+      return inner;
+    }
     const external: boolean = /^https:\/\//i.test(token.href);
     const attrs: string = external ? ' target="_blank" rel="noopener noreferrer"' : "";
     const title: string = token.title == null || token.title === "" ? "" : ` title="${escapeHtml(token.title)}"`;
