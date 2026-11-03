@@ -30,9 +30,9 @@ const PRE_CLASS: string =
 const TABLE_WRAP_CLASS: string =
   "my-4 overflow-x-auto rounded-lg border border-white/[0.07]";
 const TH_CLASS: string =
-  "bg-[#16171b] px-3 py-2 text-left font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-amber-300/80";
+  "min-w-[7rem] bg-[#16171b] px-3 py-2 text-left font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-amber-300/80";
 const TD_CLASS: string =
-  "border-t border-white/[0.07] px-3 py-2 align-top text-stone-300/90";
+  "min-w-[7rem] border-t border-white/[0.07] px-3 py-2 align-top text-stone-300/90";
 const LEDE_CLASS: string = "my-5 text-[17.5px] leading-[1.6] text-stone-200";
 
 export function escapeHtml(value: string): string {
