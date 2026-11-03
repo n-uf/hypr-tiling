@@ -40,15 +40,18 @@ if (!template.includes("<!--app-head-->")) {
   throw new Error("prerender: <!--app-head--> marker missing from dist/index.html");
 }
 
+// Replacer functions insert the rendered HTML literally: a string replacement
+// would expand `$&`, `$'`, `` $` `` and `$$` inside it (the home HTML carries an
+// inline script).
 const finalHtml = template
-  .replace("<!--app-head-->", headHtml)
-  .replace("<!--app-html-->", appHtml);
+  .replace("<!--app-head-->", () => headHtml)
+  .replace("<!--app-html-->", () => appHtml);
 
 // The /docs route reuses the same built client template (hashed asset paths are
 // absolute, so they resolve from /docs too) with the docs-specific head + body.
 const docsFinalHtml = template
-  .replace("<!--app-head-->", docsHeadHtml)
-  .replace("<!--app-html-->", docsHtml);
+  .replace("<!--app-head-->", () => docsHeadHtml)
+  .replace("<!--app-html-->", () => docsHtml);
 
 const robotsTxt = `User-agent: *
 Allow: /
