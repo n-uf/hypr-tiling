@@ -1,9 +1,16 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import autoprefixer from "autoprefixer";
+import tailwindcss from "tailwindcss";
 import { resolve } from "node:path";
 
 export default defineConfig({
   plugins: [react()],
+  css: {
+    postcss: {
+      plugins: [tailwindcss({ config: resolve(__dirname, "tailwind.config.ts") }), autoprefixer()],
+    },
+  },
   resolve: {
     alias: {
       "@n-uf/hypr-tiling/devtools": resolve(__dirname, "../../packages/hypr-tiling/devtools.ts"),
