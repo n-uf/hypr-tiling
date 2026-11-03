@@ -2,6 +2,7 @@ import * as React from "react";
 import type { TilingRenderTileProps, TilingTile } from "@n-uf/hypr-tiling";
 import type { HomeSkin } from "../page";
 import { FullscreenSwipeMobile } from "./fullscreen-swipe";
+import { MOBILE_HOME_TILE_IDS } from "./layout-tree";
 import { MasterRailMobile } from "./master-rail";
 import { PocketGridMobile } from "./pocket-grid";
 import type { MobileHomeMode } from "./types";
@@ -25,13 +26,18 @@ export function MobileHome({
   skin: HomeSkin;
   renderTile: (args: TilingRenderTileProps) => React.ReactNode;
 }): React.ReactElement {
+  const seatedTiles: ReadonlyArray<TilingTile> = React.useMemo(
+    (): ReadonlyArray<TilingTile> =>
+      tiles.filter((tile: TilingTile): boolean => MOBILE_HOME_TILE_IDS.has(tile.id)),
+    [tiles],
+  );
   if (mode === "swipe") {
-    return <FullscreenSwipeMobile tiles={tiles} renderTile={renderTile} skin={skin} />;
+    return <FullscreenSwipeMobile tiles={seatedTiles} renderTile={renderTile} skin={skin} />;
   }
   if (mode === "grid") {
     return (
       <PocketGridMobile
-        tiles={tiles}
+        tiles={seatedTiles}
         tilesById={tilesById}
         renderTile={renderTile}
         skin={skin}
@@ -39,6 +45,6 @@ export function MobileHome({
     );
   }
   return (
-    <MasterRailMobile tiles={tiles} renderMasterTile={renderTile} skin={skin} />
+    <MasterRailMobile tiles={seatedTiles} renderMasterTile={renderTile} skin={skin} />
   );
 }
