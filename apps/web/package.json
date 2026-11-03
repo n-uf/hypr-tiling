@@ -7,6 +7,7 @@
   "scripts": {
     "prebuild": "node ../../scripts/proof-facts.mjs && node scripts/content-index.mjs",
     "content:check": "node scripts/content-index.mjs --check",
+    "og": "node scripts/render-og.mjs",
     "dev": "vite",
     "build": "vite build && vite build --ssr src/entry-server.tsx --outDir dist-server && node prerender.mjs",
     "test": "node ../../packages/hypr-tiling/node_modules/jest/bin/jest.js --config jest.config.cjs --maxWorkers=2",
@@ -27,6 +28,7 @@
     "@vitejs/plugin-react": "^6.0.3",
     "autoprefixer": "^10.6.2",
     "marked": "^18.0.5",
+    "playwright-core": "^1.64.1",
     "postcss": "^8.5.16",
     "tailwindcss": "3.4.17",
     "typescript": "^6.0.3",
