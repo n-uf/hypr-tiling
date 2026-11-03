@@ -12,7 +12,7 @@ at build time. They ship no tiling app JavaScript and read the same with JS off.
    `description` (120 to 155), `h1`, `mainKeyword` (one page each; the home's
    "react tiling window manager" and the docs' "hypr-tiling documentation" are taken),
    `kind` (use-case, how-to, what-is, comparison, best-tools), `published` and
-   `updated` (`YYYY-MM-DD`, real, not in the future), `author: n-uf`, `takeaways`
+   `updated` (`YYYY-MM-DD`, real, not after today in UTC: a build just before UTC midnight rejects tomorrow's date), `author: n-uf`, `takeaways`
    (3 to 5), `faq` (4 to 5, each `q` and `a`), `sources` (`title`, https `url`,
    `checked` date) and `related` (2 to 4 site paths).
 3. Body: markdown with H2/H3, paragraphs, lists, tables, fenced code, links, inline
