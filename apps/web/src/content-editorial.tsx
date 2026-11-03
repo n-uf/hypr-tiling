@@ -217,12 +217,12 @@ function EditorialIndex({
 function IntroContent(): React.ReactElement {
   return (
     <div className="flex min-h-full flex-col gap-3">
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5">
         <EditorialKicker>dynamic tiling · for react</EditorialKicker>
-        <h1 className="font-display text-[clamp(1.6rem,2.3vw,2rem)] min-h-[2.08em] font-normal leading-[1.04] tracking-[-0.02em] text-[#241f17]">
+        <h1 className="font-display min-h-[2.08em] text-[1.75rem] font-normal min-[761px]:min-h-0 min-[761px]:overflow-hidden min-[761px]:text-ellipsis min-[761px]:whitespace-nowrap min-[761px]:text-[clamp(1.1rem,1.5vw,1.6rem)] leading-[1.04] tracking-[-0.02em] text-[#241f17]">
           {INTRO_H1}
         </h1>
-        <p className="font-display text-[clamp(1.05rem,1.5vw,1.3rem)] font-normal leading-[1.15] tracking-[-0.01em] text-[#4b4335]">
+        <p className="font-display text-[clamp(0.8rem,1.05vw,1.1rem)] font-normal max-[760px]:text-[1.1rem] leading-[1.15] tracking-[-0.01em] text-[#4b4335]">
           {INTRO_HEADLINE_LEAD}{" "}
           <em className="font-display italic text-[#7a6a4c]">
             {INTRO_HEADLINE_ACCENT}
@@ -236,20 +236,20 @@ function IntroContent(): React.ReactElement {
       <p className="max-w-[64ch] text-[15px] leading-[1.5] text-[#4b4335]">
         {INTRO_REACH_PARAGRAPH}
       </p>
-      <nav
-        aria-label="Explore hypr-tiling"
-        className="flex flex-wrap items-center gap-x-2 text-[14px] leading-[1.5] text-[#8c8069]"
-      >
-        {introLinks().map(
-          (link: IntroLink, index: number): React.ReactElement => (
-            <React.Fragment key={link.href}>
-              {index > 0 ? <span aria-hidden>·</span> : null}
-              <EditorialLink href={link.href}>{link.label}</EditorialLink>
-            </React.Fragment>
-          ),
-        )}
-      </nav>
       <footer className="mt-auto border-t border-[#ddd3bd] pt-2 text-[11px] leading-[1.4] text-[#8c8069]">
+        <nav
+          aria-label="Explore hypr-tiling"
+          className="mb-1 flex flex-wrap items-center gap-x-2 text-[12px] leading-[1.4] text-[#8c8069]"
+        >
+          {introLinks().map(
+            (link: IntroLink, index: number): React.ReactElement => (
+              <React.Fragment key={link.href}>
+                {index > 0 ? <span aria-hidden>·</span> : null}
+                <EditorialLink href={link.href}>{link.label}</EditorialLink>
+              </React.Fragment>
+            ),
+          )}
+        </nav>
         <EditorialLink href={LICENSE_URL}>{LICENSE_NAME}</EditorialLink>
         {INTRO_LICENSE_TAIL}
         {" · "}

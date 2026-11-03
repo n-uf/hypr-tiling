@@ -238,15 +238,15 @@ function CanvasIndex({
 function IntroContent(): React.ReactElement {
   return (
     <div className="flex min-h-full flex-col gap-3">
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-4">
           <CanvasKicker>dynamic tiling · for react</CanvasKicker>
           <CanvasLedRow />
         </div>
-        <h1 className="text-[clamp(1.5rem,2.1vw,1.85rem)] min-h-[2.1em] font-semibold leading-[1.05] tracking-[-0.02em] text-slate-900">
+        <h1 className="min-h-[2.1em] text-[1.5rem] font-semibold min-[761px]:min-h-0 min-[761px]:overflow-hidden min-[761px]:text-ellipsis min-[761px]:whitespace-nowrap min-[761px]:text-[clamp(1.1rem,1.5vw,1.5rem)] leading-[1.05] tracking-[-0.02em] text-slate-900">
           {INTRO_H1}
         </h1>
-        <p className="text-[clamp(1rem,1.4vw,1.2rem)] font-semibold leading-[1.15] tracking-[-0.01em] text-slate-700">
+        <p className="text-[clamp(0.8rem,1.05vw,1.05rem)] font-semibold max-[760px]:text-[1.05rem] leading-[1.15] tracking-[-0.01em] text-slate-700">
           {INTRO_HEADLINE_LEAD}{" "}
           <span className="text-cyan-600">{INTRO_HEADLINE_ACCENT}</span>
         </p>
@@ -258,20 +258,20 @@ function IntroContent(): React.ReactElement {
       <p className="max-w-[64ch] text-[14px] leading-[1.45] text-slate-600">
         {INTRO_REACH_PARAGRAPH}
       </p>
-      <nav
-        aria-label="Explore hypr-tiling"
-        className="flex flex-wrap items-center gap-x-2 text-[13px] leading-[1.45] text-slate-400"
-      >
-        {introLinks().map(
-          (link: IntroLink, index: number): React.ReactElement => (
-            <React.Fragment key={link.href}>
-              {index > 0 ? <span aria-hidden>·</span> : null}
-              <CanvasLink href={link.href}>{link.label}</CanvasLink>
-            </React.Fragment>
-          ),
-        )}
-      </nav>
       <footer className="mt-auto border-t border-slate-200 pt-2 text-[11px] leading-[1.4] text-slate-400">
+        <nav
+          aria-label="Explore hypr-tiling"
+          className="flex flex-wrap items-center gap-x-2 text-[12px] leading-[1.4] text-slate-400"
+        >
+          {introLinks().map(
+            (link: IntroLink, index: number): React.ReactElement => (
+              <React.Fragment key={link.href}>
+                {index > 0 ? <span aria-hidden>·</span> : null}
+                <CanvasLink href={link.href}>{link.label}</CanvasLink>
+              </React.Fragment>
+            ),
+          )}
+        </nav>
         <CanvasLink href={LICENSE_URL}>{LICENSE_NAME}</CanvasLink>
         {INTRO_LICENSE_TAIL}
         {" · "}

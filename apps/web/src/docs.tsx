@@ -512,13 +512,14 @@ function MosaicFactList({
   );
 }
 
-// "Docs · Use cases · Blog": plain links (full page loads) under the intro copy.
+// "Docs · Use cases · Blog": plain links (full page loads) on the first line of
+// the intro tile's footer, so the tile's content is no taller than before.
 function MosaicIntroLinks(): React.ReactElement {
   const links: ReadonlyArray<IntroLink> = introLinks();
   return (
     <nav
       aria-label="Explore hypr-tiling"
-      className="flex flex-wrap items-center gap-x-2 text-[14px] leading-[1.45] text-stone-500"
+      className="mb-1 flex flex-wrap items-center gap-x-2 text-[12px] leading-[1.4] text-stone-500"
     >
       {links.map(
         (link: IntroLink, index: number): React.ReactElement => (
@@ -546,7 +547,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
           <h1 className="font-display text-[clamp(1.75rem,2.6vw,2.25rem)] min-h-[2.08em] font-medium leading-[1.04] tracking-[-0.015em] text-stone-50">
             {INTRO_H1}
           </h1>
-          <p className="font-display text-[clamp(1.1rem,1.6vw,1.4rem)] font-medium leading-[1.15] tracking-[-0.01em] text-stone-200">
+          <p className="font-display text-[clamp(0.8rem,1.05vw,1.1rem)] font-medium leading-[1.15] tracking-[-0.01em] text-stone-200 max-[760px]:text-[1.1rem]">
             {INTRO_HEADLINE_LEAD}{" "}
             <em className="font-display italic text-amber-200/90">
               {INTRO_HEADLINE_ACCENT}
@@ -559,8 +560,8 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
         <p className="max-w-[62ch] text-[15px] leading-[1.45] text-stone-300/90">
           {INTRO_REACH_PARAGRAPH}
         </p>
-        <MosaicIntroLinks />
         <footer className="mt-auto border-t border-white/[0.08] pt-2 text-[11px] leading-[1.4] text-stone-500">
+          <MosaicIntroLinks />
           <Link href={LICENSE_URL}>{LICENSE_NAME}</Link>
           {INTRO_LICENSE_TAIL}
           {" · "}
