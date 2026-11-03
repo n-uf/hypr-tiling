@@ -5,10 +5,11 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import { joinPrerenderedHomeCopies, keepPrerenderedHomeLayout } from "./home-first-paint";
 
 // Two home copies shaped like React's output: hoisted chrome styles first,
-// then one <main> carrying the page's headline.
+// then one <main> carrying the page's <h1> (the keyword headline) and, right
+// under it, the old headline as a paragraph subtitle.
 const HOISTED: string = '<style data-precedence="default" data-href="chrome">.x{}</style>';
 const copy = (layout: string): string =>
-  `${HOISTED}<main class="${layout}-main"><h1 class="title">Rearrange <em>at runtime.</em></h1><p>${layout}</p></main>`;
+  `${HOISTED}<main class="${layout}-main"><h1 class="title">React tiling window manager</h1><p class="sub">Rearrange <em>at runtime.</em></p><p>${layout}</p></main>`;
 
 function mountHome(mobile: boolean): HTMLElement {
   Object.defineProperty(window, "matchMedia", {
@@ -68,7 +69,9 @@ describe("the inline keep script", (): void => {
     expect(mains[0].hasAttribute("data-home-first-paint")).toBe(false);
     const headings: ReadonlyArray<Element> = Array.from(root.querySelectorAll("h1"));
     expect(headings).toHaveLength(1);
-    expect(headings[0].outerHTML).toBe('<h1 class="title">Rearrange <em>at runtime.</em></h1>');
+    expect(headings[0].outerHTML).toBe('<h1 class="title">React tiling window manager</h1>');
+    // The subtitle stays a paragraph: only the keyword headline is the heading.
+    expect(root.querySelector("p.sub")?.textContent).toBe("Rearrange at runtime.");
     expect(root.querySelector("[data-page-title], [role=heading], script")).toBeNull();
     expect(root.getAttribute("data-home-layout")).toBe("mobile");
     expect(root.querySelector("style")).not.toBeNull();

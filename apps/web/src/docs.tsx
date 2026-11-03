@@ -38,7 +38,10 @@ export const LICENSE_NAME: string = "PolyForm Perimeter 1.0.1";
 export const LICENSE_URL: string =
   "https://polyformproject.org/licenses/perimeter/1.0.1";
 
-export const PAGE_TITLE: string = "hypr-tiling — dynamic tiling for React";
+// The home page's main keyword is "react tiling window manager": the title, the
+// meta description and the h1 lead with it (see content/constants.ts, which
+// reserves it so no use-case or blog page takes it).
+export const PAGE_TITLE: string = "React tiling window manager — hypr-tiling";
 
 // One canonical sentence an LLM can quote verbatim.
 export const CANONICAL_DESCRIPTION: string =
@@ -48,7 +51,7 @@ export const CANONICAL_DESCRIPTION: string =
 // search result shows it whole (Google cuts near 155 characters). The structured
 // data and llms.txt keep CANONICAL_DESCRIPTION.
 export const META_DESCRIPTION: string =
-  "Dynamic tiling layouts for React: users drag, drop, resize, group and maximize panes at runtime, with keyboard control and themes. Inspired by Hyprland.";
+  "hypr-tiling is a React tiling window manager: users drag, drop, resize, group and maximize panes at runtime, with keyboard control and themes.";
 
 export const INSTALL_SNIPPET: string =
   "pnpm add @n-uf/hypr-tiling react react-dom";
@@ -327,7 +330,9 @@ export type DocInline =
 
 export type DocParagraph = ReadonlyArray<DocInline>;
 
-// Intro pane.
+// Intro pane. The page's one <h1> is the main keyword; the old headline stays
+// right under it as a subtitle (a paragraph, not a heading).
+export const INTRO_H1: string = "React tiling window manager";
 export const INTRO_HEADLINE_LEAD: string = "Rearrange the interface,";
 export const INTRO_HEADLINE_ACCENT: string = "at runtime.";
 export const INTRO_ONE_LINER: string =
@@ -482,12 +487,15 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
       <div className="flex flex-1 flex-col gap-2">
         <div className="flex flex-col gap-2">
           <Eyebrow>dynamic tiling · for react</Eyebrow>
-          <h1 className="font-display text-[clamp(2rem,3.2vw,2.65rem)] font-medium leading-[1.02] tracking-[-0.015em] text-stone-50">
+          <h1 className="font-display text-[clamp(1.75rem,2.6vw,2.25rem)] font-medium leading-[1.04] tracking-[-0.015em] text-stone-50">
+            {INTRO_H1}
+          </h1>
+          <p className="font-display text-[clamp(1.1rem,1.6vw,1.4rem)] font-medium leading-[1.15] tracking-[-0.01em] text-stone-200">
             {INTRO_HEADLINE_LEAD}{" "}
             <em className="font-display italic text-amber-200/90">
               {INTRO_HEADLINE_ACCENT}
             </em>
-          </h1>
+          </p>
         </div>
         <p className="max-w-[62ch] text-[15px] leading-[1.45] text-stone-300/90">
           {INTRO_ONE_LINER}

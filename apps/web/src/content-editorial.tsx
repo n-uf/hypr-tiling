@@ -7,6 +7,7 @@ import {
   INSTALL_INTRO_PARAGRAPH,
   INSTALL_SNIPPET,
   INTEGRATION_EXAMPLE,
+  INTRO_H1,
   INTRO_HEADLINE_ACCENT,
   INTRO_HEADLINE_LEAD,
   INTRO_LICENSE_TAIL,
@@ -209,12 +210,15 @@ function IntroContent(): React.ReactElement {
     <div className="flex min-h-full flex-col gap-3">
       <div className="flex flex-col gap-2">
         <EditorialKicker>dynamic tiling · for react</EditorialKicker>
-        <h1 className="font-display text-[clamp(1.75rem,2.5vw,2.15rem)] font-normal leading-[1.04] tracking-[-0.02em] text-[#241f17]">
+        <h1 className="font-display text-[clamp(1.6rem,2.3vw,2rem)] font-normal leading-[1.04] tracking-[-0.02em] text-[#241f17]">
+          {INTRO_H1}
+        </h1>
+        <p className="font-display text-[clamp(1.05rem,1.5vw,1.3rem)] font-normal leading-[1.15] tracking-[-0.01em] text-[#4b4335]">
           {INTRO_HEADLINE_LEAD}{" "}
           <em className="font-display italic text-[#7a6a4c]">
             {INTRO_HEADLINE_ACCENT}
           </em>
-        </h1>
+        </p>
         <span aria-hidden className="h-px w-full bg-[#ddd3bd]" />
       </div>
       <p className="max-w-[64ch] text-[15px] leading-[1.5] text-[#4b4335]">

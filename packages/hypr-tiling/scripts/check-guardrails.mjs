@@ -172,8 +172,10 @@ if (!existsSync(proofFactsPath)) {
 
 // ── Rule 5: prerendered home shows the intro headline once per layout ───────
 // The home ships a desktop and a mobile copy (apps/web/src/home-first-paint.ts);
-// each must carry the headline exactly once, and the page exactly one <h1>.
+// each must carry the keyword headline (the h1) and the subtitle under it
+// exactly once, and the page exactly one <h1>, holding only the keyword headline.
 const prerenderedHome = resolve(repoRoot, "apps/web/dist/index.html");
+const introH1 = "React tiling window manager";
 const introLead = "Rearrange the interface";
 if (!existsSync(prerenderedHome)) {
   violations.push(
@@ -188,16 +190,23 @@ if (!existsSync(prerenderedHome)) {
     violations.push(`prerender: ${where} has home copies [${layouts.join(", ")}]; expected [desktop, mobile].`);
   }
   for (const [index, copy] of copies.entries()) {
-    const introCount = (copy.match(/Rearrange the interface/g) ?? []).length;
-    if (introCount !== 1) {
-      violations.push(
-        `prerender: the ${layouts[index]} home copy in ${where} contains ${JSON.stringify(introLead)} ${introCount} times; expected 1.`,
-      );
+    for (const phrase of [introH1, introLead]) {
+      const count = (copy.match(new RegExp(phrase, "g")) ?? []).length;
+      if (count !== 1) {
+        violations.push(
+          `prerender: the ${layouts[index]} home copy in ${where} contains ${JSON.stringify(phrase)} ${count} times; expected 1.`,
+        );
+      }
     }
   }
   const h1Count = (homeHtml.match(/<h1\b/g) ?? []).length;
   if (h1Count !== 1) {
     violations.push(`prerender: ${where} has ${h1Count} <h1> elements; expected 1.`);
+  } else {
+    const h1Text = homeHtml.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/)?.[1]?.replace(/<[^>]+>/g, "").trim();
+    if (h1Text !== introH1) {
+      violations.push(`prerender: the <h1> of ${where} reads ${JSON.stringify(h1Text ?? "")}; expected ${JSON.stringify(introH1)}.`);
+    }
   }
   // The head CSS shows the copy that fits before any script runs.
   const head = homeHtml.slice(0, homeHtml.indexOf("</head>"));
@@ -232,5 +241,5 @@ if (violations.length > 0) {
 }
 
 console.log(
-  "check-guardrails: OK — engine↛react layering, no deep consumer imports, dist/index.mjs keeps \"use client\", proof-facts version matches the package, prerender has a desktop and a mobile home copy with the intro headline once each, one <h1>, the first-paint style and a self-contained inline keep script.",
+  "check-guardrails: OK — engine↛react layering, no deep consumer imports, dist/index.mjs keeps \"use client\", proof-facts version matches the package, prerender has a desktop and a mobile home copy with the keyword headline and the subtitle once each, one <h1> that holds the keyword headline, the first-paint style and a self-contained inline keep script.",
 );
