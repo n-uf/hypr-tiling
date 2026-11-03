@@ -1,5 +1,12 @@
 import * as React from "react";
 import type { TilingTileAccent } from "@n-uf/hypr-tiling";
+import { CONTENT_INDEX } from "./content-index.generated";
+import {
+  nonEmptySections,
+  SECTION_LABELS,
+  sectionPath,
+  type ContentSection,
+} from "./content/constants";
 
 // Single source of truth for the homepage's documentation surface. The same
 // section content is rendered (a) inside the tiling panes for the interactive
@@ -161,6 +168,16 @@ export const SEO_FAQ_ITEMS: ReadonlyArray<SeoFaqItem> = [
 interface UseCase {
   readonly term: string;
   readonly detail: string;
+  /** A page of this site that goes deeper; only set once that page exists. */
+  readonly link?: { readonly label: string; readonly href: string };
+}
+
+// A use-case entry links to its guide only while the guide is a real page.
+function guideLink(
+  path: string,
+  label: string,
+): { readonly label: string; readonly href: string } | undefined {
+  return CONTENT_INDEX.some((entry): boolean => entry.path === path) ? { label, href: path } : undefined;
 }
 
 // The scenarios the tiling engine is built for. Promoted from the buried clause
@@ -170,6 +187,7 @@ export const USE_CASES: ReadonlyArray<UseCase> = [
   {
     term: "Dashboards",
     detail: "Metrics panes that share one screen.",
+    link: guideLink("/use-cases/react-drag-and-drop-dashboard", "Build a drag-and-drop dashboard"),
   },
   {
     term: "IDE-like tools",
@@ -339,6 +357,24 @@ export const INTRO_ONE_LINER: string =
   "A controlled tiling renderer for React — drag, resize, group, and keyboard-drive panes.";
 export const INTRO_REACH_PARAGRAPH: string =
   "Built for dashboards, IDE-like tools, and operator consoles. You own the layout tree.";
+export interface IntroLink {
+  readonly label: string;
+  readonly href: string;
+}
+
+/** The intro tile's row of plain links: the docs, then each section that has pages. */
+export function introLinks(): ReadonlyArray<IntroLink> {
+  return [
+    { label: "Docs", href: "/docs" },
+    ...nonEmptySections(CONTENT_INDEX).map(
+      (section: ContentSection): IntroLink => ({
+        label: SECTION_LABELS[section].plural,
+        href: sectionPath(section),
+      }),
+    ),
+  ];
+}
+
 export const CONTRIBUTING_EYEBROW: string = "contributing";
 export const INTRO_CONTRIBUTING_PARAGRAPH: DocParagraph = [
   "hypr-tiling is built in the open and welcomes collaboration — framework adapters, rendering backends, bug reports, and ideas from the roadmap. To get involved, reach out at ",
@@ -476,6 +512,26 @@ function MosaicFactList({
   );
 }
 
+// "Docs · Use cases · Blog": plain links (full page loads) under the intro copy.
+function MosaicIntroLinks(): React.ReactElement {
+  const links: ReadonlyArray<IntroLink> = introLinks();
+  return (
+    <nav
+      aria-label="Explore hypr-tiling"
+      className="flex flex-wrap items-center gap-x-2 text-[14px] leading-[1.45] text-stone-500"
+    >
+      {links.map(
+        (link: IntroLink, index: number): React.ReactElement => (
+          <React.Fragment key={link.href}>
+            {index > 0 ? <span aria-hidden>·</span> : null}
+            <Link href={link.href}>{link.label}</Link>
+          </React.Fragment>
+        ),
+      )}
+    </nav>
+  );
+}
+
 export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
   {
     id: "intro",
@@ -503,6 +559,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
         <p className="max-w-[62ch] text-[15px] leading-[1.45] text-stone-300/90">
           {INTRO_REACH_PARAGRAPH}
         </p>
+        <MosaicIntroLinks />
         <footer className="mt-auto border-t border-white/[0.08] pt-2 text-[11px] leading-[1.4] text-stone-500">
           <Link href={LICENSE_URL}>{LICENSE_NAME}</Link>
           {INTRO_LICENSE_TAIL}
@@ -534,6 +591,12 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
                 </span>
                 <span className="max-w-[60ch] text-[15px] leading-[1.45] text-stone-400">
                   {useCase.detail}
+                  {useCase.link != null ? (
+                    <>
+                      {" "}
+                      <Link href={useCase.link.href}>{useCase.link.label}</Link>
+                    </>
+                  ) : null}
                 </span>
               </li>
             ),

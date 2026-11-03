@@ -17,6 +17,7 @@ import {
   LICENSE_NAME,
   LICENSE_URL,
   ROADMAP_REST,
+  introLinks,
   USE_CASES,
   USECASES_LEAD,
   WORKSPACES_ALSO_PLANNED,
@@ -27,6 +28,7 @@ import {
   WORKSPACES_SHIPPED,
   type DocInline,
   type DocParagraph,
+  type IntroLink,
 } from "./docs";
 
 // The EDITORIAL skin's content presentation — the "paper & ink" counterpart to
@@ -171,6 +173,7 @@ export function EditorialInline({
 interface TermDetail {
   readonly term: string;
   readonly detail: string;
+  readonly link?: { readonly label: string; readonly href: string };
 }
 
 function EditorialIndex({
@@ -196,6 +199,12 @@ function EditorialIndex({
           </span>
           <span className="col-start-2 max-w-[60ch] text-[13px] leading-[1.75] text-[#5c5342]">
             {item.detail}
+            {item.link != null ? (
+              <>
+                {" "}
+                <EditorialLink href={item.link.href}>{item.link.label}</EditorialLink>
+              </>
+            ) : null}
           </span>
         </li>
       ))}
@@ -227,6 +236,19 @@ function IntroContent(): React.ReactElement {
       <p className="max-w-[64ch] text-[15px] leading-[1.5] text-[#4b4335]">
         {INTRO_REACH_PARAGRAPH}
       </p>
+      <nav
+        aria-label="Explore hypr-tiling"
+        className="flex flex-wrap items-center gap-x-2 text-[14px] leading-[1.5] text-[#8c8069]"
+      >
+        {introLinks().map(
+          (link: IntroLink, index: number): React.ReactElement => (
+            <React.Fragment key={link.href}>
+              {index > 0 ? <span aria-hidden>·</span> : null}
+              <EditorialLink href={link.href}>{link.label}</EditorialLink>
+            </React.Fragment>
+          ),
+        )}
+      </nav>
       <footer className="mt-auto border-t border-[#ddd3bd] pt-2 text-[11px] leading-[1.4] text-[#8c8069]">
         <EditorialLink href={LICENSE_URL}>{LICENSE_NAME}</EditorialLink>
         {INTRO_LICENSE_TAIL}
