@@ -2,7 +2,7 @@ import * as React from "react";
 
 // Narrow / coarse viewport detection for the mobile home experience.
 //
-// The built `/` ships BOTH home layouts prerendered (see `home-first-paint.tsx`):
+// The built `/` ships BOTH home layouts prerendered (see `home-first-paint.ts`):
 // a media query shows the one that fits the viewport, and `main.tsx` drops the
 // other and hydrates the kept one. While rendering on the server and while
 // hydrating, the hooks below return the layout of the copy being rendered

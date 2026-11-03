@@ -36,7 +36,7 @@ const hasPrerenderedMarkup: boolean = container.firstElementChild != null;
 const path: string = window.location.pathname.replace(/\/+$/, "") || "/";
 
 // The home HTML carries a desktop and a mobile copy (CSS shows the one that
-// fits; see `home-first-paint.tsx`). Keep that one, drop the other, and hydrate
+// fits; see `home-first-paint.ts`). Keep that one, drop the other, and hydrate
 // it with the viewport hooks pinned to its layout so the first render matches.
 const prerenderedHomeLayout: HomeLayout | null = hasPrerenderedMarkup
   ? keepPrerenderedHomeLayout(container)

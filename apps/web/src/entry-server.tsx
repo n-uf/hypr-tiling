@@ -45,7 +45,7 @@ function renderHome(layout: HomeLayout): string {
 // the documentation content ships in the initial response. Effects do not run
 // during renderToString, so the emitted markup is the pre-measurement tree — the
 // same tree the client produces before hydration. Both layouts ship, desktop
-// first; CSS shows the one that fits the viewport (see `home-first-paint.tsx`).
+// first; CSS shows the one that fits the viewport (see `home-first-paint.ts`).
 export function render(): string {
   return joinPrerenderedHomeCopies(renderHome("desktop"), renderHome("mobile"));
 }
