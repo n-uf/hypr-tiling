@@ -4,4 +4,21 @@
 // are rendered at build time and never reach the client bundle.
 import type { ContentIndexEntry } from "./content/constants";
 
-export const CONTENT_INDEX: ReadonlyArray<ContentIndexEntry> = [];
+export const CONTENT_INDEX: ReadonlyArray<ContentIndexEntry> = [
+  {
+    "section": "use-cases",
+    "slug": "react-drag-and-drop-dashboard",
+    "path": "/use-cases/react-drag-and-drop-dashboard",
+    "title": "React drag and drop dashboard with tiled panels",
+    "h1": "Build a drag-and-drop dashboard in React with tiled panels",
+    "description": "Build a React drag and drop dashboard where users move, resize and tab panels and keep their layout, and see when a grid library fits better."
+  },
+  {
+    "section": "blog",
+    "slug": "react-mosaic-alternatives",
+    "path": "/blog/react-mosaic-alternatives",
+    "title": "React mosaic alternatives: tiling, docking, split panes",
+    "h1": "Alternatives to react-mosaic, compared by what they do",
+    "description": "Seven react-mosaic alternatives compared by layout model, tabs, pop-out windows, React support and licence, with a pick for each need."
+  }
+];
