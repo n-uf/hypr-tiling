@@ -255,7 +255,7 @@ On a grid, each widget has a position and a size in cells, and cells between wid
 
 ### Where a grid fits better
 
-A grid library is the better choice when your widgets have fixed sizes that sit on a grid, such as a 4×2 chart card, or when users should be able to leave space empty. It's also the one to pick if you need a different layout per screen width: react-grid-layout's README lists separate layouts per responsive breakpoint, and gridstack's `columnOpts` changes the column count by width. On React 18, without Tailwind, or when you need an MIT licence, hypr-tiling is out and both of these are in. gridstack also works outside React. If you want a grid-style React dashboard layout library, start with those two.
+A grid library is the better choice when your widgets have fixed sizes that sit on a grid, such as a 4×2 chart card, or when users should be able to leave space empty. It's also the one to pick if you need a different layout per screen width: react-grid-layout's README lists separate layouts per responsive breakpoint, and gridstack's `columnOpts` changes the column count by width. On React 18, without Tailwind, or when you need an MIT licence, hypr-tiling is out and both of these are in. gridstack also works outside React. If you want a grid-style React dashboard layout library, start with those two. For more options, from dnd-kit to tiling and docking, see the [react-grid-layout alternatives](/blog/react-grid-layout-alternatives) article.
 
 ### Where tiling fits better
 
