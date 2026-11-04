@@ -4,8 +4,8 @@ description: "Build a React drag and drop dashboard where users move, resize and
 h1: "Build a drag-and-drop dashboard in React with tiled panels"
 mainKeyword: "react drag and drop dashboard"
 kind: use-case
-published: 2026-11-03
-updated: 2026-11-03
+published: 2026-11-04
+updated: 2026-11-04
 author: n-uf
 takeaways:
   - "A drag-and-drop dashboard in React needs three parts: the layout as data in your state, a component that renders and edits it, and a way to save it per user."
