@@ -243,10 +243,10 @@ function IntroContent(): React.ReactElement {
           <CanvasKicker>dynamic tiling · for react</CanvasKicker>
           <CanvasLedRow />
         </div>
-        <h1 className="min-h-[2.1em] text-[1.5rem] font-semibold min-[761px]:min-h-0 min-[761px]:overflow-hidden min-[761px]:text-ellipsis min-[761px]:whitespace-nowrap min-[761px]:text-[clamp(1.1rem,1.5vw,1.5rem)] leading-[1.05] tracking-[-0.02em] text-slate-900">
+        <h1 className="min-h-[2.1em] text-balance text-[clamp(1.3rem,2.3vw,2rem)] font-semibold max-[760px]:text-[1.5rem] leading-[1.05] tracking-[-0.02em] text-slate-900">
           {INTRO_H1}
         </h1>
-        <p className="text-[clamp(0.8rem,1.05vw,1.05rem)] font-semibold max-[760px]:text-[1.05rem] leading-[1.15] tracking-[-0.01em] text-slate-700">
+        <p className="text-[clamp(0.75rem,1.05vw,1.05rem)] font-semibold max-[760px]:text-[1.05rem] leading-[1.15] tracking-[-0.01em] text-slate-700">
           {INTRO_HEADLINE_LEAD}{" "}
           <span className="text-cyan-600">{INTRO_HEADLINE_ACCENT}</span>
         </p>
