@@ -219,10 +219,10 @@ function IntroContent(): React.ReactElement {
     <div className="flex min-h-full flex-col gap-3">
       <div className="flex flex-col gap-1.5">
         <EditorialKicker>dynamic tiling · for react</EditorialKicker>
-        <h1 className="font-display min-h-[2.08em] text-[1.75rem] font-normal min-[761px]:min-h-0 min-[761px]:overflow-hidden min-[761px]:text-ellipsis min-[761px]:whitespace-nowrap min-[761px]:text-[clamp(1.1rem,1.5vw,1.6rem)] leading-[1.04] tracking-[-0.02em] text-[#241f17]">
+        <h1 className="font-display min-h-[2.08em] text-balance text-[clamp(1.4rem,2.05vw,2.15rem)] max-[760px]:text-[1.75rem] font-normal leading-[1.04] tracking-[-0.02em] text-[#241f17]">
           {INTRO_H1}
         </h1>
-        <p className="font-display text-[clamp(0.8rem,1.05vw,1.1rem)] font-normal max-[760px]:text-[1.1rem] leading-[1.15] tracking-[-0.01em] text-[#4b4335]">
+        <p className="font-display text-[clamp(0.75rem,1.05vw,1.1rem)] font-normal max-[760px]:text-[1.1rem] leading-[1.15] tracking-[-0.01em] text-[#4b4335]">
           {INTRO_HEADLINE_LEAD}{" "}
           <em className="font-display italic text-[#7a6a4c]">
             {INTRO_HEADLINE_ACCENT}
