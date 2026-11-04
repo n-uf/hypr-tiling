@@ -4,8 +4,8 @@ description: "Seven react-mosaic alternatives compared by layout model, tabs, po
 h1: "Alternatives to react-mosaic, compared by what they do"
 mainKeyword: "react mosaic alternative"
 kind: comparison
-published: 2026-11-04
-updated: 2026-11-04
+published: 2026-11-03
+updated: 2026-11-03
 author: n-uf
 takeaways:
   - "react-mosaic 7 already has tab groups, touch drag and drop and React 16 to 19 support, so tabs alone are no longer a reason to leave it."
