@@ -42,38 +42,66 @@ that day with no further edit.
    on every draft whose `published` date is today or earlier, and nothing else. When
    something changed, the workflow runs two jobs, so the deploy key never meets third-party
    code (steps of one job are not isolated from each other). Both jobs check out `github.sha`
-   (the main commit the run started on); only the page list and the patch cross between them,
-   never a commit id. Job `build` has no secret: it flips the pages, saves the flip as a patch
-   of `apps/web/content`, installs and builds in production mode (a red build fails the run and
-   pushes nothing) and hands the patch over (an artifact kept a day). Job `push` (the `publish`
-   environment, which releases the secret to runs on `main` only; `contents: read`; stops at its
-   first step if the secret is empty) runs nothing but git and first-party actions, no node or
-   pnpm. `apps/web/scripts/check-flip-patch.sh`, from its own checkout, first judges the patch
-   itself, before anything is written (`git apply --numstat/--summary/--check`): under 64 KB,
-   only `apps/web/content/<blog|use-cases>/<slug>.md`, no create, delete, rename or mode change,
-   one line per file. Only then does it `git apply --index` and re-check the result: every change
-   is the `draft: true` -> `draft: false` line inside the front matter of an existing page whose
-   `published` day is today or earlier (UTC), and the pages are the ones the build reported (its
-   tests: `node --test scripts/check-flip-patch.test.mjs`, part of the web `test` script). Then it commits one
-   `publish: <section>/<slug>[, ...]` line as github-actions[bot] and pushes to `main`; Vercel
-   builds it like any push. Every git command there runs with hooks off, and the key is written
-   to a private temp file only around each `git push` / `git fetch` and removed right
-   after (ssh with `-F /dev/null`, no agent, no proxy, GitHub's SSH host key pinned). `main` is
-   protected by a ruleset (required checks, no force-push, no deletion) that only the repo's
-   write deploy key "publish-bot (scheduled publishing)" may bypass (secret
-   `PUBLISH_DEPLOY_KEY`), so the push goes over SSH with that key, not with a job token. A
-   deploy-key push does trigger CI, unlike a token push. A push refused because `main` moved
-   (non-fast-forward) fetches `main`, rebases the flip onto it and retries, up to 3 pushes, with
-   no rebuild (the commits pulled in passed `main`'s checks, and Vercel's build of the push is the last
-   check). After each rebase the flip must be exactly one commit on top of the fetched `main`, and the
-   guard runs again on it (`check-flip-patch.sh --rebased` on `git format-patch -1 HEAD`, judged
-   against `HEAD~1` on a throwaway index: still due, one draft line, same pages, tree = base + patch),
-   so a page `main` moved to a later `published` day is not published early; if that fails nothing is
-   pushed. A rebase conflict or any other refusal fails the run. Nothing due: no build, no commit, no
-   deploy. A red publish run is worth one rerun first: the library's `workspace-tab-drop`
-   test can flake under load in the build step. The jobs only run in `n-uf/hypr-tiling`,
-   and their actions are pinned by commit SHA. Preview what is due with
-   `node apps/web/scripts/publish-due.mjs --dry-run [--today YYYY-MM-DD]`.
+   (the main commit the run started on); only the patch and the page list cross between them,
+   never a commit id.
+   - Job `build` has no secret. In this order: `publish-due.mjs` (Node standard library only,
+     nothing installed yet) flips the pages and writes the page list; `git diff` saves the flip as
+     a patch of `apps/web/content`; patch and page list are **uploaded as one artifact (`flip`,
+     kept a day) right away, before any install or cache restore**, so third-party code that runs
+     later cannot rewrite what the push job receives. Only then: pnpm, the dependency cache, the
+     install, and the production build with the content checks. The job output `ready` is set
+     **only after the build passed**; a red build fails the run and pushes nothing.
+   - The page list (`pages.txt` in the artifact, written by `publish-due.mjs --pages-file`) is one
+     repo path per line, `apps/web/content/<section>/<slug>.md`, sorted bytewise (`LC_ALL=C`) and
+     unique. The guard refuses any other shape (blank line, other path, unsorted, duplicate).
+   - Job `push` runs only when `needs.build.outputs.ready == 'true'` (the `publish` environment,
+     which releases the secret to runs on `main` only; `contents: read`; stops at its first step if
+     the secret is empty). It runs nothing but git and first-party actions, no node or pnpm, and
+     reads the page list from the downloaded artifact (not from a build output).
+     `apps/web/scripts/check-flip-patch.sh <patch> <page list>`, from its own checkout, first
+     judges the patch itself, before anything is written: under 64 KB, no NUL byte, every line
+     fits the unified-diff grammar of a `git diff` (file headers, `@@` hunk headers whose line
+     counts the hunk must match, ` `/`-`/`+` lines, `\ No newline at end of file`; a stray or blank
+     line is refused) with one hunk per file, then `git apply --numstat/--summary/--check`: only
+     `apps/web/content/<blog|use-cases>/<slug>.md`, no create, delete, rename or mode change, one
+     line per file. Only then does it `git apply --index` and re-check the result: every change is
+     the `draft: true` -> `draft: false` line inside the front matter of an existing page whose
+     `published` day is today or earlier (UTC), and the changed files are exactly the page list's
+     (its tests: `node --test scripts/check-flip-patch.test.mjs`, part of the web `test` script).
+     The workflow step then checks once more, itself, that `git diff --cached --name-only`
+     (sorted) equals the page list exactly, and only then commits one
+     `publish: <section>/<slug>[, ...]` line as github-actions[bot] and pushes to `main`; Vercel
+     builds it like any push. Every git command there runs with hooks off, and the key is written
+     to a private temp file only around each `git push` / `git fetch` and removed right after (ssh
+     with `-F /dev/null`, no agent, no proxy, GitHub's SSH host key pinned).
+   - **Explicit remote, never force.** `main` is protected by a ruleset (required checks, no
+     force-push, no deletion) that only the repo's write deploy key "publish-bot (scheduled
+     publishing)" may bypass (secret `PUBLISH_DEPLOY_KEY`), and the bypass lifts every rule for the
+     key, force-push and deletion included. So the push code is the only limit and is
+     security-relevant: it pushes to `git@github.com:n-uf/hypr-tiling.git` (never the name
+     `origin`) with exactly `HEAD:refs/heads/main` (never `--force`/`-f`, never a `+` or an empty
+     source on the push refspec), and fetches with the same URL and
+     `+refs/heads/main:refs/remotes/origin/main`. A deploy-key push does trigger CI, unlike a token
+     push. A push refused because `main` moved (non-fast-forward) fetches `main`, rebases the flip
+     onto it and retries, up to 3 pushes, with no rebuild (the commits pulled in passed `main`'s
+     checks, and Vercel's build of the push is the last check). After each rebase the flip must be
+     exactly one commit on top of the fetched `main`, and the guard runs again on it
+     (`check-flip-patch.sh --rebased` on that commit's `git diff HEAD~1 HEAD`, judged against
+     `HEAD~1` on a throwaway index: still due, one draft line, same pages as the page list, tree =
+     base + patch), so a page `main` moved to a later `published` day is not published early; if
+     that fails nothing is pushed. A rebase conflict or any other refusal fails the run.
+   - **Key check (verify-key).** `gh workflow run publish.yml -R n-uf/hypr-tiling --ref main -f
+     verify-key=true` runs the workflow with the boolean input `verify-key` (default false). The
+     build job then does nothing (no checkout, flip, install or build) and the push job runs only
+     the key check and `git ls-remote git@github.com:n-uf/hypr-tiling.git refs/heads/main` over
+     the same pinned ssh, which proves the key and the path without a checkout, commit or push. A
+     scheduled run has no inputs and can never take this path; every step that commits or pushes
+     is skipped in it, and the push step refuses to run there on its own.
+   - Nothing due: no build, no commit, no deploy. A red publish run is worth one rerun first: the
+     library's `workspace-tab-drop` test can flake under load in the build step. The jobs only run
+     in `n-uf/hypr-tiling`, and their actions are pinned by commit SHA. Preview what is due with
+     `node apps/web/scripts/publish-due.mjs --dry-run [--today YYYY-MM-DD]`.
+
    Write the field exactly `draft: true` or `draft: false`: the script edits that line by
    pattern, so the validator refuses other spellings (`draft : true`, `"draft": true`,
    `draft: True`). A draft whose go-live date is already past only warns: it goes live on
