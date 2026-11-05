@@ -135,7 +135,30 @@ describe("publish-due", (): void => {
     );
   });
 
-  it.each(["draft : true", '"draft": true', "draft: True", "draft: TRUE", "'draft': true"])(
+  it("--pages-file writes the flipped pages as sorted repo paths, one per line, only on a real run with something due", (): void => {
+    seed({
+      "blog/shared.md": page("draft: true\npublished: 2026-11-01\nupdated: 2026-11-01"),
+      "use-cases/shared.md": page("draft: true\npublished: 2026-11-01\nupdated: 2026-11-01"),
+    });
+    const list = join(root, `pages-${counter}.txt`);
+    run(["--dry-run", "--today", "2026-11-05", "--pages-file", list]);
+    expect(() => readFileSync(list, "utf8")).toThrow();
+    run(["--today", "2026-12-31", "--pages-file", list, "--content", content]);
+    expect(readFileSync(list, "utf8")).toBe(
+      [
+        "apps/web/content/blog/due-draft.md",
+        "apps/web/content/blog/future-draft.md",
+        "apps/web/content/blog/shared.md",
+        "apps/web/content/use-cases/overdue-quoted.md",
+        "apps/web/content/use-cases/shared.md",
+      ].join("\n") + "\n",
+    );
+    const none = join(root, `none-${counter}.txt`);
+    run(["--today", "2026-12-31", "--pages-file", none]);
+    expect(() => readFileSync(none, "utf8")).toThrow();
+  });
+
+  it.each(["draft : true",'"draft": true', "draft: True", "draft: TRUE", "'draft': true"])(
     "refuses the draft spelling `%s` instead of skipping the page as live",
     (spelling): void => {
       seed({ "blog/odd.md": page(`${spelling}\npublished: 2026-11-01\nupdated: 2026-11-01`) });

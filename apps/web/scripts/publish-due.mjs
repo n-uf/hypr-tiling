@@ -7,12 +7,15 @@
 //   node apps/web/scripts/publish-due.mjs --dry-run          print the due pages, change nothing
 //   node apps/web/scripts/publish-due.mjs --today 2026-12-01 pretend it is that UTC day (tests, previews)
 //   node apps/web/scripts/publish-due.mjs --content <dir>    read pages from <dir> (default apps/web/content)
+//   node apps/web/scripts/publish-due.mjs --pages-file <f>   also write the page list to <f> (real run, something due)
 //
 // Exit 0 when nothing is due (and prints so); exit 1 on a bad argument or a
 // draft whose `published` date it cannot read, so a typo never silently
 // keeps a page offline. Node only, no dependencies: the workflow needs no install.
 // When $GITHUB_OUTPUT is set, a real run also writes `slugs=<section/slug>[, ...]`
-// there; the workflow commits it as `publish: <section>/<slug>[, ...]`.
+// there (a log aid). With --pages-file <f> a real run that flipped something also writes the page list
+// the workflow hands to its push job: one repo path per line, `apps/web/content/<section>/<slug>.md`,
+// sorted bytewise and unique, newline-terminated. The push job compares it with the patch it is given.
 
 import { appendFileSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -20,6 +23,8 @@ import { fileURLToPath } from "node:url";
 
 const SLUG_FILE = /^([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+// The repo path a page list names, whatever --content says: the push job's guard only accepts these paths.
+const REPO_CONTENT = "apps/web/content";
 
 function fail(message) {
   console.error(`publish-due: ${message}`);
@@ -36,12 +41,13 @@ function parseArgs(argv) {
     dryRun: false,
     today: new Date().toISOString().slice(0, 10),
     content: resolve(dirname(fileURLToPath(import.meta.url)), "..", "content"),
+    pagesFile: null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--dry-run") {
       options.dryRun = true;
-    } else if (arg === "--today" || arg === "--content") {
+    } else if (arg === "--today" || arg === "--content" || arg === "--pages-file") {
       const value = argv[index + 1];
       if (value == null || value.startsWith("--")) {
         fail(`${arg} needs a value`);
@@ -52,11 +58,13 @@ function parseArgs(argv) {
           fail(`--today must be a real date written YYYY-MM-DD, found "${value}"`);
         }
         options.today = value;
-      } else {
+      } else if (arg === "--content") {
         options.content = resolve(value);
+      } else {
+        options.pagesFile = resolve(value);
       }
     } else {
-      fail(`unknown argument "${arg}" (use --dry-run, --today YYYY-MM-DD, --content <dir>)`);
+      fail(`unknown argument "${arg}" (use --dry-run, --today YYYY-MM-DD, --content <dir>, --pages-file <file>)`);
     }
   }
   return options;
@@ -153,4 +161,10 @@ for (const page of due) {
 if (!options.dryRun && due.length > 0 && process.env.GITHUB_OUTPUT != null && process.env.GITHUB_OUTPUT !== "") {
   const slugs = [...new Set(due.map((page) => page.label))].join(", ");
   appendFileSync(process.env.GITHUB_OUTPUT, `slugs=${slugs}\n`);
+}
+
+if (!options.dryRun && due.length > 0 && options.pagesFile != null) {
+  // Plain code-unit order, which is also `LC_ALL=C sort` and the order git lists paths in.
+  const paths = [...new Set(due.map((page) => `${REPO_CONTENT}/${page.section}/${page.slug}.md`))].sort();
+  writeFileSync(options.pagesFile, `${paths.join("\n")}\n`, "utf8");
 }
