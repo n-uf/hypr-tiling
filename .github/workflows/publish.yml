@@ -13,15 +13,19 @@ name: Publish due pages
 # or a git hook):
 #   build  has no secret. In this order: publish-due.mjs (node standard library only) flips the pages and
 #          writes the page list; `git diff` saves the flip as a patch; the patch and the page list are
-#          uploaded as ONE artifact (`flip`, kept 1 day) right away, before any install or cache restore, so
-#          third-party code that runs later can't rewrite what the push job receives. Only then: pnpm,
-#          the dependency cache, the install, and the build with the content checks. The job output `ready`
-#          is set only after the build passed; a red build ends the run and the push job never starts.
+#          uploaded as ONE artifact (`flip`, kept 1 day) right away, before any install or cache restore, and
+#          checked by its checksum in the push job. The checksum (sha256 of the sha256 list of flip.patch and
+#          pages.txt) is computed before the upload and exposed as the job output `sum`; an action's post step
+#          that runs after the build could delete and re-upload the artifact, but it can't change an earlier
+#          step's output. Only then: pnpm, the dependency cache, the install, and the build with the content
+#          checks. The job output `ready` is set only after the build passed; a red build ends the run and the
+#          push job never starts.
 #          The page list is a text file, one repo path per line, `apps/web/content/<section>/<slug>.md`,
 #          sorted bytewise and unique.
 #   push   runs only when `needs.build.outputs.ready == 'true'`, and gets the key (the `publish` environment).
 #          It runs git and first-party actions only: no node, no pnpm. It reads the page list from the
-#          downloaded artifact (never from a build output). apps/web/scripts/check-flip-patch.sh (from its own
+#          downloaded artifact (never from a build output) after checking both files against the build job's
+#          `sum` output. apps/web/scripts/check-flip-patch.sh (from its own
 #          checkout, copied out of the work tree) first judges the patch itself, before anything is written:
 #          under 64 KB, no NUL byte, every line unified-diff grammar with one hunk per file, only
 #          apps/web/content/<blog|use-cases>/<slug>.md, no create/delete/rename/mode change, one line per
@@ -42,7 +46,8 @@ name: Publish due pages
 # command and removed right after; github.com's SSH host key is pinned in the step.
 # The bypass lifts EVERY rule for the key, force-push and deletion included, so the push code is the only
 # limit: it pushes to the explicit remote URL below with the one refspec HEAD:refs/heads/main (never the name
-# `origin`, never --force, -f, --force-with-lease or a `+` on the push refspec), and fetches only main. Treat a
+# `origin`, never --force, -f, --force-with-lease or a `+` on the push refspec, no tags), and fetches only main
+# (no tags). Treat a
 # change to those lines as security-relevant.
 # A deploy-key push, unlike a GITHUB_TOKEN push, starts other workflows: CI (ci.yml) runs on the publish commit.
 #
@@ -105,10 +110,12 @@ jobs:
     env:
       # 'true' only for a manual run with verify-key set; a scheduled run has no inputs, so it is 'false'.
       VERIFY_KEY: ${{ github.event_name == 'workflow_dispatch' && inputs.verify-key == true }}
-    # Set only after the build passed. Nothing else crosses to the push job: the patch and the page list go
-    # in the artifact, and no commit id crosses (both jobs check out github.sha).
+    # `ready` is set only after the build passed; `sum` is the checksum of the artifact's two files from before
+    # any third-party code ran. Nothing else crosses to the push job: the patch and the page list go in the
+    # artifact, and no commit id crosses (both jobs check out github.sha).
     outputs:
       ready: ${{ steps.ready.outputs.ready }}
+      sum: ${{ steps.save.outputs.sum }}
     steps:
       # A verify-key run skips everything heavy: these two steps, and the flip, whose empty output skips the rest.
       - name: Checkout main
@@ -134,13 +141,20 @@ jobs:
           mkdir -p "$RUNNER_TEMP/flip"
           node apps/web/scripts/publish-due.mjs --pages-file "$RUNNER_TEMP/flip/pages.txt"
 
-      # Taken right after the flip, before any third-party code runs.
+      # Taken right after the flip, before any third-party code runs. Also records the checksum of what is
+      # about to be uploaded as this step's output, which becomes the job output `sum`: a later step (a post
+      # step of an action, say, run from the writable _actions folder with the runtime token) can't change an
+      # earlier step's output, so the push job can tell if the artifact was swapped after the upload.
       - name: Save the flip as a patch
+        id: save
         if: steps.flip.outputs.slugs != ''
-        run: git -c core.hooksPath=/dev/null diff --no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/ -- apps/web/content > "$RUNNER_TEMP/flip/flip.patch"
+        run: |
+          git -c core.hooksPath=/dev/null diff --no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/ -- apps/web/content > "$RUNNER_TEMP/flip/flip.patch"
+          sum=$(cd "$RUNNER_TEMP/flip" && sha256sum flip.patch pages.txt | sha256sum | cut -d' ' -f1)
+          echo "sum=$sum" >> "$GITHUB_OUTPUT"
 
-      # The patch and the page list go up now, before any install or cache restore: what third-party code
-      # does later can't change what the push job downloads.
+      # The patch and the page list go up now, before any install or cache restore, and the push job checks
+      # them against the checksum above.
       - name: Hand the flip to the push job
         if: steps.flip.outputs.slugs != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -267,6 +281,23 @@ jobs:
           name: flip
           path: ${{ runner.temp }}/flip
 
+      # No key in this step. The artifact must be what the build job saved before it ran any third-party code:
+      # same checksum as the build job's `sum` output (which a later step of that job can't change).
+      - name: Check the flip against its checksum
+        if: env.VERIFY_KEY != 'true'
+        env:
+          EXPECTED: ${{ needs.build.outputs.sum }}
+        run: |
+          if [ -z "$EXPECTED" ]; then
+            echo "::error::The build job reported no checksum for the flip."
+            exit 1
+          fi
+          sum=$(cd "$RUNNER_TEMP/flip" && sha256sum flip.patch pages.txt | sha256sum | cut -d' ' -f1)
+          if [ "$sum" != "$EXPECTED" ]; then
+            echo "::error::The downloaded flip is not what the build job saved (checksum mismatch). Nothing was applied."
+            exit 1
+          fi
+
       # No key in this step. Apply the patch and refuse anything but the flip itself (bash and git only).
       - name: Apply the flip and check it
         if: env.VERIFY_KEY != 'true'
@@ -343,7 +374,8 @@ jobs:
           # ruleset lets the deploy key bypass every rule, force-push and branch deletion included, so a
           # push through the name `origin`, with --force/-f/--force-with-lease, with a `+` or an empty source
           # on the push refspec (`:refs/heads/main` deletes), or to another ref, would be allowed by GitHub.
-          # Push exactly HEAD:refs/heads/main, fetch only main, and never change these lines casually.
+          # Push exactly HEAD:refs/heads/main (push.followTags off and --no-follow-tags: no tag goes along),
+          # fetch only main (--no-tags), and never change these lines casually.
           remote=git@github.com:n-uf/hypr-tiling.git
           pages="$RUNNER_TEMP/flip/pages.txt"
 
@@ -356,7 +388,7 @@ jobs:
           # After every rebase the flip is judged again against the main it now sits on (a page main
           # moved to a later `published` day must not go live early); if that fails, nothing is pushed.
           for attempt in 1 2 3; do
-            if with_key g push "$remote" HEAD:refs/heads/main 2> "$RUNNER_TEMP/push.err"; then
+            if with_key g -c push.followTags=false push --no-follow-tags "$remote" HEAD:refs/heads/main 2>"$RUNNER_TEMP/push.err"; then
               cat "$RUNNER_TEMP/push.err"
               echo "::notice::Pushed on try $attempt."
               exit 0
@@ -372,7 +404,7 @@ jobs:
             echo "::warning::Push rejected on try $attempt of 3: main moved during the run, rebasing on it."
             # Fetch main into a local ref (the only network command here besides the push), then rebase onto
             # the exact commit that was fetched.
-            if ! with_key g fetch "$remote" '+refs/heads/main:refs/remotes/origin/main'; then
+            if ! with_key g fetch --no-tags "$remote" '+refs/heads/main:refs/remotes/origin/main'; then
               echo "::error::Fetching main failed. Nothing was pushed."
               exit 1
             fi
