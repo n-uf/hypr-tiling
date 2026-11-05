@@ -1,13 +1,18 @@
 name: Publish due pages
 
 # Flips scheduled content pages (draft: true, published: <go-live date>) live
-# once their date has come: sets `draft: false`, commits `publish: <slug>[, <slug>]`
-# as github-actions[bot] and pushes to main, where Vercel builds it like any push.
-# Nothing due means no commit and no deploy.
+# once their date has come: sets `draft: false`, builds the site (a red build
+# pushes nothing), commits `publish: <section>/<slug>[, ...]` as
+# github-actions[bot] and pushes to main, where Vercel builds it like any push.
+# Nothing due means no build, no commit and no deploy.
 #
 # GitHub can start a scheduled run up to about an hour late, and it switches
 # schedules off in a repo with no activity for 60 days: re-enable the workflow
 # from the Actions tab if that happens. Run it by hand with "Run workflow".
+#
+# Actions are pinned by commit SHA (the tag is in the comment): to update one,
+# look the tag up with `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` and
+# dereference an annotated tag.
 on:
   schedule:
     - cron: '10 0 * * *'
@@ -23,15 +28,17 @@ concurrency:
 jobs:
   publish:
     name: flip due drafts
+    if: github.repository == 'n-uf/hypr-tiling'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
 
@@ -39,18 +46,66 @@ jobs:
         id: flip
         run: node apps/web/scripts/publish-due.mjs
 
+      # Everything below runs only when the flip changed a page.
+      - name: Install pnpm
+        if: steps.flip.outputs.slugs != ''
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+
+      - name: Setup Node with the pnpm cache
+        if: steps.flip.outputs.slugs != ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.flip.outputs.slugs != ''
+        run: pnpm install --frozen-lockfile
+
+      # Production mode (no VERCEL_ENV, no SHOW_DRAFTS): the same build Vercel
+      # runs. A red build ends the job here and nothing is pushed.
+      - name: Build the site with the flipped pages
+        if: steps.flip.outputs.slugs != ''
+        run: pnpm build
+
       - name: Commit and push
+        if: steps.flip.outputs.slugs != ''
         env:
           SLUGS: ${{ steps.flip.outputs.slugs }}
         run: |
-          if [ -z "$(git status --porcelain)" ]; then
+          if git diff --quiet -- apps/web/content; then
             echo "Nothing due: no commit."
             exit 0
           fi
-          : "${SLUGS:?the script changed files but reported no slugs}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- apps/web/content
           git commit -m "publish: ${SLUGS}"
-          # main may have moved since the checkout; the flip only touches a draft line, so a rebase is safe.
-          git push origin HEAD:main || { git pull --rebase origin main && git push origin HEAD:main; }
+
+          # `built` is the main commit the build above ran on. A rejected push
+          # means main moved during the build: rebase onto it and try again, up
+          # to 3 pushes. The flip only touches `draft:` lines, so the rebase is
+          # clean unless someone edited the same line. If the rebase pulled in
+          # other changes, rebuild before pushing again so a red result never
+          # reaches main.
+          built=$(git rev-parse HEAD~1)
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              echo "Pushed on try ${attempt}."
+              exit 0
+            fi
+            echo "::warning::push rejected on try ${attempt} of 3: main moved during the build"
+            if [ "${attempt}" -eq 3 ]; then
+              break
+            fi
+            git pull --rebase --autostash origin main
+            now=$(git rev-parse HEAD~1)
+            if [ "${now}" != "${built}" ]; then
+              echo "main moved from ${built} to ${now}: rebuilding before the next push"
+              pnpm install --frozen-lockfile
+              pnpm build
+              built=${now}
+            fi
+          done
+          echo "::error::could not push after 3 tries; run the workflow again"
+          exit 1
