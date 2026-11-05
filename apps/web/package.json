@@ -14,6 +14,7 @@
     "pretest": "node scripts/content-index.mjs",
     "build": "vite build && vite build --ssr src/entry-server.tsx --outDir dist-server && node prerender.mjs",
     "test": "node ../../packages/hypr-tiling/node_modules/jest/bin/jest.js --config jest.config.cjs --maxWorkers=2",
+    "prebuild:client": "node ../../scripts/proof-facts.mjs && node scripts/content-index.mjs",
     "build:client": "vite build",
     "prerender": "node prerender.mjs",
     "typecheck": "tsc --project tsconfig.json",
