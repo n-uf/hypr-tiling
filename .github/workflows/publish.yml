@@ -14,10 +14,13 @@ name: Publish due pages
 #   build  has no secret. It flips the pages, saves the flip as a patch before any third-party code runs,
 #          installs and builds, and only then hands the patch over (an artifact kept 1 day).
 #   push   gets the key (the `publish` environment). It runs git and first-party actions only: no node, no
-#          pnpm. It applies the patch to its own fresh checkout, and apps/web/scripts/check-flip-patch.sh
-#          (from that checkout) refuses it unless every change is the front-matter `draft: true` ->
-#          `draft: false` line of an existing content page that is due (published on or before today, UTC),
-#          and the patch is under 64 KB. Then it commits and pushes over SSH, every git command with hooks off
+#          pnpm. apps/web/scripts/check-flip-patch.sh (from its own checkout, copied out of the work tree)
+#          first judges the patch itself, before anything is written: under 64 KB, only
+#          apps/web/content/<blog|use-cases>/<slug>.md, no create/delete/rename/mode change, one line per
+#          file, and it applies. Only then does it apply the patch to the fresh checkout and refuse it
+#          unless every change is the front-matter `draft: true` -> `draft: false` line of an existing content
+#          page that is due (published on or before today, UTC). Then the job commits and pushes over SSH,
+#          every git command with hooks off
 #          (core.hooksPath=/dev/null). Only the page list and the patch cross from build to push; both jobs
 #          check out github.sha (the main commit this run started on), so the build can't choose the commit
 #          or the guard script the push uses.
@@ -30,8 +33,12 @@ name: Publish due pages
 # command and removed right after; github.com's SSH host key is pinned in the step.
 # A deploy-key push, unlike a GITHUB_TOKEN push, starts other workflows: CI (ci.yml) runs on the publish commit.
 #
-# A push refused because main moved during the run (non-fast-forward) runs `git pull --rebase` and tries
-# again, 3 pushes at most; a rebase conflict, or any other refusal, fails the run at once. There is no rebuild
+# A push refused because main moved during the run (non-fast-forward) fetches main, rebases the flip commit
+# onto it and tries again, 3 pushes at most; a rebase conflict, or any other refusal, fails the run at once.
+# Main may have changed the very page meanwhile (say moved its `published` day later), so after every rebase
+# the flip must be exactly one commit on top of the fetched main and the guard judges it again
+# (`check-flip-patch.sh --rebased` on `git format-patch -1 HEAD`, against HEAD~1 on a throwaway index:
+# due, one draft line, same pages, tree = base + patch); if that fails nothing is pushed. There is no rebuild
 # after the rebase: the commits pulled in came through main's protection, so CI already ran on them, and
 # Vercel's build of the pushed commit is the last check (if it fails, the previous version stays live).
 #
@@ -174,8 +181,11 @@ jobs:
           # the bot identity goes in the repo's config, so the rebase of a retried push can re-commit too
           g config user.name "github-actions[bot]"
           g config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # The guard runs from a copy kept outside the work tree: a retried push's rebase (next step) moves the
+          # checkout, and the re-check must judge with the same script this step trusted.
+          cp apps/web/scripts/check-flip-patch.sh "$RUNNER_TEMP/check-flip-patch.sh"
           # git apply's own output goes to stderr inside the guard; stdout is the commit message and nothing else
-          message=$(bash apps/web/scripts/check-flip-patch.sh "$RUNNER_TEMP/flip/flip.patch" "$SLUGS")
+          message=$(bash "$RUNNER_TEMP/check-flip-patch.sh" "$RUNNER_TEMP/flip/flip.patch" "$SLUGS")
           if [[ "$message" != "publish: "* || "$message" == *$'\n'* ]]; then
             echo "::error::The flip check printed an unexpected commit message."
             exit 1
@@ -188,6 +198,7 @@ jobs:
       - name: Push to main
         env:
           KEY: ${{ secrets.PUBLISH_DEPLOY_KEY }}
+          SLUGS: ${{ needs.build.outputs.slugs }}
         run: |
           g() { git -c core.hooksPath=/dev/null "$@"; }
           key=$KEY
@@ -215,9 +226,14 @@ jobs:
 
           g remote set-url origin git@github.com:n-uf/hypr-tiling.git
 
+          # The flip commit as the previous step made it; after a rebase it must still be this commit.
+          flip_message=$(g log -1 --format=%B HEAD)
+
           # Only "main moved" is worth a rebase and another try (up to 3 pushes); a refusal by the
           # ruleset or the key fails at once. The commit only touches a `draft:` line, so the rebase is
           # clean unless someone edited the same line (then it is aborted and the run fails).
+          # After every rebase the flip is judged again against the main it now sits on (a page main
+          # moved to a later `published` day must not go live early); if that fails, nothing is pushed.
           for attempt in 1 2 3; do
             if with_key g push origin HEAD:main 2> "$RUNNER_TEMP/push.err"; then
               cat "$RUNNER_TEMP/push.err"
@@ -233,11 +249,34 @@ jobs:
               break
             fi
             echo "::warning::Push rejected on try $attempt of 3: main moved during the run, rebasing on it."
-            if ! with_key g pull --rebase origin main; then
-              g rebase --abort || true
-              echo "::error::git pull --rebase failed (a conflict on a due page, or the fetch failed). Nothing was pushed."
+            # Fetch main into origin/main (the only network command here), then rebase onto the exact
+            # commit that was fetched.
+            if ! with_key g fetch origin '+refs/heads/main:refs/remotes/origin/main'; then
+              echo "::error::Fetching main failed. Nothing was pushed."
               exit 1
             fi
+            upstream=$(g rev-parse --verify refs/remotes/origin/main)
+            if ! g rebase "$upstream"; then
+              g rebase --abort || true
+              echo "::error::git rebase onto main failed (a conflict on a due page). Nothing was pushed."
+              exit 1
+            fi
+            # The flip is exactly one commit on top of the fetched main, with its message unchanged ...
+            if [ "$(g rev-list --count "$upstream..HEAD")" != 1 ] || [ "$(g rev-parse HEAD~1)" != "$upstream" ] ||
+              [ "$(g log -1 --format=%B HEAD)" != "$flip_message" ]; then
+              echo "::error::After the rebase the flip is not exactly one commit on top of the fetched main. Nothing was pushed."
+              exit 1
+            fi
+            # ... and the guard judges it again against that main, on a throwaway index (the work tree
+            # stays as it is): front matter, `published` due, one line per file, draft true -> false
+            # only, the same pages, and HEAD's tree is the base plus that patch and nothing more.
+            g format-patch -1 --stdout --binary HEAD > "$RUNNER_TEMP/rebased.patch"
+            if ! recheck=$(bash "$RUNNER_TEMP/check-flip-patch.sh" --rebased "$RUNNER_TEMP/rebased.patch" "$SLUGS") ||
+              [ "$recheck" != "$flip_message" ]; then
+              echo "::error::The flip no longer passes the guard after the rebase (see check-flip-patch above). Nothing was pushed."
+              exit 1
+            fi
+            echo "::notice::Rebased on main ${upstream:0:10}; the flip passed the guard again."
           done
           echo "::error::The push to main was rejected 3 times; run the workflow again."
           exit 1
