@@ -47,17 +47,21 @@ that day with no further edit.
    - Job `build` has no secret. In this order: `publish-due.mjs` (Node standard library only,
      nothing installed yet) flips the pages and writes the page list; `git diff` saves the flip as
      a patch of `apps/web/content`; patch and page list are **uploaded as one artifact (`flip`,
-     kept a day) right away, before any install or cache restore**, so third-party code that runs
-     later cannot rewrite what the push job receives. Only then: pnpm, the dependency cache, the
-     install, and the production build with the content checks. The job output `ready` is set
-     **only after the build passed**; a red build fails the run and pushes nothing.
+     kept a day) right away, before any install or cache restore**, and checked by its checksum in
+     the push job. The step that saves the patch also computes the checksum (sha256 of the sha256
+     list of `flip.patch` and `pages.txt`) into the job output `sum`: a post step of an action
+     that runs after the build could delete and re-upload the artifact, but it cannot change an
+     earlier step's output. Only then: pnpm, the dependency cache, the install, and the
+     production build with the content checks. The job output `ready` is set **only after the
+     build passed**; a red build fails the run and pushes nothing.
    - The page list (`pages.txt` in the artifact, written by `publish-due.mjs --pages-file`) is one
      repo path per line, `apps/web/content/<section>/<slug>.md`, sorted bytewise (`LC_ALL=C`) and
      unique. The guard refuses any other shape (blank line, other path, unsorted, duplicate).
    - Job `push` runs only when `needs.build.outputs.ready == 'true'` (the `publish` environment,
      which releases the secret to runs on `main` only; `contents: read`; stops at its first step if
      the secret is empty). It runs nothing but git and first-party actions, no node or pnpm, and
-     reads the page list from the downloaded artifact (not from a build output).
+     reads the page list from the downloaded artifact (not from a build output), after recomputing
+     the checksum of the artifact's two files and refusing a mismatch with the build job's `sum`.
      `apps/web/scripts/check-flip-patch.sh <patch> <page list>`, from its own checkout, first
      judges the patch itself, before anything is written: under 64 KB, no NUL byte, every line
      fits the unified-diff grammar of a `git diff` (file headers, `@@` hunk headers whose line
@@ -80,8 +84,8 @@ that day with no further edit.
      key, force-push and deletion included. So the push code is the only limit and is
      security-relevant: it pushes to `git@github.com:n-uf/hypr-tiling.git` (never the name
      `origin`) with exactly `HEAD:refs/heads/main` (never `--force`/`-f`, never a `+` or an empty
-     source on the push refspec), and fetches with the same URL and
-     `+refs/heads/main:refs/remotes/origin/main`. A deploy-key push does trigger CI, unlike a token
+     source on the push refspec, `--no-follow-tags`, so no tag goes along), and fetches with the
+     same URL, `--no-tags` and `+refs/heads/main:refs/remotes/origin/main`. A deploy-key push does trigger CI, unlike a token
      push. A push refused because `main` moved (non-fast-forward) fetches `main`, rebases the flip
      onto it and retries, up to 3 pushes, with no rebuild (the commits pulled in passed `main`'s
      checks, and Vercel's build of the push is the last check). After each rebase the flip must be
