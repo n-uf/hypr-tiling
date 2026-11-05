@@ -296,6 +296,96 @@ const untouched = (headBefore) => {
   assert.equal(git("rev-parse", "HEAD").trim(), headBefore);
 };
 
+// The diff grammar: the patch is read as text and every line must belong to a unified diff of one hunk per file.
+/** The valid flip patch of `edit` as text (the tree is restored); `tamper` turns it into the patch under test. */
+const patchText = (edit) => {
+  edit();
+  const text = spawnSync("sh", ["-c", "git add -N . && git diff --binary -- ."], { cwd: repo, encoding: "latin1" }).stdout;
+  git("reset", "-q", "--hard");
+  git("clean", "-q", "-fd");
+  return text;
+};
+const runOn = (text, slugs = "blog/a-post") => {
+  const patch = path.join(repo, "..", `grammar-${Math.random().toString(36).slice(2)}.patch`);
+  fs.writeFileSync(patch, text, "latin1");
+  return spawnSync("bash", [SCRIPT, patch, pageList(slugs)], {
+    cwd: repo,
+    encoding: "utf8",
+    env: { ...process.env, FLIP_TODAY: DUE_DAY },
+  });
+};
+const flipPatch = () => patchText(() => write("apps/web/content/blog/a-post.md", page("false")));
+
+test("the untampered flip patch passes the grammar (the control for the cases below)", () => {
+  const r = runOn(flipPatch());
+  assert.equal(r.status, 0, r.stderr);
+});
+
+test("refuses a patch containing a NUL byte, writing nothing", () => {
+  const head = git("rev-parse", "HEAD").trim();
+  const r = runOn(flipPatch().replace("+draft: false", "+draft: false\0"));
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /NUL byte/);
+  untouched(head);
+});
+
+test("refuses a stray line between the file header and the hunk, writing nothing", () => {
+  const head = git("rev-parse", "HEAD").trim();
+  for (const stray of ["Subject: hello", "", "+++ b/apps/web/content/blog/a-post.md", "index 1..2 100644"]) {
+    const r = runOn(flipPatch().replace("@@ ", `${stray}\n@@ `));
+    assert.notEqual(r.status, 0, JSON.stringify(stray));
+    assert.match(r.stderr, /unified-diff grammar/, JSON.stringify(stray));
+    untouched(head);
+  }
+});
+
+test("refuses stray lines before the first file, after the last hunk and inside a hunk, writing nothing", () => {
+  const head = git("rev-parse", "HEAD").trim();
+  const valid = flipPatch();
+  const cases = {
+    "a line before the first file": `From: evil\n${valid}`,
+    "a line after the last hunk": `${valid}trailing words\n`,
+    "a blank line after the last hunk": `${valid}\n`,
+    "a non-diff line inside the hunk": valid.replace("-draft: true\n", "-draft: true\nSigned-off-by: x\n"),
+    "a hunk that is shorter than its header": valid.replace(/\n [^\n]*\n$/, "\n"),
+    "a hunk with more lines than its header": `${valid} extra context line\n`,
+    "a no-newline marker with no line before it": valid.replace("@@ ", "\\ No newline at end of file\n@@ "),
+    "binary patch data": valid.replace("@@ ", "GIT binary patch\nliteral 0\nHcmV?d00001\n\n@@ "),
+  };
+  for (const [name, text] of Object.entries(cases)) {
+    const r = runOn(text);
+    assert.notEqual(r.status, 0, name);
+    assert.match(r.stderr, /unified-diff grammar/, name);
+    untouched(head);
+  }
+});
+
+test("refuses two hunks in one file, even when both are plausible changes", () => {
+  const body = `\n${Array.from({ length: 30 }, (_, i) => `Line ${i + 1}.`).join("\n")}\n`;
+  write("apps/web/content/blog/a-post.md", page("true", "", body));
+  git("commit", "-q", "-am", "long page");
+  const head = git("rev-parse", "HEAD").trim();
+  const text = patchText(() =>
+    write("apps/web/content/blog/a-post.md", page("false", "", body.replace("Line 28.", "Line 28, changed."))),
+  );
+  assert.equal(text.match(/^@@ /gm).length, 2, "the fixture patch has two hunks");
+  const r = runOn(text);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /more than one hunk for a file/);
+  untouched(head);
+});
+
+test("accepts a flip whose hunk ends at a last line without a newline (the no-newline marker)", () => {
+  const bare = "---\ntitle: \"A page\"\npublished: 2026-11-09\nupdated: 2026-11-09\ndraft: true\n---";
+  write("apps/web/content/blog/a-post.md", bare);
+  git("commit", "-q", "-am", "page without a final newline");
+  const text = patchText(() => write("apps/web/content/blog/a-post.md", bare.replace("draft: true", "draft: false")));
+  assert.match(text, /\\ No newline at end of file/);
+  const r = runOn(text);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), "publish: blog/a-post");
+});
+
 test("refuses a patch that touches or creates a file outside the content pages, writing nothing", () => {
   const head = git("rev-parse", "HEAD").trim();
   const edits = {
@@ -355,14 +445,17 @@ test("refuses a mode change and a patch that does not apply, writing nothing", (
   untouched(moved);
 });
 
-// --rebased: HEAD is the flip commit after a retried push's rebase; the patch is its format-patch.
+// --rebased: HEAD is the flip commit after a retried push's rebase; the patch is its diff against HEAD~1
+// (a plain `git diff`, the same shape as the build job's patch, so the one grammar judges both).
+const commitDiff = () =>
+  git("diff", "--no-ext-diff", "--no-textconv", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", "HEAD~1", "HEAD");
 /** Commit the flip on a branch, move main with `moveMain`, rebase the flip onto it and run the guard in --rebased mode. */
 const recheck = (moveMain, { extraOnFlip, slugs = "blog/a-post", today = DUE_DAY } = {}) => {
   git("switch", "-q", "-c", "publish-flip");
   write("apps/web/content/blog/a-post.md", page("false"));
   git("commit", "-q", "-am", "publish: blog/a-post");
   const original = path.join(repo, "..", `orig-${Math.random().toString(36).slice(2)}.patch`);
-  fs.writeFileSync(original, git("format-patch", "-1", "--stdout", "--binary", "HEAD"));
+  fs.writeFileSync(original, commitDiff());
   git("switch", "-q", "main");
   moveMain();
   git("commit", "-q", "-am", "main moved");
@@ -370,7 +463,7 @@ const recheck = (moveMain, { extraOnFlip, slugs = "blog/a-post", today = DUE_DAY
   git("rebase", "-q", "main");
   extraOnFlip?.();
   const rebasedPatch = path.join(repo, "..", `rebased-${Math.random().toString(36).slice(2)}.patch`);
-  fs.writeFileSync(rebasedPatch, git("format-patch", "-1", "--stdout", "--binary", "HEAD"));
+  fs.writeFileSync(rebasedPatch, commitDiff());
   const head = git("rev-parse", "HEAD").trim();
   const r = spawnSync("bash", [SCRIPT, "--rebased", extraOnFlip ? original : rebasedPatch, pageList(slugs)], {
     cwd: repo,

@@ -17,7 +17,8 @@
 # pages are the ones the build reported).
 #
 # With --rebased: HEAD is the flip commit after a retried push's rebase, and the patch is
-# `git format-patch -1 --stdout HEAD`. The same checks run against HEAD~1 (the fetched main, with whatever
+# that commit's plain diff (`git diff HEAD~1 HEAD`, with `--src-prefix=a/ --dst-prefix=b/`; not a
+# format-patch mail, whose header lines are not diff grammar). The same checks run against HEAD~1 (the fetched main, with whatever
 # main changed meanwhile: a `published` day moved into the future refuses the flip) on a throwaway index,
 # so the working tree, the real index and HEAD stay untouched. HEAD must have exactly one parent, and its
 # tree must be exactly HEAD~1 plus that patch.
@@ -50,6 +51,59 @@ listed=$(cat "$pages")
 
 # 1. The patch itself, before any file or index is written.
 [ "$(wc -c < "$patch")" -lt 65536 ] || fail "the patch is too large to be a flip"
+# No NUL byte (awk and the shell below read the patch as text), and every line fits the unified-diff grammar of
+# a `git diff`: file headers (`diff --git a/P b/P`, the extended mode/rename/index lines, `---`, `+++`), `@@`
+# hunk headers, then exactly the number of ` `, `-` and `+` lines the header states, and `\ No newline at end of
+# file` right after a hunk line. Anything else, a stray or blank line included, is refused, and so is a second
+# hunk for one file. (Whether a file may be touched at all is judged below, from what git reads out of the patch.)
+[ "$(LC_ALL=C tr -d '\000' < "$patch" | wc -c)" -eq "$(wc -c < "$patch")" ] || fail "the patch contains a NUL byte"
+# Plain POSIX awk (GitHub's runners use mawk): no intervals, no gensub.
+if ! grammar=$(LC_ALL=C awk '
+  function bad(why) { printf "line %d: %s\n", NR, why; failed = 1; exit 1 }
+  {
+    if ($0 == "\\ No newline at end of file") {
+      if (!prev) bad("a no-newline marker that follows no hunk line")
+      prev = 0
+      next
+    }
+    if (nold > 0 || nnew > 0) {
+      c = substr($0, 1, 1)
+      if (c == " ") { nold--; nnew-- }
+      else if (c == "-") { nold-- }
+      else if (c == "+") { nnew-- }
+      else bad("a line inside a hunk that is not a context, removed or added line")
+      if (nold < 0 || nnew < 0) bad("more lines in the hunk than its header states")
+      prev = 1
+      next
+    }
+    prev = 0
+    if ($0 ~ /^diff --git a\/[^ ]+ b\/[^ ]+$/) { stage = 1; hunks = 0; next }
+    if (stage == 1 && $0 ~ /^(old mode|new mode|new file mode|deleted file mode|similarity index|dissimilarity index|rename from|rename to|copy from|copy to) /) next
+    if (stage == 1 && $0 ~ /^index [0-9a-f]+\.\.[0-9a-f]+( [0-7]+)?$/) next
+    if (stage == 1 && $0 ~ /^--- /) { stage = 2; next }
+    if (stage == 2 && $0 ~ /^\+\+\+ /) { stage = 3; next }
+    if (stage == 3 && $0 ~ /^@@ -[0-9]+(,[0-9]+)? \+[0-9]+(,[0-9]+)? @@( .*)?$/) {
+      hunks++
+      if (hunks > 1) bad("more than one hunk for a file")
+      h = $0
+      sub(/^@@ -/, "", h)
+      split(h, part, " ")
+      split(part[1], o, ",")
+      nold = (o[2] == "") ? 1 : o[2] + 0
+      sub(/^\+/, "", part[2])
+      split(part[2], n, ",")
+      nnew = (n[2] == "") ? 1 : n[2] + 0
+      next
+    }
+    bad("a line that is not part of a unified diff")
+  }
+  END {
+    if (failed) exit 1
+    if (nold > 0 || nnew > 0) { print "the last hunk is shorter than its header states"; exit 1 }
+  }' "$patch"); then
+  printf 'check-flip-patch: %s\n' "$grammar" >&2
+  fail "the patch does not fit the unified-diff grammar"
+fi
 # `git apply --numstat` only reads the patch: `<added> TAB <removed> TAB <path>` per file. A quoted,
 # renamed or binary entry can't match the page path or the one-line pattern below.
 numstat=$(g apply --numstat "$patch" 2>/dev/null) && [ -n "$numstat" ] || fail "the patch changes nothing or is not a readable patch"
