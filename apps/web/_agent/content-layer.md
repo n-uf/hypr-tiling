@@ -47,7 +47,12 @@ that day with no further edit.
    repo's write deploy key "publish-bot (scheduled publishing)" may bypass, so the push
    goes over SSH with that key (secret `PUBLISH_DEPLOY_KEY` in the `publish` environment,
    which releases it to runs on `main` only; the job has `contents: read` and stops at its
-   first step if the secret is empty), not with the job's token. A deploy-key push does
+   first step if the secret is empty), not with the job's token. The key is written only
+   for the push: checkout clones without it and persists no credentials, and the last step
+   writes the key to a private temp file just around each `git push` / `git pull --rebase`
+   (GitHub's SSH host key pinned) and removes it right after, so it is never on disk or in
+   the environment while `pnpm install`, `pnpm build` or a rebuild after a moved `main` run
+   third-party code. A deploy-key push does
    trigger CI, unlike a token push. A push refused because `main` moved (non-fast-forward)
    runs `git pull --rebase` and retries, up to 3 pushes, rebuilding first when the rebase
    pulled in other changes; any other refusal fails at once. Nothing due: no build, no

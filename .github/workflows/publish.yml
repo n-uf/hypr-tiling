@@ -12,6 +12,11 @@
 # pushes over SSH with that key, not with the job's token; one secret, PUBLISH_DEPLOY_KEY, the private half of the
 # key. It can write the whole repo, so it lives only in the `publish` environment, which releases it to runs on main
 # alone: an edited copy of this file dispatched from another branch gets no key (and stops at the first step).
+# The key is also kept away from third-party code: checkout clones with the read-only token and persists no
+# credentials, and the key is handed only to the last step, where it is written to a private temp file just for each
+# git network command (push, pull) and removed right after, so it is never on disk, nor in the environment of the
+# child processes, while pnpm install, pnpm build (vite, plugins, the library tests) or a rebuild after a moved main run.
+# github.com's SSH host key is pinned in the step (published at api.github.com/meta, ed25519 SHA256:+DiY3wvv...).
 # Unlike a push with the job's own GITHUB_TOKEN, a deploy-key push does trigger other workflows, so CI (ci.yml) runs
 # on the publish commit too.
 #
@@ -52,14 +57,14 @@ jobs:
           KEY: ${{ secrets.PUBLISH_DEPLOY_KEY }}
         run: '[ -n "$KEY" ] || { echo "::error::secret PUBLISH_DEPLOY_KEY is not set: the job pushes to main with the write deploy key"; exit 1; }'
 
-      # check out with the repo's write deploy key, so the push (and the rebase retries) go over SSH as the key;
-      # full history for the rebase
+      # clone with the read-only token and keep no credentials on disk (no ssh-key here): the build steps run
+      # third-party code. The deploy key reaches only the last step. Full history for the rebase.
       - name: Checkout main
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
-          ssh-key: ${{ secrets.PUBLISH_DEPLOY_KEY }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -98,11 +103,37 @@ jobs:
         shell: bash
         env:
           SLUGS: ${{ steps.flip.outputs.slugs }}
+          KEY: ${{ secrets.PUBLISH_DEPLOY_KEY }}
         run: |
           if git diff --quiet -- apps/web/content; then
             echo "Nothing due: no commit."
             exit 0
           fi
+
+          # The deploy key. Keep it in a shell variable that is not exported, so the
+          # pnpm processes of a rebuild below never see it in their environment.
+          # (Never `set -x` in this step, and never echo the key.)
+          key=$KEY
+          unset KEY
+          umask 077
+          keydir=$(mktemp -d)
+          trap 'rm -rf "$keydir"' EXIT
+          # GitHub's SSH host key, pinned (https://api.github.com/meta, "ssh_keys";
+          # fingerprint SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU).
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$keydir/known_hosts"
+
+          # Run one git network command with the key on disk only for its duration.
+          with_key() {
+            local rc=0
+            printf '%s\n' "$key" > "$keydir/key"
+            chmod 600 "$keydir/key"
+            GIT_SSH_COMMAND="ssh -i $keydir/key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$keydir/known_hosts" \
+              "$@" || rc=$?
+            rm -f "$keydir/key"
+            return "$rc"
+          }
+
+          git remote set-url origin git@github.com:n-uf/hypr-tiling.git
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- apps/web/content
@@ -113,10 +144,11 @@ jobs:
           # ruleset or a bad key fails at once. The flip only touches `draft:`
           # lines, so the rebase is clean unless someone edited the same line
           # (then it is aborted and the run fails). If the rebase pulled in other
-          # changes, rebuild before pushing again so a red result never reaches main.
+          # changes, rebuild before pushing again so a red result never reaches
+          # main; the key is not on disk during the rebuild.
           built=$(git rev-parse HEAD~1)
           for attempt in 1 2 3; do
-            if git push origin HEAD:main 2> "$RUNNER_TEMP/push.err"; then
+            if with_key git push origin HEAD:main 2> "$RUNNER_TEMP/push.err"; then
               cat "$RUNNER_TEMP/push.err"
               echo "Pushed on try ${attempt}."
               exit 0
@@ -130,9 +162,9 @@ jobs:
               break
             fi
             echo "::warning::push rejected on try ${attempt} of 3: main moved during the build"
-            if ! git pull --rebase --autostash origin main; then
+            if ! with_key git pull --rebase --autostash origin main; then
               git rebase --abort || true
-              echo "::error::rebase onto the new main conflicted; nothing was pushed"
+              echo "::error::git pull --rebase failed (a conflict, or the fetch did not work); nothing was pushed"
               exit 1
             fi
             now=$(git rev-parse HEAD~1)
