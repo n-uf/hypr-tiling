@@ -4,6 +4,7 @@ import {
   sectionPath,
   type ContentSection,
 } from "./constants";
+import { isLive, isVisible } from "./live";
 import { RESERVED_HEADING_IDS } from "./markdown";
 import {
   CONTENT_KINDS,
@@ -46,6 +47,9 @@ const FIELDS: ReadonlyArray<string> = [
   "sources",
   "related",
 ];
+
+/** Optional fields: absent means the default (`draft: false`). */
+const OPTIONAL_FIELDS: ReadonlyArray<string> = ["draft"];
 
 const DATE_PATTERN: RegExp = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -104,8 +108,8 @@ export function readFrontMatter(
   };
 
   for (const key of Object.keys(data)) {
-    if (!FIELDS.includes(key)) {
-      bad(`unknown front matter field "${key}" (allowed: ${FIELDS.join(", ")})`);
+    if (!FIELDS.includes(key) && !OPTIONAL_FIELDS.includes(key)) {
+      bad(`unknown front matter field "${key}" (allowed: ${[...FIELDS, ...OPTIONAL_FIELDS].join(", ")})`);
     }
   }
   for (const key of FIELDS) {
@@ -150,6 +154,16 @@ export function readFrontMatter(
     }
   }
 
+  let draft = false;
+  if (data.draft !== undefined && data.draft !== null) {
+    if (typeof data.draft === "boolean") {
+      draft = data.draft;
+    } else {
+      bad(`draft must be true or false, found ${JSON.stringify(data.draft)}`);
+    }
+  }
+
+  // A draft's `published` is its go-live date, so it may be in the future.
   const dateField = (key: "published" | "updated"): string | null => {
     const value: unknown = data[key];
     if (value === undefined || value === null) {
@@ -159,15 +173,19 @@ export function readFrontMatter(
       bad(`${key} must be a date written YYYY-MM-DD, found ${JSON.stringify(value)}`);
       return null;
     }
-    if (value > today) {
-      bad(`${key} ${value} is in the future (today is ${today}); dates must be real`);
+    if (value > today && !draft) {
+      bad(`${key} ${value} is in the future (today is ${today}); dates must be real (a scheduled page needs draft: true)`);
     }
     return value;
   };
   const published: string | null = dateField("published");
   const updated: string | null = dateField("updated");
-  if (published != null && updated != null && updated < published) {
-    bad(`updated ${updated} is before published ${published}`);
+  if (published != null && updated != null) {
+    if (draft && updated !== published) {
+      bad(`a draft's updated (${updated}) must equal its published go-live date (${published})`);
+    } else if (!draft && updated < published) {
+      bad(`updated ${updated} is before published ${published}`);
+    }
   }
 
   const authorValue: unknown = data.author;
@@ -284,6 +302,7 @@ export function readFrontMatter(
       h1,
       mainKeyword,
       kind,
+      draft,
       published,
       updated,
       author: "n-uf",
@@ -311,13 +330,19 @@ export interface SiteContext {
   readonly reservedKeywords: ReadonlyMap<string, string>;
   /** The PNG at a path under public/ (e.g. `/og/blog-x.png`), or null when it does not exist. */
   readonly inspectImage: (publicPath: string) => ImageInfo | null;
+  /** Build mode (see live.ts `draftsShown`): drafts appear and may be linked. Default false, production. */
+  readonly showDrafts?: boolean;
 }
 
-/** The page paths a link may point to. */
-export function sitePaths(pages: ReadonlyArray<ContentPage>): ReadonlySet<string> {
+/**
+ * The page paths a link may point to: every page (drafts too, so a link to one
+ * is reported as such, not as a typo) and the sections that will have an index
+ * page in this build.
+ */
+export function sitePaths(pages: ReadonlyArray<ContentPage>, showDrafts: boolean = false): ReadonlySet<string> {
   const paths = new Set<string>(["/", "/docs"]);
   for (const section of CONTENT_SECTIONS) {
-    if (pages.some((page): boolean => page.section === section)) {
+    if (pages.some((page): boolean => page.section === section && isVisible(page, showDrafts))) {
       paths.add(sectionPath(section));
     }
   }
@@ -380,7 +405,26 @@ export function validateSite(
 ): { readonly problems: ReadonlyArray<string>; readonly warnings: ReadonlyArray<string> } {
   const problems: Array<string> = [];
   const warnings: Array<string> = [];
-  const paths: ReadonlySet<string> = sitePaths(pages);
+  const showDrafts: boolean = context.showDrafts === true;
+  const paths: ReadonlySet<string> = sitePaths(pages, showDrafts);
+  const draftPaths = new Map<string, ContentPage>(
+    pages.filter((page): boolean => !isLive(page)).map((page): [string, ContentPage] => [page.path, page]),
+  );
+  // A live page must never link to a draft: in production the target is a 404.
+  // Draft-to-draft and draft-to-live links are fine. In preview the link works
+  // (the draft is shown), so it is only a warning there.
+  const draftLinkProblem = (page: ContentPage, kind: "related" | "link", href: string): void => {
+    const target: ContentPage | undefined = draftPaths.get(href.split("#")[0]);
+    if (target == null || !isLive(page)) {
+      return;
+    }
+    const message = `${page.file}: ${kind} "${href}" points at the draft ${target.file} (goes live ${target.published}); a live page may link to it only after it is published`;
+    if (showDrafts) {
+      warnings.push(`${message} (this build shows drafts, a production build fails)`);
+    } else {
+      problems.push(message);
+    }
+  };
 
   const keywordOwner = new Map<string, string>(
     [...context.reservedKeywords].map(([keyword, owner]): [string, string] => [normalizeKeyword(keyword), owner]),
@@ -404,6 +448,8 @@ export function validateSite(
         problems.push(`${page.file}: related "${related}" must be a site path starting with /`);
       } else if (why != null) {
         problems.push(`${page.file}: related ${why}`);
+      } else {
+        draftLinkProblem(page, "related", related);
       }
     }
 
@@ -434,6 +480,7 @@ export function validateSite(
         continue;
       }
       if (!href.startsWith("#")) {
+        draftLinkProblem(page, "link", href);
         const target: string = href.split("#")[0];
         perTarget.set(target, (perTarget.get(target) ?? 0) + 1);
       }

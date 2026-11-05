@@ -148,6 +148,36 @@ describe("front matter checks", (): void => {
     expect(run({ published: TODAY, updated: TODAY })).toEqual([]);
   });
 
+  it("defaults draft to false and wants a boolean", (): void => {
+    expect(readFrontMatter(frontMatter(), "f.md", TODAY).frontMatter?.draft).toBe(false);
+    expect(readFrontMatter(frontMatter({ draft: false }), "f.md", TODAY).frontMatter?.draft).toBe(false);
+    expect(run({ draft: "yes" })[0]).toMatch(/draft must be true or false/);
+  });
+
+  it("lets a draft carry a future go-live date, with updated equal to published", (): void => {
+    const draft = { draft: true, published: "2026-12-01", updated: "2026-12-01" };
+    const result = readFrontMatter(frontMatter(draft), "f.md", TODAY);
+    expect(result.problems).toEqual([]);
+    expect(result.frontMatter).toMatchObject({ draft: true, published: "2026-12-01", updated: "2026-12-01" });
+    expect(run({ ...draft, updated: "2026-12-02" })).toEqual([
+      expect.stringMatching(/a draft's updated \(2026-12-02\) must equal its published go-live date \(2026-12-01\)/),
+    ]);
+    // A past go-live date is fine too: the draft is due and the next publish run flips it.
+    expect(run({ draft: true, published: "2026-11-01", updated: "2026-11-01" })).toEqual([]);
+  });
+
+  it("keeps every other date rule for a draft and for a live page", (): void => {
+    expect(run({ draft: true, published: "4 Dec 2026", updated: "2026-12-04" })[0]).toMatch(/published must be a date/);
+    expect(
+      run({ draft: true, published: "2026-12-01", updated: "2026-12-01", sources: [{ title: "a", url: "https://example.com", checked: "2026-12-01" }] }),
+    ).toEqual([expect.stringMatching(/sources\[0\] checked 2026-12-01 is in the future/)]);
+    // draft: false does not allow a future date.
+    expect(run({ draft: false, published: "2026-12-01", updated: "2026-12-01" })).toEqual([
+      expect.stringMatching(/published 2026-12-01 is in the future/),
+      expect.stringMatching(/updated 2026-12-01 is in the future/),
+    ]);
+  });
+
   it("wants author n-uf", (): void => {
     expect(run({ author: "someone" })[0]).toMatch(/author must be "n-uf"/);
   });

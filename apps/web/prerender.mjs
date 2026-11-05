@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -24,6 +24,7 @@ const {
   llmsTxt,
   sitemapXml,
   loadSite,
+  hiddenPublicFiles,
   renderContentPage,
   renderContentPageHead,
   renderSectionIndex,
@@ -137,6 +138,15 @@ function writeStaticPage(pathname, headHtml, bodyHtml) {
   writeFileSync(resolve(dir, "index.html"), html, "utf8");
 }
 
+// A draft the build leaves out (production mode) writes no page above and no
+// share image here: vite copied public/ wholesale, so its image is removed.
+for (const file of hiddenPublicFiles(site)) {
+  rmSync(resolve(distDir, `.${file}`), { force: true });
+}
+
+// site.pages holds the pages this build shows: the live ones, plus the drafts
+// in preview mode (SHOW_DRAFTS=1 or VERCEL_ENV=preview). A hidden draft gets no
+// directory at all, so it answers 404.
 const sections = [...new Set(site.pages.map((page) => page.section))];
 for (const section of sections) {
   writeStaticPage(`/${section}`, renderSectionIndexHead(section, site), renderSectionIndex(section, site));
@@ -146,5 +156,5 @@ for (const page of site.pages) {
 }
 
 console.log(
-  `prerender: wrote dist/index.html (${finalHtml.length} bytes), dist/docs/index.html (${docsFinalHtml.length} bytes), ${site.pages.length} content page(s) and ${sections.length} section index(es), llms.txt, robots.txt, sitemap.xml, social image, and favicon`,
+  `prerender: wrote dist/index.html (${finalHtml.length} bytes), dist/docs/index.html (${docsFinalHtml.length} bytes), ${site.pages.length} content page(s) (${site.hidden.length} draft(s) left out) and ${sections.length} section index(es), llms.txt, robots.txt, sitemap.xml, social image, and favicon`,
 );

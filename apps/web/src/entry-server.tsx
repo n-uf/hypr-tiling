@@ -330,3 +330,4 @@ export function renderSectionIndexHead(section: ContentSection, site: ContentSit
 }
 
 export { loadSite } from "./content/build";
+export { hiddenPublicFiles } from "./content/site";

@@ -28,6 +28,11 @@ export interface ContentFrontMatter {
   readonly h1: string;
   readonly mainKeyword: string;
   readonly kind: ContentKind;
+  /**
+   * Scheduled page: `published` is its go-live date and may be in the future,
+   * `updated` equals it. Production builds hide it (see live.ts).
+   */
+  readonly draft: boolean;
   readonly published: string;
   readonly updated: string;
   readonly author: "n-uf";
@@ -68,8 +73,14 @@ export interface ContentPage extends ContentFrontMatter, ContentIndexEntry {
 }
 
 export interface ContentSite {
-  /** All pages, newest first (published, then updated, then slug). */
+  /**
+   * The pages that appear in this build, newest first (published, then
+   * updated, then slug): every live page, plus the drafts when drafts are
+   * shown (preview mode). Everything that lists or renders pages reads this.
+   */
   readonly pages: ReadonlyArray<ContentPage>;
+  /** Drafts left out of this build (production mode): validated, never rendered or listed. */
+  readonly hidden: ReadonlyArray<ContentPage>;
   /** Problems that do not fail the build (keyword placement, length targets). */
   readonly warnings: ReadonlyArray<string>;
 }

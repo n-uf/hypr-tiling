@@ -19,6 +19,7 @@ function page(section: "blog" | "use-cases", slug: string, updated: string): Con
     h1: `Heading of ${slug}`,
     mainKeyword: slug,
     kind: section === "blog" ? "comparison" : "use-case",
+    draft: false,
     published: "2026-11-01",
     updated,
     author: "n-uf",
@@ -37,6 +38,7 @@ function page(section: "blog" | "use-cases", slug: string, updated: string): Con
 
 const SITE: ContentSite = {
   pages: [page("blog", "one", "2026-11-03"), page("blog", "two", "2026-11-02"), page("use-cases", "uc", "2026-11-01")],
+  hidden: [],
   warnings: [],
 };
 
@@ -72,9 +74,9 @@ describe("sitemap", (): void => {
   });
 
   it("leaves an empty section out", (): void => {
-    const only = buildSitemap({ pages: [page("blog", "one", "2026-11-03")], warnings: [] });
+    const only = buildSitemap({ pages: [page("blog", "one", "2026-11-03")], hidden: [], warnings: [] });
     expect(only).not.toContain("/use-cases");
-    expect(buildSitemap({ pages: [], warnings: [] })).not.toContain("<lastmod>");
+    expect(buildSitemap({ pages: [], hidden: [], warnings: [] })).not.toContain("<lastmod>");
   });
 });
 

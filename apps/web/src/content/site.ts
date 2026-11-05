@@ -9,6 +9,7 @@ import {
   type ContentSection,
 } from "./constants";
 import { splitFrontMatter } from "./front-matter";
+import { draftsShown, isVisible } from "./live";
 import { processMarkdown } from "./markdown";
 import {
   ContentProblemsError,
@@ -20,6 +21,7 @@ import {
   OG_HEIGHT,
   OG_WIDTH,
   readFrontMatter,
+  sectionOgPath,
   validateSite,
   type ImageInfo,
   type SiteContext,
@@ -144,9 +146,38 @@ export function checkContentFiles(
       b.updated.localeCompare(a.updated) ||
       a.slug.localeCompare(b.slug),
   );
+  // Every page is checked, drafts included, so a mistake in a scheduled page
+  // stops the build now and not on its go-live day. What appears is decided
+  // once, here: the pages of the site are the live ones, plus the drafts in
+  // preview mode.
   const site = validateSite(pages, context);
   problems.push(...site.problems);
-  return { site: { pages, warnings: site.warnings }, problems };
+  const showDrafts: boolean = context.showDrafts === true;
+  return {
+    site: {
+      pages: pages.filter((page): boolean => isVisible(page, showDrafts)),
+      hidden: pages.filter((page): boolean => !isVisible(page, showDrafts)),
+      warnings: site.warnings,
+    },
+    problems,
+  };
+}
+
+/**
+ * Files under `public/` that name a draft the build leaves out: its share image,
+ * and the section's when every page of that section is a draft. The prerender
+ * deletes them from `dist` so production never exposes a scheduled page's title.
+ */
+export function hiddenPublicFiles(site: ContentSite): ReadonlyArray<string> {
+  const files: Array<string> = site.hidden.map((page): string => page.ogPath);
+  for (const section of CONTENT_SECTIONS) {
+    const hasHidden: boolean = site.hidden.some((page): boolean => page.section === section);
+    const hasShown: boolean = site.pages.some((page): boolean => page.section === section);
+    if (hasHidden && !hasShown) {
+      files.push(sectionOgPath(section));
+    }
+  }
+  return files;
 }
 
 export interface LoadOptions {
@@ -159,6 +190,8 @@ export interface LoadOptions {
   readonly today?: string;
   /** Skip the share-image checks: the script that renders the images needs the pages first. */
   readonly skipImageChecks?: boolean;
+  /** Show drafts (preview mode); defaults to `draftsShown()`: `VERCEL_ENV=preview` or `SHOW_DRAFTS=1`. */
+  readonly showDrafts?: boolean;
 }
 
 export function todayUtc(): string {
@@ -188,6 +221,7 @@ function inspectPublicPng(publicRoot: string, publicPath: string): ImageInfo | n
 export function loadContentSite(options: LoadOptions): ContentSite {
   const result: LoadResult = checkContentFiles(readContentDirectory(options.contentRoot), {
     today: options.today ?? process.env.CONTENT_TODAY ?? todayUtc(),
+    showDrafts: options.showDrafts ?? draftsShown(),
     docsAnchors: options.docsAnchors,
     reservedKeywords: new Map<string, string>([
       [HOME_MAIN_KEYWORD, "the home page"],

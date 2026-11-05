@@ -33,7 +33,7 @@ export function docsAnchorIds(docsHtml?: string): ReadonlySet<string> {
 export function loadSite(
   webRoot: string,
   docsHtml?: string,
-  options: { readonly skipImageChecks?: boolean } = {},
+  options: { readonly skipImageChecks?: boolean; readonly showDrafts?: boolean } = {},
 ): ContentSite {
   const docsAnchors: ReadonlySet<string> = docsAnchorIds(docsHtml);
   // The docs links the page chrome itself carries must exist too.
@@ -51,6 +51,7 @@ export function loadSite(
     publicRoot: resolve(webRoot, "public"),
     docsAnchors,
     skipImageChecks: options.skipImageChecks,
+    showDrafts: options.showDrafts,
   });
 }
 

@@ -78,7 +78,10 @@ try {
   // The images do not exist yet on a first run, so the share-image checks are skipped here.
   const site = content.loadSite(webRoot, undefined, { skipImageChecks: true });
   const jobs = [];
-  const sections = [...new Set(site.pages.map((page) => page.section))];
+  // Drafts get their images too (they merge with them); `site.hidden` holds the
+  // ones a production build leaves out.
+  const everyPage = [...site.pages, ...site.hidden];
+  const sections = [...new Set(everyPage.map((page) => page.section))];
   for (const section of sections) {
     const copy = content.SECTION_INDEX_COPY[section];
     jobs.push({
@@ -88,7 +91,7 @@ try {
       footer: `<b>hypr-tiling.n-uf.com</b>/${section}`,
     });
   }
-  for (const page of site.pages) {
+  for (const page of everyPage) {
     jobs.push({
       name: `${page.section}-${page.slug}`,
       label: content.SECTION_LABELS[page.section].chip,
