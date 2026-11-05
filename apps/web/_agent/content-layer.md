@@ -40,10 +40,18 @@ that day with no further edit.
 2. `.github/workflows/publish.yml` runs daily at 00:10 UTC (and by hand from the
    Actions tab, "Run workflow"). `apps/web/scripts/publish-due.mjs` sets `draft: false`
    on every draft whose `published` date is today or earlier, and nothing else. When
-   something changed, the workflow commits `publish: <slug>[, <slug>]` as
-   github-actions[bot] and pushes to `main`; Vercel builds it like any push. Nothing
-   due: no commit, no deploy. Preview what is due with
+   something changed, the workflow first builds the site (install, `pnpm build`, production
+   mode; a red build pushes nothing), then commits `publish: <section>/<slug>[, ...]` as
+   github-actions[bot] and pushes to `main`; Vercel builds it like any push. A rejected push
+   (main moved during the build) runs `git pull --rebase` and retries, up to 3 pushes,
+   rebuilding first when the rebase pulled in other changes. Nothing due: no build, no
+   commit, no deploy. The job only runs in `n-uf/hypr-tiling`, and its actions are pinned by
+   commit SHA. Preview what is due with
    `node apps/web/scripts/publish-due.mjs --dry-run [--today YYYY-MM-DD]`.
+   Write the field exactly `draft: true` or `draft: false`: the script edits that line by
+   pattern, so the validator refuses other spellings (`draft : true`, `"draft": true`,
+   `draft: True`). A draft whose go-live date is already past only warns: it goes live on
+   the next publish run, with that past date.
 3. One rule decides "live": `draft !== true` (`src/content/live.ts`, `isLive`). In a
    production build (a local `pnpm build`, CI, Vercel production) a draft has no HTML
    (it answers 404), no share image in `dist`, and is absent from the sitemap, the
@@ -56,9 +64,29 @@ that day with no further edit.
    links so a try sees the whole batch. They stay out of the sitemap.
 5. A live page must never link to a draft. A production build fails, naming the page
    and the link, when a live page's body links or `related` paths point at a draft (a
-   preview build only warns). Draft-to-draft and draft-to-live links are fine. So the
-   link lines from live pages to a scheduled page (and `related` entries) wait until
-   the flip: add them in a follow-up after the publish commit lands.
+   preview build only warns). Draft-to-live links are fine, and so are draft-to-draft
+   links when the target goes live the same day or earlier; a draft linking (body or
+   `related`) to a draft that goes live later fails in both modes, because the link
+   would 404 in between. `related` entries cannot be gated: add a `related` entry to a
+   scheduled page in a follow-up after the publish commit lands.
+   **Link lines merge with the draft** by wrapping the sentence in a live block:
+
+   ```
+   Compare it with {{live:/blog/other-page}}the [other guide](/blog/other-page), which shows
+   the same layout in a docking manager.{{/live}}
+   ```
+
+   The sentence renders only once `/blog/other-page` is shown: live, or a draft in a
+   preview build. A production build removes it (and the space before it) until the
+   target's flip, then the daily publish run brings it live along with the target, with
+   no second commit. Links inside a block to its own target pass the draft-link rule;
+   a bare link outside a block still fails. The build also fails for a target that is not
+   a use-case or blog page of this site (no anchor, no trailing slash, not the page itself),
+   a nested block, a stray `{{/live}}`, an unclosed `{{live:...}}`, a block across a
+   paragraph break, a block in a heading, list, table or quote, and a block that cuts
+   through a link or other formatting: wrap whole sentences of one paragraph. A paragraph
+   that holds only a hidden block disappears. Code spans and fences are not exempt: the
+   markers always count.
 6. Undo: revert the publish commit, or set `draft: true` again (with `published` and
    `updated` set to the new go-live date).
 7. Caveats: GitHub can start a scheduled run up to about an hour late, and switches
@@ -71,7 +99,7 @@ that day with no further edit.
 
 - `src/content/`: types, front-matter reader, markdown renderer, checks
   (`validate.ts`), loader (`site.ts`), sitemap, and the live rule plus build-mode
-  switch (`live.ts`). `ContentSite.pages` holds what the build shows; `hidden` holds
+  switch (`live.ts`), and the `{{live:/path}}` blocks (`live-blocks.ts`). `ContentSite.pages` holds what the build shows; `hidden` holds
   the drafts a production build leaves out. Unit tests sit next to them.
 - `src/content-page.tsx`, `src/content-head.ts`: the page components and the head tags
   with JSON-LD. `src/entry-server.tsx` exports them to `prerender.mjs`.
