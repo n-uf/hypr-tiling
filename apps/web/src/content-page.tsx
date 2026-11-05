@@ -318,6 +318,21 @@ function DateText({ date }: { date: string }): React.ReactElement {
   return <time dateTime={date}>{formatDate(date)}</time>;
 }
 
+/**
+ * Shown on a draft in a preview build ("Scheduled for 1 Dec 2026"). A
+ * production build renders no draft, so a visitor never sees it.
+ */
+function ScheduledBadge({ date }: { date: string }): React.ReactElement {
+  return (
+    <span
+      data-scheduled-badge=""
+      className="inline-block rounded border border-amber-400/40 bg-amber-400/10 px-2 py-1 font-mono text-[11px] font-medium uppercase leading-none tracking-[0.16em] text-amber-300"
+    >
+      Scheduled for <time dateTime={date}>{formatDate(date)}</time>
+    </span>
+  );
+}
+
 function InstallBlock(): React.ReactElement {
   return (
     <aside
@@ -367,18 +382,28 @@ export function ArticlePage({
             <a href="/">Home</a> / <a href={sectionPath(section)}>{SECTION_LABELS[section].plural}</a> /{" "}
             <span aria-current="page">{page.title}</span>
           </nav>
+          {page.draft ? (
+            <p className="m-0 mt-3.5">
+              <ScheduledBadge date={page.published} />
+            </p>
+          ) : null}
           <h1 className="mb-2.5 mt-3.5 font-display text-[clamp(2rem,3.2vw,2.65rem)] font-medium leading-[1.06] tracking-[-0.015em] text-stone-50">
             {page.h1}
           </h1>
           <p className="m-0 font-mono text-[11.5px] leading-relaxed tracking-[0.04em] text-stone-500">
-            By <b className="font-medium text-stone-400">n-uf</b> {"·"} Published{" "}
-            <b className="font-medium text-stone-400">
-              <DateText date={page.published} />
-            </b>{" "}
-            {"·"} Updated{" "}
-            <b className="font-medium text-stone-400">
-              <DateText date={page.updated} />
-            </b>{" "}
+            By <b className="font-medium text-stone-400">n-uf</b>{" "}
+            {page.draft ? null : (
+              <>
+                {"·"} Published{" "}
+                <b className="font-medium text-stone-400">
+                  <DateText date={page.published} />
+                </b>{" "}
+                {"·"} Updated{" "}
+                <b className="font-medium text-stone-400">
+                  <DateText date={page.updated} />
+                </b>{" "}
+              </>
+            )}
             {"·"} {readingMinutes(page.wordCount)} min read
           </p>
 
@@ -507,8 +532,14 @@ export function SectionIndexPage({
                   </h2>
                   <p className="my-1.5 text-[15px] leading-[1.6] text-stone-300/90">{page.description}</p>
                   <p className="m-0 font-mono text-[11.5px] tracking-[0.04em] text-stone-500">
-                    Published <DateText date={page.published} /> {"·"} Updated{" "}
-                    <DateText date={page.updated} />
+                    {page.draft ? (
+                      <ScheduledBadge date={page.published} />
+                    ) : (
+                      <>
+                        Published <DateText date={page.published} /> {"·"} Updated{" "}
+                        <DateText date={page.updated} />
+                      </>
+                    )}
                   </p>
                 </li>
               ),

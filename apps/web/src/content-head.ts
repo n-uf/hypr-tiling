@@ -5,6 +5,7 @@ import {
   sectionPath,
   type ContentSection,
 } from "./content/constants";
+import { isLive } from "./content/live";
 import { escapeHtml } from "./content/markdown";
 import { pagesOf, type ContentPage, type ContentSite } from "./content/types";
 import { OG_HEIGHT, OG_WIDTH, sectionOgPath } from "./content/validate";
@@ -28,7 +29,13 @@ export const SOFTWARE_NODE_ID: string = `${SITE_ORIGIN}/#software`;
 
 const TWITTER_HANDLE = "@n_uf";
 
+const INDEX_ROBOTS = "index,follow,max-image-preview:large";
+/** A draft shown in a preview build: kept out of search. */
+const DRAFT_ROBOTS = "noindex";
+
 interface HeadSpec {
+  /** Content of the robots meta; the index value when left out. */
+  readonly robots?: string;
   readonly title: string;
   readonly description: string;
   readonly url: string;
@@ -52,7 +59,7 @@ function renderHead(spec: HeadSpec): string {
   return [
     `<title>${title}</title>`,
     `<meta name="description" content="${description}" />`,
-    `<meta name="robots" content="index,follow,max-image-preview:large" />`,
+    `<meta name="robots" content="${spec.robots ?? INDEX_ROBOTS}" />`,
     `<meta name="author" content="n-uf" />`,
     `<link rel="canonical" href="${url}" />`,
     `<link rel="sitemap" type="application/xml" href="/sitemap.xml" />`,
@@ -130,6 +137,7 @@ export function renderContentHead(page: ContentPage): string {
     description: page.description,
     url: page.url,
     ogType: "article",
+    robots: page.draft ? DRAFT_ROBOTS : undefined,
     imagePath: page.ogPath,
     imageAlt: page.title,
     extra: [
@@ -168,6 +176,7 @@ export function renderSectionHead(section: ContentSection, site: ContentSite): s
     description: copy.description,
     url,
     ogType: "website",
+    robots: pages.every((page): boolean => !isLive(page)) ? DRAFT_ROBOTS : undefined,
     imagePath: sectionOgPath(section),
     imageAlt: copy.title,
     graph: [
