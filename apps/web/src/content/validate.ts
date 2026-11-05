@@ -5,7 +5,7 @@ import {
   type ContentSection,
 } from "./constants";
 import { isLive, isVisible } from "./live";
-import { LIVE_TARGET } from "./live-blocks";
+import { LIVE_TARGET, resolveLiveBlocks } from "./live-blocks";
 import { RESERVED_HEADING_IDS } from "./markdown";
 import {
   CONTENT_KINDS,
@@ -411,6 +411,9 @@ export function validateSite(
   const draftPaths = new Map<string, ContentPage>(
     pages.filter((page): boolean => !isLive(page)).map((page): [string, ContentPage] => [page.path, page]),
   );
+  // What a production build shows: only live pages (used to judge live blocks).
+  const productionLive = (target: string): boolean =>
+    pages.some((candidate): boolean => candidate.path === target && isLive(candidate));
   // A live page must never link to a draft: in production the target is a 404.
   // A draft may link to a live page, and to a draft that goes live the same
   // day or earlier; one that goes live later would be a 404 in between, in both
@@ -499,6 +502,14 @@ export function validateSite(
       }
     }
 
+    // The lede is the first paragraph; a block that is all of it would leave
+    // production without one (the next paragraph would not be styled as the lede).
+    if (page.ledeText.trim() !== "" && resolveLiveBlocks(page.ledeText, () => false).trim() === "") {
+      problems.push(
+        `${page.file}: a {{live:...}} block makes up the whole first paragraph; the lede has to stay when the block is hidden, so add a sentence outside the block`,
+      );
+    }
+
     if (!isLive(page) && page.published < context.today) {
       warnings.push(
         `${page.file}: the draft's go-live date ${page.published} is already past (today is ${context.today}); it goes live on the next publish run, with that past date`,
@@ -557,7 +568,7 @@ export function validateSite(
   }
 
   for (const page of pages) {
-    warnings.push(...pageWarnings(page));
+    warnings.push(...pageWarnings(page, productionLive));
   }
   return { problems, warnings };
 }
@@ -589,8 +600,13 @@ const WORD_TARGETS: Readonly<Record<ContentSection, readonly [number, number]>> 
 };
 
 /** Hints that do not fail the build: keyword placement and length targets from the SEO brief. */
-function pageWarnings(page: ContentPage): ReadonlyArray<string> {
+function pageWarnings(page: ContentPage, live: (target: string) => boolean): ReadonlyArray<string> {
   const warnings: Array<string> = [];
+  // Judge the page as production renders it: a live block whose target is
+  // still a draft is removed, so its words and keywords do not count.
+  const ledeText: string = resolveLiveBlocks(page.ledeText, live).trim();
+  const wordCount: number =
+    page.wordCount - page.liveBlocks.filter((block): boolean => !live(block.target)).reduce((sum, block): number => sum + block.words, 0);
   const keyword: string = normalizeKeyword(page.mainKeyword);
   const has = (text: string): boolean => normalizeKeyword(text).includes(keyword);
   const missing: Array<string> = [];
@@ -603,18 +619,18 @@ function pageWarnings(page: ContentPage): ReadonlyArray<string> {
   if (!has(page.h1)) {
     missing.push("h1");
   }
-  if (page.ledeText === "") {
+  if (ledeText === "") {
     warnings.push(`${page.file}: the body does not start with a paragraph (the direct answer)`);
-  } else if (!has(page.ledeText)) {
+  } else if (!has(ledeText)) {
     missing.push("first paragraph");
   }
   if (missing.length > 0) {
     warnings.push(`${page.file}: mainKeyword "${page.mainKeyword}" is not in the ${missing.join(", ")}`);
   }
   const [min, max] = WORD_TARGETS[page.section];
-  if (page.wordCount < min || page.wordCount > max) {
+  if (wordCount < min || wordCount > max) {
     warnings.push(
-      `${page.file}: ${page.wordCount} words in the body; ${SECTION_LABELS[page.section].plural.toLowerCase()} aim for ${min} to ${max}`,
+      `${page.file}: ${wordCount} words in the body; ${SECTION_LABELS[page.section].plural.toLowerCase()} aim for ${min} to ${max}`,
     );
   }
   return warnings;

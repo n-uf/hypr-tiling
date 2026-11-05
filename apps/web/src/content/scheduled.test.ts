@@ -263,14 +263,28 @@ describe("live blocks: link lines that merge with the draft", (): void => {
     );
   });
 
-  it("works in the lede and drops a paragraph the block leaves empty", (): void => {
-    const lede = load(
+  it("works in the lede when a sentence outside the block stays, and fails when the block is the whole lede", (): void => {
+    const partial = load(
+      [{ ...LIVE, body: `Plain lede. {{live:/blog/draft-page}}${SENTENCE}{{/live}}\n\nSecond paragraph.\n` }, DRAFT],
+      false,
+    );
+    expect(partial.problems).toEqual([]);
+    expect(partial.site.pages[0].ledeHtml).toContain("Plain lede.");
+    expect(partial.site.pages[0].ledeHtml).not.toContain("draft-page");
+    const whole = load(
       [{ ...LIVE, body: `{{live:/blog/draft-page}}${SENTENCE}{{/live}}\n\nSecond paragraph.\n` }, DRAFT],
       false,
     );
-    expect(lede.problems).toEqual([]);
-    expect(lede.site.pages[0].ledeHtml).toBe("");
-    expect(lede.site.pages[0].bodyHtml).toContain("Second paragraph.");
+    expect(whole.problems).toEqual([expect.stringMatching(/a \{\{live:\.\.\.\}\} block makes up the whole first paragraph/)]);
+  });
+
+  it("drops a later paragraph that holds nothing but a hidden block", (): void => {
+    const { site, problems } = load(
+      [{ ...LIVE, body: `Lede.\n\n{{live:/blog/draft-page}}${SENTENCE}{{/live}}\n\nLast paragraph.\n` }, DRAFT],
+      false,
+    );
+    expect(problems).toEqual([]);
+    expect(site.pages[0].bodyHtml).toBe("<p>Last paragraph.</p>\n");
   });
 
   it("still fails a bare link from a live page to the draft, next to a block", (): void => {
@@ -320,6 +334,21 @@ describe("live blocks: link lines that merge with the draft", (): void => {
     );
   });
 
+  it("fails a block in a loose list item, a quote, a table cell, inline code or a code fence", (): void => {
+    const inList = bad("- First item\n\n- {{live:/blog/draft-page}}A loose item{{/live}}\n\n- Third item");
+    expect(inList).toEqual([expect.stringMatching(/not in a list, quote, table, heading or code \(it is inside <(?:ul|li)>\)/)]);
+    expect(bad("> {{live:/blog/draft-page}}A quoted sentence{{/live}}")).toEqual([
+      expect.stringMatching(/it is inside <blockquote>/),
+    ]);
+    expect(bad("| A | B |\n|---|---|\n| {{live:/blog/draft-page}}x{{/live}} | y |")).toEqual([
+      expect.stringMatching(/it is inside <(?:table|td)>/),
+    ]);
+    expect(bad("Use `{{live:/blog/draft-page}}hi{{/live}}` like this.")).toEqual([
+      expect.stringMatching(/it is inside <code>/),
+    ]);
+    expect(bad("```\n{{live:/blog/draft-page}}hi{{/live}}\n```")).toEqual([expect.stringMatching(/it is inside <pre>/)]);
+  });
+
   it("fails a block in a heading or a list, and one that cuts through a link", (): void => {
     expect(bad("## {{live:/blog/draft-page}}A heading{{/live}}")).toEqual([expect.stringMatching(/has to sit in a plain paragraph/)]);
     expect(bad("- {{live:/blog/draft-page}}An item{{/live}}")).toEqual([expect.stringMatching(/has to sit in a plain paragraph/)]);
@@ -334,6 +363,66 @@ describe("live blocks: link lines that merge with the draft", (): void => {
     );
     expect(problems).toEqual([]);
     expect(site.pages.find((page) => page.slug === "live-page")?.bodyHtml).toContain('href="/blog/live-two"');
+  });
+});
+
+describe("what production renders decides the keyword and length hints", (): void => {
+  const keywordBody = "Plain lede words here. {{live:/blog/draft-page}}The live thing is the point.{{/live}}\n";
+  const hints = (specs: ReadonlyArray<PageSpec>): string =>
+    load(specs, false).site.warnings.filter((warning) => warning.includes("live-page.md")).join("\n");
+
+  it("does not count a hidden block's text towards the main keyword in the first paragraph", (): void => {
+    expect(hints([{ ...LIVE, body: keywordBody }, DRAFT])).toMatch(/mainKeyword "live thing" is not in the .*first paragraph/);
+    // once the target is live the sentence is part of the page, and the hint goes away
+    const flipped: PageSpec = { slug: "draft-page", keyword: "draft thing" };
+    expect(hints([{ ...LIVE, body: keywordBody }, flipped])).not.toMatch(/first paragraph/);
+  });
+
+  it("does not count a hidden block's words towards the length target", (): void => {
+    const body = "Plain lede words here. {{live:/blog/draft-page}}one two three four five.{{/live}}\n";
+    const words = (specs: ReadonlyArray<PageSpec>): number =>
+      Number(hints(specs).match(/(\d+) words in the body/)?.[1]);
+    const flipped: PageSpec = { slug: "draft-page", keyword: "draft thing" };
+    expect(words([{ ...LIVE, body }, DRAFT])).toBe(4);
+    expect(words([{ ...LIVE, body }, flipped])).toBe(9);
+  });
+});
+
+describe("live markers in the front matter", (): void => {
+  it("are reported, not rendered into the title or the head", (): void => {
+    const result = checkContentFiles(
+      {
+        files: [
+          {
+            ...file(LIVE),
+            raw: file(LIVE).raw.replace('title: "Title of live-page"', 'title: "Title {{live:/blog/draft-page}}x{{/live}}"'),
+          },
+        ],
+        strays: [],
+        rejected: [],
+      },
+      context(false),
+    );
+    expect(result.problems).toEqual([
+      expect.stringMatching(/live-page\.md: a \{\{live\.\.\.\}\} marker in the front matter .*body only/),
+    ]);
+  });
+
+  it.each([
+    ["description", `description: "${DESCRIPTION}"`, `description: "${DESCRIPTION} {{/live}}"`],
+    ["h1", 'h1: "Heading of live-page"', 'h1: "Heading {{live:/blog/draft-page}}"'],
+    ["takeaways", '"One fact."', '"One {{live:/blog/draft-page}} fact."'],
+    ["faq", '{ q: "First?", a: "Yes." }', '{ q: "First?", a: "Yes {{/live}}." }'],
+  ])("also in %s", (_field, from, to): void => {
+    const original = file(LIVE);
+    expect(original.raw).toContain(from);
+    const result = checkContentFiles(
+      { files: [{ ...original, raw: original.raw.replace(from, to) }], strays: [], rejected: [] },
+      context(false),
+    );
+    expect(result.problems).toEqual(
+      expect.arrayContaining([expect.stringMatching(/a \{\{live\.\.\.\}\} marker in the front matter/)]),
+    );
   });
 });
 
