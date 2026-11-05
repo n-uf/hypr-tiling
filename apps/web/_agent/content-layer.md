@@ -41,24 +41,29 @@ that day with no further edit.
    Actions tab, "Run workflow"). `apps/web/scripts/publish-due.mjs` sets `draft: false`
    on every draft whose `published` date is today or earlier, and nothing else. When
    something changed, the workflow runs two jobs, so the deploy key never meets third-party
-   code (steps of one job are not isolated from each other). Job `build` has no secret: it
-   flips the pages, installs and builds in production mode (a red build fails the run and
-   pushes nothing) and hands over only the flip as a patch of `apps/web/content` (an
-   artifact kept for a day). Job `push` (the `publish` environment, which releases the
-   secret to runs on `main` only; `contents: read`; stops at its first step if the secret
-   is empty) runs nothing but git and first-party actions, no node or pnpm: it applies the
-   patch to a fresh checkout of the commit that was built, refuses anything but
-   `draft: true` -> `draft: false` lines in `apps/web/content/<section>/<slug>.md`,
-   commits `publish: <section>/<slug>[, ...]` as github-actions[bot] and pushes to `main`;
-   Vercel builds it like any push. Every git command there runs with hooks off, and the key
-   is written to a private temp file only around each `git push` / `git pull --rebase` and
-   removed right after (GitHub's SSH host key pinned). `main` is protected by a ruleset
-   (required checks, no force-push, no deletion) that only the repo's write deploy key
-   "publish-bot (scheduled publishing)" may bypass (secret `PUBLISH_DEPLOY_KEY`), so the
-   push goes over SSH with that key, not with a job token. A deploy-key push does trigger
-   CI, unlike a token push. A push refused because `main` moved (non-fast-forward) runs
-   `git pull --rebase` and retries, up to 3 pushes, with no rebuild (the commits pulled in
-   passed `main`'s checks, and Vercel's build of the push is the last check); a rebase
+   code (steps of one job are not isolated from each other). Both jobs check out `github.sha`
+   (the main commit the run started on); only the page list and the patch cross between them,
+   never a commit id. Job `build` has no secret: it flips the pages, saves the flip as a patch
+   of `apps/web/content`, installs and builds in production mode (a red build fails the run and
+   pushes nothing) and hands the patch over (an artifact kept a day). Job `push` (the `publish`
+   environment, which releases the secret to runs on `main` only; `contents: read`; stops at its
+   first step if the secret is empty) runs nothing but git and first-party actions, no node or
+   pnpm. `apps/web/scripts/check-flip-patch.sh`, from its own checkout, applies the patch and
+   refuses it unless every change is the `draft: true` -> `draft: false` line inside the front
+   matter of an existing `apps/web/content/<section>/<slug>.md` whose `published` day is today
+   or earlier (UTC), one line per file, no create, delete, rename or mode change, under 64 KB,
+   and the pages are the ones the build reported (its tests: `node --test
+   scripts/check-flip-patch.test.mjs`, part of the web `test` script). Then it commits one
+   `publish: <section>/<slug>[, ...]` line as github-actions[bot] and pushes to `main`; Vercel
+   builds it like any push. Every git command there runs with hooks off, and the key is written
+   to a private temp file only around each `git push` / `git pull --rebase` and removed right
+   after (ssh with `-F /dev/null`, no agent, no proxy, GitHub's SSH host key pinned). `main` is
+   protected by a ruleset (required checks, no force-push, no deletion) that only the repo's
+   write deploy key "publish-bot (scheduled publishing)" may bypass (secret
+   `PUBLISH_DEPLOY_KEY`), so the push goes over SSH with that key, not with a job token. A
+   deploy-key push does trigger CI, unlike a token push. A push refused because `main` moved
+   (non-fast-forward) runs `git pull --rebase` and retries, up to 3 pushes, with no rebuild (the
+   commits pulled in passed `main`'s checks, and Vercel's build of the push is the last check); a rebase
    conflict or any other refusal fails the run. Nothing due: no build, no commit, no
    deploy. A red publish run is worth one rerun first: the library's `workspace-tab-drop`
    test can flake under load in the build step. The jobs only run in `n-uf/hypr-tiling`,
