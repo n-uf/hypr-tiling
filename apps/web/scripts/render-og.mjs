@@ -13,7 +13,13 @@
 import { mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium } from "playwright-core";
-import { exitWithContentError, loadSiteModule, webRoot } from "./lib/site-module.mjs";
+import {
+  ensureIndexModule,
+  exitWithContentError,
+  indexModulePath,
+  loadSiteModule,
+  webRoot,
+} from "./lib/site-module.mjs";
 
 const WIDTH = 1200;
 const HEIGHT = 630;
@@ -74,7 +80,14 @@ h1{position:absolute;left:72px;top:196px;width:690px;margin:0;font:500 ${heading
 const only = process.argv.includes("--only") ? process.argv[process.argv.indexOf("--only") + 1] : null;
 
 try {
+  // On a fresh checkout the content layer needs an empty stand-in for the
+  // generated index while it loads; this script generates nothing, so it
+  // removes the stand-in again and leaves no stale index behind.
+  const wroteStandIn = ensureIndexModule();
   const content = await loadSiteModule();
+  if (wroteStandIn) {
+    rmSync(indexModulePath, { force: true });
+  }
   // The images do not exist yet on a first run, so the share-image checks are skipped here.
   const site = content.loadSite(webRoot, undefined, { skipImageChecks: true });
   const jobs = [];
