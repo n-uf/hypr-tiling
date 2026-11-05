@@ -1,25 +1,35 @@
+# Scheduled publishing: every day at 00:10 UTC, content pages merged as `draft: true` whose `published` date has
+# come are flipped to `draft: false` (apps/web/scripts/publish-due.mjs). If anything changed, the site is built first
+# (pnpm install, pnpm build in production mode: a red build pushes nothing and fails the run), then the change is
+# committed as `publish: <section>/<slug>[, <section>/<slug>]` and pushed to main. A push refused because main moved
+# during the build runs `git pull --rebase` and tries again, 3 pushes at most (the site is rebuilt first when the
+# rebase pulled in other changes); any other refusal, and a rebase conflict, fails the run.
+# Vercel builds that push through its Git connection like any other. Nothing due: no build, no commit, no deploy.
+# Undo: revert the publish commit, or set `draft: true` again. No deploy hooks.
+#
+# main is protected by a ruleset (required checks "build / api:check / typecheck / test" and "Vercel", no force-push,
+# no deletion) that only the repo's write deploy key "publish-bot (scheduled publishing)" may bypass. So the job
+# pushes over SSH with that key, not with the job's token; one secret, PUBLISH_DEPLOY_KEY, the private half of the
+# key. It can write the whole repo, so it lives only in the `publish` environment, which releases it to runs on main
+# alone: an edited copy of this file dispatched from another branch gets no key (and stops at the first step).
+# Unlike a push with the job's own GITHUB_TOKEN, a deploy-key push does trigger other workflows, so CI (ci.yml) runs
+# on the publish commit too.
+#
+# GitHub can run a schedule up to about an hour late, and switches schedules off in a repo with no activity for
+# 60 days: re-enable it from the Actions tab if that happens. Run it by hand with "Run workflow".
+# A red run is worth one rerun first: the library's workspace-tab-drop test can flake under load in the build step.
+#
+# Actions are pinned by commit SHA (the tag is in the comment): to update one, look the tag up with
+# `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` and dereference an annotated tag.
 name: Publish due pages
 
-# Flips scheduled content pages (draft: true, published: <go-live date>) live
-# once their date has come: sets `draft: false`, builds the site (a red build
-# pushes nothing), commits `publish: <section>/<slug>[, ...]` as
-# github-actions[bot] and pushes to main, where Vercel builds it like any push.
-# Nothing due means no build, no commit and no deploy.
-#
-# GitHub can start a scheduled run up to about an hour late, and it switches
-# schedules off in a repo with no activity for 60 days: re-enable the workflow
-# from the Actions tab if that happens. Run it by hand with "Run workflow".
-#
-# Actions are pinned by commit SHA (the tag is in the comment): to update one,
-# look the tag up with `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` and
-# dereference an annotated tag.
 on:
   schedule:
     - cron: '10 0 * * *'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read   # the push goes over SSH with the deploy key, not with the job's token
 
 concurrency:
   group: publish-due-pages
@@ -29,13 +39,27 @@ jobs:
   publish:
     name: flip due drafts
     if: github.repository == 'n-uf/hypr-tiling'
+    # the deploy key is an environment secret; the `publish` environment deploys from main only
+    environment: publish
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # without the key, checkout would quietly fall back to the token over HTTPS, and a protected main would refuse
+      # the push; say so plainly instead
+      - name: Check the deploy key secret
+        shell: bash
+        env:
+          KEY: ${{ secrets.PUBLISH_DEPLOY_KEY }}
+        run: '[ -n "$KEY" ] || { echo "::error::secret PUBLISH_DEPLOY_KEY is not set: the job pushes to main with the write deploy key"; exit 1; }'
+
+      # check out with the repo's write deploy key, so the push (and the rebase retries) go over SSH as the key;
+      # full history for the rebase
       - name: Checkout main
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
+          ssh-key: ${{ secrets.PUBLISH_DEPLOY_KEY }}
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -44,6 +68,7 @@ jobs:
 
       - name: Flip the pages that are due
         id: flip
+        shell: bash
         run: node apps/web/scripts/publish-due.mjs
 
       # Everything below runs only when the flip changed a page.
@@ -70,6 +95,7 @@ jobs:
 
       - name: Commit and push
         if: steps.flip.outputs.slugs != ''
+        shell: bash
         env:
           SLUGS: ${{ steps.flip.outputs.slugs }}
         run: |
@@ -82,23 +108,33 @@ jobs:
           git add -- apps/web/content
           git commit -m "publish: ${SLUGS}"
 
-          # `built` is the main commit the build above ran on. A rejected push
-          # means main moved during the build: rebase onto it and try again, up
-          # to 3 pushes. The flip only touches `draft:` lines, so the rebase is
-          # clean unless someone edited the same line. If the rebase pulled in
-          # other changes, rebuild before pushing again so a red result never
-          # reaches main.
+          # `built` is the main commit the build above ran on. Only "main moved"
+          # is worth a rebase and another try (up to 3 pushes); a refusal by the
+          # ruleset or a bad key fails at once. The flip only touches `draft:`
+          # lines, so the rebase is clean unless someone edited the same line
+          # (then it is aborted and the run fails). If the rebase pulled in other
+          # changes, rebuild before pushing again so a red result never reaches main.
           built=$(git rev-parse HEAD~1)
           for attempt in 1 2 3; do
-            if git push origin HEAD:main; then
+            if git push origin HEAD:main 2> "$RUNNER_TEMP/push.err"; then
+              cat "$RUNNER_TEMP/push.err"
               echo "Pushed on try ${attempt}."
               exit 0
             fi
-            echo "::warning::push rejected on try ${attempt} of 3: main moved during the build"
+            cat "$RUNNER_TEMP/push.err" >&2
+            if ! grep -q -E 'non-fast-forward|fetch first' "$RUNNER_TEMP/push.err"; then
+              echo "::error::push to main was refused (not because main moved): see the git error above"
+              exit 1
+            fi
             if [ "${attempt}" -eq 3 ]; then
               break
             fi
-            git pull --rebase --autostash origin main
+            echo "::warning::push rejected on try ${attempt} of 3: main moved during the build"
+            if ! git pull --rebase --autostash origin main; then
+              git rebase --abort || true
+              echo "::error::rebase onto the new main conflicted; nothing was pushed"
+              exit 1
+            fi
             now=$(git rev-parse HEAD~1)
             if [ "${now}" != "${built}" ]; then
               echo "main moved from ${built} to ${now}: rebuilding before the next push"
@@ -107,5 +143,5 @@ jobs:
               built=${now}
             fi
           done
-          echo "::error::could not push after 3 tries; run the workflow again"
+          echo "::error::push to main was rejected 3 times; run the workflow again"
           exit 1
