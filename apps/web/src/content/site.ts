@@ -113,6 +113,13 @@ export function checkContentFiles(
     const split = splitFrontMatter(file.raw, label);
     problems.push(...split.problems);
     problems.push(...draftSpellingProblems(split.block, label));
+    // Live blocks work in the body only: the front matter feeds the title, the
+    // head tags and JSON-LD, which nothing resolves.
+    if (/\{\{\/?live/.test(split.block)) {
+      problems.push(
+        `${label}: a {{live...}} marker in the front matter (title, description, h1, takeaways, faq, ...); live blocks work in the body only`,
+      );
+    }
     const markdown = processMarkdown(split.body, label);
     problems.push(...markdown.problems);
     if (split.data == null) {

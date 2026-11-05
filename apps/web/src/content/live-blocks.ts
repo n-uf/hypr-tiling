@@ -20,6 +20,8 @@ export interface LiveBlock {
   readonly target: string;
   /** Every internal href inside the block, anchors and all. */
   readonly hrefs: ReadonlyArray<string>;
+  /** Words of text inside the block (what a build that removes it loses). */
+  readonly words: number;
 }
 
 const TOKEN: RegExp = /\{\{(?:live:([^}\n]*)|(\/live))\}\}/g;
@@ -83,17 +85,51 @@ export function findLiveBlocks(
     const hrefs: Array<string> = [...inner.matchAll(/\shref="([^"]*)"/g)]
       .map((href): string => href[1].replace(/&amp;/g, "&"))
       .filter((href): boolean => href.startsWith("/") || href.startsWith("#"));
-    blocks.push({ target, hrefs });
-    // The block has to sit directly in a paragraph, and hold whole elements.
-    const enclosing = [...html.slice(0, at).matchAll(/<(\/?)(p|h[1-6]|li|td|th|blockquote|pre)\b/g)].pop();
-    if (enclosing == null || enclosing[1] !== "" || enclosing[2] !== "p") {
-      problems.push(`${file}: the {{live:${target}}} block has to sit in a plain paragraph (not a heading, list, table or quote)`);
+    const words: number = inner.replace(/<[^>]*>/g, " ").split(/\s+/).filter(Boolean).length;
+    blocks.push({ target, hrefs, words });
+    // The block has to sit in a plain paragraph: walk the tags open around it,
+    // and refuse a list, quote, table, heading or code element anywhere in the
+    // stack (a hidden block would leave an empty <li>, or a stray <code></code>).
+    const open: ReadonlyArray<string> = openTags(html.slice(0, at));
+    const refused: string | undefined = open.find((name): boolean => REFUSED_AROUND_BLOCK.test(name));
+    if (refused != null || !open.includes("p")) {
+      problems.push(
+        `${file}: the {{live:${target}}} block has to sit in a plain paragraph, not in a list, quote, table, heading or code (${refused != null ? `it is inside <${refused}>` : "it is not inside a paragraph"})`,
+      );
     }
     if (!tagsBalance(inner)) {
       problems.push(`${file}: the {{live:${target}}} block cuts through a link or other formatting; wrap whole sentences`);
     }
   }
   return { blocks, problems };
+}
+
+const REFUSED_AROUND_BLOCK: RegExp = /^(?:li|ol|ul|blockquote|table|td|th|h[1-6]|code|pre)$/;
+const VOID_TAGS: ReadonlyArray<string> = ["br", "hr", "img", "input", "wbr"];
+
+/** The names of the elements still open at the end of an HTML chunk, outermost first. */
+function openTags(html: string): ReadonlyArray<string> {
+  const stack: Array<string> = [];
+  for (const tag of html.matchAll(/<(\/?)([a-z][a-z0-9]*)\b[^>]*?(\/?)>/gi)) {
+    const name: string = tag[2].toLowerCase();
+    if (tag[3] === "/" || VOID_TAGS.includes(name)) {
+      continue;
+    }
+    if (tag[1] === "/") {
+      const at: number = stack.lastIndexOf(name);
+      if (at >= 0) {
+        stack.length = at;
+      }
+    } else {
+      stack.push(name);
+    }
+  }
+  return stack;
+}
+
+/** The text with every marker turned into a space, for counting words. */
+export function stripLiveMarkers(text: string): string {
+  return text.replace(TOKEN, " ");
 }
 
 function tagsBalance(html: string): boolean {

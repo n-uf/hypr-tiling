@@ -1,5 +1,5 @@
 import { Marked, type RendererObject, type Token, type Tokens } from "marked";
-import { checkLiveSyntax, findLiveBlocks, type LiveBlock } from "./live-blocks";
+import { checkLiveSyntax, findLiveBlocks, stripLiveMarkers, type LiveBlock } from "./live-blocks";
 import type { ContentHeading, ContentLink } from "./types";
 
 // Markdown -> HTML for the content pages, at build time only (the prerender and
@@ -228,7 +228,7 @@ export function processMarkdown(body: string, file: string): MarkdownResult {
 
   for (const token of tokens) {
     if (token.type !== "code" && token.type !== "space" && token.type !== "def") {
-      words += plainText(token).split(/\s+/).filter(Boolean).length;
+      words += stripLiveMarkers(plainText(token)).split(/\s+/).filter(Boolean).length;
     }
   }
 
