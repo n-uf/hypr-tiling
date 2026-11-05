@@ -115,12 +115,37 @@ describe("publish-due", (): void => {
     const out = join(root, `output-${counter}.txt`);
     writeFileSync(out, "", "utf8");
     run(["--today", "2026-11-05"], { GITHUB_OUTPUT: out });
-    expect(readFileSync(out, "utf8")).toBe("slugs=due-draft, overdue-quoted\n");
+    expect(readFileSync(out, "utf8")).toBe("slugs=blog/due-draft, use-cases/overdue-quoted\n");
     const dry = join(root, `dry-${counter}.txt`);
     writeFileSync(dry, "", "utf8");
     run(["--dry-run", "--today", "2026-12-31"], { GITHUB_OUTPUT: dry });
     expect(readFileSync(dry, "utf8")).toBe("");
   });
+
+  it("names pages as section/slug, so one slug in two sections stays two entries", (): void => {
+    seed({
+      "blog/shared.md": page("draft: true\npublished: 2026-11-01\nupdated: 2026-11-01"),
+      "use-cases/shared.md": page("draft: true\npublished: 2026-11-01\nupdated: 2026-11-01"),
+    });
+    const out = join(root, `shared-${counter}.txt`);
+    writeFileSync(out, "", "utf8");
+    run(["--today", "2026-11-05"], { GITHUB_OUTPUT: out });
+    expect(readFileSync(out, "utf8")).toBe(
+      "slugs=blog/due-draft, blog/shared, use-cases/overdue-quoted, use-cases/shared\n",
+    );
+  });
+
+  it.each(["draft : true", '"draft": true', "draft: True", "draft: TRUE", "'draft': true"])(
+    "refuses the draft spelling `%s` instead of skipping the page as live",
+    (spelling): void => {
+      seed({ "blog/odd.md": page(`${spelling}\npublished: 2026-11-01\nupdated: 2026-11-01`) });
+      const before = read("blog/due-draft.md");
+      const result = spawnSync("node", [SCRIPT, "--content", content, "--today", "2026-11-05"], { encoding: "utf8" });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/blog\/odd writes the draft field as .*write exactly `draft: true` or `draft: false`/);
+      expect(read("blog/due-draft.md")).toBe(before);
+    },
+  );
 
   it("fails loudly, changing nothing, on a draft whose go-live date it cannot read", (): void => {
     seed({ "blog/broken.md": page("draft: true\nupdated: 2026-11-01") });
