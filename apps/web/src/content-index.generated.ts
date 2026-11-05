@@ -14,20 +14,20 @@ export const CONTENT_INDEX: ReadonlyArray<ContentIndexEntry> = [
     "description": "Build react dockable panels in one tiled layout: drop a pane beside another or into tabs, undock it, save the tree, and see when you need floating windows."
   },
   {
-    "section": "use-cases",
-    "slug": "react-drag-and-drop-dashboard",
-    "path": "/use-cases/react-drag-and-drop-dashboard",
-    "title": "React drag and drop dashboard with tiled panels",
-    "h1": "Build a drag-and-drop dashboard in React with tiled panels",
-    "description": "Build a React drag and drop dashboard where users move, resize and tab panels and keep their layout, and see when a grid library fits better."
-  },
-  {
     "section": "blog",
     "slug": "react-grid-layout-alternatives",
     "path": "/blog/react-grid-layout-alternatives",
     "title": "react-grid-layout alternatives: grid, tiling, docking",
     "h1": "react-grid-layout alternatives, compared by layout model",
     "description": "react-grid-layout alternatives compared: gridstack.js, dnd-kit, and layouts that aren't grids (tiling, docking), with a table and a pick for each need."
+  },
+  {
+    "section": "use-cases",
+    "slug": "react-drag-and-drop-dashboard",
+    "path": "/use-cases/react-drag-and-drop-dashboard",
+    "title": "React drag and drop dashboard with tiled panels",
+    "h1": "Build a drag-and-drop dashboard in React with tiled panels",
+    "description": "Build a React drag and drop dashboard where users move, resize and tab panels and keep their layout, and see when a grid library fits better."
   },
   {
     "section": "blog",
