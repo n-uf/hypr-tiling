@@ -1,0 +1,56 @@
+name: Publish due pages
+
+# Flips scheduled content pages (draft: true, published: <go-live date>) live
+# once their date has come: sets `draft: false`, commits `publish: <slug>[, <slug>]`
+# as github-actions[bot] and pushes to main, where Vercel builds it like any push.
+# Nothing due means no commit and no deploy.
+#
+# GitHub can start a scheduled run up to about an hour late, and it switches
+# schedules off in a repo with no activity for 60 days: re-enable the workflow
+# from the Actions tab if that happens. Run it by hand with "Run workflow".
+on:
+  schedule:
+    - cron: '10 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-due-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: flip due drafts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Flip the pages that are due
+        id: flip
+        run: node apps/web/scripts/publish-due.mjs
+
+      - name: Commit and push
+        env:
+          SLUGS: ${{ steps.flip.outputs.slugs }}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Nothing due: no commit."
+            exit 0
+          fi
+          : "${SLUGS:?the script changed files but reported no slugs}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- apps/web/content
+          git commit -m "publish: ${SLUGS}"
+          # main may have moved since the checkout; the flip only touches a draft line, so a rebase is safe.
+          git push origin HEAD:main || { git pull --rebase origin main && git push origin HEAD:main; }
