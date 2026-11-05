@@ -32,12 +32,16 @@ interface PageSpec {
   readonly slug: string;
   readonly keyword: string;
   readonly draft?: boolean;
+  /** Go-live date of a draft (default 2026-12-01). */
+  readonly published?: string;
+  /** The raw line written for the draft flag, when not the strict `draft: true`. */
+  readonly draftLine?: string;
   readonly related?: ReadonlyArray<string>;
   readonly body?: string;
 }
 
 function file(spec: PageSpec): ContentFile {
-  const date = spec.draft === true ? GO_LIVE : "2026-11-01";
+  const date = spec.draft === true ? (spec.published ?? GO_LIVE) : "2026-11-01";
   const lines = [
     "---",
     `title: "Title of ${spec.slug}"`,
@@ -45,7 +49,7 @@ function file(spec: PageSpec): ContentFile {
     `h1: "Heading of ${spec.slug}"`,
     `mainKeyword: "${spec.keyword}"`,
     "kind: comparison",
-    ...(spec.draft === true ? ["draft: true"] : []),
+    ...(spec.draft === true ? [spec.draftLine ?? "draft: true"] : []),
     `published: ${date}`,
     `updated: ${date}`,
     "author: n-uf",
@@ -187,6 +191,174 @@ describe("production mode hides drafts everywhere", (): void => {
     );
     expect(linking.problems).toEqual([]);
     expect(linking.site.pages.map((page) => page.slug)).toEqual(["live-page"]);
+  });
+
+  describe("a draft linking to a draft that goes live later", (): void => {
+    const early: PageSpec = { slug: "zz-early", keyword: "zz early", draft: true, published: "2026-12-01" };
+    const late: PageSpec = { slug: "zz-late", keyword: "zz late", draft: true, published: "2026-12-10" };
+    const message = /zz-early\.md: link "\/blog\/zz-late": this draft goes live 2026-12-01 but links to the draft content\/blog\/zz-late\.md that goes live 2026-12-10/;
+
+    it.each([false, true])("fails by body link and by related, with showDrafts=%s", (showDrafts): void => {
+      const linking = load(
+        [
+          { ...early, body: "The zz early answer.\n\nSee [late](/blog/zz-late).\n", related: ["/blog/zz-late", "/docs"] },
+          late,
+        ],
+        showDrafts,
+      );
+      expect(linking.problems).toEqual([
+        expect.stringMatching(/zz-early\.md: related "\/blog\/zz-late": this draft goes live 2026-12-01 but links to the draft/),
+        expect.stringMatching(message),
+      ]);
+    });
+
+    it("is fine the other way round, on the same day, and inside a live block", (): void => {
+      expect(
+        load([{ ...early, related: ["/blog/zz-late", "/docs"] }, late], false).problems,
+      ).toHaveLength(1);
+      expect(load([{ ...late, body: "The zz late answer.\n\nSee [early](/blog/zz-early).\n", related: ["/blog/zz-early", "/docs"] }, early], false).problems).toEqual([]);
+      const sameDay: PageSpec = { ...late, published: "2026-12-01" };
+      expect(load([{ ...early, body: "The zz early answer.\n\nSee [late](/blog/zz-late).\n" }, sameDay], false).problems).toEqual([]);
+      const gated: PageSpec = {
+        ...early,
+        body: "The zz early answer.\n\n{{live:/blog/zz-late}}See [late](/blog/zz-late).{{/live}}\n",
+      };
+      expect(load([gated, late], false).problems).toEqual([]);
+    });
+  });
+});
+
+describe("live blocks: link lines that merge with the draft", (): void => {
+  const SENTENCE = "See [the draft](/blog/draft-page) for more.";
+  const withBlock = (extra: Partial<PageSpec> = {}): PageSpec => ({
+    ...LIVE,
+    body: `The live thing answer comes first.\n\nBefore. {{live:/blog/draft-page}}${SENTENCE}{{/live}} After.\n`,
+    ...extra,
+  });
+
+  it("production removes the sentence, its link and the space before it until the target is live", (): void => {
+    const { site, problems } = load([withBlock(), DRAFT], false);
+    expect(problems).toEqual([]);
+    const html = site.pages[0].bodyHtml;
+    expect(html).not.toContain("draft-page");
+    expect(html).not.toContain("{{");
+    expect(html).toContain("<p>Before. After.</p>");
+  });
+
+  it("preview shows the sentence with its link, markers gone", (): void => {
+    const { site, problems } = load([withBlock(), DRAFT], true);
+    expect(problems).toEqual([]);
+    const html = site.pages.find((page) => page.slug === "live-page")?.bodyHtml ?? "";
+    expect(html).toContain('<a href="/blog/draft-page"');
+    expect(html).toMatch(/<p>Before\. See <a [^>]*>the draft<\/a> for more\. After\.<\/p>/);
+    expect(html).not.toContain("{{");
+  });
+
+  it("shows the sentence in production once the target is live (the flip)", (): void => {
+    const flipped: PageSpec = { slug: "draft-page", keyword: "draft thing" };
+    const { site, problems } = load([withBlock(), flipped], false);
+    expect(problems).toEqual([]);
+    expect(site.pages.find((page) => page.slug === "live-page")?.bodyHtml).toMatch(
+      /<p>Before\. See <a href="\/blog\/draft-page"[^>]*>the draft<\/a> for more\. After\.<\/p>/,
+    );
+  });
+
+  it("works in the lede and drops a paragraph the block leaves empty", (): void => {
+    const lede = load(
+      [{ ...LIVE, body: `{{live:/blog/draft-page}}${SENTENCE}{{/live}}\n\nSecond paragraph.\n` }, DRAFT],
+      false,
+    );
+    expect(lede.problems).toEqual([]);
+    expect(lede.site.pages[0].ledeHtml).toBe("");
+    expect(lede.site.pages[0].bodyHtml).toContain("Second paragraph.");
+  });
+
+  it("still fails a bare link from a live page to the draft, next to a block", (): void => {
+    const bare = load(
+      [{ ...withBlock(), body: `Answer.\n\n{{live:/blog/draft-page}}${SENTENCE}{{/live}} And [again](/blog/draft-page).\n` }, DRAFT],
+      false,
+    );
+    expect(bare.problems).toEqual([expect.stringMatching(/link "\/blog\/draft-page" points at the draft .*wrap the sentence in \{\{live:\/blog\/draft-page\}\}/)]);
+  });
+
+  it("a link inside a block to a different draft than the block's target still fails", (): void => {
+    const other: PageSpec = { slug: "other-draft", keyword: "other draft", draft: true };
+    const mismatch = load(
+      [{ ...LIVE, body: "Answer.\n\n{{live:/blog/draft-page}}See [other](/blog/other-draft).{{/live}}\n" }, DRAFT, other],
+      false,
+    );
+    expect(mismatch.problems).toEqual([expect.stringMatching(/link "\/blog\/other-draft" points at the draft/)]);
+  });
+
+  const bad = (body: string): ReadonlyArray<string> => load([{ ...LIVE, body: `Answer.\n\n${body}\n` }, DRAFT], false).problems;
+
+  it("fails a bad target: missing page, itself, a non-content path, an anchor, no path", (): void => {
+    expect(bad("{{live:/blog/missing}}Text.{{/live}}")).toEqual([expect.stringMatching(/names a page that does not exist/)]);
+    expect(bad("{{live:/blog/live-page}}Text.{{/live}}")).toEqual([expect.stringMatching(/names the page itself/)]);
+    expect(bad("{{live:/docs}}Text.{{/live}}")).toEqual([expect.stringMatching(/needs the path of a use-case or blog page/)]);
+    expect(bad("{{live:/blog/draft-page#x}}Text.{{/live}}")).toEqual([expect.stringMatching(/needs the path of a use-case or blog page/)]);
+    expect(bad("{{live:}}Text.{{/live}}")).toEqual([expect.stringMatching(/needs the path of a use-case or blog page/)]);
+  });
+
+  it("fails a nested block", (): void => {
+    expect(bad("{{live:/blog/draft-page}}A {{live:/blog/draft-page}}B{{/live}}{{/live}}")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/starts inside the open/), expect.stringMatching(/stray \{\{\/live\}\}/)]),
+    );
+  });
+
+  it("fails a stray close, an unclosed open and a malformed marker", (): void => {
+    expect(bad("Text.{{/live}}")).toEqual([expect.stringMatching(/stray \{\{\/live\}\}/)]);
+    expect(bad("{{live:/blog/draft-page}}Never closed.")).toEqual([expect.stringMatching(/never closed with \{\{\/live\}\}/)]);
+    expect(bad("{{live /blog/draft-page}}Text.{{/live}}")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/malformed live marker/)]),
+    );
+  });
+
+  it("fails a block that crosses a paragraph break", (): void => {
+    expect(bad("{{live:/blog/draft-page}}First paragraph.\n\nSecond paragraph.{{/live}}")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/crosses a paragraph break/)]),
+    );
+  });
+
+  it("fails a block in a heading or a list, and one that cuts through a link", (): void => {
+    expect(bad("## {{live:/blog/draft-page}}A heading{{/live}}")).toEqual([expect.stringMatching(/has to sit in a plain paragraph/)]);
+    expect(bad("- {{live:/blog/draft-page}}An item{{/live}}")).toEqual([expect.stringMatching(/has to sit in a plain paragraph/)]);
+    expect(bad("A [link {{live:/blog/draft-page}}text](/docs) more{{/live}}")).toEqual([expect.stringMatching(/cuts through a link/)]);
+  });
+
+  it("leaves a block around a link to a page that is already live visible, in either mode", (): void => {
+    const live2: PageSpec = { slug: "live-two", keyword: "live two" };
+    const { site, problems } = load(
+      [{ ...LIVE, body: "Answer.\n\n{{live:/blog/live-two}}See [two](/blog/live-two).{{/live}}\n" }, live2],
+      false,
+    );
+    expect(problems).toEqual([]);
+    expect(site.pages.find((page) => page.slug === "live-page")?.bodyHtml).toContain('href="/blog/live-two"');
+  });
+});
+
+describe("the draft field spelling and past go-live dates", (): void => {
+  it.each(["draft : true", '"draft": true', "draft: True", "draft:  yes"])(
+    "refuses the spelling `%s` so the publish script cannot miss it",
+    (draftLine): void => {
+      const result = load([LIVE, { ...DRAFT, draftLine }], false);
+      expect(result.problems).toEqual(
+        expect.arrayContaining([expect.stringMatching(/the draft field is written `.*`; write exactly `draft: true` or `draft: false`/)]),
+      );
+    },
+  );
+
+  it("accepts the strict form, with a trailing comment too", (): void => {
+    expect(load([LIVE, { ...DRAFT, draftLine: "draft: true  # held for the release" }], false).problems).toEqual([]);
+  });
+
+  it("warns, without failing, when a draft's go-live date is already past", (): void => {
+    const past = load([{ ...DRAFT, published: "2026-11-01" }], false);
+    expect(past.problems).toEqual([]);
+    expect(past.site.warnings.join("\n")).toMatch(
+      /draft-page\.md: the draft's go-live date 2026-11-01 is already past \(today is 2026-11-05\); it goes live on the next publish run/,
+    );
+    expect(load([DRAFT], false).site.warnings.join("\n")).not.toMatch(/already past/);
   });
 });
 

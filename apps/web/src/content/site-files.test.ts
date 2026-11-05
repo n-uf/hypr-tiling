@@ -33,6 +33,7 @@ function page(section: "blog" | "use-cases", slug: string, updated: string): Con
     headings: [],
     links: [],
     wordCount: 100,
+    liveBlocks: [],
   };
 }
 

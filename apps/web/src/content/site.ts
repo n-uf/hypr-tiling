@@ -8,8 +8,9 @@ import {
   sectionPath,
   type ContentSection,
 } from "./constants";
-import { splitFrontMatter } from "./front-matter";
+import { draftSpellingProblems, splitFrontMatter } from "./front-matter";
 import { draftsShown, isVisible } from "./live";
+import { resolveLiveBlocks } from "./live-blocks";
 import { processMarkdown } from "./markdown";
 import {
   ContentProblemsError,
@@ -111,6 +112,7 @@ export function checkContentFiles(
     const label = `content/${file.section}/${file.name}`;
     const split = splitFrontMatter(file.raw, label);
     problems.push(...split.problems);
+    problems.push(...draftSpellingProblems(split.block, label));
     const markdown = processMarkdown(split.body, label);
     problems.push(...markdown.problems);
     if (split.data == null) {
@@ -137,6 +139,7 @@ export function checkContentFiles(
       headings: markdown.headings,
       links: markdown.links,
       wordCount: markdown.wordCount,
+      liveBlocks: markdown.liveBlocks,
     });
   }
 
@@ -153,10 +156,26 @@ export function checkContentFiles(
   const site = validateSite(pages, context);
   problems.push(...site.problems);
   const showDrafts: boolean = context.showDrafts === true;
+  // A `{{live:/path}}` sentence stays only when the page at /path is shown in
+  // this build: live, or a draft in a preview build. Production removes it
+  // until the target's flip, so the link lines merge together with the draft.
+  const byPath = new Map<string, ContentPage>(pages.map((page): [string, ContentPage] => [page.path, page]));
+  const shown = (target: string): boolean => {
+    const page: ContentPage | undefined = byPath.get(target);
+    return page != null && isVisible(page, showDrafts);
+  };
+  const resolved: ReadonlyArray<ContentPage> = pages.map(
+    (page): ContentPage => ({
+      ...page,
+      ledeHtml: resolveLiveBlocks(page.ledeHtml, shown),
+      ledeText: resolveLiveBlocks(page.ledeText, shown),
+      bodyHtml: resolveLiveBlocks(page.bodyHtml, shown),
+    }),
+  );
   return {
     site: {
-      pages: pages.filter((page): boolean => isVisible(page, showDrafts)),
-      hidden: pages.filter((page): boolean => !isVisible(page, showDrafts)),
+      pages: resolved.filter((page): boolean => isVisible(page, showDrafts)),
+      hidden: resolved.filter((page): boolean => !isVisible(page, showDrafts)),
       warnings: site.warnings,
     },
     problems,
