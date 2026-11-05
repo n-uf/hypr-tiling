@@ -4,8 +4,8 @@ description: "react-grid-layout alternatives compared: gridstack.js, dnd-kit, an
 h1: "react-grid-layout alternatives, compared by layout model"
 mainKeyword: "react-grid-layout alternatives"
 kind: comparison
-published: 2026-11-03
-updated: 2026-11-03
+published: 2026-11-04
+updated: 2026-11-04
 author: n-uf
 takeaways:
   - "gridstack.js is the closest match to react-grid-layout: the same grid of draggable, resizable widgets with columns and breakpoints, for any framework, with a React wrapper and nested grids documented."

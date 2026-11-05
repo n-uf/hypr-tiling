@@ -4,8 +4,8 @@ description: "Build react dockable panels in one tiled layout: drop a pane besid
 h1: "Dockable panels in React with a tiled layout"
 mainKeyword: "react dockable panels"
 kind: use-case
-published: 2026-11-03
-updated: 2026-11-03
+published: 2026-11-04
+updated: 2026-11-04
 author: n-uf
 takeaways:
   - "Docking needs a layout tree that records where each panel sits, drop targets while a panel is dragged, and a way to save the result; hypr-tiling gives you the tree and the drag behaviour, and your app owns the state."
