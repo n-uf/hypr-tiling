@@ -158,7 +158,12 @@ jobs:
           SLUGS: ${{ needs.build.outputs.slugs }}
         run: |
           g() { git -c core.hooksPath=/dev/null "$@"; }
+          # the built commit must be on main (checkout fetched all of origin)
+          g merge-base --is-ancestor HEAD origin/main || { echo "::error::the built commit is not on main"; exit 1; }
           g switch -c publish-flip
+          # the bot identity goes in the repo's config, so the rebase of a retried push can re-commit too
+          g config user.name "github-actions[bot]"
+          g config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           g apply --index "$RUNNER_TEMP/flip/flip.patch"
 
           files=$(g diff --cached --name-only)
@@ -199,8 +204,7 @@ jobs:
             echo "::error::the pages in the patch (${derived}) are not the pages the build job reported (${SLUGS})"
             exit 1
           fi
-          g -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -q -m "publish: ${derived}"
+          g commit -q -m "publish: ${derived}"
           g log --stat -1
 
       # Only git runs here: no node, no pnpm, no other third-party code. The key is
