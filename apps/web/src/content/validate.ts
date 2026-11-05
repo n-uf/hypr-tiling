@@ -5,6 +5,7 @@ import {
   type ContentSection,
 } from "./constants";
 import { isLive, isVisible } from "./live";
+import { LIVE_TARGET } from "./live-blocks";
 import { RESERVED_HEADING_IDS } from "./markdown";
 import {
   CONTENT_KINDS,
@@ -411,14 +412,37 @@ export function validateSite(
     pages.filter((page): boolean => !isLive(page)).map((page): [string, ContentPage] => [page.path, page]),
   );
   // A live page must never link to a draft: in production the target is a 404.
-  // Draft-to-draft and draft-to-live links are fine. In preview the link works
-  // (the draft is shown), so it is only a warning there.
-  const draftLinkProblem = (page: ContentPage, kind: "related" | "link", href: string): void => {
-    const target: ContentPage | undefined = draftPaths.get(href.split("#")[0]);
-    if (target == null || !isLive(page)) {
+  // A draft may link to a live page, and to a draft that goes live the same
+  // day or earlier; one that goes live later would be a 404 in between, in both
+  // modes. A link inside `{{live:/target}}...{{/live}}` is exempt: the sentence
+  // is not rendered until its target is live. In preview the live-to-draft link
+  // works (the draft is shown), so it is only a warning there.
+  const draftLinkProblem = (
+    page: ContentPage,
+    kind: "related" | "link",
+    href: string,
+    gated?: Map<string, number>,
+  ): void => {
+    const bare: string = href.split("#")[0];
+    const target: ContentPage | undefined = draftPaths.get(bare);
+    if (target == null) {
       return;
     }
-    const message = `${page.file}: ${kind} "${href}" points at the draft ${target.file} (goes live ${target.published}); a live page may link to it only after it is published`;
+    const gatedLeft: number = gated?.get(bare) ?? 0;
+    if (kind === "link" && gated != null && gatedLeft > 0) {
+      gated.set(bare, gatedLeft - 1);
+      return;
+    }
+    const fix = `wrap the sentence in {{live:${bare}}}...{{/live}}`;
+    if (!isLive(page)) {
+      if (target.published > page.published) {
+        problems.push(
+          `${page.file}: ${kind} "${href}": this draft goes live ${page.published} but links to the draft ${target.file} that goes live ${target.published}; ${kind === "link" ? fix : "drop it from related"}, or move the go-live dates`,
+        );
+      }
+      return;
+    }
+    const message = `${page.file}: ${kind} "${href}" points at the draft ${target.file} (goes live ${target.published}); a live page may link to it only after it is published (${kind === "link" ? fix : "related cannot be wrapped: add it in the publish follow-up"})`;
     if (showDrafts) {
       warnings.push(`${message} (this build shows drafts, a production build fails)`);
     } else {
@@ -453,6 +477,34 @@ export function validateSite(
       }
     }
 
+    // Live blocks: each must name a content page other than this one, and its
+    // links to that page are the ones the draft rule lets through.
+    const gated = new Map<string, number>();
+    for (const block of page.liveBlocks) {
+      if (block.target === page.path) {
+        problems.push(`${page.file}: {{live:${block.target}}} names the page itself`);
+      } else if (
+        // (a malformed target is already reported by the syntax check)
+        LIVE_TARGET.test(block.target) &&
+        !pages.some((candidate): boolean => candidate.path === block.target)
+      ) {
+        problems.push(
+          `${page.file}: {{live:${block.target}}} names a page that does not exist; it must be a use-case or blog page of this site`,
+        );
+      }
+      for (const href of block.hrefs) {
+        if (href.split("#")[0] === block.target) {
+          gated.set(block.target, (gated.get(block.target) ?? 0) + 1);
+        }
+      }
+    }
+
+    if (!isLive(page) && page.published < context.today) {
+      warnings.push(
+        `${page.file}: the draft's go-live date ${page.published} is already past (today is ${context.today}); it goes live on the next publish run, with that past date`,
+      );
+    }
+
     const perTarget = new Map<string, number>();
     for (const link of page.links) {
       const href: string = link.href;
@@ -480,7 +532,7 @@ export function validateSite(
         continue;
       }
       if (!href.startsWith("#")) {
-        draftLinkProblem(page, "link", href);
+        draftLinkProblem(page, "link", href, gated);
         const target: string = href.split("#")[0];
         perTarget.set(target, (perTarget.get(target) ?? 0) + 1);
       }

@@ -1,4 +1,5 @@
 import { Marked, type RendererObject, type Token, type Tokens } from "marked";
+import { checkLiveSyntax, findLiveBlocks, type LiveBlock } from "./live-blocks";
 import type { ContentHeading, ContentLink } from "./types";
 
 // Markdown -> HTML for the content pages, at build time only (the prerender and
@@ -86,6 +87,8 @@ export interface MarkdownResult {
   /** Plain text of the first paragraph (empty if the body does not start with one). */
   readonly ledeText: string;
   readonly wordCount: number;
+  /** The `{{live:/path}}...{{/live}}` blocks of the body (their text is still in the HTML above). */
+  readonly liveBlocks: ReadonlyArray<LiveBlock>;
   readonly problems: ReadonlyArray<string>;
 }
 
@@ -244,5 +247,19 @@ export function processMarkdown(body: string, file: string): MarkdownResult {
   // lexer already resolved into link tokens.
   const bodyHtml: string = marked.parser(rest);
 
-  return { ledeHtml, bodyHtml, headings, links, ledeText, wordCount: words, problems };
+  problems.push(...checkLiveSyntax(body, file));
+  const lede = findLiveBlocks(ledeHtml, file);
+  const main = findLiveBlocks(bodyHtml, file);
+  problems.push(...lede.problems, ...main.problems);
+
+  return {
+    ledeHtml,
+    bodyHtml,
+    headings,
+    links,
+    ledeText,
+    wordCount: words,
+    liveBlocks: [...lede.blocks, ...main.blocks],
+    problems,
+  };
 }

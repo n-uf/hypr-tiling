@@ -1,4 +1,5 @@
 import type { ContentIndexEntry, ContentSection } from "./constants";
+import type { LiveBlock } from "./live-blocks";
 
 export const CONTENT_KINDS = [
   "use-case",
@@ -70,6 +71,8 @@ export interface ContentPage extends ContentFrontMatter, ContentIndexEntry {
   readonly headings: ReadonlyArray<ContentHeading>;
   readonly links: ReadonlyArray<ContentLink>;
   readonly wordCount: number;
+  /** The page's `{{live:/path}}...{{/live}}` blocks; `ledeHtml`, `bodyHtml` and `ledeText` already have them resolved. */
+  readonly liveBlocks: ReadonlyArray<LiveBlock>;
 }
 
 export interface ContentSite {
