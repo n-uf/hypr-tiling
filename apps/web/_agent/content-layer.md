@@ -40,25 +40,29 @@ that day with no further edit.
 2. `.github/workflows/publish.yml` runs daily at 00:10 UTC (and by hand from the
    Actions tab, "Run workflow"). `apps/web/scripts/publish-due.mjs` sets `draft: false`
    on every draft whose `published` date is today or earlier, and nothing else. When
-   something changed, the workflow first builds the site (install, `pnpm build`, production
-   mode; a red build pushes nothing), then commits `publish: <section>/<slug>[, ...]` as
-   github-actions[bot] and pushes to `main`; Vercel builds it like any push. `main` is
-   protected by a ruleset (required checks, no force-push, no deletion) that only the
-   repo's write deploy key "publish-bot (scheduled publishing)" may bypass, so the push
-   goes over SSH with that key (secret `PUBLISH_DEPLOY_KEY` in the `publish` environment,
-   which releases it to runs on `main` only; the job has `contents: read` and stops at its
-   first step if the secret is empty), not with the job's token. The key is written only
-   for the push: checkout clones without it and persists no credentials, and the last step
-   writes the key to a private temp file just around each `git push` / `git pull --rebase`
-   (GitHub's SSH host key pinned) and removes it right after, so it is never on disk or in
-   the environment while `pnpm install`, `pnpm build` or a rebuild after a moved `main` run
-   third-party code. A deploy-key push does
-   trigger CI, unlike a token push. A push refused because `main` moved (non-fast-forward)
-   runs `git pull --rebase` and retries, up to 3 pushes, rebuilding first when the rebase
-   pulled in other changes; any other refusal fails at once. Nothing due: no build, no
-   commit, no deploy. A red publish run is worth one rerun first: the library's
-   `workspace-tab-drop` test can flake under load in the build step. The job only runs in
-   `n-uf/hypr-tiling`, and its actions are pinned by commit SHA. Preview what is due with
+   something changed, the workflow runs two jobs, so the deploy key never meets third-party
+   code (steps of one job are not isolated from each other). Job `build` has no secret: it
+   flips the pages, installs and builds in production mode (a red build fails the run and
+   pushes nothing) and hands over only the flip as a patch of `apps/web/content` (an
+   artifact kept for a day). Job `push` (the `publish` environment, which releases the
+   secret to runs on `main` only; `contents: read`; stops at its first step if the secret
+   is empty) runs nothing but git and first-party actions, no node or pnpm: it applies the
+   patch to a fresh checkout of the commit that was built, refuses anything but
+   `draft: true` -> `draft: false` lines in `apps/web/content/<section>/<slug>.md`,
+   commits `publish: <section>/<slug>[, ...]` as github-actions[bot] and pushes to `main`;
+   Vercel builds it like any push. Every git command there runs with hooks off, and the key
+   is written to a private temp file only around each `git push` / `git pull --rebase` and
+   removed right after (GitHub's SSH host key pinned). `main` is protected by a ruleset
+   (required checks, no force-push, no deletion) that only the repo's write deploy key
+   "publish-bot (scheduled publishing)" may bypass (secret `PUBLISH_DEPLOY_KEY`), so the
+   push goes over SSH with that key, not with a job token. A deploy-key push does trigger
+   CI, unlike a token push. A push refused because `main` moved (non-fast-forward) runs
+   `git pull --rebase` and retries, up to 3 pushes, with no rebuild (the commits pulled in
+   passed `main`'s checks, and Vercel's build of the push is the last check); a rebase
+   conflict or any other refusal fails the run. Nothing due: no build, no commit, no
+   deploy. A red publish run is worth one rerun first: the library's `workspace-tab-drop`
+   test can flake under load in the build step. The jobs only run in `n-uf/hypr-tiling`,
+   and their actions are pinned by commit SHA. Preview what is due with
    `node apps/web/scripts/publish-due.mjs --dry-run [--today YYYY-MM-DD]`.
    Write the field exactly `draft: true` or `draft: false`: the script edits that line by
    pattern, so the validator refuses other spellings (`draft : true`, `"draft": true`,

@@ -1,24 +1,33 @@
 # Scheduled publishing: every day at 00:10 UTC, content pages merged as `draft: true` whose `published` date has
 # come are flipped to `draft: false` (apps/web/scripts/publish-due.mjs). If anything changed, the site is built first
 # (pnpm install, pnpm build in production mode: a red build pushes nothing and fails the run), then the change is
-# committed as `publish: <section>/<slug>[, <section>/<slug>]` and pushed to main. A push refused because main moved
-# during the build runs `git pull --rebase` and tries again, 3 pushes at most (the site is rebuilt first when the
-# rebase pulled in other changes); any other refusal, and a rebase conflict, fails the run.
+# committed as `publish: <section>/<slug>[, <section>/<slug>]` and pushed to main.
 # Vercel builds that push through its Git connection like any other. Nothing due: no build, no commit, no deploy.
 # Undo: revert the publish commit, or set `draft: true` again. No deploy hooks.
 #
+# Two jobs, so the deploy key never meets third-party code. Steps of one job are not isolated from each other (a
+# build step could read the push step's environment, or hijack it through $GITHUB_ENV, $GITHUB_PATH or a git hook), so:
+#   build  has no secret at all. It flips the pages, installs and builds (vite, plugins, the library tests: all
+#          third-party code), and hands over only the flip as a patch of apps/web/content (an artifact, 1 day).
+#   push   gets the key (the `publish` environment). It runs nothing but git and first-party actions: no node, no
+#          pnpm. It applies the patch to a fresh checkout of the commit that was built, checks that the staged diff
+#          is nothing but `draft: true` -> `draft: false` lines in apps/web/content/<section>/<slug>.md, commits it
+#          and pushes over SSH, with every git command run with hooks off (core.hooksPath=/dev/null).
+#
 # main is protected by a ruleset (required checks "build / api:check / typecheck / test" and "Vercel", no force-push,
-# no deletion) that only the repo's write deploy key "publish-bot (scheduled publishing)" may bypass. So the job
-# pushes over SSH with that key, not with the job's token; one secret, PUBLISH_DEPLOY_KEY, the private half of the
+# no deletion) that only the repo's write deploy key "publish-bot (scheduled publishing)" may bypass. So the push job
+# pushes over SSH with that key, not with a job token; one secret, PUBLISH_DEPLOY_KEY, the private half of the
 # key. It can write the whole repo, so it lives only in the `publish` environment, which releases it to runs on main
 # alone: an edited copy of this file dispatched from another branch gets no key (and stops at the first step).
-# The key is also kept away from third-party code: checkout clones with the read-only token and persists no
-# credentials, and the key is handed only to the last step, where it is written to a private temp file just for each
-# git network command (push, pull) and removed right after, so it is never on disk, nor in the environment of the
-# child processes, while pnpm install, pnpm build (vite, plugins, the library tests) or a rebuild after a moved main run.
+# The key is written to a private temp file just for each git network command (push, pull) and removed right after.
 # github.com's SSH host key is pinned in the step (published at api.github.com/meta, ed25519 SHA256:+DiY3wvv...).
-# Unlike a push with the job's own GITHUB_TOKEN, a deploy-key push does trigger other workflows, so CI (ci.yml) runs
+# Unlike a push with a job's own GITHUB_TOKEN, a deploy-key push does trigger other workflows, so CI (ci.yml) runs
 # on the publish commit too.
+#
+# A push refused because main moved during the run (non-fast-forward) runs `git pull --rebase` and tries again, 3
+# pushes at most; a rebase conflict, or any other refusal, fails the run. There is no rebuild after the rebase: the
+# commits pulled in came through main's protection, so CI already ran on them, and Vercel's build of the pushed
+# commit is the last check (if it fails, the previous version stays live).
 #
 # GitHub can run a schedule up to about an hour late, and switches schedules off in a repo with no activity for
 # 60 days: re-enable it from the Actions tab if that happens. Run it by hand with "Run workflow".
@@ -34,37 +43,35 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read   # the push goes over SSH with the deploy key, not with the job's token
+  contents: read   # no job writes with its token; the push goes over SSH with the deploy key
 
 concurrency:
   group: publish-due-pages
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: flip due drafts
+  build:
+    name: flip and build
     if: github.repository == 'n-uf/hypr-tiling'
-    # the deploy key is an environment secret; the `publish` environment deploys from main only
-    environment: publish
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.flip.outputs.slugs != '' }}
+      slugs: ${{ steps.flip.outputs.slugs }}
+      base: ${{ steps.base.outputs.sha }}
     steps:
-      # without the key, checkout would quietly fall back to the token over HTTPS, and a protected main would refuse
-      # the push; say so plainly instead
-      - name: Check the deploy key secret
-        shell: bash
-        env:
-          KEY: ${{ secrets.PUBLISH_DEPLOY_KEY }}
-        run: '[ -n "$KEY" ] || { echo "::error::secret PUBLISH_DEPLOY_KEY is not set: the job pushes to main with the write deploy key"; exit 1; }'
-
-      # clone with the read-only token and keep no credentials on disk (no ssh-key here): the build steps run
-      # third-party code. The deploy key reaches only the last step. Full history for the rebase.
       - name: Checkout main
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Remember the commit that is built
+        id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -73,10 +80,14 @@ jobs:
 
       - name: Flip the pages that are due
         id: flip
-        shell: bash
         run: node apps/web/scripts/publish-due.mjs
 
       # Everything below runs only when the flip changed a page.
+      # The patch is taken right after the flip, before any third-party code runs.
+      - name: Save the flip as a patch
+        if: steps.flip.outputs.slugs != ''
+        run: git diff --binary -- apps/web/content > flip.patch
+
       - name: Install pnpm
         if: steps.flip.outputs.slugs != ''
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
@@ -93,29 +104,115 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Production mode (no VERCEL_ENV, no SHOW_DRAFTS): the same build Vercel
-      # runs. A red build ends the job here and nothing is pushed.
+      # runs. A red build fails the job, so no patch is uploaded and nothing is pushed.
       - name: Build the site with the flipped pages
         if: steps.flip.outputs.slugs != ''
         run: pnpm build
 
-      - name: Commit and push
+      - name: Hand the flip to the push job
         if: steps.flip.outputs.slugs != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: flip-patch
+          path: flip.patch
+          retention-days: 1
+          if-no-files-found: error
+
+  push:
+    name: commit and push
+    needs: build
+    if: github.repository == 'n-uf/hypr-tiling' && needs.build.outputs.changed == 'true'
+    # the deploy key is an environment secret; the `publish` environment deploys from main only
+    environment: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # without the key the push could not get past a protected main; say so plainly
+      - name: Check the deploy key secret
         shell: bash
         env:
-          SLUGS: ${{ steps.flip.outputs.slugs }}
+          KEY: ${{ secrets.PUBLISH_DEPLOY_KEY }}
+        run: '[ -n "$KEY" ] || { echo "::error::secret PUBLISH_DEPLOY_KEY is not set: the job pushes to main with the write deploy key"; exit 1; }'
+
+      # the commit the build job built, cloned with the read-only token and no stored credentials;
+      # full history for the rebase
+      - name: Checkout the built commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.build.outputs.base }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download the flip
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: flip-patch
+          path: ${{ runner.temp }}/flip
+
+      # No key in this step. Apply the patch, then refuse anything but the flip itself.
+      - name: Apply the flip and check it
+        shell: bash
+        env:
+          SLUGS: ${{ needs.build.outputs.slugs }}
+        run: |
+          g() { git -c core.hooksPath=/dev/null "$@"; }
+          g switch -c publish-flip
+          g apply --index "$RUNNER_TEMP/flip/flip.patch"
+
+          files=$(g diff --cached --name-only)
+          if [ -z "$files" ]; then
+            echo "::error::the patch changes nothing"
+            exit 1
+          fi
+          if printf '%s\n' "$files" | grep -v -E '^apps/web/content/[a-z0-9-]+/[a-z0-9-]+\.md$'; then
+            echo "::error::the patch touches files other than apps/web/content/<section>/<slug>.md (listed above)"
+            exit 1
+          fi
+          if [ -n "$(g diff --cached --summary)" ]; then
+            echo "::error::the patch creates, deletes, renames or changes the mode of a file"
+            exit 1
+          fi
+          count=$(printf '%s\n' "$files" | wc -l | tr -d ' ')
+          if [ "$(g diff --cached --numstat | grep -c -E '^1[[:space:]]+1[[:space:]]')" != "$count" ]; then
+            echo "::error::every file must change exactly one line"
+            exit 1
+          fi
+          # the content lines of the diff (hunk headers and file headers left out)
+          changes=$(g diff --cached -U0 --no-color | awk '/^diff --git/{h=1; next} /^@@/{h=0; next} !h{print}')
+          removed=$(printf '%s\n' "$changes" | grep '^-' || true)
+          added=$(printf '%s\n' "$changes" | grep '^+' || true)
+          other=$(printf '%s\n' "$changes" | grep -v -E '^[-+]' || true)
+          if [ -n "$other" ] || [ "$(printf '%s\n' "$removed" | grep -c -E '^-draft: true([[:space:]]*#.*|[[:space:]]*)$')" != "$count" ]; then
+            echo "::error::the patch changes something other than a draft: true line"
+            exit 1
+          fi
+          # each added line is the removed one with true -> false
+          if [ "$(printf '%s\n' "$removed" | sed 's/^-draft: true/+draft: false/')" != "$added" ]; then
+            echo "::error::the added lines are not the removed draft lines turned to draft: false"
+            exit 1
+          fi
+          # the commit message names exactly the staged pages
+          derived=$(printf '%s\n' "$files" | sed -E 's#^apps/web/content/([a-z0-9-]+/[a-z0-9-]+)\.md$#\1#' | paste -sd, - | sed 's/,/, /g')
+          if [ "$derived" != "$SLUGS" ]; then
+            echo "::error::the pages in the patch (${derived}) are not the pages the build job reported (${SLUGS})"
+            exit 1
+          fi
+          g -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "publish: ${derived}"
+          g log --stat -1
+
+      # Only git runs here: no node, no pnpm, no other third-party code. The key is
+      # written for each git network command and removed right after it. Never `set -x`.
+      - name: Push to main
+        shell: bash
+        env:
           KEY: ${{ secrets.PUBLISH_DEPLOY_KEY }}
         run: |
-          if git diff --quiet -- apps/web/content; then
-            echo "Nothing due: no commit."
-            exit 0
-          fi
-
-          # The deploy key. Keep it in a shell variable that is not exported, so the
-          # pnpm processes of a rebuild below never see it in their environment.
-          # (Never `set -x` in this step, and never echo the key.)
+          g() { git -c core.hooksPath=/dev/null "$@"; }
           key=$KEY
           unset KEY
-          umask 077
           keydir=$(mktemp -d)
           trap 'rm -rf "$keydir"' EXIT
           # GitHub's SSH host key, pinned (https://api.github.com/meta, "ssh_keys";
@@ -124,31 +221,26 @@ jobs:
 
           # Run one git network command with the key on disk only for its duration.
           with_key() {
-            local rc=0
+            local rc=0 old_umask
+            old_umask=$(umask)
+            umask 077
             printf '%s\n' "$key" > "$keydir/key"
             chmod 600 "$keydir/key"
-            GIT_SSH_COMMAND="ssh -i $keydir/key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$keydir/known_hosts" \
+            umask "$old_umask"
+            GIT_SSH_COMMAND="/usr/bin/ssh -i $keydir/key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$keydir/known_hosts" \
               "$@" || rc=$?
             rm -f "$keydir/key"
             return "$rc"
           }
 
-          git remote set-url origin git@github.com:n-uf/hypr-tiling.git
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- apps/web/content
-          git commit -m "publish: ${SLUGS}"
+          g remote set-url origin git@github.com:n-uf/hypr-tiling.git
 
-          # `built` is the main commit the build above ran on. Only "main moved"
-          # is worth a rebase and another try (up to 3 pushes); a refusal by the
-          # ruleset or a bad key fails at once. The flip only touches `draft:`
-          # lines, so the rebase is clean unless someone edited the same line
-          # (then it is aborted and the run fails). If the rebase pulled in other
-          # changes, rebuild before pushing again so a red result never reaches
-          # main; the key is not on disk during the rebuild.
-          built=$(git rev-parse HEAD~1)
+          # Only "main moved" is worth a rebase and another try (up to 3 pushes);
+          # a refusal by the ruleset or a bad key fails at once. The commit only
+          # touches `draft:` lines, so the rebase is clean unless someone edited the
+          # same line (then it is aborted and the run fails).
           for attempt in 1 2 3; do
-            if with_key git push origin HEAD:main 2> "$RUNNER_TEMP/push.err"; then
+            if with_key git -c core.hooksPath=/dev/null push origin HEAD:main 2> "$RUNNER_TEMP/push.err"; then
               cat "$RUNNER_TEMP/push.err"
               echo "Pushed on try ${attempt}."
               exit 0
@@ -161,18 +253,11 @@ jobs:
             if [ "${attempt}" -eq 3 ]; then
               break
             fi
-            echo "::warning::push rejected on try ${attempt} of 3: main moved during the build"
-            if ! with_key git pull --rebase --autostash origin main; then
-              git rebase --abort || true
+            echo "::warning::push rejected on try ${attempt} of 3: main moved during the run"
+            if ! with_key git -c core.hooksPath=/dev/null pull --rebase origin main; then
+              g rebase --abort || true
               echo "::error::git pull --rebase failed (a conflict, or the fetch did not work); nothing was pushed"
               exit 1
-            fi
-            now=$(git rev-parse HEAD~1)
-            if [ "${now}" != "${built}" ]; then
-              echo "main moved from ${built} to ${now}: rebuilding before the next push"
-              pnpm install --frozen-lockfile
-              pnpm build
-              built=${now}
             fi
           done
           echo "::error::push to main was rejected 3 times; run the workflow again"
