@@ -1,0 +1,146 @@
+// Flips scheduled pages live: every content page with `draft: true` whose
+// `published` date (its go-live date, UTC) is today or earlier gets `draft: false`.
+// Only that one line of the page changes. Run daily by .github/workflows/publish.yml,
+// which commits the result as `publish: <slug>[, <slug>]`.
+//
+//   node apps/web/scripts/publish-due.mjs                    flip the due pages, print what changed
+//   node apps/web/scripts/publish-due.mjs --dry-run          print the due pages, change nothing
+//   node apps/web/scripts/publish-due.mjs --today 2026-12-01 pretend it is that UTC day (tests, previews)
+//   node apps/web/scripts/publish-due.mjs --content <dir>    read pages from <dir> (default apps/web/content)
+//
+// Exit 0 when nothing is due (and prints so); exit 1 on a bad argument or a
+// draft whose `published` date it cannot read, so a typo never silently
+// keeps a page offline. Node only, no dependencies: the workflow needs no install.
+// When $GITHUB_OUTPUT is set, a real run also writes `slugs=<a, b>` there.
+
+import { appendFileSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const SLUG_FILE = /^([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function fail(message) {
+  console.error(`publish-due: ${message}`);
+  process.exit(1);
+}
+
+function isRealDate(value) {
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return DATE.test(value) && !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function parseArgs(argv) {
+  const options = {
+    dryRun: false,
+    today: new Date().toISOString().slice(0, 10),
+    content: resolve(dirname(fileURLToPath(import.meta.url)), "..", "content"),
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+    } else if (arg === "--today" || arg === "--content") {
+      const value = argv[index + 1];
+      if (value == null || value.startsWith("--")) {
+        fail(`${arg} needs a value`);
+      }
+      index += 1;
+      if (arg === "--today") {
+        if (!isRealDate(value)) {
+          fail(`--today must be a real date written YYYY-MM-DD, found "${value}"`);
+        }
+        options.today = value;
+      } else {
+        options.content = resolve(value);
+      }
+    } else {
+      fail(`unknown argument "${arg}" (use --dry-run, --today YYYY-MM-DD, --content <dir>)`);
+    }
+  }
+  return options;
+}
+
+/** Every `<section>/<slug>.md` under the content folder, sorted. */
+function pageFiles(contentRoot) {
+  const files = [];
+  let sections = [];
+  try {
+    sections = readdirSync(contentRoot).filter((name) => !name.startsWith(".")).sort();
+  } catch {
+    fail(`cannot read the content folder ${contentRoot}`);
+  }
+  for (const section of sections) {
+    const folder = join(contentRoot, section);
+    if (!statSync(folder).isDirectory()) {
+      continue;
+    }
+    for (const name of readdirSync(folder).sort()) {
+      const match = name.match(SLUG_FILE);
+      if (match != null && statSync(join(folder, name)).isFile()) {
+        files.push({ section, slug: match[1], path: join(folder, name) });
+      }
+    }
+  }
+  return files;
+}
+
+/**
+ * Look at one page. Returns null for a live page, otherwise the draft's go-live
+ * date and the text with its `draft: true` line set to `draft: false`.
+ * Works on the raw text so line endings and every other line stay untouched.
+ */
+function inspect(raw, label) {
+  const block = raw.match(/^(﻿?---[ \t]*\r?\n)([\s\S]*?)(\r?\n---[ \t]*(?:\r?\n|$))/);
+  if (block == null) {
+    return null;
+  }
+  const lines = block[2].split("\n");
+  const draftAt = lines.findIndex((line) => /^draft:[ \t]*(?:true|True|TRUE)[ \t]*(?:#.*)?\r?$/.test(line));
+  if (draftAt < 0) {
+    return null;
+  }
+  const dates = lines
+    .map((line) => line.match(/^published:[ \t]*(?:"(\d{4}-\d{2}-\d{2})"|'(\d{4}-\d{2}-\d{2})'|(\d{4}-\d{2}-\d{2}))[ \t]*(?:#.*)?\r?$/))
+    .filter((match) => match != null);
+  const published = dates.length === 1 ? (dates[0][1] ?? dates[0][2] ?? dates[0][3]) : null;
+  if (published == null || !isRealDate(published)) {
+    fail(`${label} is a draft but has no readable \`published: YYYY-MM-DD\` go-live date; fix it, nothing was changed`);
+  }
+  const flipped = [...lines];
+  flipped[draftAt] = lines[draftAt].replace(/^(draft:[ \t]*)(?:true|True|TRUE)/, "$1false");
+  return { published, text: block[1] + flipped.join("\n") + raw.slice(block[1].length + block[2].length) };
+}
+
+const options = parseArgs(process.argv.slice(2));
+const due = [];
+let scheduled = 0;
+for (const file of pageFiles(options.content)) {
+  const label = `${file.section}/${file.slug}`;
+  const draft = inspect(readFileSync(file.path, "utf8"), label);
+  if (draft == null) {
+    continue;
+  }
+  if (draft.published <= options.today) {
+    due.push({ ...file, label, published: draft.published, text: draft.text });
+  } else {
+    scheduled += 1;
+  }
+}
+
+console.log(
+  `publish-due: today ${options.today} (UTC), ${due.length} due, ${scheduled} still scheduled${options.dryRun ? " (dry run, nothing changed)" : ""}`,
+);
+for (const page of due) {
+  if (options.dryRun) {
+    console.log(`due ${page.label} (go-live ${page.published})`);
+  } else {
+    writeFileSync(page.path, page.text, "utf8");
+    console.log(`flipped ${page.label} (go-live ${page.published}): draft: true -> draft: false`);
+  }
+}
+
+if (!options.dryRun && due.length > 0 && process.env.GITHUB_OUTPUT != null && process.env.GITHUB_OUTPUT !== "") {
+  const slugs = [...new Set(due.map((page) => page.slug))].join(", ");
+  appendFileSync(process.env.GITHUB_OUTPUT, `slugs=${slugs}\n`);
+}
