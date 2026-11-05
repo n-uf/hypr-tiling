@@ -1,4 +1,5 @@
 import { CONTENT_SECTIONS, SITE_ORIGIN, sectionPath } from "./constants";
+import { isLive } from "./live";
 import { pagesOf, type ContentSite } from "./types";
 
 /**
@@ -14,7 +15,9 @@ export function buildSitemap(site: ContentSite): string {
     { loc: `${SITE_ORIGIN}/docs` },
   ];
   for (const section of CONTENT_SECTIONS) {
-    const pages = pagesOf(site, section);
+    // Live pages only: a draft shown in a preview build is noindex, and a
+    // noindex page does not belong in a sitemap.
+    const pages = pagesOf(site, section).filter(isLive);
     if (pages.length === 0) {
       continue;
     }
