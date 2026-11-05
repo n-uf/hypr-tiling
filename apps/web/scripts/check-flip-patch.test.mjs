@@ -240,3 +240,144 @@ test("refuses a patch over 64 KB even when it is a valid flip of many lines", ()
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /too large/);
 });
+
+// The patch is judged before anything is written: a refusal leaves the working tree, the index and HEAD as they were.
+const untouched = (headBefore) => {
+  assert.equal(git("status", "--porcelain"), "", "the working tree and the index are untouched");
+  assert.equal(git("rev-parse", "HEAD").trim(), headBefore);
+};
+
+test("refuses a patch that touches or creates a file outside the content pages, writing nothing", () => {
+  const head = git("rev-parse", "HEAD").trim();
+  const edits = {
+    "a flip plus an edit of another file": [
+      () => {
+        write("apps/web/content/blog/a-post.md", page("false"));
+        write("apps/web/app/page.tsx", "export default 2;\n");
+      },
+      /files other than/,
+    ],
+    "a new file outside the content pages": [() => write("apps/web/app/evil.ts", "export default 1;\n"), /files other than/],
+    "a new file in content with a name that is no slug": [
+      () => write("apps/web/content/blog/Bad_Name.md", page("false")),
+      /files other than/,
+    ],
+    "a flip plus a new page next to it": [
+      () => {
+        write("apps/web/content/blog/a-post.md", page("false"));
+        write("apps/web/content/blog/new-post.md", page("false"));
+      },
+      /creates, deletes/,
+    ],
+  };
+  for (const [name, [edit, message]] of Object.entries(edits)) {
+    const r = check(edit, "blog/a-post");
+    assert.notEqual(r.status, 0, name);
+    assert.match(r.stderr, message, name);
+    untouched(head);
+  }
+});
+
+test("refuses a mode change and a patch that does not apply, writing nothing", () => {
+  const head = git("rev-parse", "HEAD").trim();
+  const mode = check(() => {
+    write("apps/web/content/blog/a-post.md", page("false"));
+    fs.chmodSync(path.join(repo, "apps/web/content/blog/a-post.md"), 0o755);
+  }, "blog/a-post");
+  assert.notEqual(mode.status, 0);
+  assert.match(mode.stderr, /creates, deletes, renames or changes the mode/);
+  untouched(head);
+
+  // A flip patch made against a version of the page that main has since changed next to the flipped line (its author line).
+  write("apps/web/content/blog/a-post.md", page("false"));
+  const patch = path.join(repo, "..", "stale.patch");
+  fs.writeFileSync(patch, git("diff", "--binary"));
+  git("reset", "-q", "--hard");
+  write("apps/web/content/blog/a-post.md", page("true").replace("author: n-uf", "author: other"));
+  git("commit", "-q", "-am", "main moved");
+  const moved = git("rev-parse", "HEAD").trim();
+  const r = spawnSync("bash", [SCRIPT, patch, "blog/a-post"], {
+    cwd: repo,
+    encoding: "utf8",
+    env: { ...process.env, FLIP_TODAY: DUE_DAY },
+  });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /does not apply/);
+  untouched(moved);
+});
+
+// --rebased: HEAD is the flip commit after a retried push's rebase; the patch is its format-patch.
+/** Commit the flip on a branch, move main with `moveMain`, rebase the flip onto it and run the guard in --rebased mode. */
+const recheck = (moveMain, { extraOnFlip, slugs = "blog/a-post", today = DUE_DAY } = {}) => {
+  git("switch", "-q", "-c", "publish-flip");
+  write("apps/web/content/blog/a-post.md", page("false"));
+  git("commit", "-q", "-am", "publish: blog/a-post");
+  const original = path.join(repo, "..", `orig-${Math.random().toString(36).slice(2)}.patch`);
+  fs.writeFileSync(original, git("format-patch", "-1", "--stdout", "--binary", "HEAD"));
+  git("switch", "-q", "main");
+  moveMain();
+  git("commit", "-q", "-am", "main moved");
+  git("switch", "-q", "publish-flip");
+  git("rebase", "-q", "main");
+  extraOnFlip?.();
+  const rebasedPatch = path.join(repo, "..", `rebased-${Math.random().toString(36).slice(2)}.patch`);
+  fs.writeFileSync(rebasedPatch, git("format-patch", "-1", "--stdout", "--binary", "HEAD"));
+  const head = git("rev-parse", "HEAD").trim();
+  const r = spawnSync("bash", [SCRIPT, "--rebased", extraOnFlip ? original : rebasedPatch, slugs], {
+    cwd: repo,
+    encoding: "utf8",
+    env: { ...process.env, FLIP_TODAY: today },
+  });
+  return { r, head };
+};
+
+test("--rebased accepts a clean rebase and leaves the work tree, index and HEAD alone", () => {
+  const { r, head } = recheck(() => write("apps/web/app/page.tsx", "export default 3;\n"));
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), "publish: blog/a-post");
+  untouched(head);
+  assert.equal(git("rev-list", "--count", "main..HEAD").trim(), "1");
+});
+
+test("--rebased accepts a rebase over a main that edited the same page elsewhere (body text)", () => {
+  const { r, head } = recheck(() =>
+    write("apps/web/content/blog/a-post.md", page("true").replace("Body text.", "Body text, edited.")),
+  );
+  assert.equal(r.status, 0, r.stderr);
+  untouched(head);
+});
+
+test("--rebased refuses when main moved the page's published day into the future", () => {
+  const { r, head } = recheck(() =>
+    write("apps/web/content/blog/a-post.md", page("true").replace("published: 2026-11-09", "published: 2026-12-01")),
+  );
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /isn't due: published 2026-12-01/);
+  untouched(head);
+});
+
+test("--rebased refuses a rebased commit that holds more than the patch it is checked with", () => {
+  const { r, head } = recheck(() => write("apps/web/app/page.tsx", "export default 3;\n"), {
+    extraOnFlip: () => {
+      write("apps/web/app/page.tsx", "export default 4;\n");
+      git("commit", "-q", "-a", "--amend", "--no-edit");
+    },
+  });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /more than the checked patch/);
+  untouched(head);
+});
+
+test("--rebased refuses a HEAD that is not exactly one commit on its base", () => {
+  const { r } = recheck(() => write("apps/web/app/page.tsx", "export default 3;\n"), {
+    extraOnFlip: () => git("commit", "-q", "--allow-empty", "-m", "an extra commit"),
+  });
+  // the patch is the flip alone, but HEAD~1 is now the flip commit: the patch no longer applies to it
+  assert.notEqual(r.status, 0);
+});
+
+test("--rebased refuses pages other than the ones the build reported", () => {
+  const { r } = recheck(() => write("apps/web/app/page.tsx", "export default 3;\n"), { slugs: "use-cases/b-case" });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /not the pages the build job reported/);
+});
