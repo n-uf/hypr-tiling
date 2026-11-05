@@ -11,7 +11,8 @@
 // Exit 0 when nothing is due (and prints so); exit 1 on a bad argument or a
 // draft whose `published` date it cannot read, so a typo never silently
 // keeps a page offline. Node only, no dependencies: the workflow needs no install.
-// When $GITHUB_OUTPUT is set, a real run also writes `slugs=<a, b>` there.
+// When $GITHUB_OUTPUT is set, a real run also writes `slugs=<section/slug>[, ...]`
+// there; the workflow commits it as `publish: <section>/<slug>[, ...]`.
 
 import { appendFileSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -96,7 +97,16 @@ function inspect(raw, label) {
     return null;
   }
   const lines = block[2].split("\n");
-  const draftAt = lines.findIndex((line) => /^draft:[ \t]*(?:true|True|TRUE)[ \t]*(?:#.*)?\r?$/.test(line));
+  // The field must be written exactly `draft: true` or `draft: false` (a
+  // trailing comment is fine). The content validator enforces the same form;
+  // here any other spelling of the key (`draft : true`, `"draft": true`,
+  // `draft: True`) stops the run rather than being skipped as a live page.
+  const STRICT = /^draft: (true|false)[ \t]*(?:#.*)?\r?$/;
+  const odd = lines.find((line) => /^["']?draft["']?[ \t]*:/.test(line) && !STRICT.test(line));
+  if (odd != null) {
+    fail(`${label} writes the draft field as \`${odd.replace(/\r$/, "")}\`; write exactly \`draft: true\` or \`draft: false\`, nothing was changed`);
+  }
+  const draftAt = lines.findIndex((line) => /^draft: true[ \t]*(?:#.*)?\r?$/.test(line));
   if (draftAt < 0) {
     return null;
   }
@@ -108,7 +118,7 @@ function inspect(raw, label) {
     fail(`${label} is a draft but has no readable \`published: YYYY-MM-DD\` go-live date; fix it, nothing was changed`);
   }
   const flipped = [...lines];
-  flipped[draftAt] = lines[draftAt].replace(/^(draft:[ \t]*)(?:true|True|TRUE)/, "$1false");
+  flipped[draftAt] = lines[draftAt].replace(/^draft: true/, "draft: false");
   return { published, text: block[1] + flipped.join("\n") + raw.slice(block[1].length + block[2].length) };
 }
 
@@ -141,6 +151,6 @@ for (const page of due) {
 }
 
 if (!options.dryRun && due.length > 0 && process.env.GITHUB_OUTPUT != null && process.env.GITHUB_OUTPUT !== "") {
-  const slugs = [...new Set(due.map((page) => page.slug))].join(", ");
+  const slugs = [...new Set(due.map((page) => page.label))].join(", ");
   appendFileSync(process.env.GITHUB_OUTPUT, `slugs=${slugs}\n`);
 }
