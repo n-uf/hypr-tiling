@@ -3,7 +3,11 @@
 # `draft: true` -> `draft: false` lines in existing content pages. Prints the commit message
 # (`publish: blog/a, use-cases/b`) on success.
 #
-#   check-flip-patch.sh [--rebased] <patch file> "<slugs the build job reported, comma and space separated>"
+#   check-flip-patch.sh [--rebased] <patch file> <page list file>
+#
+# The page list is the build job's own list of the pages it flipped (publish-due.mjs --pages-file): one
+# `apps/web/content/<blog|use-cases>/<slug>.md` per line, sorted bytewise, unique, nothing else. The files
+# the patch changes must be exactly those pages.
 #
 # Without --rebased: the patch is applied to the index of the current checkout (the push job commits it).
 # The patch itself is judged BEFORE anything is written: its size, the files it names (only
@@ -28,13 +32,21 @@ if [ "${1:-}" = "--rebased" ]; then
   rebased=1
   shift
 fi
-patch=${1:?usage: check-flip-patch.sh [--rebased] <patch> <slugs>}
-slugs=${2:?usage: check-flip-patch.sh [--rebased] <patch> <slugs>}
+patch=${1:?usage: check-flip-patch.sh [--rebased] <patch> <page list>}
+pages=${2:?usage: check-flip-patch.sh [--rebased] <patch> <page list>}
 # Today in UTC; FLIP_TODAY only for the tests (the workflow never sets it).
 today=${FLIP_TODAY:-$(date -u +%F)}
 g() { git -c core.hooksPath=/dev/null "$@"; }
 fail() { echo "check-flip-patch: $1" >&2; exit 1; }
 page_path='^apps/web/content/(blog|use-cases)/[a-z0-9]+(-[a-z0-9]+)*\.md$'
+
+# 0. The page list: present, not empty, only page paths (a blank line is not one), sorted and unique.
+[ -f "$pages" ] && [ -s "$pages" ] || fail "the page list is missing or empty"
+if grep -v -E "$page_path" "$pages" >&2; then
+  fail "the page list holds lines that are not apps/web/content/<blog|use-cases>/<slug>.md paths (listed above)"
+fi
+LC_ALL=C sort -u -c "$pages" 2>/dev/null || fail "the page list is not sorted and unique"
+listed=$(cat "$pages")
 
 # 1. The patch itself, before any file or index is written.
 [ "$(wc -c < "$patch")" -lt 65536 ] || fail "the patch is too large to be a flip"
@@ -111,9 +123,11 @@ while IFS= read -r f; do
   [[ ! "$published" > "$today" ]] || fail "$f isn't due: published $published is after today, $today (UTC)"
 done <<<"$files"
 
-# The commit message names exactly the staged pages, and they must be the pages the build reported.
-derived=$(printf '%s\n' "$files" | sed -E 's#^apps/web/content/([a-z-]+/[a-z0-9-]+)\.md$#\1#' | paste -sd, - | sed 's/,/, /g')
-[ "$derived" = "$slugs" ] || fail "the pages in the patch ($derived) are not the pages the build job reported ($slugs)"
+# The staged pages must be exactly the pages in the build job's page list, and the commit message names them.
+slugs_of() { sed -E 's#^apps/web/content/([a-z-]+/[a-z0-9-]+)\.md$#\1#' | paste -sd, - | sed 's/,/, /g'; }
+derived=$(printf '%s\n' "$files" | LC_ALL=C sort | slugs_of)
+[ "$(printf '%s\n' "$files" | LC_ALL=C sort)" = "$listed" ] ||
+  fail "the pages in the patch ($derived) are not the pages in the page list ($(printf '%s\n' "$listed" | slugs_of))"
 
 # The rebased commit is exactly the base plus the checked patch, nothing more.
 if [ -n "$rebased" ]; then

@@ -25,6 +25,13 @@ const write = (rel, text) => {
   fs.mkdirSync(path.dirname(path.join(repo, rel)), { recursive: true });
   fs.writeFileSync(path.join(repo, rel), text);
 };
+/** The build job's page list file for "blog/a, use-cases/b" (the way publish-due.mjs --pages-file writes it). */
+const pageList = (slugs) => {
+  const file = path.join(repo, "..", `pages-${Math.random().toString(36).slice(2)}.txt`);
+  const lines = slugs.split(", ").map((slug) => `apps/web/content/${slug}.md`);
+  fs.writeFileSync(file, `${lines.join("\n")}\n`);
+  return file;
+};
 /** Make the edits, save them as the build job would (git diff --binary), restore the tree, run the check. */
 const check = (edit, slugs, today = DUE_DAY) => {
   edit();
@@ -32,7 +39,7 @@ const check = (edit, slugs, today = DUE_DAY) => {
   spawnSync("sh", ["-c", `git add -N . && git diff --binary -- . > "${patch}"`], { cwd: repo });
   git("reset", "-q", "--hard");
   git("clean", "-q", "-fd");
-  return spawnSync("bash", [SCRIPT, patch, slugs], {
+  return spawnSync("bash", [SCRIPT, patch, pageList(slugs)], {
     cwd: repo,
     encoding: "utf8",
     env: { ...process.env, FLIP_TODAY: today },
@@ -130,7 +137,49 @@ test("refuses a new file, even one that looks like a flip", () => {
 test("refuses pages other than the ones the build reported", () => {
   const r = check(() => write("apps/web/content/blog/a-post.md", page("false")), "use-cases/b-case");
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /not the pages the build job reported/);
+  assert.match(r.stderr, /not the pages in the page list/);
+});
+
+test("refuses a page list that misses a changed page", () => {
+  const fewer = check(() => {
+    write("apps/web/content/blog/a-post.md", page("false"));
+    write("apps/web/content/use-cases/b-case.md", page("false"));
+  }, "blog/a-post");
+  assert.notEqual(fewer.status, 0);
+  assert.match(fewer.stderr, /not the pages in the page list/);
+});
+
+test("refuses a page list that names one more page than the patch changes", () => {
+  const more = check(() => write("apps/web/content/blog/a-post.md", page("false")), "blog/a-post, use-cases/b-case");
+  assert.notEqual(more.status, 0);
+  assert.match(more.stderr, /not the pages in the page list/);
+});
+
+test("refuses a page list that is empty, unsorted, has a duplicate or a line that is no page path", () => {
+  const edit = () => {
+    write("apps/web/content/blog/a-post.md", page("false"));
+    write("apps/web/content/use-cases/b-case.md", page("false"));
+  };
+  const withList = (text, message) => {
+    edit();
+    const patch = path.join(repo, "..", `lists-${Math.random().toString(36).slice(2)}.patch`);
+    spawnSync("sh", ["-c", `git add -N . && git diff --binary -- . > "${patch}"`], { cwd: repo });
+    git("reset", "-q", "--hard");
+    const list = path.join(repo, "..", `bad-${Math.random().toString(36).slice(2)}.txt`);
+    fs.writeFileSync(list, text);
+    const r = spawnSync("bash", [SCRIPT, patch, list], { cwd: repo, encoding: "utf8", env: { ...process.env, FLIP_TODAY: DUE_DAY } });
+    assert.notEqual(r.status, 0, text);
+    assert.match(r.stderr, message, text);
+    untouched(git("rev-parse", "HEAD").trim());
+  };
+  const a = "apps/web/content/blog/a-post.md\n";
+  const b = "apps/web/content/use-cases/b-case.md\n";
+  withList("", /missing or empty/);
+  withList(b + a, /not sorted and unique/);
+  withList(a + a + b, /not sorted and unique/);
+  withList(`${a}\n${b}`, /not apps\/web\/content/);
+  withList(`${a}${b}apps/web/app/page.tsx\n`, /not apps\/web\/content/);
+  withList(`${a}apps/web/content/blog/../../app/page.tsx\n`, /not apps\/web\/content/);
 });
 
 test("accepts a flip on a page larger than the pipe buffer (no SIGPIPE under pipefail)", () => {
@@ -210,7 +259,7 @@ test("refuses deleting a page", () => {
   const patch = path.join(repo, "..", "delete.patch");
   spawnSync("sh", ["-c", `git diff --binary HEAD -- . > "${patch}"`], { cwd: repo });
   git("reset", "-q", "--hard");
-  const del = spawnSync("bash", [SCRIPT, patch, "blog/a-post"], { cwd: repo, encoding: "utf8", env: { ...process.env, FLIP_TODAY: DUE_DAY } });
+  const del = spawnSync("bash", [SCRIPT, patch, pageList("blog/a-post")], { cwd: repo, encoding: "utf8", env: { ...process.env, FLIP_TODAY: DUE_DAY } });
   assert.notEqual(del.status, 0);
   assert.match(del.stderr, /creates, deletes|exactly one line/);
 });
@@ -235,7 +284,7 @@ test("refuses a patch over 64 KB", () => {
 test("refuses a patch over 64 KB even when it is a valid flip of many lines", () => {
   const patch = path.join(os.tmpdir(), `big-${Math.random().toString(36).slice(2)}.patch`);
   fs.writeFileSync(patch, `${"# padding\n".repeat(7000)}`);
-  const r = spawnSync("bash", [SCRIPT, patch, "blog/a-post"], { cwd: repo, encoding: "utf8", env: { ...process.env, FLIP_TODAY: DUE_DAY } });
+  const r = spawnSync("bash", [SCRIPT, patch, pageList("blog/a-post")], { cwd: repo, encoding: "utf8", env: { ...process.env, FLIP_TODAY: DUE_DAY } });
   fs.rmSync(patch);
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /too large/);
@@ -296,7 +345,7 @@ test("refuses a mode change and a patch that does not apply, writing nothing", (
   write("apps/web/content/blog/a-post.md", page("true").replace("author: n-uf", "author: other"));
   git("commit", "-q", "-am", "main moved");
   const moved = git("rev-parse", "HEAD").trim();
-  const r = spawnSync("bash", [SCRIPT, patch, "blog/a-post"], {
+  const r = spawnSync("bash", [SCRIPT, patch, pageList("blog/a-post")], {
     cwd: repo,
     encoding: "utf8",
     env: { ...process.env, FLIP_TODAY: DUE_DAY },
@@ -323,7 +372,7 @@ const recheck = (moveMain, { extraOnFlip, slugs = "blog/a-post", today = DUE_DAY
   const rebasedPatch = path.join(repo, "..", `rebased-${Math.random().toString(36).slice(2)}.patch`);
   fs.writeFileSync(rebasedPatch, git("format-patch", "-1", "--stdout", "--binary", "HEAD"));
   const head = git("rev-parse", "HEAD").trim();
-  const r = spawnSync("bash", [SCRIPT, "--rebased", extraOnFlip ? original : rebasedPatch, slugs], {
+  const r = spawnSync("bash", [SCRIPT, "--rebased", extraOnFlip ? original : rebasedPatch, pageList(slugs)], {
     cwd: repo,
     encoding: "utf8",
     env: { ...process.env, FLIP_TODAY: today },
@@ -379,5 +428,5 @@ test("--rebased refuses a HEAD that is not exactly one commit on its base", () =
 test("--rebased refuses pages other than the ones the build reported", () => {
   const { r } = recheck(() => write("apps/web/app/page.tsx", "export default 3;\n"), { slugs: "use-cases/b-case" });
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /not the pages the build job reported/);
+  assert.match(r.stderr, /not the pages in the page list/);
 });
