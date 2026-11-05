@@ -42,11 +42,18 @@ that day with no further edit.
    on every draft whose `published` date is today or earlier, and nothing else. When
    something changed, the workflow first builds the site (install, `pnpm build`, production
    mode; a red build pushes nothing), then commits `publish: <section>/<slug>[, ...]` as
-   github-actions[bot] and pushes to `main`; Vercel builds it like any push. A rejected push
-   (main moved during the build) runs `git pull --rebase` and retries, up to 3 pushes,
-   rebuilding first when the rebase pulled in other changes. Nothing due: no build, no
-   commit, no deploy. The job only runs in `n-uf/hypr-tiling`, and its actions are pinned by
-   commit SHA. Preview what is due with
+   github-actions[bot] and pushes to `main`; Vercel builds it like any push. `main` is
+   protected by a ruleset (required checks, no force-push, no deletion) that only the
+   repo's write deploy key "publish-bot (scheduled publishing)" may bypass, so the push
+   goes over SSH with that key (secret `PUBLISH_DEPLOY_KEY` in the `publish` environment,
+   which releases it to runs on `main` only; the job has `contents: read` and stops at its
+   first step if the secret is empty), not with the job's token. A deploy-key push does
+   trigger CI, unlike a token push. A push refused because `main` moved (non-fast-forward)
+   runs `git pull --rebase` and retries, up to 3 pushes, rebuilding first when the rebase
+   pulled in other changes; any other refusal fails at once. Nothing due: no build, no
+   commit, no deploy. A red publish run is worth one rerun first: the library's
+   `workspace-tab-drop` test can flake under load in the build step. The job only runs in
+   `n-uf/hypr-tiling`, and its actions are pinned by commit SHA. Preview what is due with
    `node apps/web/scripts/publish-due.mjs --dry-run [--today YYYY-MM-DD]`.
    Write the field exactly `draft: true` or `draft: false`: the script edits that line by
    pattern, so the validator refuses other spellings (`draft : true`, `"draft": true`,
@@ -83,16 +90,19 @@ that day with no further edit.
    a bare link outside a block still fails. The build also fails for a target that is not
    a use-case or blog page of this site (no anchor, no trailing slash, not the page itself),
    a nested block, a stray `{{/live}}`, an unclosed `{{live:...}}`, a block across a
-   paragraph break, a block in a heading, list, table or quote, and a block that cuts
-   through a link or other formatting: wrap whole sentences of one paragraph. A paragraph
-   that holds only a hidden block disappears. Code spans and fences are not exempt: the
-   markers always count.
+   paragraph break, a block in a heading, list item (loose ones too), table, quote or
+   code (a code span or fence: markers inside code are refused, not skipped), a block that
+   cuts through a link or other formatting (wrap whole sentences of one paragraph), a
+   block that is the whole first paragraph (the lede must survive when it is hidden), and a
+   marker in the front matter (blocks work in the body only). A later paragraph that holds
+   only a hidden block disappears. The keyword and length hints judge the page as
+   production renders it, without hidden blocks.
 6. Undo: revert the publish commit, or set `draft: true` again (with `published` and
    `updated` set to the new go-live date).
 7. Caveats: GitHub can start a scheduled run up to about an hour late, and switches
    schedules off in a repo with no activity for 60 days (re-enable from the Actions
-   tab). The bot's push does not run the CI workflow; Vercel's build is the check, and
-   if it fails the previous version stays live. `published` ends up as the go-live
+   tab). The publish commit is built before it is pushed, and CI and Vercel build it
+   again after; if Vercel's build fails the previous version stays live. `published` ends up as the go-live
    date, so run the workflow by hand early rather than editing dates.
 
 ## Where things live
