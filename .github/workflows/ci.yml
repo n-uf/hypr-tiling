@@ -24,9 +24,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The committed content index must match apps/web/content. Before the
-      # build, whose prebuild step rewrites that file.
-      - name: Content index up to date
+      # Every content page, drafts included, passes the content checks and the
+      # client index generates (it is git-ignored: prebuild, pretypecheck and
+      # pretest write it, so a publish commit that flips `draft` leaves nothing
+      # stale). Runs first for a fast failure with the full list of problems.
+      - name: Content checks
         run: pnpm --filter hypr-tiling-web content:check
 
       # Build first so api:check has the emitted dist/index.d.ts to analyze,
