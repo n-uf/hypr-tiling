@@ -3,5 +3,6 @@
   "framework": "vite",
   "installCommand": "pnpm install",
   "buildCommand": "pnpm build",
-  "outputDirectory": "apps/web/dist"
+  "outputDirectory": "apps/web/dist",
+  "redirects": [{ "source": "/favicon.png", "destination": "/icon-192.png", "permanent": true }]
 }
