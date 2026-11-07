@@ -17,6 +17,7 @@ import {
   LICENSE_NAME,
   LICENSE_URL,
   ROADMAP_REST,
+  guideGroups,
   introLinks,
   USE_CASES,
   USECASES_LEAD,
@@ -28,8 +29,10 @@ import {
   WORKSPACES_SHIPPED,
   type DocInline,
   type DocParagraph,
+  type GuideGroup,
   type IntroLink,
 } from "./docs";
+import { useIsMobileHomeViewport } from "./mobile-home/use-viewport";
 
 // The EDITORIAL skin's content presentation — the "paper & ink" counterpart to
 // the Mosaic (`docs.tsx`) pane content. It reads the SAME shared content model
@@ -212,6 +215,58 @@ function EditorialIndex({
   );
 }
 
+// The guide links: a small-caps kicker per section over a plain list of links.
+// `compact` is the intro tile's footer on the mobile layout (small type); the
+// Use cases tile carries the full size under its index.
+function EditorialGuideLinks({
+  compact = false,
+}: {
+  compact?: boolean;
+}): React.ReactElement | null {
+  const groups: ReadonlyArray<GuideGroup> = guideGroups();
+  if (groups.length === 0) {
+    return null;
+  }
+  return (
+    <nav
+      aria-label="Guides and articles"
+      className={
+        compact
+          ? "mb-2 mt-2 flex flex-col gap-2"
+          : "flex flex-col gap-3 border-t border-[#ddd3bd] pt-4"
+      }
+    >
+      {groups.map(
+        (group: GuideGroup): React.ReactElement => (
+          <div key={group.section} className="flex flex-col gap-1.5">
+            <EditorialKicker>{group.heading}</EditorialKicker>
+            <ul
+              className={`flex flex-col gap-1 ${
+                compact
+                  ? "text-[12px] leading-[1.4]"
+                  : "text-[13px] leading-[1.6] text-[#5c5342]"
+              }`}
+            >
+              {group.links.map(
+                (link: IntroLink): React.ReactElement => (
+                  <li key={link.href}>
+                    <EditorialLink href={link.href}>{link.label}</EditorialLink>
+                  </li>
+                ),
+              )}
+            </ul>
+          </div>
+        ),
+      )}
+    </nav>
+  );
+}
+
+// Mobile layout only (see MosaicIntroGuides in docs.tsx for why).
+function EditorialIntroGuides(): React.ReactElement | null {
+  return useIsMobileHomeViewport() ? <EditorialGuideLinks compact /> : null;
+}
+
 // --- Per-pane editorial content --------------------------------------------
 
 function IntroContent(): React.ReactElement {
@@ -250,6 +305,7 @@ function IntroContent(): React.ReactElement {
             ),
           )}
         </nav>
+        <EditorialIntroGuides />
         <EditorialLink href={LICENSE_URL}>{LICENSE_NAME}</EditorialLink>
         {INTRO_LICENSE_TAIL}
         {" · "}
@@ -265,6 +321,7 @@ function UseCasesContent(): React.ReactElement {
       <EditorialHeading>Use cases</EditorialHeading>
       <EditorialLead>{USECASES_LEAD}</EditorialLead>
       <EditorialIndex items={USE_CASES} />
+      <EditorialGuideLinks />
     </div>
   );
 }

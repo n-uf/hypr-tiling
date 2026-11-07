@@ -17,6 +17,7 @@ import {
   LICENSE_NAME,
   LICENSE_URL,
   ROADMAP_REST,
+  guideGroups,
   introLinks,
   USE_CASES,
   USECASES_LEAD,
@@ -28,9 +29,11 @@ import {
   WORKSPACES_SHIPPED,
   type DocInline,
   type DocParagraph,
+  type GuideGroup,
   type IntroLink,
 } from "./docs";
 import { CANVAS_TICKS } from "./canvas-theme";
+import { useIsMobileHomeViewport } from "./mobile-home/use-viewport";
 
 // The CANVAS skin's content presentation — the ENGINEERING-INSTRUMENT readout
 // counterpart to the Mosaic (`docs.tsx`) and Editorial (`content-editorial.tsx`)
@@ -233,6 +236,56 @@ function CanvasIndex({
   );
 }
 
+// The guide links: a mono kicker per section over a plain list of links.
+// `compact` is the intro tile's footer on the mobile layout (small type); the
+// Use cases tile carries the full size under its index.
+function CanvasGuideLinks({
+  compact = false,
+}: {
+  compact?: boolean;
+}): React.ReactElement | null {
+  const groups: ReadonlyArray<GuideGroup> = guideGroups();
+  if (groups.length === 0) {
+    return null;
+  }
+  return (
+    <nav
+      aria-label="Guides and articles"
+      className={
+        compact
+          ? "mb-2 mt-2 flex flex-col gap-2"
+          : "flex flex-col gap-3 border-t border-slate-200 pt-4"
+      }
+    >
+      {groups.map(
+        (group: GuideGroup): React.ReactElement => (
+          <div key={group.section} className="flex flex-col gap-1.5">
+            <CanvasKicker>{group.heading}</CanvasKicker>
+            <ul
+              className={`flex flex-col gap-1 ${
+                compact ? "text-[12px] leading-[1.4]" : "text-[13px] leading-[1.6]"
+              }`}
+            >
+              {group.links.map(
+                (link: IntroLink): React.ReactElement => (
+                  <li key={link.href}>
+                    <CanvasLink href={link.href}>{link.label}</CanvasLink>
+                  </li>
+                ),
+              )}
+            </ul>
+          </div>
+        ),
+      )}
+    </nav>
+  );
+}
+
+// Mobile layout only (see MosaicIntroGuides in docs.tsx for why).
+function CanvasIntroGuides(): React.ReactElement | null {
+  return useIsMobileHomeViewport() ? <CanvasGuideLinks compact /> : null;
+}
+
 // --- Per-pane instrument content -------------------------------------------
 
 function IntroContent(): React.ReactElement {
@@ -272,6 +325,7 @@ function IntroContent(): React.ReactElement {
             ),
           )}
         </nav>
+        <CanvasIntroGuides />
         <CanvasLink href={LICENSE_URL}>{LICENSE_NAME}</CanvasLink>
         {INTRO_LICENSE_TAIL}
         {" · "}
@@ -287,6 +341,7 @@ function UseCasesContent(): React.ReactElement {
       <CanvasHeading>Use cases</CanvasHeading>
       <CanvasLead>{USECASES_LEAD}</CanvasLead>
       <CanvasIndex items={USE_CASES} />
+      <CanvasGuideLinks />
     </div>
   );
 }
