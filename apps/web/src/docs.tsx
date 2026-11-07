@@ -5,7 +5,6 @@ import {
   entriesOf,
   nonEmptySections,
   SECTION_LABELS,
-  SECTION_LINK_HEADINGS,
   sectionPath,
   type ContentIndexEntry,
   type ContentSection,
@@ -379,12 +378,8 @@ export function introLinks(): ReadonlyArray<IntroLink> {
   ];
 }
 
-/** One section's pages as links: a heading and a short anchor per page. */
-export interface GuideGroup {
-  readonly section: ContentSection;
-  readonly heading: string;
-  readonly links: ReadonlyArray<IntroLink>;
-}
+/** The one heading over the home's page links (use-case guides and blog articles together). */
+export const GUIDE_LINKS_HEADING: string = "Guides";
 
 /**
  * The short anchor of a page link: its title up to the first colon ("React
@@ -397,68 +392,59 @@ export function guideLabel(entry: ContentIndexEntry): string {
 }
 
 /**
- * Every page the build shows, one link each, grouped by section. The index only
- * lists live pages in a production build (drafts never reach it), so a draft
- * gets no link here.
+ * Every page the build shows, one link each: the use-case guides, then the blog
+ * articles. The index only lists live pages in a production build (drafts never
+ * reach it), so a draft gets no link here.
  */
-export function guideGroups(
+export function guideLinks(
   index: ReadonlyArray<ContentIndexEntry> = CONTENT_INDEX,
-): ReadonlyArray<GuideGroup> {
-  return nonEmptySections(index).map(
-    (section: ContentSection): GuideGroup => ({
-      section,
-      heading: SECTION_LINK_HEADINGS[section],
-      links: entriesOf(index, section).map(
+): ReadonlyArray<IntroLink> {
+  return nonEmptySections(index).flatMap(
+    (section: ContentSection): ReadonlyArray<IntroLink> =>
+      entriesOf(index, section).map(
         (entry: ContentIndexEntry): IntroLink => ({
           label: guideLabel(entry),
           href: entry.path,
         }),
       ),
-    }),
   );
 }
 
-// The Mosaic skin's guide links: a gold kicker per section over a plain list of
-// links. `compact` is the intro tile's footer (small type, no rule); the Use
-// cases tile carries the full size under its list.
+// The Mosaic skin's guide links: one gold kicker over a plain list of links.
+// `compact` is the intro tile's footer (small type, no rule); the Use cases
+// tile carries the full size under its list.
 export function MosaicGuideLinks({
   compact = false,
 }: {
   compact?: boolean;
 }): React.ReactElement | null {
-  const groups: ReadonlyArray<GuideGroup> = guideGroups();
-  if (groups.length === 0) {
+  const links: ReadonlyArray<IntroLink> = guideLinks();
+  if (links.length === 0) {
     return null;
   }
   return (
     <nav
-      aria-label="Guides and articles"
+      aria-label={GUIDE_LINKS_HEADING}
       className={
         compact
-          ? "mb-2 mt-2 flex flex-col gap-2"
-          : "flex flex-col gap-3 border-t border-white/[0.05] pt-4"
+          ? "mb-2 mt-2 flex flex-col gap-1.5"
+          : "flex flex-col gap-2 border-t border-white/[0.05] pt-4"
       }
     >
-      {groups.map(
-        (group: GuideGroup): React.ReactElement => (
-          <div key={group.section} className="flex flex-col gap-1.5">
-            <Eyebrow>{group.heading}</Eyebrow>
-            <ul
-              className={`flex flex-col gap-1 ${
-                compact ? "text-[12px] leading-[1.4]" : "text-[15px] leading-[1.45]"
-              }`}
-            >
-              {group.links.map(
-                (link: IntroLink): React.ReactElement => (
-                  <li key={link.href}>
-                    <Link href={link.href}>{link.label}</Link>
-                  </li>
-                ),
-              )}
-            </ul>
-          </div>
-        ),
-      )}
+      <Eyebrow>{GUIDE_LINKS_HEADING}</Eyebrow>
+      <ul
+        className={`flex flex-col gap-1 ${
+          compact ? "text-[12px] leading-[1.4]" : "text-[15px] leading-[1.45]"
+        }`}
+      >
+        {links.map(
+          (link: IntroLink): React.ReactElement => (
+            <li key={link.href}>
+              <Link href={link.href}>{link.label}</Link>
+            </li>
+          ),
+        )}
+      </ul>
     </nav>
   );
 }
