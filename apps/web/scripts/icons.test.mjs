@@ -50,7 +50,7 @@ test("index.html links the svg, png and ico icons and the apple touch icon, and 
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.match(html, /<link rel="icon" href="\/favicon\.svg" type="image\/svg\+xml"/);
   assert.match(html, /<link rel="icon" href="\/icon-192\.png" sizes="192x192" type="image\/png"/);
-  assert.match(html, /<link rel="icon" href="\/favicon\.ico" sizes="48x48"/);
+  assert.match(html, /<link rel="icon" href="\/favicon\.ico" sizes="16x16 32x32 48x48"/);
   assert.match(html, /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png"/);
   assert.doesNotMatch(html, /favicon\.png/);
 });
