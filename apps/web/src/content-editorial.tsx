@@ -17,7 +17,8 @@ import {
   LICENSE_NAME,
   LICENSE_URL,
   ROADMAP_REST,
-  guideGroups,
+  GUIDE_LINKS_HEADING,
+  guideLinks,
   introLinks,
   USE_CASES,
   USECASES_LEAD,
@@ -29,7 +30,6 @@ import {
   WORKSPACES_SHIPPED,
   type DocInline,
   type DocParagraph,
-  type GuideGroup,
   type IntroLink,
 } from "./docs";
 import { useIsMobileHomeViewport } from "./mobile-home/use-viewport";
@@ -215,49 +215,41 @@ function EditorialIndex({
   );
 }
 
-// The guide links: a small-caps kicker per section over a plain list of links.
-// `compact` is the intro tile's footer on the mobile layout (small type); the
-// Use cases tile carries the full size under its index.
+// The guide links: one small-caps kicker over a plain list of links. `compact`
+// is the intro tile's footer on the mobile layout (small type); the Use cases
+// tile carries the full size under its index.
 function EditorialGuideLinks({
   compact = false,
 }: {
   compact?: boolean;
 }): React.ReactElement | null {
-  const groups: ReadonlyArray<GuideGroup> = guideGroups();
-  if (groups.length === 0) {
+  const links: ReadonlyArray<IntroLink> = guideLinks();
+  if (links.length === 0) {
     return null;
   }
   return (
     <nav
-      aria-label="Guides and articles"
+      aria-label={GUIDE_LINKS_HEADING}
       className={
         compact
-          ? "mb-2 mt-2 flex flex-col gap-2"
-          : "flex flex-col gap-3 border-t border-[#ddd3bd] pt-4"
+          ? "mb-2 mt-2 flex flex-col gap-1.5"
+          : "flex flex-col gap-1.5"
       }
     >
-      {groups.map(
-        (group: GuideGroup): React.ReactElement => (
-          <div key={group.section} className="flex flex-col gap-1.5">
-            <EditorialKicker>{group.heading}</EditorialKicker>
-            <ul
-              className={`flex flex-col gap-1 ${
-                compact
-                  ? "text-[12px] leading-[1.4]"
-                  : "text-[13px] leading-[1.6] text-[#5c5342]"
-              }`}
-            >
-              {group.links.map(
-                (link: IntroLink): React.ReactElement => (
-                  <li key={link.href}>
-                    <EditorialLink href={link.href}>{link.label}</EditorialLink>
-                  </li>
-                ),
-              )}
-            </ul>
-          </div>
-        ),
-      )}
+      <EditorialKicker>{GUIDE_LINKS_HEADING}</EditorialKicker>
+      <ul
+        className={`flex flex-col gap-0.5 ${
+          compact ? "text-[12px] leading-[1.4]" : "text-[13px] leading-[1.6] text-[#5c5342]"
+        }`}
+      >
+        {links.map(
+          (link: IntroLink): React.ReactElement => (
+            <li key={link.href}>
+              <EditorialLink href={link.href}>{link.label}</EditorialLink>
+            </li>
+          ),
+        )}
+      </ul>
     </nav>
   );
 }

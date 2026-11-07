@@ -9,7 +9,7 @@ import { HOME_MAIN_KEYWORD } from "./content/constants";
 import { checkContentFiles } from "./content/site";
 import { toIndexEntry } from "./content/types";
 import type { SiteContext } from "./content/validate";
-import { DOC_PANES, guideGroups, guideLabel } from "./docs";
+import { DOC_PANES, guideLabel, guideLinks } from "./docs";
 import { PrerenderedHomeLayoutContext, type HomeLayout } from "./mobile-home/use-viewport";
 
 // The home page links every live content page one by one (the sitelinks Google
@@ -128,18 +128,12 @@ describe("a draft gets no home link", (): void => {
       CONTEXT,
     );
     expect(result.problems).toEqual([]);
-    const groups = guideGroups(result.site.pages.map(toIndexEntry));
-    expect(groups).toEqual([
-      {
-        section: "blog",
-        heading: "Blog articles",
-        links: [{ label: "Title of live-page", href: "/blog/live-page" }],
-      },
-    ]);
-    expect(JSON.stringify(groups)).not.toContain("draft-page");
+    const links = guideLinks(result.site.pages.map(toIndexEntry));
+    expect(links).toEqual([{ label: "Title of live-page", href: "/blog/live-page" }]);
+    expect(JSON.stringify(links)).not.toContain("draft-page");
   });
 
-  it("an empty index has no guide groups", (): void => {
-    expect(guideGroups([])).toEqual([]);
+  it("an empty index has no guide links", (): void => {
+    expect(guideLinks([])).toEqual([]);
   });
 });
