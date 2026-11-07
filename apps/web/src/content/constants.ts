@@ -5,6 +5,13 @@
 /** The live origin, no trailing slash. */
 export const SITE_ORIGIN: string = "https://hypr-tiling.n-uf.com";
 
+/**
+ * The site's name as Google and social previews show it: the WebSite node's
+ * `name` and every `og:site_name`. The package name (`@n-uf/hypr-tiling`) is
+ * the product's, not the site's.
+ */
+export const SITE_NAME: string = "hypr-tiling";
+
 /** The sections that hold markdown pages, in the order the nav lists them. */
 export const CONTENT_SECTIONS = ["use-cases", "blog"] as const;
 export type ContentSection = (typeof CONTENT_SECTIONS)[number];
@@ -15,6 +22,12 @@ export const SECTION_LABELS: Readonly<
 > = {
   "use-cases": { plural: "Use cases", chip: "Use case" },
   blog: { plural: "Blog", chip: "Blog" },
+};
+
+/** Headings of the link lists that name a section's pages one by one (the home's guide links, llms.txt). */
+export const SECTION_LINK_HEADINGS: Readonly<Record<ContentSection, string>> = {
+  "use-cases": "Use-case guides",
+  blog: "Blog articles",
 };
 
 /** Head and heading copy of each section's index page (checked by a unit test against the page limits). */

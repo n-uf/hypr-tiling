@@ -1,6 +1,7 @@
 import {
   SECTION_INDEX_COPY,
   SECTION_LABELS,
+  SITE_NAME,
   SITE_ORIGIN,
   sectionPath,
   type ContentSection,
@@ -26,6 +27,20 @@ export const N_UF_REF: Readonly<Record<string, string>> = { "@id": N_UF_ORG_ID }
 
 /** The id of the hypr-tiling SoftwareSourceCode node on the home page's graph. */
 export const SOFTWARE_NODE_ID: string = `${SITE_ORIGIN}/#software`;
+
+/**
+ * The WebSite node (Google's site name): defined once, on the home page's
+ * graph; the other pages point at it by id with `isPartOf`.
+ */
+export const WEBSITE_NODE_ID: string = `${SITE_ORIGIN}/#website`;
+export const WEBSITE_NODE: Readonly<Record<string, unknown>> = {
+  "@type": "WebSite",
+  "@id": WEBSITE_NODE_ID,
+  name: SITE_NAME,
+  url: `${SITE_ORIGIN}/`,
+  publisher: N_UF_REF,
+};
+export const WEBSITE_REF: Readonly<Record<string, string>> = { "@id": WEBSITE_NODE_ID };
 
 const TWITTER_HANDLE = "@n_uf";
 
@@ -71,7 +86,7 @@ function renderHead(spec: HeadSpec): string {
     `<meta property="og:image:width" content="${OG_WIDTH}" />`,
     `<meta property="og:image:height" content="${OG_HEIGHT}" />`,
     `<meta property="og:image:alt" content="${escapeHtml(spec.imageAlt)}" />`,
-    `<meta property="og:site_name" content="@n-uf/hypr-tiling" />`,
+    `<meta property="og:site_name" content="${escapeHtml(SITE_NAME)}" />`,
     ...(spec.extra ?? []),
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:title" content="${title}" />`,
@@ -117,6 +132,7 @@ export function renderContentHead(page: ContentPage): string {
     publisher: N_UF_REF,
     image: imageUrl,
     inLanguage: "en",
+    isPartOf: WEBSITE_REF,
     url: page.url,
     mainEntityOfPage: page.url,
     about,
@@ -188,6 +204,7 @@ export function renderSectionHead(section: ContentSection, site: ContentSite): s
         description: copy.description,
         url,
         inLanguage: "en",
+        isPartOf: WEBSITE_REF,
         publisher: N_UF_REF,
         image: `${SITE_ORIGIN}${sectionOgPath(section)}`,
         breadcrumb: { "@id": `${url}#breadcrumb` },
