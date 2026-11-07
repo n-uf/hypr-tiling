@@ -169,4 +169,14 @@ that day with no further edit.
 - The page bodies never reach the client bundle: only the home page and `/docs` read
   `src/content-index.generated.ts` (section, slug, path, title, h1, description), for
   the pages the build shows.
+- The home links every live page by name, one link each under a "Guides" heading (the
+  Use cases tile on desktop, the intro tile's footer on the mobile layout, in all three
+  skins), plus Docs, Use cases and Blog in the intro tile's row. The links come from
+  `src/content-index.generated.ts` (`guideLinks()` in `src/docs.tsx`), so a draft never
+  gets one; the anchor is the page title up to its colon. A new page needs no home edit.
+- The site icons (`public/favicon.svg`, `icon-192.png`, `apple-touch-icon.png`,
+  `favicon.ico`) are committed. After changing `public/favicon.svg`, run
+  `pnpm --filter hypr-tiling-web icons` (needs Chrome) to re-render the other three from it.
+- `src/home-head.ts`: the home page's and `/docs`' head tags and JSON-LD graph (the
+  WebSite node with the site name lives here and in `src/content-head.ts`).
 - `apps/web/scripts/publish-due.mjs` and `.github/workflows/publish.yml`: the daily flip.
