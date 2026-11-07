@@ -2,11 +2,15 @@ import * as React from "react";
 import type { TilingTileAccent } from "@n-uf/hypr-tiling";
 import { CONTENT_INDEX } from "./content-index.generated";
 import {
+  entriesOf,
   nonEmptySections,
   SECTION_LABELS,
+  SECTION_LINK_HEADINGS,
   sectionPath,
+  type ContentIndexEntry,
   type ContentSection,
 } from "./content/constants";
+import { useIsMobileHomeViewport } from "./mobile-home/use-viewport";
 
 // Single source of truth for the homepage's documentation surface. The same
 // section content is rendered (a) inside the tiling panes for the interactive
@@ -375,6 +379,98 @@ export function introLinks(): ReadonlyArray<IntroLink> {
   ];
 }
 
+/** One section's pages as links: a heading and a short anchor per page. */
+export interface GuideGroup {
+  readonly section: ContentSection;
+  readonly heading: string;
+  readonly links: ReadonlyArray<IntroLink>;
+}
+
+/**
+ * The short anchor of a page link: its title up to the first colon ("React
+ * dockable panels: drag, tab and undock panes" reads "React dockable panels"),
+ * or the whole title when it has none.
+ */
+export function guideLabel(entry: ContentIndexEntry): string {
+  const head: string = entry.title.split(":")[0].trim();
+  return head === "" ? entry.title : head;
+}
+
+/**
+ * Every page the build shows, one link each, grouped by section. The index only
+ * lists live pages in a production build (drafts never reach it), so a draft
+ * gets no link here.
+ */
+export function guideGroups(
+  index: ReadonlyArray<ContentIndexEntry> = CONTENT_INDEX,
+): ReadonlyArray<GuideGroup> {
+  return nonEmptySections(index).map(
+    (section: ContentSection): GuideGroup => ({
+      section,
+      heading: SECTION_LINK_HEADINGS[section],
+      links: entriesOf(index, section).map(
+        (entry: ContentIndexEntry): IntroLink => ({
+          label: guideLabel(entry),
+          href: entry.path,
+        }),
+      ),
+    }),
+  );
+}
+
+// The Mosaic skin's guide links: a gold kicker per section over a plain list of
+// links. `compact` is the intro tile's footer (small type, no rule); the Use
+// cases tile carries the full size under its list.
+export function MosaicGuideLinks({
+  compact = false,
+}: {
+  compact?: boolean;
+}): React.ReactElement | null {
+  const groups: ReadonlyArray<GuideGroup> = guideGroups();
+  if (groups.length === 0) {
+    return null;
+  }
+  return (
+    <nav
+      aria-label="Guides and articles"
+      className={
+        compact
+          ? "mb-2 mt-2 flex flex-col gap-2"
+          : "flex flex-col gap-3 border-t border-white/[0.05] pt-4"
+      }
+    >
+      {groups.map(
+        (group: GuideGroup): React.ReactElement => (
+          <div key={group.section} className="flex flex-col gap-1.5">
+            <Eyebrow>{group.heading}</Eyebrow>
+            <ul
+              className={`flex flex-col gap-1 ${
+                compact ? "text-[12px] leading-[1.4]" : "text-[15px] leading-[1.45]"
+              }`}
+            >
+              {group.links.map(
+                (link: IntroLink): React.ReactElement => (
+                  <li key={link.href}>
+                    <Link href={link.href}>{link.label}</Link>
+                  </li>
+                ),
+              )}
+            </ul>
+          </div>
+        ),
+      )}
+    </nav>
+  );
+}
+
+// The intro tile's footer shows the guide links on the mobile layout only: the
+// phone home carries just this tile (the Use cases tile sits behind its rail
+// chip), and the desktop intro tile has no room for them. Reads the prerender
+// context, so the mobile copy has them in the HTML and the desktop copy does not.
+function MosaicIntroGuides(): React.ReactElement | null {
+  return useIsMobileHomeViewport() ? <MosaicGuideLinks compact /> : null;
+}
+
 export const CONTRIBUTING_EYEBROW: string = "contributing";
 export const INTRO_CONTRIBUTING_PARAGRAPH: DocParagraph = [
   "hypr-tiling is built in the open and welcomes collaboration — framework adapters, rendering backends, bug reports, and ideas from the roadmap. To get involved, reach out at ",
@@ -562,6 +658,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
         </p>
         <footer className="mt-auto border-t border-white/[0.08] pt-2 text-[11px] leading-[1.4] text-stone-500">
           <MosaicIntroLinks />
+          <MosaicIntroGuides />
           <Link href={LICENSE_URL}>{LICENSE_NAME}</Link>
           {INTRO_LICENSE_TAIL}
           {" · "}
@@ -603,6 +700,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
             ),
           )}
         </ul>
+        <MosaicGuideLinks />
       </div>
     ),
   },
