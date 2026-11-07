@@ -10,7 +10,6 @@ import { dirname, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const distDir = resolve(here, "dist");
-const publicDir = resolve(here, "public");
 const workspaceAssetsDir = resolve(here, "..", "..", "assets");
 const serverEntry = resolve(here, "dist-server/entry-server.mjs");
 const templatePath = resolve(distDir, "index.html");
@@ -100,15 +99,14 @@ if (!existsSync(socialImageSource)) {
 
 copyFileSync(socialImageSource, socialImageDestination);
 
-const faviconSourceCandidates = [
-  resolve(publicDir, "favicon.png"),
-  resolve(workspaceAssetsDir, "hypr-tiling-logo.png"),
-];
-const faviconSource = faviconSourceCandidates.find((path) => existsSync(path));
-if (faviconSource == null) {
-  throw new Error("prerender: no favicon source found in public/ or assets/");
+// The site icons (favicon.svg, icon-192.png, apple-touch-icon.png, favicon.ico)
+// live in public/ and vite copies them into dist; a missing one fails the build
+// here instead of shipping a 404 for the icon Google reads.
+for (const icon of ["favicon.svg", "icon-192.png", "apple-touch-icon.png", "favicon.ico"]) {
+  if (!existsSync(resolve(distDir, icon))) {
+    throw new Error(`prerender: dist/${icon} is missing (it belongs in apps/web/public/)`);
+  }
 }
-copyFileSync(faviconSource, resolve(distDir, "favicon.png"));
 
 const docsDir = resolve(distDir, "docs");
 mkdirSync(docsDir, { recursive: true });
@@ -156,5 +154,5 @@ for (const page of site.pages) {
 }
 
 console.log(
-  `prerender: wrote dist/index.html (${finalHtml.length} bytes), dist/docs/index.html (${docsFinalHtml.length} bytes), ${site.pages.length} content page(s) (${site.hidden.length} draft(s) left out) and ${sections.length} section index(es), llms.txt, robots.txt, sitemap.xml, social image, and favicon`,
+  `prerender: wrote dist/index.html (${finalHtml.length} bytes), dist/docs/index.html (${docsFinalHtml.length} bytes), ${site.pages.length} content page(s) (${site.hidden.length} draft(s) left out) and ${sections.length} section index(es), llms.txt, robots.txt, sitemap.xml, social image, and the site icons`,
 );
