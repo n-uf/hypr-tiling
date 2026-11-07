@@ -15,17 +15,9 @@ import {
 } from "./docs";
 import { CHANGELOG_MARKDOWN } from "./changelog";
 import { API_REFERENCE_SECTIONS } from "./api-reference/generated";
-import { CONTENT_SECTIONS, type ContentSection } from "./content/constants";
+import { CONTENT_SECTIONS, SECTION_LINK_HEADINGS } from "./content/constants";
 import { escapeLinkText } from "./content/format";
 import { pagesOf, type ContentSite } from "./content/types";
-
-// Headings for the content sections' link lists. They differ from the home pane
-// headings above ("## use cases" is the home's use-cases pane), so the file
-// never has two sections with the same name.
-const LLMS_SECTION_HEADINGS: Readonly<Record<ContentSection, string>> = {
-  "use-cases": "Use-case guides",
-  blog: "Blog articles",
-};
 
 // Plain-text content mirror for /llms.txt (Markdown, LLM-fetch friendly). Lives
 // in its own module — imported only by the SSR prerender entry — so the large
@@ -73,7 +65,7 @@ export function buildLlmsTxt(site: ContentSite): string {
     }
     // Distinct from the home pane headings above ("## use cases" is the home's
     // use-cases pane), so the file never has two sections with one name.
-    lines.push(`## ${LLMS_SECTION_HEADINGS[section]}`);
+    lines.push(`## ${SECTION_LINK_HEADINGS[section]}`);
     lines.push("");
     for (const page of pages) {
       lines.push(`- [${escapeLinkText(page.title)}](${page.url}): ${page.description}`);
