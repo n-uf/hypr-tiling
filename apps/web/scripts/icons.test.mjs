@@ -54,3 +54,8 @@ test("index.html links the svg, png and ico icons and the apple touch icon, and 
   assert.match(html, /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png"/);
   assert.doesNotMatch(html, /favicon\.png/);
 });
+
+test("vercel.json permanently redirects the old /favicon.png to /icon-192.png", () => {
+  const config = JSON.parse(readFileSync(new URL("../../../vercel.json", import.meta.url), "utf8"));
+  assert.deepEqual(config.redirects, [{ source: "/favicon.png", destination: "/icon-192.png", permanent: true }]);
+});
