@@ -24,8 +24,21 @@ test("favicon.ico holds 16, 32 and 48 pixel PNGs", () => {
   );
 });
 
-test("favicon.svg is square (100x100 viewBox)", () => {
-  assert.match(publicFile("favicon.svg").toString("utf8"), /viewBox="0 0 100 100"/);
+// PNG colour type byte of the IHDR chunk: 6 is RGBA (has an alpha channel), 2 is RGB (opaque).
+const colorType = (png) => png[25];
+
+test("the transparent icons keep an alpha channel; the apple icon is an opaque square", () => {
+  assert.equal(colorType(publicFile("icon-192.png")), 6);
+  for (const image of readIco(publicFile("favicon.ico"))) {
+    assert.equal(colorType(image.png), 6);
+  }
+  assert.equal(colorType(publicFile("apple-touch-icon.png")), 2);
+});
+
+test("favicon.svg is the mark on its own: a square viewBox and no background rect", () => {
+  const svg = publicFile("favicon.svg").toString("utf8");
+  assert.match(svg, /viewBox="3 3 94 94"/);
+  assert.doesNotMatch(svg, /<rect width="100" height="100"/);
 });
 
 test("buildIco rejects non-square, oversized and non-PNG input", () => {
