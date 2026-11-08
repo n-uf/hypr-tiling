@@ -1,0 +1,285 @@
+name: Release
+
+# Calendar versions (YY.M.R, _agent/versioning-policy.md). A release PR bumps
+# packages/hypr-tiling/package.json with `pnpm version:bump` and adds a
+# CHANGELOG entry; merging it to main publishes that version to npmjs (public,
+# with provenance) and to GitHub Packages, tags it v<version> and notifies
+# finfactory/pdf-n-uf. Merges without a bump publish nothing.
+#
+# When it runs:
+# - a push to main that changes packages/hypr-tiling/package.json. Main also
+#   gets a commit for every scheduled page publish (publish.yml), so the path
+#   filter keeps those from starting a release run.
+# - "Run workflow" on main (workflow_dispatch), to retry a release by hand.
+# - a pull request that touches the release machinery: a dry run, the build
+#   job only (check, build, pack), nothing published.
+#
+# Each registry is judged on its own: a run publishes the version only where it
+# is missing and not older than that registry's `latest` (publishing an older
+# version would move `latest` back to it). So re-runs are safe, and a manifest
+# change without a bump (a dependency, a script) publishes nothing.
+#
+# Two jobs, so npm's publish identity never meets third-party code:
+#   build    no secrets, read-only token. Installs, checks, builds and packs
+#            the package with pnpm, then uploads the tarball as the artifact
+#            `package` (kept 1 day). Its checksum is a job output, computed
+#            before the upload: a later step can replace the artifact, but it
+#            can't change an earlier step's output.
+#   publish  main only, after build passed. The only job with id-token: write,
+#            packages: write and contents: write, and it runs no install, no
+#            build and no package scripts: first-party actions, jq, git and
+#            npm. It checks the downloaded tarball against build's checksum and
+#            publishes that same file to both registries: npmjs first, so a
+#            refusal there (the trusted publisher missing, an OIDC hiccup)
+#            leaves nothing published and a re-run is clean; then GitHub
+#            Packages, the tag and the pdf-n-uf notice.
+# Both jobs check out the commit the run started on (github.sha), the commit
+# the npm provenance names.
+#
+# Credentials:
+# - npmjs: trusted publishing, no stored token. npm swaps the publish job's
+#   GitHub OIDC token for a one-time publish token, as set up on npmjs.com for
+#   @n-uf/hypr-tiling (Trusted Publisher: GitHub Actions, n-uf/hypr-tiling,
+#   release.yml; `npm trust github`). It needs npm 11.5.1+ (Node 22 ships npm
+#   10, so the job installs npm 11). Provenance comes with it.
+# - GITHUB_TOKEN: publishes to GitHub Packages and pushes the tag.
+# - DISPATCH_TOKEN (optional): sends pdf-n-uf the lib-released notice.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - packages/hypr-tiling/package.json
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - packages/hypr-tiling/package.json
+      - packages/hypr-tiling/scripts/calendar-version-bump.mjs
+  workflow_dispatch:
+
+concurrency:
+  # Dry runs (pull requests) never queue behind or cancel a release.
+  group: ${{ github.event_name == 'pull_request' && format('release-dry-run-{0}', github.ref) || 'release' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Check, build and pack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      sum: ${{ steps.pack.outputs.sum }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The package gates from ci.yml: build, the API Extractor reports, the
+      # layering guardrails, the built-artifact tests, types and the suite.
+      - name: Check and build the package
+        run: |
+          pnpm --filter @n-uf/hypr-tiling build
+          pnpm --filter @n-uf/hypr-tiling api:check
+          pnpm --filter @n-uf/hypr-tiling check:guardrails
+          pnpm --filter @n-uf/hypr-tiling test:dist
+          pnpm --filter @n-uf/hypr-tiling typecheck
+          pnpm --filter @n-uf/hypr-tiling test
+
+      - name: Pack
+        id: pack
+        run: |
+          version=$(jq -r .version packages/hypr-tiling/package.json)
+          dest="$RUNNER_TEMP/package"
+          mkdir -p "$dest"
+          pnpm --filter @n-uf/hypr-tiling pack --pack-destination "$dest"
+          cd "$dest"
+          ls
+          test "$(ls)" = "n-uf-hypr-tiling-$version.tgz"
+          tar -tzf "n-uf-hypr-tiling-$version.tgz"
+          echo "sum=$(sha256sum ./*.tgz | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: package
+          path: ${{ runner.temp }}/package/*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish the version where it's new
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the v<version> tag
+      packages: write # GitHub Packages
+      id-token: write # npm trusted publishing (OIDC) and provenance
+    env:
+      PKG: "@n-uf/hypr-tiling"
+      NPMJS: https://registry.npmjs.org
+      GHPKG: https://npm.pkg.github.com
+      HAS_DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: package
+          path: ${{ runner.temp }}/package
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: "@n-uf"
+
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships npm 10
+      - name: npm 11
+        run: |
+          npm install -g npm@11.20.0
+          npm --version
+
+      - name: Version
+        id: version
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILD_SUM: ${{ needs.build.outputs.sum }}
+        run: |
+          version=$(jq -r .version packages/hypr-tiling/package.json)
+          # Here-strings, not `echo | grep -q`: with pipefail, grep quitting
+          # early can fail the pipeline through echo's SIGPIPE.
+          if ! grep -qE '^[0-9]{2}\.([1-9]|1[0-2])\.[0-9]+$' <<< "$version"; then
+            echo "::error::$version is not a calendar version (YY.M.R)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          # The tarball is the one build packed, for this version
+          dir="$RUNNER_TEMP/package"
+          tarball="$dir/n-uf-hypr-tiling-$version.tgz"
+          sum=$(cd "$dir" && sha256sum ./*.tgz | sha256sum | cut -d' ' -f1)
+          if [ "$sum" != "$BUILD_SUM" ]; then
+            echo "::error::The package artifact doesn't match the build job's checksum."
+            exit 1
+          fi
+          packed=$(tar -xOzf "$tarball" package/package.json | jq -r '.name + "@" + .version')
+          if [ "$packed" != "$PKG@$version" ]; then
+            echo "::error::The tarball holds $packed, not $PKG@$version."
+            exit 1
+          fi
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+
+          # wanted <registry>: sets want=true when the version isn't on the
+          # registry yet and isn't older than the registry's latest
+          wanted() {
+            local out latest
+            want=false
+            if out=$(npm view "$PKG@$version" version --registry "$1" --@n-uf:registry="$1" 2>&1); then
+              if [ "$out" = "$version" ]; then
+                echo "::notice::$PKG@$version is already on $1."
+                return
+              fi
+            elif ! grep -qE 'E404|No match found|is not in this registry' <<< "$out"; then
+              echo "::error::Could not check $1: $out"
+              exit 1
+            fi
+            if latest=$(npm view "$PKG" dist-tags.latest --registry "$1" --@n-uf:registry="$1" 2>&1); then
+              if [ "$(printf '%s\n' "$latest" "$version" | sort -V | tail -n 1)" != "$version" ]; then
+                echo "::warning::$PKG@$version is older than $latest, the latest on $1, so it isn't published there."
+                return
+              fi
+            elif ! grep -qE 'E404|is not in this registry' <<< "$latest"; then
+              echo "::error::Could not check $1: $latest"
+              exit 1
+            fi
+            want=true
+          }
+          wanted "$NPMJS"
+          npm=$want
+          wanted "$GHPKG"
+          github=$want
+          echo "npm=$npm" >> "$GITHUB_OUTPUT"
+          echo "github=$github" >> "$GITHUB_OUTPUT"
+
+          # The tag and the notice belong to a run that publishes: versions
+          # published by hand before this workflow have no tag, and a run that
+          # publishes nothing must not tag one of them at this commit.
+          if [ "$npm" = true ] || [ "$github" = true ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Nothing to publish for $PKG@$version."
+          fi
+          if [ -n "$(git ls-remote --tags origin "refs/tags/v$version")" ]; then
+            echo "tagged=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tagged=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # First, so a refusal here leaves nothing published (see the header).
+      # No token: npm uses this job's OIDC identity; --userconfig /dev/null
+      # keeps setup-node's GitHub Packages config (and its token variable) out.
+      - name: Publish to npmjs (trusted publishing)
+        if: steps.version.outputs.npm == 'true'
+        env:
+          TARBALL: ${{ steps.version.outputs.tarball }}
+          # npm logs a failed OIDC exchange only at verbose level; without it a
+          # refused trusted publish shows a bare ENEEDAUTH
+          NPM_CONFIG_LOGLEVEL: verbose
+        run: |
+          npm publish "$TARBALL" --userconfig /dev/null --access public --provenance \
+            --registry "$NPMJS" --@n-uf:registry="$NPMJS"
+
+      - name: Publish to GitHub Packages
+        if: steps.version.outputs.github == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARBALL: ${{ steps.version.outputs.tarball }}
+          # npm 11 tries OIDC on every publish; GitHub Packages uses the token
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+        run: |
+          npm publish "$TARBALL" --registry "$GHPKG" --@n-uf:registry="$GHPKG"
+
+      # A run whose publishes passed but whose tag push failed publishes
+      # nothing on a re-run, so it won't tag either: tag that commit by hand.
+      - name: Tag
+        if: steps.version.outputs.release == 'true' && steps.version.outputs.tagged == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git tag "v$VERSION"
+          if ! git push origin "v$VERSION"; then
+            echo "::error::Tag by hand: git tag v$VERSION $GITHUB_SHA && git push origin v$VERSION"
+            exit 1
+          fi
+
+      # Once per version: when this run creates its tag. A failed notice
+      # doesn't fail the release (send it by hand if it fails).
+      - name: Notify pdf-n-uf (lib-released)
+        if: steps.version.outputs.release == 'true' && steps.version.outputs.tagged == 'false'
+        continue-on-error: true
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+        run: |
+          if [ "$HAS_DISPATCH_TOKEN" != "true" ]; then
+            echo "::notice::DISPATCH_TOKEN secret is not set; skipping the lib-released dispatch."
+            exit 0
+          fi
+          jq -n -c --arg v "$VERSION" --arg sha "$GITHUB_SHA" \
+            '{event_type: "lib-released", client_payload: {source: "n-uf/hypr-tiling", sha: $sha, packages: [{name: "@n-uf/hypr-tiling", version: $v}]}}' \
+            | gh api repos/finfactory/pdf-n-uf/dispatches --method POST --input -
