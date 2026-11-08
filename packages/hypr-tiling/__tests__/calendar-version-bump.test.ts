@@ -1,6 +1,6 @@
 /**
  * `scripts/calendar-version-bump.mjs` — the `YY.M.R` computation behind
- * `pnpm release:next-version` / `pnpm release`. `M` must be the calendar month
+ * `pnpm release:next-version` / `pnpm version:bump`. `M` must be the calendar month
  * of the release date, and burned (unpublished, npm-reserved) numbers must be
  * skipped — `26.10.0` was mis-published for a September release, unpublished,
  * and can never be reused (`_agent/versioning-policy.md`).

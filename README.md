@@ -194,16 +194,23 @@ The package uses calendar-aligned versioning, `YY.M.R`:
 Semver numeric identifiers cannot use leading zeroes (`26.06.1` is invalid), so
 this workspace uses `YY.M.R` (e.g. `26.6.1`), not `YY.MM.R`.
 
-Release commands (package `packages/hypr-tiling`):
+Releasing runs in CI, not from a laptop:
 
-- `npm run release` — auto-aligns `YY.M` to the current calendar year/month
-  (bumps patch within the same month; resets to `.0` when the month changes),
-  then publishes with `npm publish --access public`
-- `npm run release --nobump=true` — publishes without changing the version
-- `npm run release:next-version` — prints the computed next version without
-  publishing
+- `pnpm release:next-version` prints the next version; `pnpm version:bump`
+  writes it to `packages/hypr-tiling/package.json` (it aligns `YY.M` to the
+  current calendar month, bumps `R` within the month and resets it to `0` when
+  the month changes). Prefer them over a hand-typed version.
+- A release PR bumps the version and adds an entry to
+  `packages/hypr-tiling/CHANGELOG.md`. Merging it to `main` publishes that
+  version to npmjs (public, with provenance) and to GitHub Packages, and tags
+  it `v<version>` (`.github/workflows/release.yml`); merges without a bump
+  publish nothing. npmjs uses trusted publishing (no stored token): the
+  package's Trusted Publisher on npmjs.com names this repo and `release.yml`.
+- A release that failed part-way: "Run workflow" on `main` (Actions →
+  Release) publishes the version wherever it is still missing.
 
-See `_agent/versioning-policy.md` for deeper guidance.
+See `_agent/versioning-policy.md` for deeper guidance, including the burned
+version numbers that must never be reused.
 
 ## License policy
 
