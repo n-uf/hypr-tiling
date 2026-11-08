@@ -4,35 +4,42 @@ name: Release
 # packages/hypr-tiling/package.json with `pnpm version:bump` and adds a
 # CHANGELOG entry; merging it to main publishes that version to npmjs (public,
 # with provenance) and to GitHub Packages, tags it v<version> and notifies
-# finfactory/pdf-n-uf. Merges without a bump publish nothing.
+# finfactory/pdf-n-uf.
 #
 # When it runs:
 # - a push to main that changes packages/hypr-tiling/package.json. Main also
 #   gets a commit for every scheduled page publish (publish.yml), so the path
 #   filter keeps those from starting a release run.
-# - "Run workflow" on main (workflow_dispatch), to retry a release by hand.
+# - "Run workflow" on main (workflow_dispatch). To retry a failed release,
+#   prefer "Re-run all jobs" on its run: that rebuilds the bump commit, where
+#   "Run workflow" builds main's head (often a later publish-bot commit).
 # - a pull request that touches the release machinery: a dry run, the build
 #   job only (check, build, pack), nothing published.
 #
-# Each registry is judged on its own: a run publishes the version only where it
-# is missing and not older than that registry's `latest` (publishing an older
-# version would move `latest` back to it). So re-runs are safe, and a manifest
-# change without a bump (a dependency, a script) publishes nothing.
+# What a run publishes is the manifest's version, wherever it is new: on each
+# registry only if it's missing there and not older than that registry's
+# `latest` (an older version would move `latest` back to it). So re-runs are
+# safe, and a manifest change that leaves the version at a published one (a
+# dependency, a script) publishes nothing.
 #
 # Two jobs, so npm's publish identity never meets third-party code:
-#   build    no secrets, read-only token. Installs, checks, builds and packs
-#            the package with pnpm, then uploads the tarball as the artifact
-#            `package` (kept 1 day). Its checksum is a job output, computed
-#            before the upload: a later step can replace the artifact, but it
-#            can't change an earlier step's output.
-#   publish  main only, after build passed. The only job with id-token: write,
-#            packages: write and contents: write, and it runs no install, no
-#            build and no package scripts: first-party actions, jq, git and
-#            npm. It checks the downloaded tarball against build's checksum and
-#            publishes that same file to both registries: npmjs first, so a
-#            refusal there (the trusted publisher missing, an OIDC hiccup)
-#            leaves nothing published and a re-run is clean; then GitHub
-#            Packages, the tag and the pdf-n-uf notice.
+#   build    no secrets, read-only token, no dependency cache (main's cache is
+#            written by every CI run). Installs, builds (package and web, the
+#            guardrails check the prerender), checks and packs with pnpm, then
+#            uploads the tarball as the artifact `package` (kept 1 day). Its
+#            checksum is a job output, computed before the upload: a later
+#            step (an action's post step, a leftover process) can replace the
+#            artifact, but it can't change an earlier step's output. It does
+#            not vouch for the build itself: code that runs during the install
+#            or build shapes the tarball either way.
+#   publish  main only, after build passed, in the `npm` environment. The only
+#            job with id-token: write, packages: write and contents: write, and
+#            it runs no install, no build and no package scripts: first-party
+#            actions, jq, git and npm. It checks the downloaded tarball against
+#            build's checksum and publishes that same file to both registries:
+#            npmjs first, so a refusal there (the trusted publisher missing, an
+#            OIDC hiccup) leaves nothing published and a re-run is clean; then
+#            GitHub Packages, the tag and the pdf-n-uf notice.
 # Both jobs check out the commit the run started on (github.sha), the commit
 # the npm provenance names.
 #
@@ -40,8 +47,11 @@ name: Release
 # - npmjs: trusted publishing, no stored token. npm swaps the publish job's
 #   GitHub OIDC token for a one-time publish token, as set up on npmjs.com for
 #   @n-uf/hypr-tiling (Trusted Publisher: GitHub Actions, n-uf/hypr-tiling,
-#   release.yml; `npm trust github`). It needs npm 11.5.1+ (Node 22 ships npm
-#   10, so the job installs npm 11). Provenance comes with it.
+#   release.yml, environment `npm`; `npm trust github`). The `npm` environment
+#   lets only main deploy (a deployment branch rule), so an edited copy of this
+#   file on another branch, a pull request run or an older workflow can't get
+#   an OIDC token npm accepts. It needs npm 11.5.1+ (Node 22 ships npm 10, so
+#   the job installs npm 11). Provenance comes with it.
 # - GITHUB_TOKEN: publishes to GitHub Packages and pushes the tag.
 # - DISPATCH_TOKEN (optional): sends pdf-n-uf the lib-released notice.
 
@@ -80,24 +90,25 @@ jobs:
 
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
+      # No `cache: pnpm`: the release builds from a fresh store (see the header)
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-          cache: pnpm
 
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # The package gates from ci.yml: build, the API Extractor reports, the
-      # layering guardrails, the built-artifact tests, types and the suite.
-      - name: Check and build the package
+      # The gates from ci.yml: the build (packages and web, with the prerender
+      # the guardrails check), the API Extractor reports, the layering
+      # guardrails, the built-artifact tests, types and the suite.
+      - name: Build and check
         run: |
-          pnpm --filter @n-uf/hypr-tiling build
+          pnpm build
           pnpm --filter @n-uf/hypr-tiling api:check
           pnpm --filter @n-uf/hypr-tiling check:guardrails
           pnpm --filter @n-uf/hypr-tiling test:dist
-          pnpm --filter @n-uf/hypr-tiling typecheck
-          pnpm --filter @n-uf/hypr-tiling test
+          pnpm typecheck
+          pnpm test
 
       - name: Pack
         id: pack
@@ -123,6 +134,8 @@ jobs:
     name: Publish the version where it's new
     needs: build
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    # The npm trusted publisher names this environment; only main may use it
+    environment: npm
     runs-on: ubuntu-latest
     permissions:
       contents: write # the v<version> tag
@@ -184,26 +197,38 @@ jobs:
           echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
 
           # wanted <registry>: sets want=true when the version isn't on the
-          # registry yet and isn't older than the registry's latest
+          # registry yet and isn't older than the registry's latest. Answers
+          # come from stdout only: npm warns on stderr (setup-node's npmrc has
+          # `always-auth`, which npm 11 calls unknown), and errors are read
+          # from the stderr file only when npm failed.
+          err="$RUNNER_TEMP/npm-view.err"
           wanted() {
             local out latest
             want=false
-            if out=$(npm view "$PKG@$version" version --registry "$1" --@n-uf:registry="$1" 2>&1); then
+            if out=$(npm view "$PKG@$version" version --registry "$1" --@n-uf:registry="$1" 2>"$err"); then
               if [ "$out" = "$version" ]; then
                 echo "::notice::$PKG@$version is already on $1."
                 return
               fi
-            elif ! grep -qE 'E404|No match found|is not in this registry' <<< "$out"; then
-              echo "::error::Could not check $1: $out"
+              if [ -n "$out" ]; then
+                echo "::error::Unexpected answer from $1 for $PKG@$version: $out"
+                exit 1
+              fi
+            elif ! grep -qE 'E404|No match found|is not in this registry' "$err"; then
+              echo "::error::Could not check $1: $(cat "$err")"
               exit 1
             fi
-            if latest=$(npm view "$PKG" dist-tags.latest --registry "$1" --@n-uf:registry="$1" 2>&1); then
+            if latest=$(npm view "$PKG" dist-tags.latest --registry "$1" --@n-uf:registry="$1" 2>"$err"); then
+              if [ -n "$latest" ] && ! [[ "$latest" =~ ^[0-9]+\.[0-9]+\.[0-9]+[^[:space:]]*$ ]]; then
+                echo "::error::Unexpected latest from $1 for $PKG: $latest"
+                exit 1
+              fi
               if [ "$(printf '%s\n' "$latest" "$version" | sort -V | tail -n 1)" != "$version" ]; then
                 echo "::warning::$PKG@$version is older than $latest, the latest on $1, so it isn't published there."
                 return
               fi
-            elif ! grep -qE 'E404|is not in this registry' <<< "$latest"; then
-              echo "::error::Could not check $1: $latest"
+            elif ! grep -qE 'E404|is not in this registry' "$err"; then
+              echo "::error::Could not check $1: $(cat "$err")"
               exit 1
             fi
             want=true

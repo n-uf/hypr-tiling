@@ -203,11 +203,15 @@ Releasing runs in CI, not from a laptop:
 - A release PR bumps the version and adds an entry to
   `packages/hypr-tiling/CHANGELOG.md`. Merging it to `main` publishes that
   version to npmjs (public, with provenance) and to GitHub Packages, and tags
-  it `v<version>` (`.github/workflows/release.yml`); merges without a bump
-  publish nothing. npmjs uses trusted publishing (no stored token): the
-  package's Trusted Publisher on npmjs.com names this repo and `release.yml`.
-- A release that failed part-way: "Run workflow" on `main` (Actions →
-  Release) publishes the version wherever it is still missing.
+  it `v<version>` (`.github/workflows/release.yml`). A run publishes the
+  manifest's version only where it is new (missing, and not older than the
+  registry's `latest`), so a merge that leaves it at a published version
+  publishes nothing. npmjs uses trusted publishing (no stored token): the
+  package's Trusted Publisher on npmjs.com names this repo, `release.yml` and
+  the `npm` environment, which only `main` may deploy to.
+- A release that failed part-way: "Re-run all jobs" on its run (Actions →
+  Release) publishes the version wherever it is still missing, from the same
+  commit.
 
 See `_agent/versioning-policy.md` for deeper guidance, including the burned
 version numbers that must never be reused.
