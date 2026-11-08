@@ -7,7 +7,11 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
-## Unreleased
+## 26.11.0 — 2026-11-07
+
+The first release published from CI (`.github/workflows/release.yml`): npmjs
+through trusted publishing, with provenance, and GitHub Packages. 26.9.10 below
+was prepared but never published; its changes ship for the first time here.
 
 ### Master layouts prerender
 
@@ -19,7 +23,7 @@ container is measured, the slots are now placed with CSS `calc()` boxes
 the px boxes once measured: the layout paints in the first paint and does not
 move when it is measured. Measured rendering is unchanged.
 
-## 26.9.10 — 2026-09-24
+## 26.9.10 — 2026-09-24 (not published; first released in 26.11.0)
 
 ### Tab strips — rails and pills
 
