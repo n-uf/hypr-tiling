@@ -62,7 +62,6 @@
     "api:docs": "node ./scripts/generate-api-docs.mjs",
     "check:guardrails": "node ./scripts/check-guardrails.mjs",
     "prepublishOnly": "pnpm build && pnpm test:dist",
-    "release": "if [ \"$npm_config_nobump\" = \"true\" ]; then npm publish --access public; else node ./scripts/calendar-version-bump.mjs --apply && npm publish --access public; fi",
     "typecheck": "tsc --project tsconfig.json",
     "test": "jest",
     "test:dist": "jest --config jest.dist.config.js",
