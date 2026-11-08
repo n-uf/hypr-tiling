@@ -75,6 +75,11 @@ concurrency:
 permissions:
   contents: read
 
+# bash -eo pipefail (a bare `run:` gets bash -e only)
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     name: Check, build and pack
