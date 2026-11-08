@@ -12,6 +12,7 @@
     "test": "pnpm --filter @n-uf/hypr-tiling test",
     "check:guardrails": "pnpm --filter @n-uf/hypr-tiling check:guardrails",
     "check": "pnpm typecheck && pnpm test",
-    "release": "pnpm --filter @n-uf/hypr-tiling release"
+    "release:next-version": "pnpm --filter @n-uf/hypr-tiling release:next-version",
+    "version:bump": "pnpm --filter @n-uf/hypr-tiling exec node ./scripts/calendar-version-bump.mjs --apply"
   }
 }
