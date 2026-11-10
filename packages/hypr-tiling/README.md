@@ -48,7 +48,7 @@ npm install @n-uf/hypr-tiling react react-dom
 yarn add @n-uf/hypr-tiling react react-dom
 ```
 
-`react` and `react-dom` are peer dependencies (version `^19`).
+`react` and `react-dom` are peer dependencies (version `^19`), optional: `./engine` alone needs neither.
 
 ## Versioning
 
@@ -86,6 +86,7 @@ unrounded, by the same pass the renderer lays panes out with
 
 - React: `^19`
 - React DOM: `^19`
+- Both are optional peers: `./engine` alone needs neither, so an engine-only project installs without them
 - Tailwind scanning: required (`content` glob or v4 `@source`)
 - Runtime: browser DOM (React renderer package)
 

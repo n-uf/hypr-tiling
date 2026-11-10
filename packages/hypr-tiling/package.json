@@ -75,6 +75,14 @@
     "react": "^19",
     "react-dom": "^19"
   },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@jest/globals": "^30.2.0",
     "@microsoft/api-documenter": "^7.30.7",

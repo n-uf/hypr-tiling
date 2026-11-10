@@ -182,3 +182,24 @@ describe("dist/engine entry is React-free", () => {
     }
   });
 });
+
+describe("the published manifest doesn't force react on an engine-only consumer", () => {
+  interface Manifest {
+    peerDependencies?: Record<string, string>;
+    peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+    dependencies?: Record<string, string>;
+  }
+  const manifest: Manifest = JSON.parse(readFileSync(resolve(packageDir, "package.json"), "utf8")) as Manifest;
+
+  it("react and react-dom are optional peers: installing the package for ./engine pulls no react", () => {
+    expect(Object.keys(manifest.peerDependencies ?? {}).sort()).toEqual(["react", "react-dom"]);
+    for (const peer of ["react", "react-dom"]) {
+      expect(manifest.peerDependenciesMeta?.[peer]?.optional).toBe(true);
+    }
+  });
+
+  it("no react package is a hard dependency either", () => {
+    const hard: string[] = Object.keys(manifest.dependencies ?? {}).filter((name: string): boolean => /^(react|react-dom|@types\/react)(\/|$)/.test(name));
+    expect(hard).toEqual([]);
+  });
+});

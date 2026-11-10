@@ -74,7 +74,7 @@ compositor and tiling workflow design.
 pnpm add @n-uf/hypr-tiling react react-dom
 ```
 
-`react` and `react-dom` are peer dependencies (version `^19`).
+`react` and `react-dom` are peer dependencies (version `^19`), optional: `./engine` alone needs neither.
 
 The package **ships no CSS** — the renderer emits Tailwind utility class strings,
 so you must register it in your Tailwind `content` glob or the component renders
