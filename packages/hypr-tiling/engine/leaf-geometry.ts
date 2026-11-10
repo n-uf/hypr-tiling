@@ -123,10 +123,11 @@ function collectStaticAlongFootprints(
   gutterPx: number,
   firstCrossPx: number,
   secondCrossPx: number,
+  onSplit?: SplitVisitor,
 ): ReadonlyArray<TilingLeafFootprint> {
   if (node.axis === "horizontal") {
     return [
-      ...collectLeafFootprints(node.first, left, top, firstPx, firstCrossPx, config),
+      ...collectLeafFootprints(node.first, left, top, firstPx, firstCrossPx, config, onSplit),
       ...collectLeafFootprints(
         node.second,
         left + firstPx + gutterPx,
@@ -134,12 +135,13 @@ function collectStaticAlongFootprints(
         secondPx,
         secondCrossPx,
         config,
+        onSplit,
       ),
     ];
   }
 
   return [
-    ...collectLeafFootprints(node.first, left, top, firstCrossPx, firstPx, config),
+    ...collectLeafFootprints(node.first, left, top, firstCrossPx, firstPx, config, onSplit),
     ...collectLeafFootprints(
       node.second,
       left,
@@ -147,9 +149,17 @@ function collectStaticAlongFootprints(
       secondCrossPx,
       secondPx,
       config,
+      onSplit,
     ),
   ];
 }
+
+/**
+ * Called once per laid-out split (a binary split or a master split) with its box and the ratio in effect: after the
+ * min-size clamp, or where a static child puts the boundary. A master split's nested splits are flattened into slots
+ * and never reported. @internal
+ */
+type SplitVisitor = (split: TilingSplitNode, box: TilingPaneFootprint, ratio: number) => void;
 
 const MASTER_RATIO_MIN: number = 0.05;
 const MASTER_RATIO_MAX: number = 0.95;
@@ -410,6 +420,7 @@ export function collectLeafFootprints(
   width: number,
   height: number,
   config: TilingLayoutConfig,
+  onSplit?: SplitVisitor,
 ): ReadonlyArray<TilingLeafFootprint> {
   if (node.kind === "leaf") {
     return [{
@@ -439,15 +450,9 @@ export function collectLeafFootprints(
   // instead of by recursive binary ratio. Dwindle (the default) falls through.
   if (node.layoutMode === "master") {
     const slots: ReadonlyArray<TilingLayoutNode> = collectMasterSlots(node);
-    return resolveMasterStackFootprints(
-      slots,
-      left,
-      top,
-      width,
-      height,
-      config,
-      resolveMasterParams(node, slots.length),
-    );
+    const params: MasterStackParams = resolveMasterParams(node, slots.length);
+    onSplit?.(node, { left, top, width, height }, params.ratio);
+    return resolveMasterStackFootprints(slots, left, top, width, height, config, params);
   }
 
   const axisContainerSizePx: number = node.axis === "horizontal" ? width : height;
@@ -486,6 +491,9 @@ export function collectLeafFootprints(
   const boundaryGutterPx: number = splitBoundaryGutterPx(resolvedGapPx, config.handleSizePx);
   const firstStaticAlong: boolean = isStaticAlongSplitAxis(node.first, node.axis);
   const secondStaticAlong: boolean = isStaticAlongSplitAxis(node.second, node.axis);
+  // Where a static child puts the boundary, as a ratio (for onSplit): the middle of the gutter after the first child
+  const reportStatic = (firstPx: number, gutterPx: number): void =>
+    onSplit?.(node, { left, top, width, height }, axisContainerSizePx > 0 ? (firstPx + gutterPx / 2) / axisContainerSizePx : node.ratio);
   const isBothCollapsedLeaves: boolean =
     node.first.kind === "leaf" &&
     node.first.collapsed === true &&
@@ -495,6 +503,7 @@ export function collectLeafFootprints(
     const firstPinPx: number | null = alongAxisPinPx(node.first, node.axis);
     const secondPinPx: number | null = alongAxisPinPx(node.second, node.axis);
     if (firstPinPx != null && secondPinPx != null) {
+      reportStatic(firstPinPx, boundaryGutterPx);
       return collectStaticAlongFootprints(
         node,
         left,
@@ -505,6 +514,7 @@ export function collectLeafFootprints(
         boundaryGutterPx,
         firstCrossPx,
         secondCrossPx,
+        onSplit,
       );
     }
   }
@@ -519,6 +529,7 @@ export function collectLeafFootprints(
         config.handleSizePx,
       );
       if (extents != null) {
+        reportStatic(extents.firstPx, extents.gutterPx);
         return collectStaticAlongFootprints(
           node,
           left,
@@ -529,6 +540,7 @@ export function collectLeafFootprints(
           extents.gutterPx,
           firstCrossPx,
           secondCrossPx,
+          onSplit,
         );
       }
     }
@@ -543,6 +555,7 @@ export function collectLeafFootprints(
         config.handleSizePx,
       );
       if (extents != null) {
+        reportStatic(extents.firstPx, extents.gutterPx);
         return collectStaticAlongFootprints(
           node,
           left,
@@ -553,6 +566,7 @@ export function collectLeafFootprints(
           extents.gutterPx,
           firstCrossPx,
           secondCrossPx,
+          onSplit,
         );
       }
     }
@@ -578,22 +592,109 @@ export function collectLeafFootprints(
     resolveRatioSafetyBounds(firstFloor, secondFloor),
   );
   const splitGapOffsetPx: number = boundaryGutterPx / 2;
+  onSplit?.(node, { left, top, width, height }, safeRatio);
 
   if (node.axis === "horizontal") {
     const firstWidth: number = Math.max(0, width * safeRatio - splitGapOffsetPx);
     const secondWidth: number = Math.max(0, width * (1 - safeRatio) - splitGapOffsetPx);
     return [
-      ...collectLeafFootprints(node.first, left, top, firstWidth, firstCrossPx, config),
-      ...collectLeafFootprints(node.second, left + width * safeRatio + splitGapOffsetPx, top, secondWidth, secondCrossPx, config),
+      ...collectLeafFootprints(node.first, left, top, firstWidth, firstCrossPx, config, onSplit),
+      ...collectLeafFootprints(node.second, left + width * safeRatio + splitGapOffsetPx, top, secondWidth, secondCrossPx, config, onSplit),
     ];
   }
 
   const firstHeight: number = Math.max(0, height * safeRatio - splitGapOffsetPx);
   const secondHeight: number = Math.max(0, height * (1 - safeRatio) - splitGapOffsetPx);
   return [
-    ...collectLeafFootprints(node.first, left, top, firstCrossPx, firstHeight, config),
-    ...collectLeafFootprints(node.second, left, top + height * safeRatio + splitGapOffsetPx, secondCrossPx, secondHeight, config),
+    ...collectLeafFootprints(node.first, left, top, firstCrossPx, firstHeight, config, onSplit),
+    ...collectLeafFootprints(node.second, left, top + height * safeRatio + splitGapOffsetPx, secondCrossPx, secondHeight, config, onSplit),
   ];
+}
+
+// ============================================================================
+// Public (engine entry): the layout's geometry in px, by the renderer's own math
+// ============================================================================
+
+/**
+ * A rect in CSS px: `x` / `y` are its top-left corner in the container's coordinates.
+ */
+export interface TilingRect {
+  /** Left edge, CSS px */
+  x: number;
+  /** Top edge, CSS px */
+  y: number;
+  /** CSS px, never negative */
+  width: number;
+  /** CSS px, never negative */
+  height: number;
+}
+
+/** A split as laid out: its box and the ratio in effect (see {@link resolveLayoutGeometry}). */
+export interface TilingSplitGeometry {
+  /** The box the split divides */
+  rect: TilingRect;
+  /**
+   * The ratio in effect: a binary split's stored ratio after the floor clamp, or where a static child puts the boundary
+   * (the middle of the gutter); a master split's master-area share of its extent less one gap
+   */
+  ratio: number;
+}
+
+/** The px geometry of a layout tree in a container (see {@link resolveLayoutGeometry}). */
+export interface TilingLayoutGeometry {
+  /** Each shown leaf's rect, keyed by leaf id (a group: its active member's), in reading order */
+  leaves: ReadonlyMap<string, TilingRect>;
+  /** Each laid-out split's box and the ratio in effect, keyed by split id (unique ids: a repeated id keeps the last) */
+  splits: ReadonlyMap<string, TilingSplitGeometry>;
+}
+
+const toRect = (box: TilingPaneFootprint): TilingRect => ({ x: box.left, y: box.top, width: box.width, height: box.height });
+
+/**
+ * Where every pane of `layout` sits in `container`, in CSS px: the renderer's own leaf geometry (the one pass that
+ * also drives hit-testing, overlays and directional focus), so a host that places windows by it lands exactly where
+ * the renderer would.
+ *
+ * - A binary split gives its first child `ratio` of the extent less half the gutter (`gapPx` + `handleSizePx`, a
+ *   split's own `gapPx` first) and its second child the rest less the other half. The ratio in effect is the stored
+ *   one clamped so each direct child keeps its floor; when both floors can't fit it is 0.5. Under the default
+ *   `resizeFloor: "chrome"` the floor is the collapsed title bar (`collapsedExtentPx`) and the 5–95% net is off; for a
+ *   minimum pane size pass `resizeFloor: "body"` with `minPaneSizePx` (a leaf's `minBBoxPx` and a split's
+ *   `minPaneSizePx` win over it), and the 5–95% net applies. The floor counts against the extent less the gutter, so
+ *   with a gutter a floored pane lands up to half a gutter short of it, as the renderer draws it. A child static along
+ *   the split takes its px pin.
+ * - A `layoutMode: "master"` split lays its descendants out as a flat list: `masterCount` tiles in a master area of
+ *   `ratio` (clamped 0.05–0.95) of the extent less one gap, the rest in a stack, each area divided equally with
+ *   gaps. Its nested splits are not reported.
+ * - A group shows its active member in the whole slot.
+ * - Nothing is rounded: rects are fractional px, as the renderer lays them out. A container smaller than its gutters
+ *   gives zero-size panes (never negative), which may sit past its edge.
+ *
+ * `splits` reports each laid-out split once, with its box and the ratio in effect (a static child's boundary as a
+ * ratio of the extent).
+ */
+export function resolveLayoutGeometry(layout: TilingLayoutNode, container: TilingRect, config: TilingLayoutConfig): TilingLayoutGeometry {
+  const splits: Map<string, TilingSplitGeometry> = new Map<string, TilingSplitGeometry>();
+  const footprints: ReadonlyArray<TilingLeafFootprint> = collectLeafFootprints(
+    layout,
+    container.x,
+    container.y,
+    container.width,
+    container.height,
+    config,
+    (split: TilingSplitNode, box: TilingPaneFootprint, ratio: number): void => {
+      splits.set(split.id, { rect: toRect(box), ratio });
+    },
+  );
+  const leaves: Map<string, TilingRect> = new Map<string, TilingRect>(
+    footprints.map((footprint: TilingLeafFootprint): [string, TilingRect] => [footprint.leafId, toRect(footprint)]),
+  );
+  return { leaves, splits };
+}
+
+/** Each shown leaf's rect in `container`, in CSS px, keyed by leaf id: {@link resolveLayoutGeometry}'s `leaves`. */
+export function resolveLeafRects(layout: TilingLayoutNode, container: TilingRect, config: TilingLayoutConfig): ReadonlyMap<string, TilingRect> {
+  return resolveLayoutGeometry(layout, container, config).leaves;
 }
 
 /**

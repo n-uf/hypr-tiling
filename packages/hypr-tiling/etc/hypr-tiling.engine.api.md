@@ -501,6 +501,12 @@ export function resolveFocusCurrentOrLast(history: FocusHistory, currentLeafId: 
 export function resolveKeymap(keymap?: TilingKeymap | null): ResolvedTilingKeymap;
 
 // @public
+export function resolveLayoutGeometry(layout: TilingLayoutNode, container: TilingRect, config: TilingLayoutConfig): TilingLayoutGeometry;
+
+// @public
+export function resolveLeafRects(layout: TilingLayoutNode, container: TilingRect, config: TilingLayoutConfig): ReadonlyMap<string, TilingRect>;
+
+// @public
 export function resolveMaximizeToggle(currentMaximizedLeafId: string | null, focusedLeafId: string | null): string | null;
 
 // @public
@@ -742,6 +748,15 @@ export interface TilingDropIntentState {
 export type TilingEdgeZone = Exclude<TilingLeafDropZone, "center">;
 
 // @public
+export interface TilingGroupNode {
+    activeMemberId: string;
+    id: string;
+    kind: "group";
+    members: ReadonlyArray<TilingLeafNode>;
+    sizing?: TilingPaneSizing;
+}
+
+// @public
 export interface TilingHideTileResult {
     readonly orphaned: boolean;
     readonly set: TilingWorkspaceSet;
@@ -813,16 +828,48 @@ export interface TilingKeymapActionGuards {
 }
 
 // @public
+export interface TilingLayoutConfig {
+    collapseBodyMode?: TilingCollapseBodyMode;
+    collapsedExtentPx?: number;
+    gapPx: number;
+    handleSizePx: number;
+    minPaneSizePx: number;
+    resizeFloor?: TilingResizeFloor;
+}
+
+// @public
 export interface TilingLayoutContainerSize {
     containerHeightPx: number;
     containerWidthPx: number;
 }
 
 // @public
+export interface TilingLayoutGeometry {
+    leaves: ReadonlyMap<string, TilingRect>;
+    splits: ReadonlyMap<string, TilingSplitGeometry>;
+}
+
+// @public
+export type TilingLayoutNode = TilingLeafNode | TilingSplitNode | TilingGroupNode;
+
+// @public
 export interface TilingLayoutStorage {
     getItem(key: string): string | null;
     removeItem(key: string): void;
     setItem(key: string, value: string): void;
+}
+
+// @public
+export interface TilingLeafNode {
+    collapsed?: boolean;
+    collapsedDimension?: TilingDimension;
+    collapsedRestore?: TilingPaneSizing;
+    id: string;
+    kind: "leaf";
+    minBBoxPx?: TilingMinBBoxPx;
+    resizeFloor?: TilingResizeFloor;
+    sizing?: TilingPaneSizing;
+    tileId: string;
 }
 
 // @public
@@ -842,6 +889,14 @@ export interface TilingPaneSwitcherState {
 }
 
 // @public
+export interface TilingRect {
+    height: number;
+    width: number;
+    x: number;
+    y: number;
+}
+
+// @public
 export type TilingRevealTileChanged = "none" | "tab" | "workspace" | "both";
 
 // @public
@@ -850,6 +905,31 @@ export interface TilingRevealTileResult {
     readonly leafId: string;
     readonly set: TilingWorkspaceSet;
     readonly workspaceId: TilingWorkspaceId;
+}
+
+// @public
+export type TilingSplitAxis = "horizontal" | "vertical";
+
+// @public
+export interface TilingSplitGeometry {
+    ratio: number;
+    rect: TilingRect;
+}
+
+// @public
+export interface TilingSplitNode {
+    axis: TilingSplitAxis;
+    first: TilingLayoutNode;
+    gapPx?: number;
+    id: string;
+    kind: "split";
+    layoutMode?: TilingLayoutMode;
+    masterCount?: number;
+    masterOrientation?: TilingMasterOrientation;
+    minPaneSizePx?: number;
+    ratio: number;
+    second: TilingLayoutNode;
+    sizing?: TilingPaneSizing;
 }
 
 // @public
