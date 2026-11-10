@@ -4,6 +4,17 @@
 </h1>
 <p align="center">Dynamic tiling for React</p>
 
+> [!CAUTION]
+> ## Not yet stable
+>
+> **hypr-tiling is young and still changing. Its API, theming and saved layout format are not final.**
+>
+> Version numbers are dates (YY.M.R), not semantic versions, so any release may break things, including
+> the saved layout tree that `createPersistedTilingLayout` writes to `localStorage`, which a release may stop reading as
+> saved. Pin an exact version and read the [CHANGELOG](packages/hypr-tiling/CHANGELOG.md) before you upgrade. If you
+> need a stable tiling layout library, use [Dockview](https://dockview.dev) or
+> [react-mosaic](https://github.com/nomcopter/react-mosaic).
+
 `@n-uf/hypr-tiling` is a dynamic tiling layout engine for React: a recursive
 split-tree renderer that lets users drag, drop, resize, group, maximize, and
 keyboard-control resizable panes at runtime, with a theming engine and
