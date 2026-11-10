@@ -7,6 +7,18 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
+## 26.11.2 — 2026-11-09
+
+### React is an optional peer
+
+`react` and `react-dom` are optional peer dependencies now
+(`peerDependenciesMeta`), so a project that uses only the framework-free
+`./engine` entry (a headless layout core, a server) installs the package
+without React and without peer warnings. The `.` and `./devtools` entries still
+need React 19; install it alongside as before. `./engine` imports no React, as
+`pnpm test:dist` checks on every build, and that suite now also checks the
+manifest keeps both peers optional.
+
 ## 26.11.1 — 2026-11-09
 
 ### Layout geometry on `./engine`
