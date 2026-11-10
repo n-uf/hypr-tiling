@@ -30,6 +30,17 @@
  * @packageDocumentation
  */
 
+// ── Layout tree — geometry: where every pane sits in px, by the renderer's own math ──
+export {
+  resolveLayoutGeometry,
+  resolveLeafRects,
+  type TilingLayoutGeometry,
+  type TilingRect,
+  type TilingSplitGeometry,
+} from "./engine/leaf-geometry";
+// The tree and the geometry config those take
+export type { TilingGroupNode, TilingLayoutConfig, TilingLayoutNode, TilingLeafNode, TilingSplitAxis, TilingSplitNode } from "./engine/types";
+
 // ── Layout tree — reducers (pure; each returns a NEW tree) ────────────────────
 export {
   extractLeafNode,

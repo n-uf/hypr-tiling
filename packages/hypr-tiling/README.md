@@ -76,6 +76,12 @@ the emitted bundle for `createContext` / `from "react"` markers plus a bare-Node
 import with `react` made unresolvable) and by the `engine ↛ react` layering rule
 in `scripts/check-guardrails.mjs`.
 
+A host that places its own windows by a layout tree reads the renderer's geometry
+from `./engine`: `resolveLayoutGeometry(layout, container, config)` gives every
+shown leaf's rect and every split's box with the ratio in effect, in CSS px and
+unrounded, by the same pass the renderer lays panes out with
+(`resolveLeafRects` gives the leaves alone).
+
 ## Compatibility
 
 - React: `^19`
