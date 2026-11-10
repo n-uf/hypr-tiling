@@ -7,6 +7,24 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
+## 26.11.1 — 2026-11-09
+
+### Layout geometry on `./engine`
+
+`resolveLayoutGeometry(layout, container, config)` gives where every pane of a
+layout tree sits in a container, in CSS px: each shown leaf's rect (`{ x, y,
+width, height }`, keyed by leaf id; a group shows its active member) and each
+laid-out split's box with the ratio in effect after the floor clamp. It is the
+renderer's own leaf-geometry pass (the one behind hit-testing, overlays and
+directional focus), so a host that places its own windows by a tree lands where
+the renderer would: gutters of `gapPx` + `handleSizePx`, master layouts, static
+panes, nothing rounded. `resolveLeafRects` gives the leaves alone. The floor is
+the config's: under the default `resizeFloor: "chrome"` it is the collapsed
+title bar; pass `resizeFloor: "body"` with `minPaneSizePx` for a minimum pane
+size. The tree and config types (`TilingLayoutNode`, `TilingLeafNode`,
+`TilingSplitNode`, `TilingGroupNode`, `TilingSplitAxis`, `TilingLayoutConfig`)
+are now exported from `./engine` too. Nothing changes in the renderer.
+
 ## 26.11.0 — 2026-11-07
 
 The first release published from CI (`.github/workflows/release.yml`): npmjs
