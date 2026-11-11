@@ -113,6 +113,7 @@ export {
   deleteWorkspace,
   findWorkspaceById,
   hideFromWorkspace,
+  moveGroupToWorkspace,
   moveLeafToWorkspace,
   normalizeWorkspaceName,
   queryWorkspaceSet,

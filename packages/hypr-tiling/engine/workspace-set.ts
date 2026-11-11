@@ -13,6 +13,7 @@
  */
 import {
   extractLeafNode,
+  findGroupById,
   findGroupContainingLeaf,
   findLeafById,
   insertLeafInto,
@@ -530,6 +531,49 @@ export function moveLeafToWorkspace(
   }
   const target: TilingWorkspace | null = workspaceById(next, to);
   return replaceLayoutAt(next, to, insertLeafInto(target?.layout ?? null, seat.leaf, placement));
+}
+
+/**
+ * Move the whole tab group `groupId` to workspace `to` at `placement`
+ * ({@link moveLeafToWorkspace} for a group): every member leaves EVERY
+ * workspace that shows it and the group is seated once in `to`, with its
+ * members, their order and its active tab kept. The group comes from the
+ * active workspace when it has it, else the first workspace in tab order that
+ * does. When `to` is the group's only workspace this is a same-tree re-seat.
+ * Unchanged when the group or `to` is unknown. A source tree the group was
+ * the whole of becomes `null`.
+ */
+export function moveGroupToWorkspace(
+  set: TilingWorkspaceSet,
+  groupId: string,
+  to: TilingWorkspaceId,
+  placement: TilingWorkspacePlacement = TILING_DEFAULT_WORKSPACE_PLACEMENT,
+): TilingWorkspaceSet {
+  if (workspaceById(set, to) == null) {
+    return set;
+  }
+  const active: TilingWorkspace | null = workspaceById(set, set.activeId);
+  const group: TilingGroupNode | null =
+    (active?.layout == null ? null : findGroupById(active.layout, groupId)) ??
+    set.workspaces
+      .map((workspace: TilingWorkspace): TilingGroupNode | null =>
+        workspace.layout == null ? null : findGroupById(workspace.layout, groupId),
+      )
+      .find((found: TilingGroupNode | null): boolean => found != null) ??
+    null;
+  if (group == null) {
+    return set;
+  }
+  let next: TilingWorkspaceSet = set;
+  for (const workspace of set.workspaces) {
+    let tree: TilingLayoutNode | null = workspace.layout;
+    for (const member of group.members) {
+      tree = removeLeafFromTree(tree, member.id);
+    }
+    next = replaceLayoutAt(next, workspace.id, tree);
+  }
+  const target: TilingWorkspace | null = workspaceById(next, to);
+  return replaceLayoutAt(next, to, insertLeafInto(target?.layout ?? null, group, placement));
 }
 
 /**
