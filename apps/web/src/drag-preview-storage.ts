@@ -6,14 +6,14 @@ import { useIsHydrating } from "./home-first-paint";
 // (same convention as the mobile home mode, `mobile-home/mode-storage.ts`).
 const STORAGE_KEY: string = "hypr-tiling-web.home-drag-preview";
 
-/** The home's drop preview until the visitor picks one: the drop indicator. */
-export const DEFAULT_HOME_DRAG_PREVIEW: TilingDragPreview = "indicator";
+/** The home's drop preview until the visitor picks one: snap to slot. */
+export const DEFAULT_HOME_DRAG_PREVIEW: TilingDragPreview = "snap";
 
 function isDragPreview(value: string): value is TilingDragPreview {
   return value === "indicator" || value === "snap";
 }
 
-/** Read the persisted drop preview, falling back to the indicator when unset or invalid. */
+/** Read the persisted drop preview, falling back to the default when unset or invalid. */
 export function readStoredDragPreview(): TilingDragPreview {
   if (typeof window === "undefined") {
     return DEFAULT_HOME_DRAG_PREVIEW;

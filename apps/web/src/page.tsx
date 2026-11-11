@@ -73,6 +73,7 @@ import { MobileHome } from "./mobile-home/mobile-home";
 import { MobileTopStrip } from "./mobile-home/top-strip";
 import { useMobileHomeMode } from "./mobile-home/mode-storage";
 import { useHomeDragPreview } from "./drag-preview-storage";
+import { DragPreviewSwitch } from "./drag-preview-switch";
 import { type MobileHomeMode } from "./mobile-home/types";
 import {
   useIsCoarsePointer,
@@ -337,9 +338,13 @@ function HomeTopBar({
   resetAllDisabled,
   snapshotHeld,
   onRestoreSnapshot,
+  dragPreview,
+  onDragPreviewChange,
 }: {
   skin: HomeSkin;
   onSkinChange: (next: HomeSkin) => void;
+  dragPreview: TilingDragPreview;
+  onDragPreviewChange: (next: TilingDragPreview) => void;
   workspaceTabs: UseTilingWorkspaceTabsResult;
   isMobile: boolean;
   mobileMode: MobileHomeMode;
@@ -412,10 +417,18 @@ function HomeTopBar({
           Reset all
         </button>
       </div>
+      <DragPreviewSwitch
+        preview={dragPreview}
+        onChange={onDragPreviewChange}
+        className={`ml-auto ${tokens.switchGroup}`}
+        labelClassName={tokens.switchLabel}
+        activeClassName={tokens.switchActive}
+        inactiveClassName={tokens.switchInactive}
+      />
       <div
         role="group"
         aria-label="Site skin"
-        className={`ml-auto ${tokens.switchGroup}`}
+        className={tokens.switchGroup}
       >
         <span aria-hidden className={tokens.switchLabel}>
           skin
@@ -514,8 +527,6 @@ function HomeBottomBar({
   resetWorkspaceDisabled,
   resetAllDisabled,
   onResetCommand,
-  dragPreview,
-  onDragPreviewChange,
 }: {
   skin: HomeSkin;
   commandHandleRef: React.RefObject<TilingCommandHandle | null>;
@@ -528,8 +539,6 @@ function HomeBottomBar({
   resetWorkspaceDisabled: boolean;
   resetAllDisabled: boolean;
   onResetCommand: (scope: "workspace" | "all") => void;
-  dragPreview: TilingDragPreview;
-  onDragPreviewChange: (next: TilingDragPreview) => void;
 }): React.ReactElement {
   const tokens: SkinBottomBarTokens = SKIN_BOTTOM_BAR[skin];
 
@@ -548,8 +557,6 @@ function HomeBottomBar({
           resetWorkspaceDisabled={resetWorkspaceDisabled}
           resetAllDisabled={resetAllDisabled}
           onResetCommand={onResetCommand}
-          dragPreview={dragPreview}
-          onDragPreviewChange={onDragPreviewChange}
         />
       )}
       {isCoarsePointer ? null : (
@@ -966,6 +973,8 @@ export function HomePage({
           resetAllDisabled={resetAllDisabled}
           snapshotHeld={snapshotHeld}
           onRestoreSnapshot={restoreSnapshot}
+          dragPreview={dragPreview}
+          onDragPreviewChange={onDragPreviewChange}
         />
         <div
           className="min-h-0 min-w-0 flex-1"
@@ -1017,7 +1026,7 @@ export function HomePage({
               onMaximizedLeafChange={setMaximizedLeafId}
               {...workspaceTabs.rendererProps}
               onWorkspaceSwitch={onWorkspaceSwitch}
-              // The bottom bar's drop-preview toggle: indicator or snap to slot.
+              // The top bar's drop-preview switch: snap to slot (default) or indicator.
               dragPreview={dragPreview}
               renderTile={(args: TilingRenderTileProps): React.ReactNode =>
                 // Each skin's tile consumes the library `TilingRenderTileProps`
@@ -1047,8 +1056,6 @@ export function HomePage({
             resetWorkspaceDisabled={resetWorkspaceDisabled}
             resetAllDisabled={resetAllDisabled}
             onResetCommand={applyReset}
-            dragPreview={dragPreview}
-            onDragPreviewChange={onDragPreviewChange}
           />
         )}
       </TilingWorkspaceSwipeScope>

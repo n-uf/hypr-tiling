@@ -21,7 +21,6 @@ import {
   type TilingCommand,
   type TilingCommandGates,
   type TilingCommandHandle,
-  type TilingDragPreview,
   type TilingInteractionCapabilities,
 } from "@n-uf/hypr-tiling";
 
@@ -672,46 +671,6 @@ function ResetCommandChip({
   );
 }
 
-/** What each drop preview is called in the bottom bar. */
-const DRAG_PREVIEW_LABELS: Record<TilingDragPreview, string> = {
-  indicator: "Drop indicator",
-  snap: "Snap to slot",
-};
-
-/**
- * The drop-preview toggle beside the reset chips: shows the preview a pane
- * drag uses now (the drop indicator, or snap to slot) and switches to the
- * other on click. Same keycap chip as the reset controls. A toggle button:
- * its name stays "Drop preview: snap to slot" and `aria-pressed` says whether
- * snap is on, so a screen reader hears the state, not a renamed button.
- */
-function DragPreviewChip({
-  tokens,
-  preview,
-  onChange,
-}: {
-  tokens: ShortcutBarTokens;
-  preview: TilingDragPreview;
-  onChange: (next: TilingDragPreview) => void;
-}): React.ReactElement {
-  const next: TilingDragPreview = preview === "indicator" ? "snap" : "indicator";
-  return (
-    <button
-      type="button"
-      aria-label={`Drop preview: ${DRAG_PREVIEW_LABELS.snap.toLowerCase()}`}
-      aria-pressed={preview === "snap"}
-      title={`Dragging a pane shows ${preview === "indicator" ? "where it will land" : "it settling into the slot"}. Click for ${DRAG_PREVIEW_LABELS[next].toLowerCase()}.`}
-      data-drag-preview={preview}
-      onClick={(): void => {
-        onChange(next);
-      }}
-      className={tokens.button}
-    >
-      <span className={tokens.kbd}>{DRAG_PREVIEW_LABELS[preview]}</span>
-    </button>
-  );
-}
-
 export function HomeShortcuts({
   commandHandleRef,
   layout,
@@ -723,8 +682,6 @@ export function HomeShortcuts({
   resetWorkspaceDisabled,
   resetAllDisabled,
   onResetCommand,
-  dragPreview,
-  onDragPreviewChange,
 }: {
   commandHandleRef: React.RefObject<TilingCommandHandle | null>;
   layout: TilingLayoutNode | null;
@@ -736,8 +693,6 @@ export function HomeShortcuts({
   resetWorkspaceDisabled: boolean;
   resetAllDisabled: boolean;
   onResetCommand: (scope: "workspace" | "all") => void;
-  dragPreview: TilingDragPreview;
-  onDragPreviewChange: (next: TilingDragPreview) => void;
 }): React.ReactElement | null {
   const tokens: ShortcutBarTokens = SHORTCUT_BAR_SKIN[skin];
   const capabilities: ResolvedTilingInteractionCapabilities = React.useMemo(
@@ -795,7 +750,6 @@ export function HomeShortcuts({
         disabled={resetAllDisabled}
         onDispatch={dispatch}
       />
-      <DragPreviewChip tokens={tokens} preview={dragPreview} onChange={onDragPreviewChange} />
       {visibleSections.length > 0 ? (
         <span aria-hidden className={tokens.divider} />
       ) : null}
