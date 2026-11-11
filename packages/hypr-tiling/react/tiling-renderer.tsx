@@ -328,6 +328,14 @@ import {
   useWorkspaceSwipeStore,
   type TilingWorkspaceSwipeStore,
 } from "./use-workspace-swipe";
+import { fadeOutClaimedLayer } from "./claim-fade";
+import {
+  clientToViewportLength,
+  clientToViewportPoint,
+  measureViewportClientFrame,
+  placeFixedLayer,
+  type ViewportClientFrame,
+} from "./viewport-frame";
 import { createWindowSchedulerPort } from "./window-scheduler-port";
 import {
   WorkspaceTransitionStage,
@@ -794,8 +802,14 @@ export function resolvePointerTargetFromMeasurement(
   if (viewportRect == null) {
     return null;
   }
-  const localX: number = input.clientX - viewportRect.left;
-  const localY: number = input.clientY - viewportRect.top;
+  // Footprints are viewport layout px; a scaled ancestor makes a client px
+  // smaller or larger than one.
+  const scale: number =
+    input.viewportSize.width > 0 && viewportRect.width > 0
+      ? viewportRect.width / input.viewportSize.width
+      : 1;
+  const localX: number = (input.clientX - viewportRect.left) / scale;
+  const localY: number = (input.clientY - viewportRect.top) / scale;
   const hitFootprints: ReadonlyMap<string, TilingPaneFootprint> =
     input.liveDragModeEnabled
       ? input.liveHitFootprintsById
@@ -4485,12 +4499,10 @@ const TilingRendererComponent = React.forwardRef<
     readonly target: TilingDropState;
     readonly slot: TilingRect;
   } | null>(null);
-  // The viewport's client origin: viewport px = client px minus this.
-  const viewportClientOrigin = (): DragMachinePoint => {
-    const rect: DOMRect | null =
-      viewportRef.current?.getBoundingClientRect() ?? null;
-    return { x: rect?.left ?? 0, y: rect?.top ?? 0 };
-  };
+  // Read live, never cached across a drag: a page scroll moves the origin and
+  // a scaled ancestor makes a client px differ from a layout px.
+  const viewportClientFrame = (): ViewportClientFrame =>
+    measureViewportClientFrame(viewportRef.current);
   const [snappedTarget, setSnappedTarget] =
     React.useState<TilingDropState | null>(null);
   // The pane being dragged, raised above every other pane (and the drop
@@ -4667,12 +4679,13 @@ const TilingRendererComponent = React.forwardRef<
       if (drawn == null || viewport == null) {
         return null;
       }
-      const origin: DOMRect = viewport.getBoundingClientRect();
+      // Drawn rects are viewport layout px; the footprint is client px.
+      const frame: ViewportClientFrame = measureViewportClientFrame(viewport);
       return {
-        left: origin.left + drawn.x,
-        top: origin.top + drawn.y,
-        width: drawn.width,
-        height: drawn.height,
+        left: frame.x + drawn.x * frame.scale,
+        top: frame.y + drawn.y * frame.scale,
+        width: drawn.width * frame.scale,
+        height: drawn.height * frame.scale,
       };
     },
     [],
@@ -5134,32 +5147,35 @@ const TilingRendererComponent = React.forwardRef<
     isPaneHeld && !isSnapPreview && dragSourceLeafId != null
       ? resolveDropLandingRect(dragSourceLeafId, committableDropState)
       : null;
-  // Where the lifted wrapper is laid out (viewport px): the pane's place at
-  // the lift, at its lift size; and the grab offset the pointer holds it by.
+  // Where the lifted wrapper is laid out (viewport layout px): the pane's
+  // place at the lift, at its lift size; and the grab offset the pointer holds
+  // it by (layout px). The footprint and the offset are client px measured at
+  // the press, so they are converted through the viewport's frame then.
   const liftGeometry: {
     readonly tileId: string;
     readonly layoutRect: TilingRect;
     readonly grab: DragMachinePoint;
-    readonly origin: DragMachinePoint;
   } | null = React.useMemo(() => {
     if (!isLiveDragging || dragState.phase !== "dragging" || dragSourceTileId == null) {
       return null;
     }
-    const origin: DOMRect | null = viewportRef.current?.getBoundingClientRect() ?? null;
-    const originPoint: DragMachinePoint = {
-      x: origin?.left ?? 0,
-      y: origin?.top ?? 0,
-    };
+    const frame: ViewportClientFrame = viewportClientFrame();
+    const topLeft: DragMachinePoint = clientToViewportPoint(frame, {
+      x: dragState.anchorFootprint.left,
+      y: dragState.anchorFootprint.top,
+    });
     return {
       tileId: dragSourceTileId,
       layoutRect: {
-        x: dragState.anchorFootprint.left - originPoint.x,
-        y: dragState.anchorFootprint.top - originPoint.y,
-        width: dragState.anchorFootprint.width,
-        height: dragState.anchorFootprint.height,
+        x: topLeft.x,
+        y: topLeft.y,
+        width: clientToViewportLength(frame, dragState.anchorFootprint.width),
+        height: clientToViewportLength(frame, dragState.anchorFootprint.height),
       },
-      grab: dragState.pointerAnchorOffset,
-      origin: originPoint,
+      grab: {
+        x: clientToViewportLength(frame, dragState.pointerAnchorOffset.x),
+        y: clientToViewportLength(frame, dragState.pointerAnchorOffset.y),
+      },
     };
     // Fixed for one lift: keyed on what identifies it, not on every move.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5173,16 +5189,23 @@ const TilingRendererComponent = React.forwardRef<
   liftGeometryRef.current = liftGeometry;
   const isPaneHeldRef = React.useRef<boolean>(isPaneHeld);
   isPaneHeldRef.current = isPaneHeld;
-  /** Where the pointer holds the lifted pane (viewport px), from a client point. */
+  /**
+   * Where the pointer holds the lifted pane (viewport layout px), from a client
+   * point, through the viewport's frame as it is now (scrolled, scaled).
+   */
   const heldRectAt = React.useCallback(
     (client: DragMachinePoint): TilingRect | null => {
       const lift = liftGeometryRef.current;
       if (lift == null) {
         return null;
       }
+      const point: DragMachinePoint = clientToViewportPoint(
+        measureViewportClientFrame(viewportRef.current),
+        client,
+      );
       return {
-        x: client.x - lift.grab.x - lift.origin.x,
-        y: client.y - lift.grab.y - lift.origin.y,
+        x: point.x - lift.grab.x,
+        y: point.y - lift.grab.y,
         width: lift.layoutRect.width,
         height: lift.layoutRect.height,
       };
@@ -5213,6 +5236,23 @@ const TilingRendererComponent = React.forwardRef<
     },
     [heldRectAt],
   );
+  // The lifted wrapper is `position: fixed`, so the viewport's
+  // `overflow: hidden` does not clip the pane over the workspace tab strip or
+  // a host drop target. Its left / top are written here (not by React): its
+  // containing block is measured, and a scroll moves the viewport under it.
+  const liftedLayerRef = React.useRef<HTMLDivElement | null>(null);
+  const placeLiftedLayer = React.useCallback((): void => {
+    const layer: HTMLDivElement | null = liftedLayerRef.current;
+    const lift = liftGeometryRef.current;
+    if (layer == null || lift == null) {
+      return;
+    }
+    placeFixedLayer(
+      layer,
+      measureViewportClientFrame(viewportRef.current),
+      lift.layoutRect,
+    );
+  }, []);
   // Raise the dragged pane from the lift; it stays raised until its drop
   // settle ends (cleared by the leaf motion once the pane rests).
   React.useLayoutEffect((): void => {
@@ -5252,6 +5292,8 @@ const TilingRendererComponent = React.forwardRef<
   const dragCursorEnabled: boolean =
     liveDragModeEnabled && interactionCapabilities.customCursor;
   const prefersReducedMotion: boolean = usePrefersReducedMotion();
+  const prefersReducedMotionRef = React.useRef<boolean>(prefersReducedMotion);
+  prefersReducedMotionRef.current = prefersReducedMotion;
   const dragCursorPresentation: DragCursorPresentation = React.useMemo(
     (): DragCursorPresentation =>
       resolveDragCursorPresentation(
@@ -5381,13 +5423,23 @@ const TilingRendererComponent = React.forwardRef<
     }
     const seen: Set<string> = new Set<string>();
     for (const [leafId, element] of wrappers) {
-      const rect = measureLeafLayoutRect(element, container);
+      // The lifted pane's fixed layer is laid out at its lift rect; offset
+      // geometry cannot see through `position: fixed`, so that rect is read
+      // from the lift, not measured.
+      const liftedRect: TilingRect | null =
+        element.closest("[data-hpt-lifted]") != null
+          ? (liftGeometryRef.current?.layoutRect ?? null)
+          : null;
+      if (liftedRect != null) {
+        placeLiftedLayer();
+      }
+      const rect = liftedRect ?? measureLeafLayoutRect(element, container);
       if (rect == null) {
         continue;
       }
       seen.add(leafId);
       const known: boolean = motion.has(leafId);
-      if (element.closest("[data-hpt-lifted]") != null) {
+      if (liftedRect != null) {
         // The lifted pane: laid out where it was picked up, drawn where the
         // pointer holds it (or settling toward it in the snap preview).
         if (!known) {
@@ -7307,10 +7359,11 @@ const TilingRendererComponent = React.forwardRef<
       // tree the others closed over.
       const snapped = snappedRef.current;
       if (snapped != null) {
-        const origin: DragMachinePoint = viewportClientOrigin();
-        if (
-          isInsideRect(snapped.slot, clientX - origin.x, clientY - origin.y, 0)
-        ) {
+        const point: DragMachinePoint = clientToViewportPoint(
+          viewportClientFrame(),
+          { x: clientX, y: clientY },
+        );
+        if (isInsideRect(snapped.slot, point.x, point.y, 0)) {
           return snapped.target;
         }
       }
@@ -7384,9 +7437,10 @@ const TilingRendererComponent = React.forwardRef<
         }
         return;
       }
-      const origin: DragMachinePoint = viewportClientOrigin();
-      const x: number = client.x - origin.x;
-      const y: number = client.y - origin.y;
+      const { x, y }: DragMachinePoint = clientToViewportPoint(
+        viewportClientFrame(),
+        client,
+      );
       let next = current != null && isInsideRect(current.slot, x, y, 0) ? current : null;
       if (next == null && live.leftHome) {
         const target: TilingDropState | null = live.resolvedTarget;
@@ -7563,6 +7617,12 @@ const TilingRendererComponent = React.forwardRef<
             hover,
           ) !== false;
         if (claimed) {
+          // The pane leaves this tree with the claim: it fades where it was
+          // drawn instead of popping out.
+          fadeOutClaimedLayer(
+            liftedLayerRef.current,
+            prefersReducedMotionRef.current,
+          );
           dispatchDrag({
             type: "POINTER_UP",
             pointerId: owningPointerId,
@@ -7578,6 +7638,18 @@ const TilingRendererComponent = React.forwardRef<
         return;
       }
       dispatchDrag({ type: "POINTER_CANCEL", pointerId: owningPointerId });
+    };
+    // A page or ancestor scroll mid-drag moves the viewport under a pointer
+    // that has not moved: the lifted layer follows the viewport, the pane is
+    // re-held under the pointer, and the target under it is resolved again.
+    const handleScroll = (): void => {
+      const pointer: DragMachinePoint | null = lastDragClientPointRef.current;
+      if (pointer == null || controller.getState().drag.phase !== "dragging") {
+        return;
+      }
+      placeLiftedLayer();
+      placeHeldPane(pointer, true);
+      coalescer.schedule(pointer);
     };
     const handleLostPointerCapture = (event: PointerEvent): void => {
       if (event.pointerId !== owningPointerId) {
@@ -7631,6 +7703,8 @@ const TilingRendererComponent = React.forwardRef<
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("blur", handleBlur);
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    // Capture phase: scroll does not bubble, and any scrolling ancestor counts.
+    window.addEventListener("scroll", handleScroll, { capture: true, passive: true });
 
     return (): void => {
       // Drop any pending long-press timer so a released/scrolled gesture never
@@ -7652,12 +7726,14 @@ const TilingRendererComponent = React.forwardRef<
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("blur", handleBlur);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("scroll", handleScroll, { capture: true });
     };
   }, [
     activeDragPointerId,
     applyResolvedExternalDragHover,
     onLiveHitLogChange,
     placeHeldPane,
+    placeLiftedLayer,
     resolvePointerTarget,
   ]);
 
@@ -9322,9 +9398,10 @@ const TilingRendererComponent = React.forwardRef<
           viewportSize.height,
         )
       : renderBranch(displayLayout, viewportSize.width, viewportSize.height);
-  // The lifted pane: the REAL pane (same render path, same stable mount),
-  // out of the tree, in a wrapper laid out where it was picked up at its lift
-  // size; the leaf motion draws it where the pointer holds it.
+  // The lifted pane: the REAL pane (same render path; the same mount when
+  // `paneIdentity` is "stable"), out of the tree, in a fixed layer laid out
+  // where it was picked up at its lift size (left / top written by
+  // `placeLiftedLayer`); the leaf motion draws it where the pointer holds it.
   const liftedSourceLeaf: TilingLeafNode | null =
     isPaneHeld && dragSourceLeafId != null && liftGeometry != null
       ? findLeafById(layout, dragSourceLeafId)
@@ -9332,11 +9409,10 @@ const TilingRendererComponent = React.forwardRef<
   const liftedElement: React.ReactElement | null =
     liftedSourceLeaf != null && liftGeometry != null ? (
       <div
-        className="pointer-events-none absolute flex"
+        ref={liftedLayerRef}
+        className="pointer-events-none fixed flex"
         data-hpt-lifted=""
         style={{
-          left: liftGeometry.layoutRect.x,
-          top: liftGeometry.layoutRect.y,
           width: liftGeometry.layoutRect.width,
           height: liftGeometry.layoutRect.height,
           zIndex: RAISED_PANE_Z_INDEX,
