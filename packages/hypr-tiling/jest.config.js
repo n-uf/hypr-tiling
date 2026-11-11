@@ -10,7 +10,17 @@ module.exports = {
     "/node_modules/",
     "/__tests__/engine-entry-react-free\\.test\\.ts$",
   ],
+  // @n-uf/motion ships ESM only; jest runs CommonJS, so its dist is transformed
+  // like our own sources (everything else in node_modules stays untouched).
+  transformIgnorePatterns: ["/node_modules/(?!(\\.pnpm/@n-uf\\+motion@[^/]+/node_modules/)?@n-uf/motion/)"],
   transform: {
+    "/node_modules/(\\.pnpm/@n-uf\\+motion@[^/]+/node_modules/)?@n-uf/motion/.+\\.js$": [
+      "ts-jest",
+      {
+        tsconfig: { allowJs: true, module: "commonjs", esModuleInterop: true },
+        diagnostics: false,
+      },
+    ],
     "^.+\\.tsx?$": [
       "ts-jest",
       {

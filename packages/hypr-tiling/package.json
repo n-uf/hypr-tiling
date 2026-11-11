@@ -68,6 +68,7 @@
     "release:next-version": "node ./scripts/calendar-version-bump.mjs --dry-run"
   },
   "dependencies": {
+    "@n-uf/motion": "26.11.3",
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.6.0"
   },
@@ -88,13 +89,13 @@
     "@microsoft/api-documenter": "^7.30.7",
     "@microsoft/api-extractor": "^7.58.9",
     "@testing-library/react": "^16.3.2",
-    "marked": "^18.0.5",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.0.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "jest": "^30.2.0",
     "jest-environment-jsdom": "^30.4.1",
+    "marked": "^18.0.5",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "ts-jest": "^29.4.5",
