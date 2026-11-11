@@ -681,7 +681,9 @@ const DRAG_PREVIEW_LABELS: Record<TilingDragPreview, string> = {
 /**
  * The drop-preview toggle beside the reset chips: shows the preview a pane
  * drag uses now (the drop indicator, or snap to slot) and switches to the
- * other on click. Same keycap chip as the reset controls.
+ * other on click. Same keycap chip as the reset controls. A toggle button:
+ * its name stays "Drop preview: snap to slot" and `aria-pressed` says whether
+ * snap is on, so a screen reader hears the state, not a renamed button.
  */
 function DragPreviewChip({
   tokens,
@@ -696,7 +698,8 @@ function DragPreviewChip({
   return (
     <button
       type="button"
-      aria-label={`Drop preview: ${DRAG_PREVIEW_LABELS[preview]} (switch to ${DRAG_PREVIEW_LABELS[next]})`}
+      aria-label={`Drop preview: ${DRAG_PREVIEW_LABELS.snap.toLowerCase()}`}
+      aria-pressed={preview === "snap"}
       title={`Dragging a pane shows ${preview === "indicator" ? "where it will land" : "it settling into the slot"}. Click for ${DRAG_PREVIEW_LABELS[next].toLowerCase()}.`}
       data-drag-preview={preview}
       onClick={(): void => {

@@ -84,10 +84,19 @@ describe("home bottom bar — the drop preview toggle sits with the reset contro
     const indicator: string = markup("indicator");
     expect(indicator).toContain('data-drag-preview="indicator"');
     expect(indicator).toContain(">Drop indicator<");
-    expect(indicator).toContain("switch to Snap to slot");
+    expect(indicator).toContain("Click for snap to slot");
     expect(indicator.indexOf("Reset all")).toBeLessThan(indicator.indexOf('data-drag-preview="indicator"'));
     const snap: string = markup("snap");
     expect(snap).toContain(">Snap to slot<");
-    expect(snap).toContain("switch to Drop indicator");
+    expect(snap).toContain("Click for drop indicator");
+  });
+
+  it("is a toggle button: one name, aria-pressed says whether snap is on", (): void => {
+    const indicator: string = markup("indicator");
+    const snap: string = markup("snap");
+    expect(indicator).toContain('aria-label="Drop preview: snap to slot"');
+    expect(snap).toContain('aria-label="Drop preview: snap to slot"');
+    expect(indicator).toContain('aria-pressed="false"');
+    expect(snap).toContain('aria-pressed="true"');
   });
 });
