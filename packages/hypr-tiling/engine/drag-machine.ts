@@ -277,6 +277,11 @@ export interface DragRearmEvent {
   pointerType: DragPointerType;
   /** The leaf to drag from its seat in the NEW tree. */
   sourceLeafId: string;
+  /**
+   * What the re-armed drag moves (absent: the one pane). A group subject's
+   * `anchorFootprint` is the group's frame, strip and pane together.
+   */
+  subject?: DragSubject;
   /** The tile the leaf carries — informational; unused by the reducer. */
   tileId?: string;
   /** The leaf's footprint measured on the NEW tree (its seat after the move). */
@@ -905,6 +910,7 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
           pointerType: event.pointerType,
           touchDrag: event.pointerType === "touch",
           sourceLeafId: event.sourceLeafId,
+          ...(event.subject != null ? { subject: event.subject } : {}),
           anchorFootprint: event.anchorFootprint,
           pointerAnchorOffset,
           heldFootprint: heldFootprintAt(event.anchorFootprint, pointerAnchorOffset, event.client),
