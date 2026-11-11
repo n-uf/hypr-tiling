@@ -11,7 +11,8 @@ import type { ElementRef } from "../engine/element-ref";
 import type { SchedulerPort } from "../engine/scheduler-port";
 import type { MeasurementPort } from "../engine/measurement-port";
 import type { PointerCapturePort } from "../engine/pointer-capture-port";
-import type { StyleApplierPort } from "../engine/style-applier-port";
+import { createLeafMotion, type LeafMotionFrame } from "../engine/leaf-motion";
+import { createFakeClock, createFrameLoop } from "@n-uf/motion";
 import {
   type TilingController,
   type TilingControllerHost,
@@ -19,7 +20,7 @@ import {
 } from "../engine/controller";
 import { createWindowSchedulerPort } from "../react/window-scheduler-port";
 import { createDomPointerCapturePort } from "../react/dom-pointer-capture-port";
-import { createDomStyleApplierPort } from "../react/dom-style-applier-port";
+import { writeLeafMotionFrame } from "../react/leaf-motion-dom";
 import { createDomMeasurementPort } from "../react/dom-measurement-port";
 import type {
   TilingDropAction,
@@ -81,7 +82,6 @@ interface VanillaHarness {
   readonly viewport: HTMLDivElement;
   readonly scheduler: SchedulerPort;
   readonly measurement: MeasurementPort;
-  readonly styleApplier: StyleApplierPort;
   readonly pointerCapture: PointerCapturePort;
 }
 
@@ -109,9 +109,6 @@ function createVanillaHarness(): VanillaHarness {
         new Map<string, Set<HTMLElement>>(),
       ),
     }),
-    styleApplier: createDomStyleApplierPort(
-      elementRef<HTMLDivElement | null>(viewport),
-    ),
     pointerCapture: createDomPointerCapturePort(
       elementRef<HTMLDivElement | null>(root),
     ),
@@ -134,17 +131,35 @@ describe("vanilla DOM adapter — the four ports run headlessly with no React", 
     expect(h.measurement.measureLeafRect("does-not-exist")).toBeNull();
     expect(h.measurement.measureGroupDropTargetRects("C")).toEqual([]);
 
-    // StyleApplierPort: real element.style writes + clamp measurement + strip.
-    const handles = h.styleApplier.collectLeafHandles();
-    expect(handles.map((handle) => handle.leafId)).toEqual(["C"]);
-    h.styleApplier.applyTransform(handles[0]!, {
-      transform: "translate3d(4px, 0, 0)",
-      transition: "none",
+    // Leaf motion: the DOM-free settle on a fake clock drawn onto a plain
+    // wrapper (translate only, frame layer at the drawn size, content clipped,
+    // everything cleared at rest).
+    const wrapper: HTMLDivElement = document.createElement("div");
+    const frameLayer: HTMLDivElement = document.createElement("div");
+    frameLayer.setAttribute("data-hpt-leaf-frame", "");
+    wrapper.appendChild(frameLayer);
+    const content: HTMLElement = h.viewport.querySelector<HTMLElement>('[data-leaf-id="C"]')!;
+    wrapper.appendChild(content);
+    h.viewport.appendChild(wrapper);
+    const clock = createFakeClock();
+    const motion = createLeafMotion({
+      loop: createFrameLoop({ clock }),
+      onWrite: (frames: ReadonlyArray<LeafMotionFrame>): void => {
+        for (const frame of frames) {
+          writeLeafMotionFrame(wrapper, frame);
+        }
+      },
     });
-    expect(h.viewport.querySelector<HTMLElement>('[data-leaf-id="C"]')!.style
-      .transform).toBe("translate3d(4px, 0, 0)");
-    expect(h.styleApplier.measureClampViewport()).not.toBeNull();
-    h.styleApplier.stripLeaf(handles[0]!);
+    motion.target("C", { x: 0, y: 0, width: 200, height: 100 });
+    motion.target("C", { x: 100, y: 0, width: 300, height: 100 });
+    motion.flush();
+    expect(wrapper.style.transform).toBe("translate(-100px, 0px)");
+    expect(frameLayer.style.width).toBe("200px");
+    expect(content.style.clipPath).toContain("inset(0 100px 0px 0");
+    clock.runUntilIdle();
+    expect(wrapper.style.transform).toBe("");
+    expect(frameLayer.style.display).toBe("none");
+    expect(content.style.clipPath).toBe("");
 
     // PointerCapturePort: capture is best-effort (jsdom may lack the API); the
     // call must not throw and `has` must reflect the outcome.

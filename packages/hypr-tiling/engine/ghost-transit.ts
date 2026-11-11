@@ -1,20 +1,16 @@
 /**
  * Ghost bbox transit — the pure (DOM-less) half of the drag-ghost motion:
- * pickup-scale, hop-in / hop-out scale-morph, magnetic ease, and the coherent
- * non-intersecting (swap) transit dip.
+ * pickup-scale, hop-in / hop-out scale-morph and the magnetic ease.
  *
- * The renderer (`dynamic-tiling-renderer.tsx`, `DragPaneOverlay` + the survivor
- * reflow effect) does the actual `getBoundingClientRect` measurement + style /
- * Web-Animations mutation; the geometry + easing decisions live here as pure
- * functions so they are unit-testable in the `node` jest environment, exactly
- * mirroring how `survivor-reflow.ts` factors the FLIP geometry out of the DOM.
+ * The renderer (`tiling-renderer.tsx`, `DragPaneOverlay`) does the actual
+ * `getBoundingClientRect` measurement + style mutation; the geometry + easing
+ * decisions live here as pure functions so they are unit-testable in the
+ * `node` jest environment. The panes themselves move on leaf motion
+ * (`leaf-motion.ts`); only the ghost keeps this FLIP until it is replaced.
  *
  * Cross-ref: `_agent/ghost-bbox-transit-design.md` (§2 scale-morph math, §5
- * magnetic ease, §7 coherent transit), `survivor-reflow.ts` (the sibling FLIP
- * primitive), `drag-machine.ts` (the drag FSM the ghost sub-states map onto).
+ * magnetic ease), `drag-machine.ts` (the drag FSM the ghost sub-states map onto).
  */
-
-import type { TilingDropAction } from "./types";
 
 /** A measured client-coordinate rect (the subset of `DOMRect` the morph needs). @internal */
 export interface GhostRect {
@@ -50,32 +46,10 @@ export const GHOST_PICKUP_SCALE_MAX_PERCENT: number = 150;
 /** @internal */
 export const DEFAULT_GHOST_PICKUP_SCALE_PERCENT: number = 90;
 
-/** Sub-pixel translate / scale no-op gates (match the survivor + current-hop epsilons). @internal */
+/** Sub-pixel translate / scale no-op gates for the ghost hop. @internal */
 export const GHOST_MORPH_TRANSLATE_EPSILON_PX: number = 0.5;
 /** @internal */
 export const GHOST_MORPH_SCALE_EPSILON: number = 0.002;
-
-/** Mid-transit scale both swap boxes dip to so crossing paths never visually collide. @internal */
-export const COHERENT_TRANSIT_MID_SCALE: number = 0.7;
-
-/** Min / max / default for the swap-landing bounce magnitude (percent of full overshoot). @internal */
-export const SWAP_BOUNCE_MIN_PERCENT: number = 0;
-/** @internal */
-export const SWAP_BOUNCE_MAX_PERCENT: number = 100;
-/** @internal */
-export const DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT: number = 0;
-
-/**
- * easeOutBack overshoot coefficient at `SWAP_BOUNCE_MAX_PERCENT`. `s = 0` is no
- * overshoot (the curve reduces to easeOutCubic); larger `s` overshoots further
- * past the landing before settling. `3` gives a pronounced — but still bounded —
- * bounce at 100 %.
- * @internal
- */
-export const SWAP_BOUNCE_MAX_OVERSHOOT: number = 3;
-
-/** Sample count for `buildBounceEasingCss` (resolution of the `linear()` curve). @internal */
-export const SWAP_BOUNCE_SAMPLE_COUNT: number = 20;
 
 /** Fraction of the hop after which the magnetic ease snaps into the slot (last ~15%). @internal */
 export const MAGNETIC_EASE_SPLIT: number = 0.85;
@@ -97,66 +71,6 @@ export function clampGhostPickupScalePercent(percent: number): number {
 /** The clamped pickup-scale percent as a unit factor (e.g. `90` → `0.9`). @internal */
 export function ghostPickupScaleFactor(percent: number): number {
   return clampGhostPickupScalePercent(percent) / 100;
-}
-
-/** Clamp a swap-bounce magnitude percent into `[0, 100]`; `NaN` collapses to the default. @internal */
-export function clampSwapBounceMagnitudePercent(percent: number): number {
-  if (Number.isNaN(percent)) {
-    return DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT;
-  }
-  return Math.min(Math.max(percent, SWAP_BOUNCE_MIN_PERCENT), SWAP_BOUNCE_MAX_PERCENT);
-}
-
-/**
- * The easeOutBack overshoot coefficient for a bounce magnitude percent. `0 %`
- * → `0` (no overshoot, the ease reduces to easeOutCubic); `100 %` →
- * `SWAP_BOUNCE_MAX_OVERSHOOT`. Linear in the clamped percent.
- * @internal
- */
-export function swapBounceOvershoot(percent: number): number {
-  return (clampSwapBounceMagnitudePercent(percent) / 100) * SWAP_BOUNCE_MAX_OVERSHOOT;
-}
-
-/**
- * Swap-landing bounce progress: an easeOutBack curve
- * `1 + (s+1)(t-1)^3 + s(t-1)^2` where `s = swapBounceOvershoot(percent)`. Pinned
- * `progress(0) = 0`, `progress(1) = 1`. For `percent > 0` the curve exceeds `1`
- * in the tail (the visible overshoot past the landing) before settling back;
- * at `percent = 0` it is the monotonic easeOutCubic (no bounce). Used as the
- * settle easing for the ghost seated hop-in and the survivor reflow when a
- * bounce magnitude is dialed in.
- * @internal
- */
-export function bounceEaseProgress(t: number, percent: number): number {
-  if (t <= 0) {
-    return 0;
-  }
-  if (t >= 1) {
-    return 1;
-  }
-  const s: number = swapBounceOvershoot(percent);
-  const u: number = t - 1;
-  return 1 + (s + 1) * Math.pow(u, 3) + s * Math.pow(u, 2);
-}
-
-/**
- * Build a CSS `linear()` timing function by sampling `bounceEaseProgress` at
- * `sampleCount + 1` evenly-spaced points. A single cubic-bezier cannot express
- * an overshoot whose value exceeds `1` then returns, so the sampled `linear()`
- * curve carries the bounce to the compositor (same technique as the magnetic
- * ease). Endpoints are pinned `0` / `1`.
- * @internal
- */
-export function buildBounceEasingCss(
-  percent: number,
-  sampleCount: number = SWAP_BOUNCE_SAMPLE_COUNT,
-): string {
-  const points: string[] = [];
-  for (let index: number = 0; index <= sampleCount; index += 1) {
-    const t: number = index / sampleCount;
-    points.push(bounceEaseProgress(t, percent).toFixed(4));
-  }
-  return `linear(${points.join(", ")})`;
 }
 
 /** A rect with no positive area cannot be a morph source or target. @internal */
@@ -189,8 +103,7 @@ export function deriveGhostPickupBox(
  * (`first`, the LIVE `getBoundingClientRect`) and its committed resting box
  * (`last`, the node's new layout box), returns the transform that paints it back
  * at `first`, or `null` when the move + resize are both below the epsilons (no
- * visible motion → caller skips arming a transition). Mirrors
- * `deriveSurvivorFlipTransform` with First/Last named for the ghost.
+ * visible motion → caller skips arming a transition).
  * @internal
  */
 export function deriveGhostMorphTransform(
@@ -215,8 +128,7 @@ export function deriveGhostMorphTransform(
 }
 
 /**
- * The interrupt / retarget decision for the ghost-hop FLIP `First` — the ghost
- * analogue of `resolveSurvivorFlipFirst` (`survivor-reflow.ts`).
+ * The interrupt / retarget decision for the ghost-hop FLIP `First`.
  *
  * The ghost outer `fixed` div is positioned by React inline `left`/`top` from
  * its base rect (the cursor pickup box while free-following, the slot rect when
@@ -266,7 +178,8 @@ function easeInCubic(v: number): number {
  * SNAPS the remaining distance over the last `(1 − split)` of the time
  * (accelerating ease-in to `1`). The last segment's average speed exceeds the
  * approach's average speed — the "click into the slot" pull. Endpoints are
- * pinned `progress(0) = 0`, `progress(1) = 1`; monotonic non-decreasing.
+ * pinned `progress(0) = 0`, `progress(1) = 1`; monotonic non-decreasing, so it
+ * never passes the slot.
  * @internal
  */
 export function magneticEaseProgress(t: number, split: number = MAGNETIC_EASE_SPLIT): number {
@@ -297,42 +210,4 @@ export function buildLinearEasingCss(sampleCount: number = MAGNETIC_EASE_SAMPLE_
     points.push(magneticEaseProgress(t).toFixed(4));
   }
   return `linear(${points.join(", ")})`;
-}
-
-/**
- * Whether the coherent non-intersecting transit dip applies. Only the SWAP case
- * needs it (the source ghost and the displaced target trade places and their
- * paths can cross); edge-insert boxes never trade places, and reduced motion
- * removes all choreography. Off when `coherentTransit` is disabled.
- *
- * Also gated on SPEED PARITY (`speedsParity`): the dip's non-collision guarantee
- * holds only when the ghost and the displaced survivor reach their mid-transit
- * shrink at the same wall-clock instant — i.e. when both animate over EQUAL
- * duration. With split (unlinked) speeds the two shrink-windows desynchronize
- * and the boxes can collide mid-cross, so the dip is suppressed unless the two
- * speeds resolve to equal timing. See `_agent/animation-controls-design.md` §3.
- * @internal
- */
-export function shouldApplyCoherentTransitDip(params: {
-  enabled: boolean;
-  action: TilingDropAction | null;
-  reducedMotion: boolean;
-  speedsParity: boolean;
-}): boolean {
-  return params.enabled
-    && params.action === "swap"
-    && !params.reducedMotion
-    && params.speedsParity;
-}
-
-/**
- * The coherent-transit scale multiplier over hop progress `t`: `1` at the ends
- * (`t ∈ {0, 1}`) and `midScale` at mid-transit (`t = 0.5`), symmetric — both
- * moving boxes shrink toward `midScale` as they cross then grow back into place,
- * so even if the straight-line paths intersect the shrunk boxes do not collide.
- * @internal
- */
-export function coherentDipScaleAt(t: number, midScale: number = COHERENT_TRANSIT_MID_SCALE): number {
-  const clampedT: number = Math.min(Math.max(t, 0), 1);
-  return 1 - (1 - midScale) * Math.sin(Math.PI * clampedT);
 }

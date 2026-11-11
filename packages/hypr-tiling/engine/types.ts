@@ -241,9 +241,6 @@ export interface ResolvedTilingTouchDragCapability {
  *   write is armed as a `requestAnimationFrame` racing a `setTimeout` of this
  *   long, first-wins + idempotent, so a starved frame never leaves an element
  *   frozen at its inverted `First`. Default `~2 frames ≈ 32ms`.
- * - `transitionSlackMs` — the transition-completion slack: style cleanup fires
- *   on `transitionend` OR `duration + transitionSlackMs`, whichever first.
- *   Default `60ms` (names the existing `+60` mask-close slack).
  */
 export interface TilingDragRecoveryCapability {
   /** Enable the self-healing recovery layer. Default `true`. */
@@ -252,8 +249,6 @@ export interface TilingDragRecoveryCapability {
   maxDraggingIdleMs?: number;
   /** rAF-fallback slack (ms). Default `~2 frames ≈ 32`. */
   frameDeadlineMs?: number;
-  /** Transition-completion slack (ms). Default `60`. */
-  transitionSlackMs?: number;
 }
 
 /** Fully-resolved drag-recovery configuration (no optional fields). */
@@ -264,8 +259,6 @@ export interface ResolvedTilingDragRecoveryCapability {
   maxDraggingIdleMs: number;
   /** Resolved rAF-fallback slack (ms). */
   frameDeadlineMs: number;
-  /** Resolved transition-completion slack (ms). */
-  transitionSlackMs: number;
 }
 
 /**
@@ -1091,7 +1084,7 @@ export interface TilingInteractionCapabilities {
    * animation arming + idempotent transient-style teardown). Hardens the
    * live-drag animation/timing layer against frame starvation. Only meaningful
    * in `dragMode: "live"`. Default all-resolved (`enable: true`,
-   * `maxDraggingIdleMs ≈ 5100`, `frameDeadlineMs ≈ 32`, `transitionSlackMs: 60`).
+   * `maxDraggingIdleMs ≈ 5100`, `frameDeadlineMs ≈ 32`).
    */
   dragRecovery?: TilingDragRecoveryCapability;
   /**
@@ -1112,16 +1105,6 @@ export interface TilingInteractionCapabilities {
    * `dragMode: "live"`; skipped under `prefers-reduced-motion`.
    */
   ghostPickupScalePercent?: number;
-  /**
-   * Coherent non-intersecting transit. When `true` (default), the moving source
-   * ghost and the displaced target never visually OVERLAP mid-transition: on a
-   * SWAP both moving boxes scale down toward ~70% mid-transit (best-effort) then
-   * scale back into place, coordinated with the survivor reflow so even if their
-   * paths cross the shrunk boxes do not collide. Trivial / no-op for edge-insert
-   * (the boxes never trade places). Only meaningful in `dragMode: "live"`;
-   * skipped under `prefers-reduced-motion`.
-   */
-  coherentTransit?: boolean;
   /** Pane focus selection. When `false`, focus selection is suppressed. Default `true`. */
   focus?: boolean;
   /** Maximize-to-viewport capability. Default all-enabled. */
@@ -1500,8 +1483,6 @@ export interface ResolvedTilingInteractionCapabilities {
   customCursor: boolean;
   /** Resolved ghost pickup scale as a percent of the source pane bbox. */
   ghostPickupScalePercent: number;
-  /** Whether coherent non-intersecting transit is enabled. */
-  coherentTransit: boolean;
   /** Whether pane focus selection is enabled. */
   focus: boolean;
   /** Resolved maximize-to-viewport capability. */
@@ -3105,9 +3086,9 @@ export interface TilingRendererCommonProps {
   /** Background opacity `[0, 1]` for the projected landing overlays. */
   projectedOverlayBackgroundAlpha?: number;
   /**
-   * Master gate for all drag-motion choreography. When `false`, the ghost hop,
-   * survivor reflow, pickup-entrance, and swap dip collapse to instant placement
-   * (durations → ~0). Default `true`. The per-knob values (speeds, bounce) are
+   * Master gate for pane motion. When `false`, the ghost hop and pickup
+   * entrance collapse to instant placement (durations → ~0) and every layout
+   * change snaps instead of gliding. Default `true`. The speed values are
    * preserved and re-apply when re-enabled.
    */
   dragAnimationEnabled?: boolean;
@@ -3116,17 +3097,11 @@ export interface TilingRendererCommonProps {
    * hop-out / pickup entrance) and the swap/edge-insert ghost motion. Undefined
    * → the default snappy decel `cubic-bezier(0.2, 0.8, 0.2, 1)`. An invalid /
    * empty string falls back to that default (never reaches the compositor as a
-   * broken `transition`). The seated-ghost magnetic `linear()` curve and the
-   * swap-bounce curve are NOT replaced by this knob (sampled non-bezier curves).
+   * broken `transition`). The seated-ghost magnetic `linear()` curve is NOT
+   * replaced by this knob (a sampled non-bezier curve). Panes themselves move on
+   * the settle curve, which has no easing to choose.
    */
   dragHopEasing?: string;
-  /**
-   * CSS `<easing-function>` for the affected ("survivor") panes' FLIP reflow
-   * settle. Undefined → defaults to the same curve as `dragHopEasing` so the
-   * ghost and survivors read as one coordinated motion. Invalid / empty falls
-   * back to the default.
-   */
-  dragReflowEasing?: string;
   /**
    * Speed of the dragged GHOST's transit animation (hop-in / hop-out / pickup
    * entrance) as a percent of the 170ms baseline (`100` = baseline). Lower is
@@ -3134,22 +3109,16 @@ export interface TilingRendererCommonProps {
    */
   ghostTransitSpeedPercent?: number;
   /**
-   * Speed of the affected ("survivor") panes' REFLOW transform animation as a
-   * percent of the 170ms baseline (`100` = baseline). Lower is slower; higher is
-   * faster. Clamped to `[10, 400]`. Default `100`. When this equals
-   * `ghostTransitSpeedPercent` the two parties are at PARITY, which the coherent
-   * non-intersecting transit dip requires (see `coherentTransit`).
+   * Speed of pane motion: every layout change (open, close, swap, a keyboard
+   * move, maximize / restore, a drag's reflow, a layout set from outside)
+   * glides each pane from where it is drawn to its new place on one settle
+   * curve that never passes its target. `100` is the default tempo (90 % of a
+   * move in 92 ms, `SETTLE_TEMPO.default` of `@n-uf/motion`); the tempo scales
+   * in proportion (`200` arrives twice as fast). Clamped to `[10, 400]`.
+   * Default `100`. Panes snap under `prefers-reduced-motion` or with
+   * `dragAnimationEnabled: false`.
    */
   survivorReflowSpeedPercent?: number;
-  /**
-   * Swap-landing bounce magnitude as a percent of full overshoot (`0` = no
-   * overshoot, today's monotonic settle; `100` = pronounced bounce). Applies an
-   * easeOutBack overshoot to the ghost seated hop-in and the survivor reflow
-   * settle. Per-element (no cross-element coupling), so it is NOT gated by speed
-   * parity. Inert while the coherent-transit dip owns the landing. Clamped to
-   * `[0, 100]`. Default `0`. Skipped under `prefers-reduced-motion`.
-   */
-  swapBounceMagnitudePercent?: number;
   /** Whether drop border hints are painted on candidate panes during a drag. */
   showDropBorderHints?: boolean;
   /**

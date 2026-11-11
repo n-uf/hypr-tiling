@@ -1,31 +1,19 @@
 import { describe, expect, it } from "@jest/globals";
 import {
-  COHERENT_TRANSIT_MID_SCALE,
   DEFAULT_GHOST_PICKUP_SCALE_PERCENT,
-  DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT,
   GHOST_PICKUP_SCALE_MAX_PERCENT,
   GHOST_PICKUP_SCALE_MIN_PERCENT,
   MAGNETIC_EASE_SAMPLE_COUNT,
   MAGNETIC_EASE_SPLIT,
-  SWAP_BOUNCE_MAX_OVERSHOOT,
-  SWAP_BOUNCE_MAX_PERCENT,
-  SWAP_BOUNCE_MIN_PERCENT,
-  SWAP_BOUNCE_SAMPLE_COUNT,
   type GhostRect,
-  buildBounceEasingCss,
   buildLinearEasingCss,
-  bounceEaseProgress,
   clampGhostPickupScalePercent,
-  clampSwapBounceMagnitudePercent,
-  coherentDipScaleAt,
   deriveGhostMorphTransform,
   deriveGhostPickupBox,
   ghostPickupScaleFactor,
   isDegenerateGhostRect,
   magneticEaseProgress,
   resolveGhostHopFirstRect,
-  shouldApplyCoherentTransitDip,
-  swapBounceOvershoot,
 } from "../engine/ghost-transit";
 
 function rect(left: number, top: number, width: number, height: number): GhostRect {
@@ -148,108 +136,6 @@ describe("ghost-transit — buildLinearEasingCss", () => {
     expect(points.length).toBe(MAGNETIC_EASE_SAMPLE_COUNT + 1);
     expect(Number(points[0])).toBeCloseTo(0, 4);
     expect(Number(points[points.length - 1])).toBeCloseTo(1, 4);
-  });
-});
-
-describe("ghost-transit — shouldApplyCoherentTransitDip", () => {
-  it("applies only for an enabled swap with motion at parity", () => {
-    expect(
-      shouldApplyCoherentTransitDip({ enabled: true, action: "swap", reducedMotion: false, speedsParity: true }),
-    ).toBe(true);
-  });
-
-  it("does not apply for edge-insert (boxes never trade places)", () => {
-    expect(
-      shouldApplyCoherentTransitDip({ enabled: true, action: "edge-insert", reducedMotion: false, speedsParity: true }),
-    ).toBe(false);
-  });
-
-  it("does not apply when disabled or under reduced motion", () => {
-    expect(
-      shouldApplyCoherentTransitDip({ enabled: false, action: "swap", reducedMotion: false, speedsParity: true }),
-    ).toBe(false);
-    expect(
-      shouldApplyCoherentTransitDip({ enabled: true, action: "swap", reducedMotion: true, speedsParity: true }),
-    ).toBe(false);
-    expect(
-      shouldApplyCoherentTransitDip({ enabled: true, action: null, reducedMotion: false, speedsParity: true }),
-    ).toBe(false);
-  });
-
-  it("is gated OFF under non-parity (split / unlinked speeds), even for an enabled swap", () => {
-    expect(
-      shouldApplyCoherentTransitDip({ enabled: true, action: "swap", reducedMotion: false, speedsParity: false }),
-    ).toBe(false);
-  });
-});
-
-describe("ghost-transit — clampSwapBounceMagnitudePercent / swapBounceOvershoot", () => {
-  it("clamps into [0, 100] and collapses NaN to the default", () => {
-    expect(clampSwapBounceMagnitudePercent(-10)).toBe(SWAP_BOUNCE_MIN_PERCENT);
-    expect(clampSwapBounceMagnitudePercent(250)).toBe(SWAP_BOUNCE_MAX_PERCENT);
-    expect(clampSwapBounceMagnitudePercent(45)).toBe(45);
-    expect(clampSwapBounceMagnitudePercent(Number.NaN)).toBe(DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT);
-  });
-
-  it("maps 0% → no overshoot and 100% → the max overshoot coefficient", () => {
-    expect(swapBounceOvershoot(0)).toBeCloseTo(0, 6);
-    expect(swapBounceOvershoot(100)).toBeCloseTo(SWAP_BOUNCE_MAX_OVERSHOOT, 6);
-    expect(swapBounceOvershoot(50)).toBeCloseTo(SWAP_BOUNCE_MAX_OVERSHOOT / 2, 6);
-  });
-});
-
-describe("ghost-transit — bounceEaseProgress", () => {
-  it("pins the endpoints at every magnitude", () => {
-    for (const percent of [0, 30, 100]) {
-      expect(bounceEaseProgress(0, percent)).toBe(0);
-      expect(bounceEaseProgress(1, percent)).toBe(1);
-      expect(bounceEaseProgress(-0.4, percent)).toBe(0);
-      expect(bounceEaseProgress(1.5, percent)).toBe(1);
-    }
-  });
-
-  it("does NOT overshoot at magnitude 0 (monotonic, capped at 1)", () => {
-    for (let i = 0; i <= 20; i += 1) {
-      expect(bounceEaseProgress(i / 20, 0)).toBeLessThanOrEqual(1 + 1e-9);
-    }
-  });
-
-  it("overshoots past 1 in the tail for a positive magnitude (the visible bounce)", () => {
-    let peak: number = 0;
-    for (let i = 0; i <= 40; i += 1) {
-      peak = Math.max(peak, bounceEaseProgress(i / 40, 80));
-    }
-    expect(peak).toBeGreaterThan(1);
-  });
-});
-
-describe("ghost-transit — buildBounceEasingCss", () => {
-  it("emits a linear() with sampleCount + 1 pinned-endpoint points", () => {
-    const css: string = buildBounceEasingCss(50);
-    expect(css.startsWith("linear(")).toBe(true);
-    expect(css.endsWith(")")).toBe(true);
-    const inner: string = css.slice("linear(".length, -1);
-    const points: string[] = inner.split(",").map((s: string): string => s.trim());
-    expect(points.length).toBe(SWAP_BOUNCE_SAMPLE_COUNT + 1);
-    expect(Number(points[0])).toBeCloseTo(0, 4);
-    expect(Number(points[points.length - 1])).toBeCloseTo(1, 4);
-  });
-});
-
-describe("ghost-transit — coherentDipScaleAt", () => {
-  it("is 1 at the ends and midScale at mid-transit", () => {
-    expect(coherentDipScaleAt(0)).toBeCloseTo(1, 6);
-    expect(coherentDipScaleAt(1)).toBeCloseTo(1, 6);
-    expect(coherentDipScaleAt(0.5)).toBeCloseTo(COHERENT_TRANSIT_MID_SCALE, 6);
-  });
-
-  it("is symmetric and bounded within [midScale, 1]", () => {
-    expect(coherentDipScaleAt(0.25)).toBeCloseTo(coherentDipScaleAt(0.75), 6);
-    for (let i = 0; i <= 20; i += 1) {
-      const value: number = coherentDipScaleAt(i / 20);
-      expect(value).toBeLessThanOrEqual(1 + 1e-9);
-      expect(value).toBeGreaterThanOrEqual(COHERENT_TRANSIT_MID_SCALE - 1e-9);
-    }
   });
 });
 

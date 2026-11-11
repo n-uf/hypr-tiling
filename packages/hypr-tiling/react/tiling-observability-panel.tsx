@@ -5,14 +5,13 @@ import {
   DRAG_ANIMATION_SPEED_MAX_PERCENT,
   DRAG_ANIMATION_SPEED_MIN_PERCENT,
   resolveDragAnimationDurationMs,
+  resolveLeafMotionOmega,
   usePrefersReducedMotion,
 } from "./tiling-renderer";
 import {
   DEFAULT_GHOST_PICKUP_SCALE_PERCENT,
   GHOST_PICKUP_SCALE_MAX_PERCENT,
   GHOST_PICKUP_SCALE_MIN_PERCENT,
-  SWAP_BOUNCE_MAX_PERCENT,
-  SWAP_BOUNCE_MIN_PERCENT,
 } from "../engine/ghost-transit";
 import { DEFAULT_DRAG_HOP_EASING } from "../engine/drag-easing";
 import {
@@ -44,26 +43,21 @@ import type {
 /**
  * ANIMATION control-group defaults — the single source of truth shared by the
  * host initial state and the group's "reset to defaults" affordance. Speeds
- * start linked at parity (100 % = the 170ms baseline for both parties), the swap
- * bounce starts at a visible demo magnitude (the public-API prop default is 0), pickup
- * scale + coherent transit keep their library defaults.
+ * start linked (100 % = the 170ms ghost hop and the default pane tempo), pickup
+ * scale keeps its library default.
  */
 export interface AnimationControlDefaults {
   speedLinked: boolean;
   ghostTransitSpeedPercent: number;
   survivorReflowSpeedPercent: number;
-  swapBounceMagnitudePercent: number;
   ghostPickupScalePercent: number;
-  coherentTransit: boolean;
 }
 
 export const ANIMATION_CONTROL_DEFAULTS: AnimationControlDefaults = {
   speedLinked: true,
   ghostTransitSpeedPercent: 100,
   survivorReflowSpeedPercent: 100,
-  swapBounceMagnitudePercent: 30,
   ghostPickupScalePercent: DEFAULT_GHOST_PICKUP_SCALE_PERCENT,
-  coherentTransit: true,
 };
 
 /**
@@ -121,8 +115,6 @@ interface TilingObservabilityPanelProps {
   setGhostTransitSpeedPercent: React.Dispatch<React.SetStateAction<number>>;
   survivorReflowSpeedPercent: number;
   setSurvivorReflowSpeedPercent: React.Dispatch<React.SetStateAction<number>>;
-  swapBounceMagnitudePercent: number;
-  setSwapBounceMagnitudePercent: React.Dispatch<React.SetStateAction<number>>;
   dragHopEasing: string;
   setDragHopEasing: React.Dispatch<React.SetStateAction<string>>;
   projectedOverlayRenderCount: number;
@@ -935,7 +927,8 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
   const projectedFillAlphaEnabled: boolean = hasEnabledProjectedFill(props.observabilityColorEnables);
   const prefersReducedMotion: boolean = usePrefersReducedMotion();
   const resolvedGhostTransitDurationMs: number = resolveDragAnimationDurationMs(props.ghostTransitSpeedPercent);
-  const resolvedSurvivorReflowDurationMs: number = resolveDragAnimationDurationMs(props.survivorReflowSpeedPercent);
+  // Pane motion is a settle: report its time to 90 % (ln 10 / ω).
+  const resolvedPaneMotionT90Ms: number = Math.round((Math.log(10) / resolveLeafMotionOmega(props.survivorReflowSpeedPercent)) * 1000);
 
   const liveStatusReadout: React.ReactElement = (
     <section className="shrink-0 min-w-0 max-w-full overflow-hidden rounded border border-cyan-300/40 bg-slate-900/90 p-1.5">
@@ -1438,8 +1431,8 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
         sticky={props.animationControlsSticky}
         onStickyChange={props.setAnimationControlsSticky}
         ariaLabel="animation group"
-        offTitle="Disable the live-drag motion choreography (split transit/reflow speeds, swap bounce, ghost pickup-scale, coherent non-intersecting transit) and collapse the controls. Placement becomes instant; per-control values are preserved for re-enabling."
-        onTitle="Enable the live-drag motion choreography and expand the controls (link toggle, transit + reflow speeds, swap bounce magnitude, ghost pickup scale, coherent non-intersecting transit)."
+        offTitle="Disable pane motion and the ghost choreography (transit + pane speeds, ghost pickup-scale) and collapse the controls. Placement becomes instant; per-control values are preserved for re-enabling."
+        onTitle="Enable pane motion and the ghost choreography and expand the controls (link toggle, transit + pane speeds, ghost pickup scale)."
       />
       {props.animationControlsEnabled ? (
         <div className="mt-2 space-y-2">
@@ -1450,7 +1443,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
           ) : null}
           <label
             className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-300"
-            title="Link the ghost transit speed and the survivor reflow speed. Linked (default): one slider drives both at equal (parity) timing — the only regime where coherent non-intersecting transit is geometrically valid. Unlinked: two independent sliders; coherent transit is gated off while speeds can diverge."
+            title="Link the ghost transit speed and the pane motion speed. Linked (default): one slider drives both. Unlinked: two independent sliders."
           >
             <StyledCheckbox
               checked={props.animationSpeedLinked}
@@ -1467,7 +1460,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
           {props.animationSpeedLinked ? (
             <div className="pl-0.5">
               <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">
-                drag animation speed: {props.ghostTransitSpeedPercent}% ({resolvedGhostTransitDurationMs}ms transit + reflow)
+                drag animation speed: {props.ghostTransitSpeedPercent}% ({resolvedGhostTransitDurationMs}ms hop, panes 90% in {resolvedPaneMotionT90Ms}ms)
               </label>
               <RangeSlider
                 min={DRAG_ANIMATION_SPEED_MIN_PERCENT}
@@ -1478,7 +1471,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                   props.setGhostTransitSpeedPercent(value);
                   props.setSurvivorReflowSpeedPercent(value);
                 }}
-                title="Linked speed for both the ghost transit (hop) and the survivor reflow, scaled from the 170ms baseline (100% = default). Slowest 10% ≈ 1700ms."
+                title="Linked speed for both the ghost transit (hop, from the 170ms baseline) and pane motion (every layout change; 100% = 90% of a move in 92ms). Slowest 10% ≈ 1700ms hop."
               />
             </div>
           ) : (
@@ -1498,7 +1491,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
               </div>
               <div className="pl-0.5">
                 <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">
-                  survivor reflow speed: {props.survivorReflowSpeedPercent}% ({resolvedSurvivorReflowDurationMs}ms reflow)
+                  pane motion speed: {props.survivorReflowSpeedPercent}% (90% in {resolvedPaneMotionT90Ms}ms)
                 </label>
                 <RangeSlider
                   min={DRAG_ANIMATION_SPEED_MIN_PERCENT}
@@ -1506,24 +1499,11 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                   step={5}
                   value={props.survivorReflowSpeedPercent}
                   onChange={props.setSurvivorReflowSpeedPercent}
-                  title="Speed of the affected (survivor / displaced) panes' reflow transform, scaled from the 170ms baseline (100% = default)."
+                  title="Tempo of pane motion: every layout change glides each pane from where it is drawn on one settle curve that never passes its target (100% = 90% of a move in 92ms)."
                 />
               </div>
             </>
           )}
-          <div className="pl-0.5">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">
-              swap bounce magnitude: {props.swapBounceMagnitudePercent}% {props.swapBounceMagnitudePercent === 0 ? "(no overshoot)" : "(overshoot)"}
-            </label>
-            <RangeSlider
-              min={SWAP_BOUNCE_MIN_PERCENT}
-              max={SWAP_BOUNCE_MAX_PERCENT}
-              step={5}
-              value={props.swapBounceMagnitudePercent}
-              onChange={props.setSwapBounceMagnitudePercent}
-              title="Landing overshoot amplitude for the ghost seated hop-in + survivor settle (easeOutBack). 0% = today's monotonic settle. Per-element, so it is valid under split (unlinked) speeds; inert while the coherent-transit dip owns the swap landing. Skipped under prefers-reduced-motion."
-            />
-          </div>
           <div className="pl-0.5">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">
               hop easing: {DRAG_HOP_EASING_PRESETS.find((preset): boolean => preset.value === props.dragHopEasing)?.label ?? "custom"}
@@ -1536,7 +1516,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                     key={preset.id}
                     type="button"
                     onClick={(): void => props.setDragHopEasing(preset.value)}
-                    title={`Set the ghost hop + cursor transit timing function to ${preset.value} (the survivor reflow falls back to this curve).`}
+                    title={`Set the ghost hop + cursor transit timing function to ${preset.value}.`}
                     className={`rounded border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] transition-colors ${
                       isActive
                         ? "border-sky-400/70 bg-sky-500/20 text-sky-200"
@@ -1567,45 +1547,22 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
               title="Size the lifted ghost relative to the source pane's full bbox on drag start. <100% reads as lifted/shrunk; the ghost morphs from this size toward the resolved slot's bbox on hop-in. Skipped under prefers-reduced-motion."
             />
           </div>
-          <label
-            className={`flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] ${props.animationSpeedLinked ? "text-slate-300" : "text-slate-600"}`}
-            title="Coherent non-intersecting transit. On a SWAP the moving ghost and the displaced target dip toward ~70% mid-transit so their crossing paths never visually overlap, then scale back into place. Only valid at equal (parity) timing, so it is disabled while the transit + reflow speeds are unlinked."
-          >
-            <StyledCheckbox
-              checked={props.animationSpeedLinked && props.interactionCapabilities.coherentTransit}
-              disabled={!props.animationSpeedLinked}
-              onChange={(checked: boolean): void => props.setInteractionCapabilities(
-                (previous: ResolvedTilingInteractionCapabilities): ResolvedTilingInteractionCapabilities => ({
-                  ...previous,
-                  coherentTransit: checked,
-                }),
-              )}
-            />
-            coherent non-intersecting transit
-          </label>
-          {props.animationSpeedLinked ? null : (
-            <div className="pl-6 font-mono text-[9px] uppercase tracking-[0.12em] text-slate-500">
-              requires linked transit + reflow speed
-            </div>
-          )}
           <button
             type="button"
             onClick={(): void => {
               props.setAnimationSpeedLinked(ANIMATION_CONTROL_DEFAULTS.speedLinked);
               props.setGhostTransitSpeedPercent(ANIMATION_CONTROL_DEFAULTS.ghostTransitSpeedPercent);
               props.setSurvivorReflowSpeedPercent(ANIMATION_CONTROL_DEFAULTS.survivorReflowSpeedPercent);
-              props.setSwapBounceMagnitudePercent(ANIMATION_CONTROL_DEFAULTS.swapBounceMagnitudePercent);
               props.setDragHopEasing(DEFAULT_DRAG_HOP_EASING);
               props.setInteractionCapabilities(
                 (previous: ResolvedTilingInteractionCapabilities): ResolvedTilingInteractionCapabilities => ({
                   ...previous,
                   ghostPickupScalePercent: ANIMATION_CONTROL_DEFAULTS.ghostPickupScalePercent,
-                  coherentTransit: ANIMATION_CONTROL_DEFAULTS.coherentTransit,
                 }),
               );
             }}
             className="mt-1 w-full rounded border border-white/15 bg-slate-900/80 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-slate-300 transition-colors hover:border-cyan-300/50 hover:text-cyan-100"
-            title="Restore the ANIMATION group to its defaults: linked speeds at 100%, swap bounce 30%, ghost pickup scale 90%, coherent transit on."
+            title="Restore the ANIMATION group to its defaults: linked speeds at 100%, ghost pickup scale 90%."
           >
             reset group to defaults
           </button>

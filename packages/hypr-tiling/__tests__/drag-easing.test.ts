@@ -1,7 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   DEFAULT_DRAG_HOP_EASING,
-  DEFAULT_DRAG_REFLOW_EASING,
   isCssEasing,
   resolveDragEasing,
 } from "../engine/drag-easing";
@@ -46,9 +45,8 @@ describe("isCssEasing (CSS <easing-function> shape check)", (): void => {
     expect(isCssEasing("red; background: url(x)")).toBe(false);
   });
 
-  it("treats the library defaults as valid easings", (): void => {
+  it("treats the library default as a valid easing", (): void => {
     expect(isCssEasing(DEFAULT_DRAG_HOP_EASING)).toBe(true);
-    expect(isCssEasing(DEFAULT_DRAG_REFLOW_EASING)).toBe(true);
   });
 });
 
@@ -67,15 +65,5 @@ describe("resolveDragEasing (resolve to a usable timing function)", (): void => 
     expect(resolveDragEasing("", "ease-in")).toBe("ease-in");
     expect(resolveDragEasing("   ", "ease-in")).toBe("ease-in");
     expect(resolveDragEasing("not-an-easing", "ease-in")).toBe("ease-in");
-  });
-
-  it("supports the renderer's reflow→hop fallback chaining", (): void => {
-    // reflow undefined falls back to the resolved hop curve
-    const hop: string = resolveDragEasing("ease-out", DEFAULT_DRAG_HOP_EASING);
-    expect(resolveDragEasing(undefined, hop)).toBe("ease-out");
-  });
-
-  it("defaults: reflow default equals hop default (coordinated motion)", (): void => {
-    expect(DEFAULT_DRAG_REFLOW_EASING).toBe(DEFAULT_DRAG_HOP_EASING);
   });
 });

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "@jest/globals";
+import { SETTLE_TEMPO } from "@n-uf/motion";
 import { BASELINE_DRAG_HOP_DURATION_MS } from "../engine/drag-timing";
 import {
   DRAG_ANIMATION_SPEED_MAX_PERCENT,
   DRAG_ANIMATION_SPEED_MIN_PERCENT,
-  dragSpeedsAtParity,
   resolveDragAnimationDurationMs,
+  resolveLeafMotionOmega,
 } from "../react/tiling-renderer";
 
 describe("dynamic-tiling-renderer — resolveDragAnimationDurationMs", () => {
@@ -50,21 +51,19 @@ describe("dynamic-tiling-renderer — resolveDragAnimationDurationMs", () => {
   });
 });
 
-describe("dynamic-tiling-renderer — dragSpeedsAtParity", () => {
-  it("is true for equal speeds (linked regime)", () => {
-    expect(dragSpeedsAtParity(100, 100)).toBe(true);
-    expect(dragSpeedsAtParity(40, 40)).toBe(true);
+describe("tiling-renderer — resolveLeafMotionOmega (pane motion tempo)", () => {
+  it("is the settle's default tempo at 100% (90 % of a move in 92 ms)", () => {
+    expect(resolveLeafMotionOmega(100)).toBe(SETTLE_TEMPO.default);
+    expect(Math.log(10) / resolveLeafMotionOmega(100)).toBeCloseTo(0.0921, 3);
   });
 
-  it("is false for differing speeds (split / unlinked regime)", () => {
-    expect(dragSpeedsAtParity(100, 50)).toBe(false);
-    expect(dragSpeedsAtParity(200, 100)).toBe(false);
+  it("scales in proportion: 200% arrives twice as fast", () => {
+    expect(resolveLeafMotionOmega(200)).toBe(2 * SETTLE_TEMPO.default);
+    expect(resolveLeafMotionOmega(50)).toBe(SETTLE_TEMPO.default / 2);
   });
 
-  it("compares RESOLVED timing, so percents that clamp to the same duration are parity", () => {
-    // Both clamp above the ceiling → identical resolved duration → parity.
-    expect(dragSpeedsAtParity(DRAG_ANIMATION_SPEED_MAX_PERCENT + 100, DRAG_ANIMATION_SPEED_MAX_PERCENT + 500)).toBe(true);
-    // Both clamp below the floor → identical resolved duration → parity.
-    expect(dragSpeedsAtParity(1, 5)).toBe(true);
+  it("clamps out-of-range percents like every drag animation speed", () => {
+    expect(resolveLeafMotionOmega(0)).toBe(resolveLeafMotionOmega(DRAG_ANIMATION_SPEED_MIN_PERCENT));
+    expect(resolveLeafMotionOmega(10000)).toBe(resolveLeafMotionOmega(DRAG_ANIMATION_SPEED_MAX_PERCENT));
   });
 });
