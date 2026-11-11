@@ -56,17 +56,29 @@ function installProbe() {
   probe.onWrite = (time) => {
     for (const wrapper of document.querySelectorAll("[data-hpt-leaf]")) {
       const frame = wrapper.querySelector(":scope > [data-hpt-leaf-frame]");
+      const moving = wrapper.style.transform !== "";
       const framed = frame != null && frame.style.display === "block";
-      const box = (framed ? frame : wrapper).getBoundingClientRect();
+      // A moving pane is measured by its frame layer only: no frame, no sample
+      // to fall back on (the spec fails on it).
+      const box = (moving ? frame : wrapper)?.getBoundingClientRect() ?? null;
       const matrix = new DOMMatrixReadOnly(getComputedStyle(wrapper).transform === "none" ? undefined : getComputedStyle(wrapper).transform);
       probe.samples.push({
         t: time,
         id: wrapper.getAttribute("data-hpt-leaf"),
-        rect: { x: box.left + window.scrollX, y: box.top + window.scrollY, width: box.width, height: box.height },
+        rect: box == null ? null : { x: box.left + window.scrollX, y: box.top + window.scrollY, width: box.width, height: box.height },
+        wrapperRect: (() => {
+          const b = wrapper.getBoundingClientRect();
+          return { x: b.left + window.scrollX, y: b.top + window.scrollY, width: b.width, height: b.height };
+        })(),
         target: offsetRect(wrapper),
         a: matrix.a,
         d: matrix.d,
         popping: wrapper.style.opacity !== "",
+        frameMissing: frame == null,
+        frameNotDrawn: moving && !framed,
+        // A stable-identity pane mounts its content one commit after its slot:
+        // an empty wrapper has no chrome to draw yet.
+        empty: wrapper.querySelector(":scope > :not([data-hpt-leaf-frame]):not([data-hpt-leaf-affordance]) *, :scope > article") == null,
       });
     }
   };
@@ -128,18 +140,58 @@ const fmt = (n) => (n == null ? "n/a" : `${Math.round(n)} ms`);
 const results = [];
 let failed = false;
 
-/** Run one scenario: `act` runs in the page; every pane that moved is checked. */
-async function scenario(name, act) {
+/** In the page, once everything rests: what leaf motion left behind (nothing, if it is right). */
+function leftovers() {
+  const found = [];
+  for (const wrapper of document.querySelectorAll("[data-hpt-leaf]")) {
+    const id = wrapper.getAttribute("data-hpt-leaf");
+    for (const property of ["transform", "transform-origin", "opacity", "position", "isolation"]) {
+      if (wrapper.style.getPropertyValue(property) !== "") found.push(`${id}: wrapper ${property} = ${wrapper.style.getPropertyValue(property)}`);
+    }
+    const frame = wrapper.querySelector(":scope > [data-hpt-leaf-frame]");
+    if (frame == null) found.push(`${id}: no frame layer`);
+    else if (frame.style.display !== "none") found.push(`${id}: frame layer still drawn`);
+    let content = [...wrapper.children].find((child) => !child.hasAttribute("data-hpt-leaf-frame") && !child.hasAttribute("data-hpt-leaf-affordance"));
+    if (content?.hasAttribute("data-hpt-pane")) content = content.firstElementChild;
+    if (content != null) {
+      for (const property of ["clip-path", "transition", "box-shadow", "background-color"]) {
+        const value = content.style.getPropertyValue(property);
+        // clip-path / transition: the scene's panes set none inline, so any value is ours.
+        // box-shadow / background-color: the neutral values leaf motion writes.
+        const left = property === "clip-path" || property === "transition" ? value !== "" : value === "none" || value === "transparent";
+        if (left) {
+          found.push(`${id}: pane ${property} = ${value}`);
+        }
+      }
+    }
+  }
+  if (document.querySelector("[data-hpt-leaf-motion-active]") != null) found.push("viewport still marked as gliding");
+  return found;
+}
+
+const KEYS = ["x", "y", "width", "height"];
+const near = (a, b, tolerance = 0.75) => KEYS.every((k) => Math.abs(a[k] - b[k]) <= tolerance);
+
+/**
+ * Run one scenario: `act` runs in the page. Every pane in `expect.glide` must
+ * glide (a "still" one fails the scenario), every pane in `expect.open` must pop
+ * in; any other pane that moves is checked too.
+ */
+async function scenario(name, expected, act) {
   await waitIdle();
   await page.evaluate(() => {
     window.__HPT_MOTION_PROBE__.samples = [];
   });
   await page.evaluate(act);
   await waitIdle();
-  const { samples, omega } = await page.evaluate(() => ({
-    samples: window.__HPT_MOTION_PROBE__.samples,
-    omega: window.__HPT_MOTION_PROBE__.omega,
-  }));
+  const { samples, omega, rest } = await page.evaluate(
+    (leftoversSource) => ({
+      samples: window.__HPT_MOTION_PROBE__.samples,
+      omega: window.__HPT_MOTION_PROBE__.omega,
+      rest: new Function(`return (${leftoversSource})();`)(),
+    }),
+    leftovers.toString(),
+  );
   const expectedT90 = (Math.log(10) / omega) * 1000;
   const byId = new Map();
   for (const sample of samples) {
@@ -148,19 +200,47 @@ async function scenario(name, act) {
   }
   const lines = [];
   for (const [id, all] of byId) {
-    const to = all[all.length - 1].target;
-    // The run toward the final target: from the frame its target was set on.
-    const firstFinal = all.findIndex((s) => ["x", "y", "width", "height"].every((k) => Math.abs(s.target[k] - to[k]) < 0.01));
-    const run = all.slice(firstFinal);
-    const from = run[0].rect;
-    const moved = ["x", "y", "width", "height"].some((k) => Math.abs(from[k] - to[k]) > 0.5);
     const failures = [];
+    if (all.some((s) => s.frameMissing)) failures.push("no frame layer on the wrapper");
+    const frameless = all.filter((s) => s.frameNotDrawn && !s.empty);
+    if (frameless.length > 0) failures.push(`moved without its frame layer drawn (${frameless.length} of ${all.length} frames, first t=${Math.round(frameless[0].t)})`);
+    const emptyFrames = all.filter((s) => s.frameNotDrawn && s.empty).length;
+    if (emptyFrames > 2) failures.push(`stayed empty for ${emptyFrames} frames while moving`);
+    if (failures.length > 0) {
+      lines.push({ id, kind: "broken", t90: null, failures });
+      continue;
+    }
+    const to = all[all.length - 1].target;
     const scales = all.map((s) => ({ t: s.t, a: s.a, d: s.d }));
     if (all.some((s) => s.popping)) {
+      // A pop-in: a uniform scale about the pane's own centre, growing, ending exactly on its layout.
       failures.push(...checkContentScale(scales).failures.map((f) => `pop-in: ${f}`));
+      // The wrapper is what pops in (laid out at its target, scaled about its centre).
+      let lastScale = 0;
+      for (const s of all) {
+        const box = s.wrapperRect;
+        const sx = box.width / s.target.width;
+        const sy = box.height / s.target.height;
+        if (Math.abs(sx - sy) > 0.01) failures.push(`pop-in t=${Math.round(s.t)}: drawn ${sx.toFixed(3)} × ${sy.toFixed(3)} of its layout`);
+        const cx = box.x + box.width / 2 - (s.target.x + s.target.width / 2);
+        const cy = box.y + box.height / 2 - (s.target.y + s.target.height / 2);
+        if (Math.abs(cx) > 1 || Math.abs(cy) > 1) failures.push(`pop-in t=${Math.round(s.t)}: centre off by ${cx.toFixed(1)}, ${cy.toFixed(1)} px`);
+        if (sx < lastScale - 0.001) failures.push(`pop-in t=${Math.round(s.t)}: shrank`);
+        lastScale = sx;
+        // Once drawn, the frame layer sits exactly on the (scaled) wrapper.
+        if (s.rect != null && !s.empty && !near(s.rect, box, 1)) failures.push(`pop-in t=${Math.round(s.t)}: frame layer off the pane`);
+      }
+      const last = all[all.length - 1];
+      // Fully open: on its layout (offset sizes are whole pixels, hence 1 px), opacity cleared.
+      if (!near(last.wrapperRect, to, 1) || last.popping) failures.push("pop-in did not end on its layout, fully open");
       lines.push({ id, kind: "opened (pop-in)", t90: null, failures });
       continue;
     }
+    // The run toward the final target: from the frame its target was set on.
+    const firstFinal = all.findIndex((s) => KEYS.every((k) => Math.abs(s.target[k] - to[k]) < 0.01));
+    const run = all.slice(firstFinal);
+    const from = run[0].rect;
+    const moved = KEYS.some((k) => Math.abs(from[k] - to[k]) > 0.5);
     failures.push(...checkContentScale(scales, { uniformOnly: false }).failures);
     failures.push(...checkNoJumps(all, omega, 1.5).failures);
     if (!moved) {
@@ -173,9 +253,18 @@ async function scenario(name, act) {
     failures.push(...tempo.failures);
     lines.push({ id, kind: "glide", t90: tempo.t90, frames: run.length, failures });
   }
-  const moving = lines.filter((line) => line.kind !== "still");
-  if (moving.length === 0) {
-    lines.push({ id: "-", kind: "nothing moved", t90: null, failures: ["the scenario moved no pane"] });
+  for (const id of expected.glide ?? []) {
+    if (!lines.some((line) => line.id === id && line.kind === "glide")) {
+      lines.push({ id, kind: "expected to glide", t90: null, failures: [`${id} did not glide`] });
+    }
+  }
+  for (const id of expected.open ?? []) {
+    if (!lines.some((line) => line.id === id && line.kind === "opened (pop-in)")) {
+      lines.push({ id, kind: "expected to pop in", t90: null, failures: [`${id} did not pop in`] });
+    }
+  }
+  if (rest.length > 0) {
+    lines.push({ id: "-", kind: "at rest", t90: null, failures: rest });
   }
   const ok = lines.every((line) => line.failures.length === 0);
   failed ||= !ok;
@@ -187,7 +276,7 @@ async function scenario(name, act) {
   }
 }
 
-await scenario("open (delta beside charlie)", () => {
+await scenario("open (delta beside charlie)", { glide: ["c"], open: ["d"] }, () => {
   const lab = window.__motionLab;
   const replace = (node) => {
     if (node.kind === "leaf" && node.id === "leaf-c") {
@@ -198,7 +287,7 @@ await scenario("open (delta beside charlie)", () => {
   lab.setLayout(replace(lab.layout()));
 });
 
-await scenario("close (delta)", () => {
+await scenario("close (delta)", { glide: ["c"] }, () => {
   const lab = window.__motionLab;
   const remove = (node) => {
     if (node.kind !== "split") return node;
@@ -209,11 +298,11 @@ await scenario("close (delta)", () => {
   lab.setLayout(remove(lab.layout()));
 });
 
-await scenario("swap (alpha <-> charlie)", () => {
+await scenario("swap (alpha <-> charlie)", { glide: ["a", "c"] }, () => {
   window.__motionLab.dispatch({ kind: "swap-panes", sourceLeafId: "leaf-a", targetLeafId: "leaf-c" });
 });
 
-await scenario("keyboard move (move mode: aim right, commit)", async () => {
+await scenario("keyboard move (move mode: aim right, commit)", { glide: ["a", "b", "c"] }, async () => {
   const lab = window.__motionLab;
   lab.dispatch({ kind: "enter-move-mode", leafId: "leaf-a" });
   await new Promise((r) => requestAnimationFrame(() => r()));
@@ -222,15 +311,15 @@ await scenario("keyboard move (move mode: aim right, commit)", async () => {
   lab.dispatch({ kind: "commit-move-mode" });
 });
 
-await scenario("maximize (bravo)", () => {
+await scenario("maximize (bravo)", { glide: ["b"] }, () => {
   window.__motionLab.dispatch({ kind: "maximize", leafId: "leaf-b" });
 });
 
-await scenario("restore", () => {
+await scenario("restore (bravo glides back, the others pop in)", { glide: ["b"], open: ["a", "c"] }, () => {
   window.__motionLab.dispatch({ kind: "restore" });
 });
 
-await scenario("two layout changes 40 ms apart (root ratio 0.3, then 0.65)", async () => {
+await scenario("two layout changes 40 ms apart (root ratio 0.3, then 0.65)", { glide: ["a", "b", "c"] }, async () => {
   const lab = window.__motionLab;
   lab.setLayout({ ...lab.layout(), ratio: 0.3 });
   await new Promise((r) => setTimeout(r, 40));
