@@ -10,6 +10,7 @@ import {
   workspaceSetEquals,
   type TilingCommand,
   type TilingCommandHandle,
+  type TilingDragPreview,
   type TilingGroupTabMember,
   type TilingInteractionCapabilities,
   type TilingPaneTab,
@@ -71,6 +72,7 @@ import { ScenariosPane } from "./scenarios-pane";
 import { MobileHome } from "./mobile-home/mobile-home";
 import { MobileTopStrip } from "./mobile-home/top-strip";
 import { useMobileHomeMode } from "./mobile-home/mode-storage";
+import { useHomeDragPreview } from "./drag-preview-storage";
 import { type MobileHomeMode } from "./mobile-home/types";
 import {
   useIsCoarsePointer,
@@ -512,6 +514,8 @@ function HomeBottomBar({
   resetWorkspaceDisabled,
   resetAllDisabled,
   onResetCommand,
+  dragPreview,
+  onDragPreviewChange,
 }: {
   skin: HomeSkin;
   commandHandleRef: React.RefObject<TilingCommandHandle | null>;
@@ -524,6 +528,8 @@ function HomeBottomBar({
   resetWorkspaceDisabled: boolean;
   resetAllDisabled: boolean;
   onResetCommand: (scope: "workspace" | "all") => void;
+  dragPreview: TilingDragPreview;
+  onDragPreviewChange: (next: TilingDragPreview) => void;
 }): React.ReactElement {
   const tokens: SkinBottomBarTokens = SKIN_BOTTOM_BAR[skin];
 
@@ -542,6 +548,8 @@ function HomeBottomBar({
           resetWorkspaceDisabled={resetWorkspaceDisabled}
           resetAllDisabled={resetAllDisabled}
           onResetCommand={onResetCommand}
+          dragPreview={dragPreview}
+          onDragPreviewChange={onDragPreviewChange}
         />
       )}
       {isCoarsePointer ? null : (
@@ -812,6 +820,9 @@ export function HomePage({
   // mobile presentation entirely — wide/desktop viewports never see this state
   // at all, keeping the classic dwindle demo exactly as it was.
   const [mobileMode, onMobileModeChange] = useMobileHomeMode();
+  // How a pane drag previews its drop: the drop indicator (default) or snap to
+  // slot. The bottom bar toggles it; persisted like the mobile mode.
+  const [dragPreview, onDragPreviewChange] = useHomeDragPreview();
   const isMobile: boolean = useIsMobileHomeViewport();
   const isCoarsePointer: boolean = useIsCoarsePointer();
 
@@ -994,7 +1005,7 @@ export function HomePage({
               inactiveWorkspaces="keep-mounted"
               // Canvas runs its full consumer-authored `TilingTheme` (the `theme`
               // prop takes precedence over `themeId`), so the renderer-owned
-              // surfaces (root/viewport/divider/ghost shell) paint the Canvas desk
+              // surfaces (root/viewport/divider/drag chrome) paint the Canvas desk
               // vocabulary too. Mosaic and Editorial keep the built-in `mosaic`
               // theme via `themeId` (Editorial's pane chrome is fully custom and
               // its renderer-owned surfaces stay transparent under `mosaic`).
@@ -1006,10 +1017,12 @@ export function HomePage({
               onMaximizedLeafChange={setMaximizedLeafId}
               {...workspaceTabs.rendererProps}
               onWorkspaceSwitch={onWorkspaceSwitch}
+              // The bottom bar's drop-preview toggle: indicator or snap to slot.
+              dragPreview={dragPreview}
               renderTile={(args: TilingRenderTileProps): React.ReactNode =>
                 // Each skin's tile consumes the library `TilingRenderTileProps`
-                // directly — group representation comes from `args.group`, drag
-                // surfaces discriminate on `args.surface`. No prop threading.
+                // directly — group representation comes from `args.group`. A
+                // dragged pane is the same pane, lifted. No prop threading.
                 skin === "editorial" ? (
                   <EditorialTile {...args} />
                 ) : skin === "canvas" ? (
@@ -1034,6 +1047,8 @@ export function HomePage({
             resetWorkspaceDisabled={resetWorkspaceDisabled}
             resetAllDisabled={resetAllDisabled}
             onResetCommand={applyReset}
+            dragPreview={dragPreview}
+            onDragPreviewChange={onDragPreviewChange}
           />
         )}
       </TilingWorkspaceSwipeScope>
