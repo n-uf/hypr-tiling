@@ -1,5 +1,7 @@
 # hypr-tiling architecture
 
+> **Historical in part (2026-11, the held drag):** mentions of the drag ghost, its seat, hop easing, the compact chip and the cancel fly-back describe the renderer before 26.11.4; the pane itself is dragged now (see `packages/hypr-tiling/CHANGELOG.md`).
+
 ## Subfolders Structure
 
 ```text

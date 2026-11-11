@@ -1,5 +1,7 @@
 # Drag-recovery CDP CPU-throttle repro — manual INV-R1..INV-R4 validation
 
+> **Historical in part (2026-11, the held drag):** mentions of the drag ghost, its seat, hop easing, the compact chip and the cancel fly-back describe the renderer before 26.11.4; the pane itself is dragged now (see `packages/hypr-tiling/CHANGELOG.md`).
+
 Manual, headless-Chrome repro for the drag/transition self-healing recovery layer
 (`packages/hypr-tiling/drag-recovery.ts`, mitigations M1–M5). It drives a real
 drag against the running dev server under **CPU throttling + frame starvation +

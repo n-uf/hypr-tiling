@@ -1,5 +1,7 @@
 # Public-API-boundary revamp — `@n-uf/hypr-tiling` staged design
 
+> **Historical in part (2026-11, the held drag):** mentions of the drag ghost, its seat, hop easing, the compact chip and the cancel fly-back describe the renderer before 26.11.4; the pane itself is dragged now (see `packages/hypr-tiling/CHANGELOG.md`).
+
 Durable reference for inverting the `@n-uf/hypr-tiling` package from an
 "export-everything" barrel into a small **hand-authored public API facade**
 (the `.` entry) backed by a physically layered, `@beta` **engine** escape hatch
