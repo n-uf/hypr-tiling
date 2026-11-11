@@ -299,7 +299,7 @@ export function insertGroupAdjacent(layout: TilingLayoutNode, groupId: string, t
 export function insertLeafAdjacent(layout: TilingLayoutNode, sourceLeafId: string, targetLeafId: string, placement: TilingMovePlacement, options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
 
 // @public
-export function insertLeafInto(tree: TilingLayoutNode | null, leaf: TilingLeafNode, placement?: TilingWorkspacePlacement, options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
+export function insertLeafInto(tree: TilingLayoutNode | null, leaf: TilingLeafNode | TilingGroupNode, placement?: TilingWorkspacePlacement, options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
 
 // @public
 export function isLeafCollapsed(node: TilingLayoutNode, leafId: string): boolean;
@@ -373,6 +373,9 @@ export function measureLayoutFillSlackPx(node: TilingLayoutNode, options: Normal
 
 // @public
 export function mergeGroupIntoTarget(layout: TilingLayoutNode, groupId: string, targetLeafId: string, insertIndex?: number): TilingLayoutNode;
+
+// @public
+export function moveGroupToWorkspace(set: TilingWorkspaceSet, groupId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement): TilingWorkspaceSet;
 
 // @public
 export function moveLeafToRoot(layout: TilingLayoutNode, sourceLeafId: string, placement: "first" | "second", options?: Partial<TilingInsertionOptions>): TilingLayoutNode;

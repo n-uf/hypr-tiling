@@ -155,6 +155,9 @@ export function isWorkspaceNavigationCommand(command: TilingCommand): command is
 }>;
 
 // @public
+export function moveGroupToWorkspace(set: TilingWorkspaceSet, groupId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement): TilingWorkspaceSet;
+
+// @public
 export function moveLeafToWorkspace(set: TilingWorkspaceSet, leafId: string, to: TilingWorkspaceId, placement?: TilingWorkspacePlacement): TilingWorkspaceSet;
 
 // @public
@@ -795,6 +798,14 @@ export interface TilingExternalDropHover {
 }
 
 // @public
+export interface TilingExternalDropSubject {
+    readonly activeLeafId: string;
+    readonly groupId: string | null;
+    readonly kind: "pane" | "group";
+    readonly members: ReadonlyArray<TilingLeafNode>;
+}
+
+// @public
 export type TilingFocusDirection = "left" | "right" | "up" | "down";
 
 // @public
@@ -1037,7 +1048,7 @@ export interface TilingMinBBoxPx {
 export type TilingMovePlacement = "left" | "right" | "top" | "bottom";
 
 // @public
-export type TilingOnExternalDrop = (leafId: string, targetId: string, point: TilingClientPoint, hover: TilingExternalDragHover) => void | boolean;
+export type TilingOnExternalDrop = (leafId: string, targetId: string, point: TilingClientPoint, hover: TilingExternalDragHover, subject: TilingExternalDropSubject) => void | boolean;
 
 // @public
 export type TilingOrphanTilePolicy = "seat-in-active" | "ignore" | "report";
