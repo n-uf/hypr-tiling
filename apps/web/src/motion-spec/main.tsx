@@ -18,7 +18,8 @@ import "../index.css";
  * renders the panes through a `renderTile` with its own chrome (the path the
  * homepage uses); the default is the library's built-in pane and theme. The
  * drag preview starts from `?preview=snap` / `?room=1` and can be switched
- * with `__motionLab.setDragPreview`.
+ * with `__motionLab.setDragPreview`. `?identity=slot` renders panes in place
+ * (`paneIdentity: "slot"`) instead of one stable instance per tile.
  */
 
 const ROWS: ReadonlyArray<string> = [
@@ -97,6 +98,7 @@ function CustomPane(args: TilingRenderTileProps): React.ReactElement {
       }}
     >
       <header
+        ref={args.groupDropTargetRef}
         onPointerDown={args.onHandlePointerDown}
         style={{
           padding: "8px 12px",
@@ -133,6 +135,9 @@ function MotionScene(): React.ReactElement {
     search.get("preview") === "snap" ? "snap" : "indicator",
   );
   const [makesRoom, setMakesRoom] = React.useState<boolean>(search.get("room") === "1");
+  // `?identity=slot`: panes render in place (the server-rendered default), so a
+  // lifted pane is a fresh mount; the default keeps one instance per tile.
+  const paneIdentity: "stable" | "slot" = search.get("identity") === "slot" ? "slot" : "stable";
   const tiles: ReadonlyArray<TilingTile> = React.useMemo((): ReadonlyArray<TilingTile> => {
     const shown: Set<string> = new Set<string>(tileIdsOf(layout));
     return TILES.filter((tile: TilingTile): boolean => shown.has(tile.id));
@@ -163,6 +168,7 @@ function MotionScene(): React.ReactElement {
         onMaximizedLeafChange={setMaximizedLeafId}
         dragPreview={dragPreview}
         dragPreviewMakesRoom={makesRoom}
+        paneIdentity={paneIdentity}
         renderTile={custom ? (args: TilingRenderTileProps): React.ReactNode => <CustomPane {...args} /> : undefined}
       />
     </div>

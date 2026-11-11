@@ -26,8 +26,10 @@
 // its drop settle ends, land exactly in the indicator's rect, settle there with
 // no overshoot or jump; in snap mode the others must make room in the slot it
 // snaps into. A click changes nothing; a release over the pane's own place and
-// Escape put the layout back exactly. With --shots it saves a frame mid-drag in
-// each preview.
+// Escape put the layout back exactly. The same checks hold through a page scroll
+// mid-drag, under a scaled ancestor (scale 0.8), for a group merge (the indicator
+// is the group body under its tab strip), in a master/stack layout and with
+// paneIdentity "slot". With --shots it saves a frame mid-drag in each preview.
 
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -52,15 +54,20 @@ const shotsDir = option("shots", null);
 
 /** Installed in the page before it loads: collect one sample per pane per drawn frame. */
 function installProbe() {
-  const probe = { samples: [], frames: [], writes: 0, pointer: null };
-  // The pointer as the page saw it last (capture on window: before the renderer's listeners).
+  const probe = { samples: [], frames: [], writes: 0, client: null };
+  // The pointer as the page saw it last (capture on window: before the renderer's
+  // listeners), in client px; read in page px at each write, so a scroll with
+  // the pointer still moves it over the page.
   window.addEventListener(
     "pointermove",
     (event) => {
-      probe.pointer = { x: event.clientX + window.scrollX, y: event.clientY + window.scrollY };
+      probe.client = { x: event.clientX, y: event.clientY };
     },
     { capture: true },
   );
+  Object.defineProperty(probe, "pointer", {
+    get: () => (probe.client == null ? null : { x: probe.client.x + window.scrollX, y: probe.client.y + window.scrollY }),
+  });
   // Hit-testing for the on-top check: a live drag makes the viewport inert
   // (pointer-events: none), which elementFromPoint honours; lift that for the
   // instant of the check only.
@@ -90,14 +97,39 @@ function installProbe() {
     const under = top.closest("[data-hpt-leaf]")?.getAttribute("data-hpt-leaf");
     return `pane ${raised.getAttribute("data-hpt-leaf")} is under ${under ? `pane ${under}` : top.tagName.toLowerCase() + (top.hasAttribute("data-hpt-drop-indicator") ? " (drop indicator)" : "")} at (${Math.round(x)}, ${Math.round(y)})`;
   };
-  const offsetRect = (element) => {
+  const offsetOf = (element) => {
     let x = 0;
     let y = 0;
     for (let node = element; node != null; node = node.offsetParent) {
       x += node.offsetLeft;
       y += node.offsetTop;
     }
-    return { x, y, width: element.offsetWidth, height: element.offsetHeight };
+    return { x, y };
+  };
+  /**
+   * Where a pane is laid out (page px, as drawn: under a scaled ancestor the
+   * layout is scaled too): its offset inside the viewport, scaled and placed at
+   * the viewport's box. The lifted pane's layer is fixed (offsets stop there):
+   * its layout rect is the layer's own box.
+   */
+  const offsetRect = (element) => {
+    const layer = element.closest("[data-hpt-lifted]");
+    if (layer != null) return pageRect(layer.getBoundingClientRect());
+    const viewport = element.closest("[data-hpt-viewport]");
+    if (viewport == null) {
+      const at = offsetOf(element);
+      return { x: at.x, y: at.y, width: element.offsetWidth, height: element.offsetHeight };
+    }
+    const box = pageRect(viewport.getBoundingClientRect());
+    const scale = viewport.offsetWidth > 0 ? box.width / viewport.offsetWidth : 1;
+    const at = offsetOf(element);
+    const origin = offsetOf(viewport);
+    return {
+      x: box.x + (at.x - origin.x) * scale,
+      y: box.y + (at.y - origin.y) * scale,
+      width: element.offsetWidth * scale,
+      height: element.offsetHeight * scale,
+    };
   };
   probe.onWrite = (time) => {
     for (const wrapper of document.querySelectorAll("[data-hpt-leaf]")) {
@@ -408,18 +440,13 @@ const INITIAL = {
 
 const nextFrame = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
 
-/** Every pane's layout rect (page px), from offset geometry. */
+/** Every pane's box at rest (page px, as drawn: a scaled ancestor scales it). */
 const restRects = () =>
   page.evaluate(() => {
     const out = {};
     for (const wrapper of document.querySelectorAll("[data-hpt-leaf]")) {
-      let x = 0;
-      let y = 0;
-      for (let node = wrapper; node != null; node = node.offsetParent) {
-        x += node.offsetLeft;
-        y += node.offsetTop;
-      }
-      out[wrapper.getAttribute("data-hpt-leaf")] = { x, y, width: wrapper.offsetWidth, height: wrapper.offsetHeight };
+      const b = wrapper.getBoundingClientRect();
+      out[wrapper.getAttribute("data-hpt-leaf")] = { x: b.left + window.scrollX, y: b.top + window.scrollY, width: b.width, height: b.height };
     }
     return out;
   });
@@ -445,16 +472,20 @@ const rectText = (r) => (r == null ? "none" : `${Math.round(r.x)},${Math.round(r
  * `during` (screenshots, Escape), release, wait for rest; then check what the
  * scenario expects. `expect.commit` false: the layout must come back unchanged.
  */
-async function dragScenario(name, { preview, tileId, to, steps = 30, nearStart = false, during, expect }) {
-  await page.evaluate((layout) => window.__motionLab.setLayout(layout), INITIAL);
+async function dragScenario(name, { preview, tileId, to, steps = 30, nearStart = false, layout = INITIAL, setup, teardown, during, expect }) {
+  await page.evaluate((next) => window.__motionLab.setLayout(next), layout);
   await page.evaluate((p) => window.__motionLab.setDragPreview(p), preview);
   await waitIdle();
+  if (setup != null) {
+    await setup();
+    await waitIdle();
+  }
   const before = await page.evaluate(() => JSON.stringify(window.__motionLab.layout()));
   const rest = await restRects();
   const home = rest[tileId];
   const grab = { x: 60, y: 14 };
   const start = { x: home.x + grab.x, y: home.y + grab.y };
-  const target = typeof to === "function" ? to(rest) : to;
+  const target = typeof to === "function" ? await to(rest) : to;
   await page.mouse.move(start.x, start.y);
   await page.evaluate(() => {
     window.__HPT_MOTION_PROBE__.samples = [];
@@ -479,6 +510,10 @@ async function dragScenario(name, { preview, tileId, to, steps = 30, nearStart =
   );
   const after = await page.evaluate(() => JSON.stringify(window.__motionLab.layout()));
   const finalRects = await restRects();
+  if (teardown != null) {
+    await teardown();
+    await waitIdle();
+  }
   const lines = [];
   const add = (kind, failures, note = "") => lines.push({ id: tileId, kind, failures, note });
 
@@ -559,6 +594,11 @@ async function dragScenario(name, { preview, tileId, to, steps = 30, nearStart =
     }
     if (expect.commit) {
       if (after === before) add("commit", ["the drop committed nothing"]);
+      if (expect.group) {
+        const inGroup = (node) =>
+          node.kind === "group" ? node.members.some((m) => m.tileId === tileId) : node.kind === "split" ? inGroup(node.first) || inGroup(node.second) : false;
+        add("group merge", inGroup(JSON.parse(after)) ? [] : [`pane ${tileId} did not end up in a group`]);
+      }
       if (preview === "indicator") {
         const indicated = [...frames].reverse().find((f) => f.indicator != null && f.t <= releaseT)?.indicator ?? null;
         const landed = finalRects[tileId];
@@ -647,6 +687,131 @@ await dragScenario("Escape restores the layout", {
     await nextFrame();
   },
 });
+
+// The page scrolls under a held pane (the pointer still): the pane stays under
+// the pointer, and the drop still lands where the indicator said.
+let scrollRest = null;
+await dragScenario("page scroll mid-drag, then drop on bravo's lower edge", {
+  preview: "indicator",
+  tileId: "a",
+  to: (rest) => ({ x: rest.b.x + 120, y: rest.b.y + 120 }),
+  setup: async () => {
+    await page.evaluate(() => {
+      const root = document.getElementById("root");
+      root.dataset.specStyle = root.getAttribute("style") ?? "";
+      root.style.height = "900px";
+      for (const element of [document.documentElement, document.body]) {
+        element.dataset.specStyle = element.getAttribute("style") ?? "";
+        element.style.height = "auto";
+        element.style.overflow = "visible";
+      }
+      const spacer = document.createElement("div");
+      spacer.id = "spec-scroll-spacer";
+      spacer.style.height = "600px";
+      document.body.appendChild(spacer);
+      window.scrollTo(0, 0);
+    });
+    scrollRest = await restRects();
+  },
+  during: async () => {
+    const from = { x: scrollRest.b.x + 120, y: scrollRest.b.y + 120 };
+    await page.evaluate(() => window.scrollBy(0, 150));
+    await nextFrame();
+    await nextFrame();
+    const scrollY = await page.evaluate(() => window.scrollY);
+    if (scrollY < 100) throw new Error(`the page did not scroll (scrollY ${scrollY})`);
+    const target = overBravoBottom(scrollRest);
+    await glideMouse(from, { x: target.x, y: target.y - scrollY }, 20);
+    await page.waitForTimeout(250);
+    await nextFrame();
+  },
+  teardown: async () => {
+    await page.evaluate(() => {
+      window.scrollTo(0, 0);
+      document.getElementById("spec-scroll-spacer")?.remove();
+      for (const element of [document.getElementById("root"), document.documentElement, document.body]) {
+        element.setAttribute("style", element.dataset.specStyle ?? "");
+        delete element.dataset.specStyle;
+      }
+    });
+  },
+  expect: { commit: true },
+});
+
+// A scaled ancestor (the host root at scale 0.8): client px are not layout px;
+// the pane is still held 1:1 under the pointer and lands where indicated.
+await dragScenario("drag under a scaled ancestor (scale 0.8)", {
+  preview: "indicator",
+  tileId: "a",
+  // Right of alpha's own (scaled) place, so the release is a drop, not home.
+  to: (rest) => ({ x: rest.b.x + rest.b.width * 0.5, y: rest.b.y + rest.b.height * 0.9 }),
+  setup: async () => {
+    await page.evaluate(() => {
+      const root = document.getElementById("root");
+      root.style.transform = "scale(0.8)";
+      root.style.transformOrigin = "0 0";
+    });
+  },
+  teardown: async () => {
+    await page.evaluate(() => {
+      const root = document.getElementById("root");
+      root.style.transform = "";
+      root.style.transformOrigin = "";
+    });
+  },
+  expect: { commit: true },
+});
+
+// A group merge; the indicator is the rect the pane lands in (the group body).
+// Custom tiles make their header a group drop target: charlie onto bravo's
+// title bar groups them. The built-in pane has none, so there alpha goes onto
+// the tab strip of an existing bravo + charlie group.
+if (tilesMode === "custom") {
+  await dragScenario("drag charlie's header onto bravo's title bar (group merge)", {
+    preview: "indicator",
+    tileId: "c",
+    to: (rest) => ({ x: rest.b.x + rest.b.width * 0.5, y: rest.b.y + 14 }),
+    expect: { commit: true, group: true },
+  });
+} else {
+  const GROUPED = {
+    ...INITIAL,
+    second: {
+      kind: "group",
+      id: "group-bc",
+      members: [
+        { kind: "leaf", id: "leaf-b", tileId: "b" },
+        { kind: "leaf", id: "leaf-c", tileId: "c" },
+      ],
+      activeMemberId: "leaf-b",
+    },
+  };
+  await dragScenario("drag alpha onto the bravo + charlie tab strip (group merge)", {
+    preview: "indicator",
+    tileId: "a",
+    layout: GROUPED,
+    to: () =>
+      page.evaluate(() => {
+        const strip = document.querySelector("[data-hpt-group-tab-placement]");
+        if (strip == null) throw new Error("no group tab strip");
+        const b = strip.getBoundingClientRect();
+        return { x: b.left + b.width * 0.75 + window.scrollX, y: b.top + b.height / 2 + window.scrollY };
+      }),
+    expect: { commit: true, group: true },
+  });
+}
+
+// A master/stack layout: alpha is the master, bravo and charlie the stack.
+const MASTER = { ...INITIAL, layoutMode: "master", masterCount: 1 };
+await dragScenario("master/stack: drag charlie onto alpha's lower edge", {
+  preview: "indicator",
+  tileId: "c",
+  layout: MASTER,
+  to: (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + rest.a.height * 0.92 }),
+  expect: { commit: true },
+});
+await page.evaluate((layout) => window.__motionLab.setLayout(layout), INITIAL);
+await waitIdle();
 await page.evaluate(() => window.__motionLab.setDragPreview("indicator"));
 
 if (shotsDir != null) {
@@ -661,6 +826,28 @@ if (shotsDir != null) {
   await page.screenshot({ path: resolve(shotsDir, `swap-rest-${tilesMode}.png`) });
   console.log(`screenshots in ${shotsDir}`);
 }
+
+// paneIdentity "slot" (the server-rendered default): the lifted pane is a
+// fresh mount, held and dropped the same way.
+await page.goto(`${baseUrl}/motion-spec.html?identity=slot${tilesMode === "custom" ? "&tiles=custom" : ""}`);
+await page.waitForFunction(() => window.__motionLab?.ready === true && document.querySelectorAll("[data-hpt-leaf]").length === 3);
+await waitIdle();
+await dragScenario("slot identity: drag alpha onto bravo's lower edge", {
+  preview: "indicator",
+  tileId: "a",
+  to: overBravoBottom,
+  expect: { commit: true },
+});
+await dragScenario("slot identity: Escape restores the layout", {
+  preview: "snap",
+  tileId: "a",
+  to: overBravoBottom,
+  expect: { commit: false },
+  during: async () => {
+    await page.keyboard.press("Escape");
+    await nextFrame();
+  },
+});
 
 await browser.close();
 console.log(failed ? "motion spec: FAILED" : "motion spec: all scenarios passed");
