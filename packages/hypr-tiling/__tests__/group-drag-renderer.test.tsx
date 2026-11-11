@@ -185,6 +185,8 @@ function Host({
   externalDragHover,
   onClaim,
   takeGroup = true,
+  deferClaim,
+  onCommit,
 }: {
   onLayoutReported: (next: TilingLayoutNode) => void;
   hostTiles?: boolean;
@@ -192,11 +194,16 @@ function Host({
   externalDragHover?: TilingExternalDragHover | null;
   onClaim?: TilingOnExternalDrop;
   takeGroup?: boolean;
+  /** An async host: the claim returns at once and the layout lands only when this is called with its `apply`. */
+  deferClaim?: (apply: () => void) => void;
+  /** Called after every commit of the renderer (the DOM is as it is then painted). */
+  onCommit?: () => void;
 }): React.ReactElement {
   const [layout, setLayout] = React.useState<TilingLayoutNode>(LAYOUT);
   // The tiles the host has claimed leave its pool with them.
   const [claimedTileIds, setClaimedTileIds] = React.useState<ReadonlyArray<string>>([]);
   return (
+    <React.Profiler id="renderer" onRender={(): void => onCommit?.()}>
     <TilingRenderer
       layout={layout}
       tiles={TILES.filter((tile: TilingTile): boolean => !claimedTileIds.includes(tile.id))}
@@ -211,10 +218,17 @@ function Host({
               const taken: ReadonlyArray<TilingLeafNode> = takeGroup
                 ? subject.members
                 : subject.members.filter((member: TilingLeafNode): boolean => member.id === leafId);
-              setClaimedTileIds((ids) => [...ids, ...taken.map((member: TilingLeafNode): string => member.tileId)]);
-              setLayout((current: TilingLayoutNode): TilingLayoutNode =>
-                takeGroup && subject.kind === "group" ? removeGroupNode(current, subject.groupId) : removeLeafTile(current, leafId),
-              );
+              const apply = (): void => {
+                setClaimedTileIds((ids) => [...ids, ...taken.map((member: TilingLeafNode): string => member.tileId)]);
+                setLayout((current: TilingLayoutNode): TilingLayoutNode =>
+                  takeGroup && subject.kind === "group" ? removeGroupNode(current, subject.groupId) : removeLeafTile(current, leafId),
+                );
+              };
+              if (deferClaim != null) {
+                deferClaim(apply);
+              } else {
+                apply();
+              }
             }
       }
       interaction={{
@@ -229,6 +243,7 @@ function Host({
         setLayout(next);
       }}
     />
+    </React.Profiler>
   );
 }
 
@@ -563,6 +578,50 @@ describe("group drag — a host claim hands over the whole group", (): void => {
     expect(container.querySelector('[data-hpt-leaf="b"]')).toBeNull();
     expect(container.querySelector('[data-hpt-leaf="c"]')).toBeNull();
     expect(container.querySelector('[data-hpt-leaf="a"]')).not.toBeNull();
+  });
+
+  it("while an async host's claim settles (its layout not landed yet) the whole group is shown gone, not just its active pane", async (): Promise<void> => {
+    restGeometry();
+    let apply: (() => void) | null = null;
+    const claimed = jest.fn<TilingOnExternalDrop>();
+    // What each commit paints of the group's members (b, c) and of alpha.
+    const trace: string[] = [];
+    const paint = (): string =>
+      ["b", "c", "a"].map((id: string): string => (document.querySelector(`[data-hpt-leaf="${id}"]`) == null ? "-" : id)).join("");
+    const { container } = render(
+      <Host
+        onLayoutReported={(): void => undefined}
+        externalDragHover={HOVER}
+        onClaim={claimed}
+        deferClaim={(next): void => {
+          apply = next;
+        }}
+        onCommit={(): void => void trace.push(paint())}
+      />,
+    );
+    await pressOn(header(container, "c"), 600, STRIP_PX + 10);
+    groupLiftedGeometry();
+    await moveTo(320, 24);
+    trace.length = 0;
+    // Release without letting any timer run: the claim has been made, the host's layout has not landed.
+    await act(async (): Promise<void> => {
+      pointer(window, "pointerup", 320, 24);
+    });
+    expect(claimed).toHaveBeenCalledTimes(1);
+    expect(apply).not.toBeNull();
+    expect(lifted(container)).toBeNull();
+    // The commit that settles the claim shows the whole group gone: neither the claimed pane
+    // nor its mate is in the display; the others stay.
+    expect(trace[0]).toBe("--a");
+    // Once the host's layout lands nothing of the group is left either.
+    await act(async (): Promise<void> => {
+      apply!();
+      await wait(50);
+    });
+    expect(trace.at(-1)).toBe("--a");
+    expect(container.querySelector('[data-group-id="g"]')).toBeNull();
+    expect(container.querySelector('[data-hpt-leaf="b"]')).toBeNull();
+    expect(container.querySelector('[data-hpt-leaf="c"]')).toBeNull();
   });
 
   it("a torn-off tab hands over just that pane", async (): Promise<void> => {
