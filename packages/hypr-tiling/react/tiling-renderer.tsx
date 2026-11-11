@@ -7414,12 +7414,21 @@ const TilingRendererComponent = React.forwardRef<
       dragHostTargetCacheRef.current.clear();
     }
   }, [isLiveDragging]);
+  // The tree with the dragged subject taken out: the one the stable footprints
+  // are laid out from, so its groups have the members they have with no room made.
+  const dragBaseLayout: TilingLayoutNode = React.useMemo(
+    (): TilingLayoutNode =>
+      dragSourceLeafId == null
+        ? layout
+        : detachDragSubject(layout, dragSourceLeafId, dragSubject),
+    [layout, dragSourceLeafId, dragSubject],
+  );
   const dragMeasurementPort: MeasurementPort = React.useMemo(
     (): MeasurementPort =>
       dragMakesRoom
         ? createStableDragMeasurement(measurementPort, {
             footprints: liveHitFootprintsById,
-            layout,
+            layout: dragBaseLayout,
             viewportSize,
             groupStrip: dragLandingGroupStrip,
             insertedTabs: dragInsertedTabs,
@@ -7432,7 +7441,7 @@ const TilingRendererComponent = React.forwardRef<
       dragMakesRoom,
       measurementPort,
       liveHitFootprintsById,
-      layout,
+      dragBaseLayout,
       viewportSize,
       dragLandingGroupStrip,
       dragInsertedTabsKey,
