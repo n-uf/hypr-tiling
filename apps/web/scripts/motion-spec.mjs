@@ -1023,36 +1023,36 @@ const mergePaths = [
 ];
 for (const preview of ["indicator", "snap"]) {
   for (const path of mergePaths) {
-  await dragScenario(
-    `${tilesMode === "custom" ? "merge the bravo + charlie group into alpha by its title bar" : "merge the bravo + charlie group into the alpha + delta group by its strip"}${path.label}`,
-    {
-      preview,
-      tileId: "b",
-      layout: tilesMode === "custom" ? GROUPED : TWO_GROUPS,
-      to: tilesMode === "custom" ? (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + 14 }) : () => stripPoint("group-ad"),
-      via: path.via,
-      expect: {
-        commit: true,
-        merge: true,
-        crossesSlots: preview === "snap",
-        landing: "group",
-        groupFrame: preview === "indicator",
-        after: (layout) => {
-          const find = (node) => (node.kind === "group" ? (node.members.some((m) => m.id === "leaf-b") ? node : null) : node.kind === "split" ? find(node.first) ?? find(node.second) : null);
-          const group = find(layout);
-          const ids = group?.members.map((m) => m.id) ?? [];
-          const expected = tilesMode === "custom" ? ["leaf-a", "leaf-b", "leaf-c"] : ["leaf-a", "leaf-d", "leaf-b", "leaf-c"];
-          const order = ids.join(",");
-          mergedOrder.order ??= order;
-          return [
-            ...(expected.every((id) => ids.includes(id)) && ids.length === expected.length ? [] : [`merged members ${ids.join(",")}, expected ${expected.join(",")}`]),
-            ...(group?.activeMemberId === "leaf-b" ? [] : [`active tab ${group?.activeMemberId}, expected leaf-b`]),
-            ...(order === mergedOrder.order ? [] : [`tab order ${order}, but another path to the same point gave ${mergedOrder.order}`]),
-          ];
+    await dragScenario(
+      `${tilesMode === "custom" ? "merge the bravo + charlie group into alpha by its title bar" : "merge the bravo + charlie group into the alpha + delta group by its strip"}${path.label}`,
+      {
+        preview,
+        tileId: "b",
+        layout: tilesMode === "custom" ? GROUPED : TWO_GROUPS,
+        to: tilesMode === "custom" ? (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + 14 }) : () => stripPoint("group-ad"),
+        via: path.via,
+        expect: {
+          commit: true,
+          merge: true,
+          crossesSlots: preview === "snap",
+          landing: "group",
+          groupFrame: preview === "indicator",
+          after: (layout) => {
+            const find = (node) => (node.kind === "group" ? (node.members.some((m) => m.id === "leaf-b") ? node : null) : node.kind === "split" ? find(node.first) ?? find(node.second) : null);
+            const group = find(layout);
+            const ids = group?.members.map((m) => m.id) ?? [];
+            const expected = tilesMode === "custom" ? ["leaf-a", "leaf-b", "leaf-c"] : ["leaf-a", "leaf-d", "leaf-b", "leaf-c"];
+            const order = ids.join(",");
+            mergedOrder.order ??= order;
+            return [
+              ...(expected.every((id) => ids.includes(id)) && ids.length === expected.length ? [] : [`merged members ${ids.join(",")}, expected ${expected.join(",")}`]),
+              ...(group?.activeMemberId === "leaf-b" ? [] : [`active tab ${group?.activeMemberId}, expected leaf-b`]),
+              ...(order === mergedOrder.order ? [] : [`tab order ${order}, but another path to the same point gave ${mergedOrder.order}`]),
+            ];
+          },
         },
       },
-    },
-  );
+    );
   }
 }
 await page.evaluate((layout) => window.__motionLab.setLayout(layout), INITIAL);
