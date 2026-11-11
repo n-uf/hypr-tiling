@@ -7,6 +7,47 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
+## Unreleased
+
+### The drop under snap to slot depends only on where you release
+
+With `dragPreview: "snap"` the first slot a dragged pane or group settled into
+used to hold the drop until the pointer left that slot, so a pane or a group
+released on another group's tab strip (or on a pane's title bar) could land as
+a swap or an insert instead of a merge, depending on which zone the pointer
+crossed first. Now the drop is the one under the pointer when it is released,
+whatever path it took, the same as the drop indicator shows at that point. The
+pane still stays in its slot while the pointer is in it and the drop under the
+pointer is the same (or lands in that very slot); a different drop under the
+pointer, such as a group's tab strip or a merge zone, takes over at once.
+
+A group's tab strip, its tabs and the elements a host registers with
+`groupDropTargetRef` are hit-tested where they sit with no room made for the
+dragged pane, not where the preview has moved them (snap to slot, or
+`dragPreviewMakesRoom`).
+
+### A tab group is handed over whole
+
+A tab group dragged by its title bar or the empty part of its strip now moves
+as one to a workspace tab (in set mode): every member, in order, with its
+active tab, through `moveGroupToWorkspace`; `onMoveLeaf` is called once per
+member. A host claim (`onExternalDrop`) of a dragged group now receives the
+whole group: a fifth argument, `subject`, lists every member in tab order, and
+the renderer shows the whole group gone while the claim settles (take it out of
+your layout with `removeGroupNode(layout, subject.groupId)`). The arguments
+that were there are unchanged, and a host that ignores `subject` still gets the
+active pane's leaf id first. A tab torn off a group still hands over just its
+pane. A group spring-loaded over a workspace tab still carries its active pane.
+
+### Added
+
+- `moveGroupToWorkspace(set, groupId, to, placement?)`, from the main entry and
+  `./engine`: `moveLeafToWorkspace` for a whole tab group.
+- `TilingExternalDropSubject` (`kind: "pane" | "group"`, `groupId`, `members`,
+  `activeLeafId`), the new fifth argument of `TilingOnExternalDrop`. A call
+  typed against `TilingOnExternalDrop` (a test double, say) needs the extra
+  argument.
+
 ## 26.11.4 — 2026-11-10
 
 ### Dragging a pane feels like Hyprland
