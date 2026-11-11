@@ -51,6 +51,8 @@ const option = (name, fallback) => {
 const baseUrl = option("url", "http://localhost:5301");
 const tilesMode = option("tiles", "default");
 const shotsDir = option("shots", null);
+// Only the drag scenarios whose name contains this text (to iterate on one).
+const only = option("only", null);
 
 /** Installed in the page before it loads: collect one sample per pane per drawn frame. */
 function installProbe() {
@@ -494,11 +496,16 @@ const rectText = (r) => (r == null ? "none" : `${Math.round(r.x)},${Math.round(r
  * whole slot (strip included) the indicator marks; `expect.groupFrame`: the
  * held pane is a group held by its frame (its strip rides on the pane);
  * `expect.merge`: the pane joins a group, so snap makes no room for it;
- * `via(rest)` returns points the pointer passes before `to` (under snap the
- * path decides which slot the pane settles into and sticks to);
+ * `via(rest)` returns points the pointer passes before `to`: the drop depends
+ * only on where the pointer is released, so another path to the same point
+ * must commit the same layout (checked by the path variants below);
+ * `expect.crossesSlots`: the path crosses slots that put a pane in a group and
+ * slots that do not, so a pane the preview mounts afresh may pop in on the way
+ * (its jump check starts anew);
  * `expect.after(layout)` returns failures about the committed layout.
  */
 async function dragScenario(name, { preview, tileId, homeTileId, start: startAt, to, via, steps = 30, nearStart = false, layout = INITIAL, setup, teardown, during, expect }) {
+  if (only != null && !name.includes(only)) return;
   await page.evaluate((next) => window.__motionLab.setLayout(next), layout);
   await page.evaluate((p) => window.__motionLab.setDragPreview(p), preview);
   await waitIdle();
@@ -644,9 +651,21 @@ async function dragScenario(name, { preview, tileId, homeTileId, start: startAt,
     // The others: close the gap at the lift, move (or not) at the drop, never jump or overshoot.
     for (const [id, all] of others) {
       const to = all.at(-1).target;
-      const firstFinal = all.findIndex((s) => KEYS.every((k) => Math.abs(s.target[k] - to[k]) < 0.01));
-      const run = all.slice(firstFinal).filter((s) => s.rect != null);
-      const failures = [...checkNoJumps(all.filter((s) => s.rect != null), omega, 1.5).failures.map((f) => `${id}: ${f}`)];
+      // From the frame its final target was set for good (a pane that left its
+      // rest place and came back to it is on its way back, not at rest).
+      let firstFinal = all.length - 1;
+      while (firstFinal > 0 && KEYS.every((k) => Math.abs(all[firstFinal - 1].target[k] - to[k]) < 0.01)) firstFinal--;
+      const run = all.slice(firstFinal).filter((s) => s.rect != null && !s.empty);
+      // A pane the preview mounts afresh (an empty wrapper: it changed place in
+      // the tree, e.g. from a split into a group) pops in: its jump check starts
+      // anew with it. Only for a drag that crosses slots of both kinds.
+      const runs = [[]];
+      for (const s of all) {
+        if (s.rect == null) continue;
+        if (expect.crossesSlots === true && s.empty) runs.push([]);
+        else runs.at(-1).push(s);
+      }
+      const failures = runs.flatMap((samples) => checkNoJumps(samples, omega, 1.5).failures.map((f) => `${id}: ${f}`));
       if (run.length > 1) {
         failures.push(...checkNoOvershoot(run, run[0].rect, to).failures.map((f) => `${id}: ${f}`));
         failures.push(...checkMonotonic(run, to).failures.map((f) => `${id}: ${f}`));
@@ -907,10 +926,19 @@ for (const preview of ["indicator", "snap"]) {
     tileId: "b",
     layout: GROUPED,
     to: (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + rest.a.height * 0.9 }),
-    // Under snap, straight down first: crossing alpha's title bar would settle it into a merge slot it then sticks to.
-    via: preview === "snap" ? (rest) => [{ x: rest.b.x + 60, y: rest.a.y + rest.a.height * 0.9 }] : undefined,
     // Under snap the group sits in the tree at its slot (no lifted layer to hold by its frame).
-    expect: { commit: true, landing: "group", groupFrame: preview === "indicator", after: groupBcIntact },
+    expect: { commit: true, landing: "group", groupFrame: preview === "indicator", crossesSlots: preview === "snap", after: groupBcIntact },
+  });
+  // The same release point by another path: over alpha's title bar first (a
+  // merge slot with custom panes), then straight down. The drop is the one
+  // under the pointer when it is released, not the first slot it settled into.
+  await dragScenario("drag the bravo + charlie group onto alpha's lower edge, over alpha's title bar first", {
+    preview,
+    tileId: "b",
+    layout: GROUPED,
+    to: (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + rest.a.height * 0.9 }),
+    via: (rest) => [{ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + 14 }],
+    expect: { commit: true, landing: "group", groupFrame: preview === "indicator", crossesSlots: preview === "snap", after: groupBcIntact },
   });
 }
 await dragScenario("drag the bravo + charlie group by its strip, Escape puts it back", {
@@ -986,22 +1014,29 @@ const TWO_GROUPS = {
     activeMemberId: "leaf-a",
   },
 };
+// The drop depends only on where the pointer is released: the same merge by a
+// straight path, from below (over the target's lower edge first) and from the
+// side (over its left edge first) commits the same members in the same order.
+const mergedOrder = { order: null };
+const mergePaths = [
+  { label: "", via: undefined },
+  { label: ", from below", via: (rest) => [{ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + rest.a.height * 0.9 }] },
+  { label: ", from the left edge", via: (rest) => [{ x: rest.a.x + 8, y: rest.a.y + rest.a.height * 0.5 }] },
+];
 for (const preview of ["indicator", "snap"]) {
+  for (const path of mergePaths) {
   await dragScenario(
-    tilesMode === "custom" ? "merge the bravo + charlie group into alpha by its title bar" : "merge the bravo + charlie group into the alpha + delta group by its strip",
+    `${tilesMode === "custom" ? "merge the bravo + charlie group into alpha by its title bar" : "merge the bravo + charlie group into the alpha + delta group by its strip"}${path.label}`,
     {
       preview,
       tileId: "b",
       layout: tilesMode === "custom" ? GROUPED : TWO_GROUPS,
       to: tilesMode === "custom" ? (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + 14 }) : () => stripPoint("group-ad"),
-      // Under snap, up onto the strip first and along it: from below, the pointer would settle into a swap or insert slot and stick to it.
-      via:
-        preview === "snap" && tilesMode !== "custom"
-          ? async (rest) => [{ x: rest.b.x + 60, y: (await stripPoint("group-ad")).y }]
-          : undefined,
+      via: path.via,
       expect: {
         commit: true,
         merge: true,
+        crossesSlots: preview === "snap",
         landing: "group",
         groupFrame: preview === "indicator",
         after: (layout) => {
@@ -1009,14 +1044,18 @@ for (const preview of ["indicator", "snap"]) {
           const group = find(layout);
           const ids = group?.members.map((m) => m.id) ?? [];
           const expected = tilesMode === "custom" ? ["leaf-a", "leaf-b", "leaf-c"] : ["leaf-a", "leaf-d", "leaf-b", "leaf-c"];
+          const order = ids.join(",");
+          mergedOrder.order ??= order;
           return [
             ...(expected.every((id) => ids.includes(id)) && ids.length === expected.length ? [] : [`merged members ${ids.join(",")}, expected ${expected.join(",")}`]),
             ...(group?.activeMemberId === "leaf-b" ? [] : [`active tab ${group?.activeMemberId}, expected leaf-b`]),
+            ...(order === mergedOrder.order ? [] : [`tab order ${order}, but another path to the same point gave ${mergedOrder.order}`]),
           ];
         },
       },
     },
   );
+  }
 }
 await page.evaluate((layout) => window.__motionLab.setLayout(layout), INITIAL);
 await waitIdle();
