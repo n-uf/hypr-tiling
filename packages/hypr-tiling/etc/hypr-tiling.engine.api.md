@@ -54,9 +54,6 @@ export interface AssessLayoutTileIntegrityOptions {
 }
 
 // @public
-export const BASELINE_DRAG_HOP_DURATION_MS: number;
-
-// @public
 export function buildDefaultDwindleLayout(tileIds: ReadonlyArray<string>, axis?: TilingSplitAxis): TilingLayoutNode;
 
 // @public
@@ -192,15 +189,14 @@ export type DragMachineState = {
     sourceLeafId: string;
     anchorFootprint: TilingPaneFootprint;
     pointerAnchorOffset: DragMachinePoint;
-    ghostFootprint: TilingPaneFootprint;
+    heldFootprint: TilingPaneFootprint;
     resolvedTarget: DragResolvedTarget | null;
+    leftHome: boolean;
 } | {
     phase: "settling";
     outcome: DragSettleOutcome;
     sourceLeafId: string;
     resolvedTarget: DragResolvedTarget | null;
-    fromFootprint: TilingPaneFootprint;
-    toFootprint: TilingPaneFootprint;
 };
 
 // @public
@@ -293,12 +289,6 @@ export function insertLeafAdjacent(layout: TilingLayoutNode, sourceLeafId: strin
 
 // @public
 export function insertLeafInto(tree: TilingLayoutNode | null, leaf: TilingLeafNode, placement?: TilingWorkspacePlacement, options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
-
-// @public
-export const INSTANT_DRAG_DURATION_MS: number;
-
-// @public
-export function isCssEasing(value: string): boolean;
 
 // @public
 export function isLeafCollapsed(node: TilingLayoutNode, leafId: string): boolean;
@@ -474,9 +464,6 @@ export function resetWorkspaceSet(set: TilingWorkspaceSet, defaults: TilingWorks
 
 // @public
 export function resolveDragCursorPresentation(resolvedTarget: DragResolvedTarget | null, sourceLeafId: string): DragCursorPresentation;
-
-// @public
-export function resolveDragEasing(value: string | undefined | null, fallback: string): string;
 
 // @public
 export interface ResolvedTilingWorkspacesCapability {

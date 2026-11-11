@@ -12,12 +12,6 @@ export const ANIMATION_CONTROL_DEFAULTS: AnimationControlDefaults;
 // @public
 export interface AnimationControlDefaults {
     // (undocumented)
-    ghostPickupScalePercent: number;
-    // (undocumented)
-    ghostTransitSpeedPercent: number;
-    // (undocumented)
-    speedLinked: boolean;
-    // (undocumented)
     survivorReflowSpeedPercent: number;
 }
 
@@ -79,10 +73,10 @@ export interface TilingLiveHitLogState {
     dragSourcePaneFootprint: TilingPaneFootprint | null;
     edgeDiagnostics: ReadonlyArray<TilingLiveHitEdgeDebugState>;
     edgeThresholdRatio: number;
-    ghostSeatLeafId?: string | null;
     hoveredLeafId: string;
     intent: TilingDropIntentDebugState | null;
     isDragging: boolean;
+    landingLeafId?: string | null;
     presentationDropAction?: TilingDropAction | null;
     resolverZone: TilingLeafDropZone | "none";
     sourceLeafId: string | null;
