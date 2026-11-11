@@ -928,9 +928,28 @@ await dragScenario("tear charlie's tab off onto alpha's lower edge", {
     commit: true,
     after: (layout) => {
       const groups = [];
-      const walk = (node) => (node.kind === "group" ? groups.push(node) : node.kind === "split" ? (walk(node.first), walk(node.second)) : null);
+      const tileIds = [];
+      let beside = false;
+      const walk = (node) => {
+        if (node.kind === "group") {
+          groups.push(node);
+          for (const member of node.members) tileIds.push(member.tileId);
+        } else if (node.kind === "leaf") {
+          tileIds.push(node.tileId);
+        } else {
+          // Charlie sits beside alpha: the two are the children of one split (alpha first: its lower edge).
+          if (node.first.kind === "leaf" && node.first.tileId === "a" && node.second.kind === "leaf" && node.second.tileId === "c") beside = true;
+          walk(node.first);
+          walk(node.second);
+        }
+      };
       walk(layout);
-      return groups.length === 0 ? [] : [`groups left: ${groups.map((g) => g.id).join(", ")}`];
+      const sorted = [...tileIds].sort().join(",");
+      return [
+        ...(groups.length === 0 ? [] : [`groups left: ${groups.map((g) => g.id).join(", ")}`]),
+        ...(sorted === "a,b,c" ? [] : [`panes ${sorted}, expected exactly a,b,c (one pane lost or duplicated)`]),
+        ...(beside ? [] : ["charlie is not beside alpha (alpha first, charlie second)"]),
+      ];
     },
   },
 });

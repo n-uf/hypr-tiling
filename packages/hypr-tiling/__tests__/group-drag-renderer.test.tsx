@@ -264,6 +264,24 @@ function groupOf(node: TilingLayoutNode, groupId: string): TilingGroupNode | nul
   return groupOf(node.first, groupId) ?? groupOf(node.second, groupId);
 }
 
+/** Every leaf's tile id in the tree, in order (a group contributes its members). */
+function tileIdsOf(node: TilingLayoutNode): string[] {
+  if (node.kind === "leaf") return [node.tileId];
+  if (node.kind === "group") return node.members.map((member: TilingLeafNode): string => member.tileId);
+  return [...tileIdsOf(node.first), ...tileIdsOf(node.second)];
+}
+
+/** Whether some split has the leaves of tiles `first` and `second` as its two children, in that order. */
+function hasSiblings(node: TilingLayoutNode, first: string, second: string): boolean {
+  if (node.kind !== "split") return false;
+  const isLeafOf = (child: TilingLayoutNode, tileId: string): boolean => child.kind === "leaf" && child.tileId === tileId;
+  return (
+    (isLeafOf(node.first, first) && isLeafOf(node.second, second)) ||
+    hasSiblings(node.first, first, second) ||
+    hasSiblings(node.second, first, second)
+  );
+}
+
 function expectGroupIntact(layout: TilingLayoutNode): void {
   const group: TilingGroupNode | null = groupOf(layout, "g");
   expect(group?.members.map((m: TilingLeafNode): string => m.id)).toEqual(["B", "C"]);
@@ -389,6 +407,9 @@ describe("group drag — a tab tears off one pane", (): void => {
     expect(groupOf(next, "g")).toBeNull();
     expect(findGroupContainingLeaf(next, "B")).toBeNull();
     expect(findGroupContainingLeaf(next, "C")).toBeNull();
+    // No pane lost or duplicated, and b sits beside a, on its left.
+    expect([...tileIdsOf(next)].sort()).toEqual(["a", "b", "c"]);
+    expect(hasSiblings(next, "b", "a")).toBe(true);
   });
 });
 
