@@ -525,9 +525,7 @@ async function dragScenario(name, { preview, tileId, homeTileId, start: startAt,
     window.__HPT_MOTION_PROBE__.frames = [];
   });
   await page.mouse.down();
-  // `via(rest)`: points the pointer passes first. Under snap a pane sticks to the
-  // first slot it settles into until the pointer leaves it, so the path decides
-  // which slot a drop meets.
+  // `via(rest)`: points the pointer passes first (the drop must not depend on them).
   let from = start;
   for (const point of via != null ? await via(rest) : []) {
     await glideMouse(from, point, Math.ceil(steps / 2));
