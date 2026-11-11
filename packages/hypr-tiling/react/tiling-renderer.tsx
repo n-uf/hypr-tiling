@@ -55,7 +55,6 @@ import {
 import {
   createDragWatchdog,
   scheduleFrameOrTimeout,
-  stripTransientDragStyles,
   type DragWatchdog,
   type RacedFrameHandle,
 } from "../engine/drag-recovery";
@@ -83,11 +82,14 @@ import {
   collectStaticGatedLeafIds,
   evaluateZoneCandidate,
 } from "../engine/drop-validity";
+import { SETTLE_TEMPO } from "@n-uf/motion";
+import { prefersReducedMotion as readPrefersReducedMotion } from "@n-uf/motion/browser";
 import {
-  buildCoherentDipKeyframes,
-  createSurvivorFlipScheduler,
-  type SurvivorFlipScheduler,
-} from "../engine/flip-scheduler";
+  createLeafMotion,
+  type LeafMotion,
+  type LeafMotionFrame,
+  type LeafMotionTick,
+} from "../engine/leaf-motion";
 import {
   pruneFocusHistory,
   pushFocusHistory,
@@ -95,16 +97,12 @@ import {
   type FocusHistory,
 } from "../engine/focus-history";
 import {
-  DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT,
-  buildBounceEasingCss,
   buildLinearEasingCss,
-  clampSwapBounceMagnitudePercent,
   deriveGhostMorphTransform,
   deriveGhostPickupBox,
   ghostPickupScaleFactor,
   isDegenerateGhostRect,
   resolveGhostHopFirstRect,
-  shouldApplyCoherentTransitDip,
   type GhostMorphTransform,
   type GhostPoint,
   type GhostRect,
@@ -218,7 +216,6 @@ import {
   ungroupNode,
   updateSplitRatio,
 } from "../engine/state";
-import type { StyleApplierPort } from "../engine/style-applier-port";
 import {
   TILING_DEFAULT_WORKSPACE_PLACEMENT,
   TILING_MAIN_WORKSPACE_ID,
@@ -252,10 +249,6 @@ import type {
   TilingWorkspaceTransitionDirection,
   TilingWorkspaceTransitionMode,
 } from "../engine/workspace-transition";
-import {
-  shouldSnapSurvivorReflowOnSettleCommit,
-  type SurvivorRect,
-} from "../engine/survivor-reflow";
 import type {
   ResolvedTilingDropHitZoneGeometryCapability,
   ResolvedTilingGroupTabStripOptions,
@@ -328,7 +321,13 @@ import {
 } from "./group-tab-strip";
 import { createDomMeasurementPort } from "./dom-measurement-port";
 import { createDomPointerCapturePort } from "./dom-pointer-capture-port";
-import { createDomStyleApplierPort } from "./dom-style-applier-port";
+import {
+  clearLeafMotion,
+  leafMotionFrameLoop,
+  measureLeafLayoutRect,
+  reportLeafMotionProbe,
+  writeLeafMotionFrame,
+} from "./leaf-motion-dom";
 import { TILING_TILE_ACCENT_SWATCHES } from "../engine/accent-hues";
 import {
   BASELINE_DRAG_HOP_DURATION_MS,
@@ -506,20 +505,17 @@ export function resolveDragAnimationDurationMs(speedPercent: number): number {
 const WINDOW_SCHEDULER_PORT: SchedulerPort = createWindowSchedulerPort();
 
 /**
- * Whether the ghost transit speed and the survivor reflow speed resolve to EQUAL
- * timing (parity). The coherent non-intersecting transit dip is only
- * geometrically valid at parity (both moving boxes must reach their mid-transit
- * shrink at the same instant). Compares the RESOLVED durations so two percents
- * that clamp to the same value (e.g. `401` and `500` → `400`) count as parity.
+ * The leaf-motion tempo (ω, 1/s) for a `survivorReflowSpeedPercent`: `100` is
+ * `SETTLE_TEMPO.default` (25: 90 % of a move in 92 ms), lower is slower, higher
+ * is faster, in proportion. Clamped like every drag animation speed percent to
+ * `[DRAG_ANIMATION_SPEED_MIN_PERCENT, DRAG_ANIMATION_SPEED_MAX_PERCENT]`.
  */
-export function dragSpeedsAtParity(
-  ghostTransitSpeedPercent: number,
-  survivorReflowSpeedPercent: number,
-): boolean {
-  return (
-    resolveDragAnimationDurationMs(ghostTransitSpeedPercent) ===
-    resolveDragAnimationDurationMs(survivorReflowSpeedPercent)
+export function resolveLeafMotionOmega(speedPercent: number): number {
+  const clampedPercent: number = Math.min(
+    Math.max(speedPercent, DRAG_ANIMATION_SPEED_MIN_PERCENT),
+    DRAG_ANIMATION_SPEED_MAX_PERCENT,
   );
+  return (SETTLE_TEMPO.default * clampedPercent) / 100;
 }
 
 function hasEnabledProjectedFill(
@@ -1454,7 +1450,7 @@ export function DragSourceSlotReservation({
 // so handlers on a relocated pane fire normally; the pool lives INSIDE the root
 // element so root-level `onPointerEnter/Leave` (which React computes across the
 // fiber tree) still see relocated panes as descendants. DOM-scoped concerns —
-// `[data-leaf-id]` measurement, survivor-reflow FLIP, `pointer-events` /
+// `[data-leaf-id]` measurement, leaf motion, `pointer-events` /
 // `select-none` inheritance, CSS — all follow the node's DOM position (inside
 // the slot), which is exactly where a slot-mode pane would be.
 //
@@ -1952,8 +1948,6 @@ function DragPaneOverlay({
   dragHopDurationMs,
   hopEasing,
   pickupScaleFactor,
-  coherentDipActive,
-  swapBounceMagnitude,
   prefersReducedMotion,
   isPaneContentVisible,
   frameDeadlineMs,
@@ -1969,8 +1963,6 @@ function DragPaneOverlay({
   dragHopDurationMs: number;
   hopEasing: string;
   pickupScaleFactor: number;
-  coherentDipActive: boolean;
-  swapBounceMagnitude: number;
   prefersReducedMotion: boolean;
   isPaneContentVisible: boolean;
   /**
@@ -2010,7 +2002,6 @@ function DragPaneOverlay({
   // The in-flight "play-to-identity" arm — an M1 raced (rAF-or-timeout) handle
   // rather than a bare rAF id, so a starved frame cannot freeze the ghost.
   const rafRef = React.useRef<RacedFrameHandle | null>(null);
-  const animationRef = React.useRef<Animation | null>(null);
   // The node's resting box (Last), kept fresh every render so the morph effect
   // (which is keyed off morph TRIGGERS, not cursor position) reads the current
   // box without re-running on a position-only move.
@@ -2071,22 +2062,15 @@ function DragPaneOverlay({
     hasEnteredRef.current = true;
     prevSeatedRef.current = seated;
 
-    // Captured BEFORE cancelInFlight() — cancelling a WAAPI dip resets the
-    // node transform, so the live box would no longer reflect the mid-morph
-    // position. A live (transformed) box is the correct FLIP `First` only while
-    // a hop is mid-flight (smooth retarget); at rest the live box already equals
-    // the freshly-applied base (`last`), which would zero the invert.
-    const hadInFlightTransform: boolean =
-      rafRef.current != null || animationRef.current != null;
+    // A live (transformed) box is the correct FLIP `First` only while a hop is
+    // mid-flight (smooth retarget); at rest the live box already equals the
+    // freshly-applied base (`last`), which would zero the invert.
+    const hadInFlightTransform: boolean = rafRef.current != null;
 
     const cancelInFlight = (): void => {
       if (rafRef.current != null) {
         rafRef.current.cancel();
         rafRef.current = null;
-      }
-      if (animationRef.current != null) {
-        animationRef.current.cancel();
-        animationRef.current = null;
       }
     };
     cancelInFlight();
@@ -2144,47 +2128,11 @@ function DragPaneOverlay({
       return;
     }
 
-    // Coherent non-intersecting transit (swap): keyframed morph with the
-    // mid-transit dip so the ghost + the displaced survivor never collide.
-    if (coherentDipActive && seated) {
-      node.style.transition = "none";
-      node.style.transform = `translate(${invert.tx}px, ${invert.ty}px) scale(${invert.sx}, ${invert.sy})`;
-      void node.getBoundingClientRect();
-      const keyframes: Keyframe[] = buildCoherentDipKeyframes(
-        invert,
-        last.width,
-        last.height,
-      ) as unknown as Keyframe[];
-      const animation: Animation = node.animate(keyframes, {
-        duration: dragHopDurationMs,
-        easing: "linear",
-        fill: "none",
-      });
-      animationRef.current = animation;
-      animation.onfinish = (): void => {
-        // Route the dip finish-pin through the idempotent M4 teardown so a
-        // cancelled-mid-flight dip (fill:none reverts to the inverted base)
-        // never strands the ghost at an offset.
-        stripTransientDragStyles({ ghost: node, leaves: [] });
-        if (animationRef.current === animation) {
-          animationRef.current = null;
-        }
-      };
-      return (): void => {
-        cancelInFlight();
-      };
-    }
-
-    // Standard transform-only FLIP: on the seated hop-in (the "click into the
-    // slot") a dialed-in bounce magnitude substitutes an easeOutBack overshoot
-    // for the magnetic ease (the swap-target/ghost landing bounce); magnitude 0
-    // keeps the historical magnetic snap. Free-follow / hop-out / entrance keep
-    // the standard hop easing. Invert → play to identity on the next frame.
-    const seatedEasing: string =
-      swapBounceMagnitude > 0
-        ? buildBounceEasingCss(swapBounceMagnitude)
-        : GHOST_MAGNETIC_HOP_EASING;
-    const easing: string = seated ? seatedEasing : hopEasing;
+    // Transform-only FLIP: the seated hop-in (the "click into the slot") uses
+    // the magnetic ease, which never passes the slot; free-follow / hop-out /
+    // entrance keep the standard hop easing. Invert → play to identity on the
+    // next frame.
+    const easing: string = seated ? GHOST_MAGNETIC_HOP_EASING : hopEasing;
     node.style.transition = "none";
     node.style.transform = `translate(${invert.tx}px, ${invert.ty}px) scale(${invert.sx}, ${invert.sy})`;
     void node.getBoundingClientRect();
@@ -2211,8 +2159,6 @@ function DragPaneOverlay({
     srcHeight,
     dragHopDurationMs,
     hopEasing,
-    coherentDipActive,
-    swapBounceMagnitude,
     prefersReducedMotion,
     hasVisual,
     frameDeadlineMs,
@@ -2247,8 +2193,8 @@ function DragPaneOverlay({
   // same id the in-tree reservation slot emits. But the ghost renders through the
   // overlay `OverlayPortal` (`position: fixed`), OUTSIDE both `rootRef`
   // (which scopes `measureReservationRect` via `dragSourceReservationSelector`
-  // and `measureLeafRect`) and `viewportRef` (which scopes the survivor-reflow
-  // `querySelectorAll('[data-leaf-id]')`). Every measurement selector is
+  // and `measureLeafRect`) and `viewportRef` (which scopes the leaf-motion
+  // `querySelectorAll('[data-hpt-leaf]')`). Every measurement selector is
   // root/viewport-scoped, so the portaled ghost's `data-leaf-id` is never
   // collected — no duplicate-id collision, no `cc23956`-class seat-measurement
   // regression. Theme context: this component calls `useTilingTheme()` and is
@@ -2674,8 +2620,8 @@ function DragCancelOverlay({
   // cancel overlay mounts through the overlay portal container (default
   // `document.body`, see `overlayPortalContainer`; `position: fixed`), OUTSIDE
   // both `rootRef` (which scopes `measureReservationRect` / `measureLeafRect`)
-  // and `viewportRef` (which scopes the survivor-reflow
-  // `querySelectorAll('[data-leaf-id]')`) — so a consumer `renderTile` root
+  // and `viewportRef` (which scopes the leaf-motion
+  // `querySelectorAll('[data-hpt-leaf]')`) — so a consumer `renderTile` root
   // carrying `data-leaf-id` here is never collected by a measurement selector
   // (no `cc23956`-class regression). Theme context propagates through
   // `createPortal`. Redirecting the DOM mount does not change the delegation
@@ -4603,6 +4549,7 @@ function MovePaneAffordance({
     <div
       className="pointer-events-none absolute inset-0 z-[60] rounded-xl"
       aria-hidden
+      data-hpt-leaf-affordance=""
     >
       {isMoveSource ? (
         <div className="absolute inset-0 rounded-xl ring-2 ring-amber-300/80">
@@ -4879,10 +4826,8 @@ const TilingRendererComponent = React.forwardRef<
     projectedOverlayBackgroundAlpha = 0.9,
     dragAnimationEnabled = true,
     dragHopEasing,
-    dragReflowEasing,
     ghostTransitSpeedPercent = DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
     survivorReflowSpeedPercent = DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
-    swapBounceMagnitudePercent = DEFAULT_SWAP_BOUNCE_MAGNITUDE_PERCENT,
     chromeFocusOutline = "suppress",
     showDropBorderHints = true,
     showDropIntentTranslucentBg = true,
@@ -5063,36 +5008,23 @@ const TilingRendererComponent = React.forwardRef<
     Math.max(projectedOverlayBackgroundAlpha, 0),
     1,
   );
-  // Two independently-resolved party durations. The ghost transit (hop / pickup /
-  // cursor) runs on `ghostTransitSpeedPercent`; the survivor reflow runs on
-  // `survivorReflowSpeedPercent`. The master gate collapses both to instant.
+  // The ghost transit (hop / pickup / cursor) runs on `ghostTransitSpeedPercent`;
+  // every layout change (open, close, swap, move, maximize, a drag's reflow)
+  // glides on the leaf-motion settle at the tempo `survivorReflowSpeedPercent`
+  // maps to. The master gate collapses the ghost to instant and makes the
+  // leaves snap.
   const ghostTransitDurationMs: number = dragAnimationEnabled
     ? resolveDragAnimationDurationMs(ghostTransitSpeedPercent)
     : INSTANT_DRAG_DURATION_MS;
-  const survivorReflowDurationMs: number = dragAnimationEnabled
-    ? resolveDragAnimationDurationMs(survivorReflowSpeedPercent)
-    : INSTANT_DRAG_DURATION_MS;
-  // Parity = equal resolved timing. The coherent dip is only geometrically valid
-  // at parity; the bounce overshoot is per-element and parity-independent.
-  const speedsParity: boolean = dragSpeedsAtParity(
-    ghostTransitSpeedPercent,
+  const leafMotionOmega: number = resolveLeafMotionOmega(
     survivorReflowSpeedPercent,
   );
-  const swapBounceMagnitude: number = dragAnimationEnabled
-    ? clampSwapBounceMagnitudePercent(swapBounceMagnitudePercent)
-    : 0;
-  // Consumer-configurable drag easing (HT-ANIM-EASING-CONFIG). The ghost hop /
-  // pickup / cursor transit uses `resolvedHopEasing`; the survivor FLIP settle
-  // uses `resolvedReflowEasing`, which falls back to the hop curve when its own
-  // prop is unset so the two read as one motion. Invalid / empty strings resolve
-  // to the snappy-decel default rather than reaching the compositor broken.
+  // Consumer-configurable drag easing (HT-ANIM-EASING-CONFIG) for the ghost hop /
+  // pickup / cursor transit. Invalid / empty strings resolve to the
+  // snappy-decel default rather than reaching the compositor broken.
   const resolvedHopEasing: string = resolveDragEasing(
     dragHopEasing,
     DEFAULT_DRAG_HOP_EASING,
-  );
-  const resolvedReflowEasing: string = resolveDragEasing(
-    dragReflowEasing,
-    resolvedHopEasing,
   );
   const interactionCapabilities: ResolvedTilingInteractionCapabilities =
     React.useMemo(
@@ -5135,12 +5067,6 @@ const TilingRendererComponent = React.forwardRef<
     interactionCapabilities.dragRecovery.maxDraggingIdleMs;
   const dragRecoveryFrameDeadlineMs: number =
     interactionCapabilities.dragRecovery.frameDeadlineMs;
-  // M2 transition-completion slack: the survivor-reflow clip-mask close fires on
-  // `transitionend` OR `survivorReflowDurationMs + transitionSlackMs`, whichever
-  // first (`onTransitionSettled`). Names the historical `+60` mask slack as a
-  // single typed knob; always read (M2 is a pure backstop, like M1).
-  const dragRecoveryTransitionSlackMs: number =
-    interactionCapabilities.dragRecovery.transitionSlackMs;
   const isFocusSelectionEnabled: boolean = interactionCapabilities.focus;
   const isMaximizeEnabled: boolean = interactionCapabilities.maximize.enable;
   const isTitleBarSizingEnabled: boolean =
@@ -5460,51 +5386,38 @@ const TilingRendererComponent = React.forwardRef<
   // before any competing cancel can fire. Owned by the watchdog effect; null when
   // no drag is in flight.
   const watchdogRef = React.useRef<DragWatchdog | null>(null);
-  /** TRUE once a survivor-reflow layout effect has run with `phase === "dragging"`. */
-  const didPaintDraggingFrameRef = React.useRef<boolean>(false);
-  // While survivors are gliding, the structural layout containers (section /
+  // While any leaf is moving, the structural layout containers (section /
   // split-child / leaf wrapper) switch from `overflow-hidden` to
-  // `overflow-visible` so a transformed survivor is not clipped by its own slot
-  // mid-glide (the pane CONTENT keeps the article's own `overflow-hidden`, so
-  // nothing actually spills). This flag outlives the FSM `settling → idle`
-  // transition (the cancel-settle glide plays AFTER `idle`), reset by a timer
-  // sized to the reflow duration so the clip mask returns once the glide lands.
-  const [isSurvivorReflowAnimating, setIsSurvivorReflowAnimating] =
+  // `overflow-visible` so a gliding leaf is not clipped by its own slot or an
+  // ancestor split (the pane CONTENT keeps the article's own `overflow-hidden`
+  // and its leaf-motion clip, so nothing actually spills). Set by the leaf
+  // motion when the first leaf starts to move and when the last one rests.
+  const [isLeafMotionActive, setIsLeafMotionActive] =
     React.useState<boolean>(false);
-  // The WRITE-half DOM seam over the survivor `[data-leaf-id]` elements (the
-  // read-only counterpart is `MeasurementPort`) and the root-bound pointer-
-  // capture seam. Both are ref-backed and stable — created once.
-  const styleApplierPort: StyleApplierPort = React.useMemo(
-    (): StyleApplierPort => createDomStyleApplierPort(viewportRef),
-    [],
-  );
+  // The root-bound pointer-capture seam. Ref-backed and stable — created once.
   const pointerCapturePort: PointerCapturePort = React.useMemo(
     (): PointerCapturePort => createDomPointerCapturePort(rootRef),
     [],
   );
-  // The framework-free survivor-FLIP scheduler owns the recorded-First map + the
-  // scheduling-handle cluster (M1 play-race / M2 transition-settle / M2b
-  // transform-settle guard / tracked dips) and runs the arming decisions through
-  // the `StyleApplierPort`. Created ONCE (held in a ref) so the cluster survives
-  // the layout effect's per-commit re-runs, exactly like the refs it replaces.
-  const flipSchedulerRef = React.useRef<SurvivorFlipScheduler | null>(null);
-  if (flipSchedulerRef.current == null) {
-    flipSchedulerRef.current = createSurvivorFlipScheduler({
-      styleApplier: styleApplierPort,
-      scheduler: WINDOW_SCHEDULER_PORT,
-      onReflowAnimatingChange: setIsSurvivorReflowAnimating,
-    });
-  }
-  const flipScheduler: SurvivorFlipScheduler = flipSchedulerRef.current;
-  // M4 idempotent transient-style teardown for the survivor leaves — the stable
-  // callback every exit path (settle teardown, watchdog expiry, visibilitychange
-  // reconcile) calls. Delegates to the scheduler's idempotent strip: clear any
-  // residual FLIP transform/transition on every `[data-leaf-id]` element and
-  // cancel the tracked WAAPI dips + the raced play handle. Identity-stable (the
-  // scheduler is a stable ref), so the pointer-effect dep set never churns.
-  const stripSurvivorTransientStyles = React.useCallback((): void => {
-    flipScheduler.stripTransient();
-  }, [flipScheduler]);
+  // Leaf motion (engine/leaf-motion.ts): one settle per leaf on the shared
+  // frame loop. Every commit collects the leaf wrappers (`[data-hpt-leaf]`)
+  // under the viewport, reads their LAYOUT rects and hands them over as
+  // targets (the layout effect after the seat measurement); each frame draws
+  // them (leaf-motion-dom.ts). Motion is keyed by TILE id (the window a user
+  // sees; a swap trades tiles between leaf nodes). `leafWrappersRef` maps tile
+  // id → wrapper as of
+  // the last commit, for the per-frame writes.
+  const leafWrappersRef = React.useRef<Map<string, HTMLElement>>(
+    new Map<string, HTMLElement>(),
+  );
+  const leafMotionRef = React.useRef<LeafMotion | null>(null);
+  // Container size at the last sync: a resized container snaps, not glides.
+  const leafMotionContainerSizeRef = React.useRef<{
+    width: number;
+    height: number;
+  } | null>(null);
+  // Read by the leaf motion on every new target (snap instead of glide).
+  const leafMotionSnapRef = React.useRef<boolean>(!dragAnimationEnabled);
   // Selectors off the single FSM state — the renderer reads these exactly where
   // it used to read the old useState slots.
   const dragSourceLeafId: string | null = activeDragSourceLeafId(dragState);
@@ -5988,13 +5901,13 @@ const TilingRendererComponent = React.forwardRef<
     liveDragModeEnabled && dragSourceLeafId != null
       ? liveCandidateDisplayLayout
       : (settlingCommitCandidate ?? settlingClaimedHold ?? layout);
-  // During a live drag (and the brief cancel-settle glide tail) the structural
-  // layout containers go `overflow-visible` so gliding survivors are not clipped
-  // by their own slot mid-FLIP. Only flips the structural divs — the article
+  // During a live drag and while any leaf glides, the structural layout
+  // containers go `overflow-visible` so gliding leaves are not clipped by their
+  // own slot or an ancestor split. Only flips the structural divs — the article
   // keeps its own `overflow-hidden`, so pane content never spills.
-  const isSurvivorReflowOverflowWindow: boolean =
-    liveDragModeEnabled &&
-    (dragState.phase === "dragging" || isSurvivorReflowAnimating);
+  const isLeafMotionOverflowWindow: boolean =
+    (liveDragModeEnabled && dragState.phase === "dragging") ||
+    isLeafMotionActive;
   // The cursor-following ghost is derived from the FSM dragging state + the
   // pickup snapshot ref (no separate ghost useState to keep in sync).
   const dragVisualState: TilingDragVisualState | null =
@@ -6045,18 +5958,6 @@ const TilingRendererComponent = React.forwardRef<
   );
   const isCustomCursorActive: boolean =
     dragCursorEnabled && dragVisualState != null;
-  // Coherent non-intersecting transit for the SWAP survivor (the displaced
-  // target): when on, the surviving boxes dip toward ~70% mid-reflow in lockstep
-  // with the ghost so the two crossing boxes never visually collide. Only the
-  // swap case needs it (edge-insert boxes never trade places); gated off under
-  // reduced motion. See `ghost-transit.ts` §7.
-  const survivorCoherentDipActive: boolean =
-    shouldApplyCoherentTransitDip({
-      enabled: interactionCapabilities.coherentTransit,
-      action: resolvedTargetAction,
-      reducedMotion: prefersReducedMotion,
-      speedsParity,
-    }) && dragState.phase === "dragging";
   // Measure the resolved slot's reservation rect (client coords) so the single
   // ghost can hop INTO and FILL it. Runs after the candidate-tree DOM mutation
   // (layout effect, before paint), keyed on the resolve triple + viewport (NOT
@@ -6111,82 +6012,125 @@ const TilingRendererComponent = React.forwardRef<
     viewportSize.width,
     viewportSize.height,
   ]);
-  // Survivor-reflow FLIP. Runs after every candidate-tree commit (layout effect,
-  // before paint). When a live drag is materially in flight (`dragging` or a
-  // `settling` teardown), each surviving leaf glides from its previous rect
-  // (First) to its committed rect (Last) via a transform-only animation instead
-  // of snapping. Outside a drag it ONLY records the clean rects (no animation),
-  // so the FLIP never fires on a resize / sizing / external layout change — and
-  // the next pickup has a valid First. The single ghost is unaffected: it is a
-  // `position: fixed` sibling (never a `[data-leaf-id]` element) and carries its
-  // own hop FLIP, so the single-instance invariant is preserved.
-  React.useLayoutEffect((): (() => void) | void => {
-    // Clamp boundary = the host container's visible region intersected with the
-    // window, so a survivor scrolled out of the host (or off the window) is
-    // snapped, never tweened across a large off-screen offset (§10). `null` when
-    // the viewport is unmounted — the scheduler then preserves the recorded
-    // First rects and does nothing (the historical `viewport == null` return).
-    const clampViewport: SurvivorRect | null =
-      styleApplierPort.measureClampViewport();
-    if (clampViewport == null) {
-      return;
-    }
-    if (dragState.phase === "dragging") {
-      didPaintDraggingFrameRef.current = true;
-    }
-    const playReflow: boolean =
-      liveDragModeEnabled &&
-      (dragState.phase === "dragging" || dragState.phase === "settling");
-    const snapSettleCommit: boolean = shouldSnapSurvivorReflowOnSettleCommit({
-      liveDragModeEnabled,
-      dragPhase: dragState.phase,
-      settleOutcome: dragState.phase === "settling" ? dragState.outcome : null,
-      didPaintDraggingFrame: didPaintDraggingFrameRef.current,
+  // Leaf motion lifecycle: one motion per renderer on the shared frame loop
+  // (created in the browser only; a server render never gets here).
+  leafMotionSnapRef.current = !dragAnimationEnabled;
+  React.useLayoutEffect((): (() => void) => {
+    const readReducedMotion: () => boolean = readPrefersReducedMotion();
+    const motion: LeafMotion = createLeafMotion({
+      loop: leafMotionFrameLoop(),
+      omega: leafMotionOmega,
+      reducedMotion: (): boolean =>
+        leafMotionSnapRef.current || readReducedMotion(),
+      onWrite: (
+        frames: ReadonlyArray<LeafMotionFrame>,
+        tick: LeafMotionTick,
+      ): void => {
+        for (const frame of frames) {
+          const wrapper: HTMLElement | undefined =
+            leafWrappersRef.current.get(frame.id);
+          if (wrapper != null) {
+            writeLeafMotionFrame(wrapper, frame);
+          }
+        }
+        reportLeafMotionProbe(tick, motion.omega);
+      },
+      onActiveChange: setIsLeafMotionActive,
     });
-    if (!playReflow) {
-      didPaintDraggingFrameRef.current = false;
-    }
-    // Run one reflow batch through the framework-free scheduler: it measures
-    // First/Last + applies the invert via the `StyleApplierPort`, then arms M2 /
-    // M2b / M1 in the exact historical order (or, on the record-only / snap path,
-    // just records clean rects + strips inline styles).
-    flipScheduler.reflow({
-      playReflow,
-      snapSettleCommit,
-      clampViewport,
-      coherentDipActive: survivorCoherentDipActive,
-      durationMs: survivorReflowDurationMs,
-      transitionSlackMs: dragRecoveryTransitionSlackMs,
-      frameDeadlineMs: dragRecoveryFrameDeadlineMs,
-      swapBounceMagnitude,
-      resolvedReflowEasing,
-    });
-    // Cancel a pending M1 play-frame when the effect re-runs / unmounts mid-flight
-    // (idempotent — a no-op when no frame is pending).
+    leafMotionRef.current = motion;
     return (): void => {
-      flipScheduler.cancelPlayFrame();
+      motion.dispose();
+      if (leafMotionRef.current === motion) {
+        leafMotionRef.current = null;
+      }
+      for (const wrapper of leafWrappersRef.current.values()) {
+        clearLeafMotion(wrapper);
+      }
+      leafWrappersRef.current = new Map<string, HTMLElement>();
+      leafMotionContainerSizeRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    displayLayout,
-    survivorReflowDurationMs,
-    swapBounceMagnitude,
-    resolvedReflowEasing,
-    dragState.phase,
-    liveDragModeEnabled,
-    survivorCoherentDipActive,
-    dragRecoveryFrameDeadlineMs,
-    dragRecoveryTransitionSlackMs,
-    viewportSize.width,
-    viewportSize.height,
-  ]);
-  // Cancel the survivor-reflow clip-mask close guard (M2) + the M2b
-  // transform-settle self-heal guard + tracked dips on unmount.
-  React.useEffect((): (() => void) => {
-    return (): void => {
-      flipScheduler.dispose();
+  }, []);
+  // Every layout change glides. After EVERY commit (layout effect, before
+  // paint) each shown leaf's LAYOUT rect — from offset geometry, so a glide in
+  // flight never leaks into it — becomes its target: a known leaf launches from
+  // where it is drawn, a new one appears there (popping in when it opened into
+  // an existing layout), a leaf under an active divider drag is held 1:1, the
+  // drag seat (reservation) jumps, and a resized container snaps everything.
+  // `flush()` draws the leaves before this paint, so the new layout never shows
+  // for a frame before the glide starts. The ghost is not a leaf (it is portaled
+  // outside the viewport) and keeps its own hop.
+  React.useLayoutEffect((): void => {
+    const motion: LeafMotion | null = leafMotionRef.current;
+    const container: HTMLDivElement | null = viewportRef.current;
+    if (motion == null || container == null) {
+      return;
+    }
+    motion.configure({ omega: leafMotionOmega });
+    const previousSize: { width: number; height: number } | null =
+      leafMotionContainerSizeRef.current;
+    const size: { width: number; height: number } = {
+      width: container.offsetWidth,
+      height: container.offsetHeight,
     };
-  }, [flipScheduler]);
+    leafMotionContainerSizeRef.current = size;
+    const resized: boolean =
+      previousSize != null &&
+      (previousSize.width !== size.width ||
+        previousSize.height !== size.height);
+    const held: boolean = resizeState != null;
+    const previousWrappers: Map<string, HTMLElement> = leafWrappersRef.current;
+    const wrappers: Map<string, HTMLElement> = new Map<string, HTMLElement>();
+    for (const element of Array.from(
+      container.querySelectorAll<HTMLElement>("[data-hpt-leaf]"),
+    )) {
+      const leafId: string | null = element.getAttribute("data-hpt-leaf");
+      if (leafId != null && !wrappers.has(leafId)) {
+        wrappers.set(leafId, element);
+      }
+    }
+    // A wrapper element now showing another leaf (or gone) drops what was
+    // drawn on it for the previous one.
+    for (const [leafId, element] of previousWrappers) {
+      if (wrappers.get(leafId) !== element) {
+        clearLeafMotion(element);
+      }
+    }
+    leafWrappersRef.current = wrappers;
+    const firstSync: boolean = previousSize == null;
+    let anyKnownStays: boolean = false;
+    for (const leafId of wrappers.keys()) {
+      if (motion.has(leafId)) {
+        anyKnownStays = true;
+        break;
+      }
+    }
+    const seen: Set<string> = new Set<string>();
+    for (const [leafId, element] of wrappers) {
+      const rect = measureLeafLayoutRect(element, container);
+      if (rect == null) {
+        continue;
+      }
+      seen.add(leafId);
+      const known: boolean = motion.has(leafId);
+      if (element.hasAttribute("data-drag-source-reservation-slot")) {
+        motion.jump(leafId, rect);
+      } else if (held) {
+        motion.hold(leafId, rect);
+      } else if (!known || firstSync || resized) {
+        motion.jump(leafId, rect);
+        // A leaf that opens into a layout that stays pops in; a whole new set
+        // (first mount, a workspace switch) just appears.
+        if (!known && !firstSync && anyKnownStays) {
+          motion.open(leafId);
+        }
+      } else {
+        motion.target(leafId, rect);
+      }
+    }
+    motion.retain(seen);
+    motion.flush();
+  });
   // Hit-test footprints for pointer-capture target resolution. In live mode the
   // displayed base is the gap-closed tree (source detached), so resolve against
   // THOSE positions (stable per source — derived once on pickup, never from the
@@ -8378,10 +8322,9 @@ const TilingRendererComponent = React.forwardRef<
     };
     const handleVisibilityChange = (): void => {
       if (document.visibilityState === "hidden") {
-        // M5 reconcile: a tab hidden mid-drag cancels through the existing edge,
-        // and any transient FLIP styles are stripped so the leaves are clean when
-        // the tab is shown again (INV-R4). The cancel side effect plus this strip
-        // are both idempotent with the settle teardown. But a hide that races a
+        // M5 reconcile: a tab hidden mid-drag cancels through the existing edge
+        // (the leaves glide back from where they are drawn when the tab is
+        // shown again; leaf motion is never stuck). But a hide that races a
         // release / arrives on a seated committable drop must not clobber the
         // commit — the driver's arbiter suppresses the cancel iff a commit is
         // latched or a committable seat exists (the seat's release, even while
@@ -8390,7 +8333,6 @@ const TilingRendererComponent = React.forwardRef<
           return;
         }
         dispatchDrag({ type: "VISIBILITY_HIDDEN" });
-        stripSurvivorTransientStyles();
       }
     };
 
@@ -8428,7 +8370,6 @@ const TilingRendererComponent = React.forwardRef<
     applyResolvedExternalDragHover,
     onLiveHitLogChange,
     resolvePointerTarget,
-    stripSurvivorTransientStyles,
   ]);
 
   // The single teardown path. On `settling` the renderer runs the commit OR the
@@ -8453,17 +8394,9 @@ const TilingRendererComponent = React.forwardRef<
       pointerCapturePort.release(owningPointerId);
       capturedPointerIdRef.current = null;
     }
-    // M4 backstop: strip any residual FLIP transform/transition from the
-    // survivors + cancel tracked dips/raced handles on the settle edge, so once
-    // the FSM reaches `idle` no `[data-leaf-id]` element retains a non-identity
-    // inline transform (INV-R1). On commit the subsequent layout change re-arms a
-    // fresh survivor reflow; on cancel the leaves stay at identity. Disarm the
-    // M2b stuck-transition guard too — its force-settle is subsumed by this
-    // strip; cancelling drops the lingering timer (a stale fire would read
-    // identity and no-op anyway).
-    flipScheduler.cancelTransformSettleGuard();
-    stripSurvivorTransientStyles();
-
+    // The survivors need no teardown here: they glide on the leaf motion, which
+    // carries on from where each leaf is drawn into whatever layout the settle
+    // commits (or back into the untouched layout on a cancel).
     const committedTree: TilingLayoutNode | null =
       dragState.outcome === "commit" && dragState.resolvedTarget != null
         ? deriveCandidateTree(
@@ -8531,7 +8464,6 @@ const TilingRendererComponent = React.forwardRef<
     inputDriver.reset();
     setSeatFootprint(null);
     onLiveHitLogChange?.(null);
-    didPaintDraggingFrameRef.current = false;
     if (resolvedExternalDragHoverRef.current != null) {
       resolvedExternalDragHoverRef.current = null;
       setResolvedExternalDragHover(null);
@@ -8546,7 +8478,6 @@ const TilingRendererComponent = React.forwardRef<
     commitLayoutChange,
     onLiveHitLogChange,
     setFocusedLeaf,
-    stripSurvivorTransientStyles,
   ]);
 
   // N3 step 4 — spring-load REARM. Runs after every commit while a rearm is
@@ -8710,8 +8641,7 @@ const TilingRendererComponent = React.forwardRef<
   // (hang under CPU throttling, a dropped pointercancel, a wedged compositor)
   // past the idle budget, the watchdog force-reconciles by dispatching
   // `POINTER_CANCEL` — reusing the existing cancel edge (no new FSM phase/event)
-  // so the normal `settling(cancel) → idle` teardown releases capture, and a
-  // belt-and-braces style strip clears any residual transforms (INV-R2). Gated
+  // so the normal `settling(cancel) → idle` teardown releases capture. Gated
   // by the `dragRecovery.enable` capability; the monotonic `now` guard makes the
   // expiry robust to timer coalescing/throttling.
   React.useEffect((): undefined | (() => void) => {
@@ -8734,7 +8664,6 @@ const TilingRendererComponent = React.forwardRef<
           return;
         }
         dispatchDrag({ type: "POINTER_CANCEL" });
-        stripSurvivorTransientStyles();
       },
     });
     // Mirror the live handle so raw pointer input can re-arm it (Fix B,
@@ -8751,7 +8680,6 @@ const TilingRendererComponent = React.forwardRef<
     dragState,
     isDragRecoveryEnabled,
     dragRecoveryMaxIdleMs,
-    stripSurvivorTransientStyles,
   ]);
 
   const resolveLiveHitLogState = React.useCallback(
@@ -9368,7 +9296,7 @@ const TilingRendererComponent = React.forwardRef<
             ref={registerSlot}
             {...(isStablePaneSlot ? { "data-hpt-pane-slot": node.tileId } : {})}
             className={cn(
-              isSurvivorReflowOverflowWindow
+              isLeafMotionOverflowWindow
                 ? "overflow-visible"
                 : "overflow-hidden",
               leafHeightClass,
@@ -9389,8 +9317,20 @@ const TilingRendererComponent = React.forwardRef<
             // selector matches and the ghost can hop into the seat. Only on the
             // reserved leaf, so non-reserved leaves keep their single
             // article-level `data-leaf-id` (no duplicate-id collection).
-            {...(renderReservedDragSlot ? { "data-leaf-id": node.id } : {})}
+            {...(renderReservedDragSlot
+              ? {
+                  "data-leaf-id": node.id,
+                  "data-drag-source-reservation-slot": "",
+                }
+              : {})}
+            // Leaf motion: the wrapper is the window the motion moves (its
+            // layout rect is the target), keyed by TILE id so a swap (which
+            // trades tiles between leaves) moves the windows; the frame layer
+            // draws the tile's chrome at the drawn size while it glides and is
+            // hidden at rest (see leaf-motion-dom.ts).
+            data-hpt-leaf={node.tileId}
           >
+            <div data-hpt-leaf-frame="" aria-hidden style={{ display: "none" }} />
             {renderReservedDragSlot ? (
               <DragSourceSlotReservation
                 theme={theme}
@@ -9510,7 +9450,7 @@ const TilingRendererComponent = React.forwardRef<
             data-group-id={groupNode.id}
             className={cn(
               "hpt-group relative flex h-full max-h-full min-h-0 w-full min-w-0 flex-col",
-              isSurvivorReflowOverflowWindow
+              isLeafMotionOverflowWindow
                 ? "overflow-visible"
                 : "overflow-hidden",
             )}
@@ -9569,7 +9509,7 @@ const TilingRendererComponent = React.forwardRef<
             }
             className={cn(
               "relative h-full max-h-full min-h-0 w-full min-w-0",
-              isSurvivorReflowOverflowWindow
+              isLeafMotionOverflowWindow
                 ? "overflow-visible"
                 : "overflow-hidden",
             )}
@@ -9828,7 +9768,7 @@ const TilingRendererComponent = React.forwardRef<
           }
           className={cn(
             "relative flex h-full max-h-full min-h-0 w-full min-w-0",
-            isSurvivorReflowOverflowWindow
+            isLeafMotionOverflowWindow
               ? "overflow-visible"
               : "overflow-hidden",
             isHorizontal ? "flex-row" : "flex-col",
@@ -9837,7 +9777,7 @@ const TilingRendererComponent = React.forwardRef<
           <div
             className={cn(
               "flex min-h-0 min-w-0",
-              isSurvivorReflowOverflowWindow
+              isLeafMotionOverflowWindow
                 ? "overflow-visible"
                 : "overflow-hidden",
             )}
@@ -9975,7 +9915,7 @@ const TilingRendererComponent = React.forwardRef<
           <div
             className={cn(
               "flex min-h-0 min-w-0",
-              isSurvivorReflowOverflowWindow
+              isLeafMotionOverflowWindow
                 ? "overflow-visible"
                 : "overflow-hidden",
             )}
@@ -10011,7 +9951,7 @@ const TilingRendererComponent = React.forwardRef<
       ghostSeatLeafId,
       dropState,
       interactionCapabilities,
-      isSurvivorReflowOverflowWindow,
+      isLeafMotionOverflowWindow,
       liveDragModeEnabled,
       isFocusSelectionEnabled,
       isMaximizeEnabled,
@@ -10295,13 +10235,6 @@ const TilingRendererComponent = React.forwardRef<
             pickupScaleFactor={ghostPickupScaleFactor(
               interactionCapabilities.ghostPickupScalePercent,
             )}
-            coherentDipActive={shouldApplyCoherentTransitDip({
-              enabled: interactionCapabilities.coherentTransit,
-              action: dropState?.action ?? null,
-              reducedMotion: prefersReducedMotion,
-              speedsParity,
-            })}
-            swapBounceMagnitude={swapBounceMagnitude}
             prefersReducedMotion={prefersReducedMotion}
             isPaneContentVisible={isPaneContentVisible}
             frameDeadlineMs={dragRecoveryFrameDeadlineMs}

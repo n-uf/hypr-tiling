@@ -14,7 +14,17 @@ module.exports = {
     "^@n-uf/hypr-tiling/engine$": path.join(packageDir, "engine.ts"),
     "^@n-uf/hypr-tiling$": path.join(packageDir, "index.ts"),
   },
+  // @n-uf/motion (a hypr-tiling dependency) ships ESM only; transform its dist
+  // like the package's own jest config does.
+  transformIgnorePatterns: ["/node_modules/(?!(\\.pnpm/@n-uf\\+motion@[^/]+/node_modules/)?@n-uf/motion/)"],
   transform: {
+    "/node_modules/(\\.pnpm/@n-uf\\+motion@[^/]+/node_modules/)?@n-uf/motion/.+\\.js$": [
+      path.join(packageDir, "node_modules/ts-jest"),
+      {
+        tsconfig: { allowJs: true, module: "commonjs", esModuleInterop: true },
+        diagnostics: false,
+      },
+    ],
     "^.+\\.tsx?$": [
       path.join(packageDir, "node_modules/ts-jest"),
       {
@@ -31,6 +41,9 @@ module.exports = {
             "@jest/globals": ["node_modules/@jest/globals/build/index.d.ts"],
             "@n-uf/hypr-tiling/engine": ["engine.ts"],
             "@n-uf/hypr-tiling": ["index.ts"],
+            // `moduleResolution: "node"` reads no `exports` map: point the
+            // motion subpaths at their declaration files.
+            "@n-uf/motion/*": ["node_modules/@n-uf/motion/dist/*.d.ts"],
           },
         },
       },

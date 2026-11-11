@@ -6,7 +6,6 @@ import {
 import {
   DRAG_RECOVERY_DEFAULT_FRAME_DEADLINE_MS,
   DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS,
-  DRAG_RECOVERY_DEFAULT_TRANSITION_SLACK_MS,
 } from "./drag-recovery";
 import { DEFAULT_GHOST_PICKUP_SCALE_PERCENT, clampGhostPickupScalePercent } from "./ghost-transit";
 import { TILING_DROP_INTENT_CONFIG } from "./drop-intent-resolver";
@@ -128,11 +127,9 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
     enable: true,
     maxDraggingIdleMs: DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS,
     frameDeadlineMs: DRAG_RECOVERY_DEFAULT_FRAME_DEADLINE_MS,
-    transitionSlackMs: DRAG_RECOVERY_DEFAULT_TRANSITION_SLACK_MS,
   },
   customCursor: true,
   ghostPickupScalePercent: DEFAULT_GHOST_PICKUP_SCALE_PERCENT,
-  coherentTransit: true,
   focus: true,
   maximize: { enable: true, keepGroupTabStrip: true },
   paneSwitching: {
@@ -293,17 +290,11 @@ export function resolveInteractionCapabilities(
         capabilities?.dragRecovery?.frameDeadlineMs
           ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.dragRecovery.frameDeadlineMs,
       ),
-      transitionSlackMs: Math.max(
-        0,
-        capabilities?.dragRecovery?.transitionSlackMs
-          ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.dragRecovery.transitionSlackMs,
-      ),
     },
     customCursor: capabilities?.customCursor ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.customCursor,
     ghostPickupScalePercent: clampGhostPickupScalePercent(
       capabilities?.ghostPickupScalePercent ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.ghostPickupScalePercent,
     ),
-    coherentTransit: capabilities?.coherentTransit ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.coherentTransit,
     focus: capabilities?.focus ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.focus,
     maximize: {
       enable: capabilities?.maximize?.enable ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.maximize.enable,

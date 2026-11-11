@@ -47,10 +47,7 @@ export {
   DEFAULT_TILING_LAYOUT_CONFIG,
 } from "./react/tiling-renderer";
 export { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "./engine/types";
-export {
-  DEFAULT_DRAG_HOP_EASING,
-  DEFAULT_DRAG_REFLOW_EASING,
-} from "./engine/drag-easing";
+export { DEFAULT_DRAG_HOP_EASING } from "./engine/drag-easing";
 
 // ── Theming ──────────────────────────────────────────────────────────────────
 export {

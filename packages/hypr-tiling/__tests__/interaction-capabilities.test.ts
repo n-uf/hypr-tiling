@@ -30,11 +30,9 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
     enable: true,
     maxDraggingIdleMs: 5100,
     frameDeadlineMs: 32,
-    transitionSlackMs: 60,
   },
   customCursor: true,
   ghostPickupScalePercent: 90,
-  coherentTransit: true,
   focus: true,
   maximize: { enable: true, keepGroupTabStrip: true },
   paneSwitching: {
@@ -151,9 +149,8 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     expect(resolveInteractionCapabilities({}).customCursor).toBe(true);
   });
 
-  it("defaults ghostPickupScalePercent to 90 and coherentTransit to true", (): void => {
+  it("defaults ghostPickupScalePercent to 90", (): void => {
     expect(resolveInteractionCapabilities(undefined).ghostPickupScalePercent).toBe(90);
-    expect(resolveInteractionCapabilities({}).coherentTransit).toBe(true);
   });
 
   it("clamps an out-of-range ghostPickupScalePercent into [10, 150]", (): void => {
@@ -162,17 +159,9 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     expect(resolveInteractionCapabilities({ ghostPickupScalePercent: 120 }).ghostPickupScalePercent).toBe(120);
   });
 
-  it("preserves an explicit coherentTransit false (not overridden by the default)", (): void => {
-    expect(resolveInteractionCapabilities({ coherentTransit: false })).toEqual({
-      ...RESOLVED_DEFAULTS,
-      coherentTransit: false,
-    });
-  });
-
   it("is idempotent across the new fields (re-resolving a resolved object)", (): void => {
     const once: ResolvedTilingInteractionCapabilities = resolveInteractionCapabilities({
       ghostPickupScalePercent: 75,
-      coherentTransit: false,
     });
     expect(resolveInteractionCapabilities(once)).toEqual(once);
   });

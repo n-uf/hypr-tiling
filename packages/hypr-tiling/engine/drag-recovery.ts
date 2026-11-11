@@ -9,16 +9,16 @@
  * `idle`. The exposure this module closes is the ANIMATION + TIMING layer that
  * sits around the FSM:
  *
- * - Every FLIP "play-to-identity" step is armed inside a bare
- *   `requestAnimationFrame`; if that frame never arrives the element is frozen
+ * - The ghost hop's FLIP "play-to-identity" step is armed inside a bare
+ *   `requestAnimationFrame`; if that frame never arrives the ghost is frozen
  *   at its inverted `First` (visibly displaced / scaled). → M1.
- * - Transition style-cleanup that waits only on `transitionend` (or only on a
- *   frame) can be deferred indefinitely. → M2.
  * - No max-duration watchdog on `armed` / `dragging`: if every terminal pointer
- *   event is lost the FSM stays `dragging` forever, holding pointer capture and
- *   transient inline styles. → M3.
- * - Transient-style cleanup is eventually-total but not idempotent on every exit
- *   path and not starvation-proof. → M4.
+ *   event is lost the FSM stays `dragging` forever, holding pointer capture. → M3.
+ *
+ * The panes themselves move on leaf motion (`leaf-motion.ts`): a settle stepped
+ * by one frame loop, with no CSS transition to wait for, strip or rescue, so
+ * the old transition-end race (M2), stuck-transform guard (M2b) and style
+ * teardown (M4) went with the survivor FLIP they guarded.
  *
  * Design constraints (mirrors `_agent/drag-subsystem-audit.md` §"self-healing"):
  * - DOM-less + injected clock / scheduler, exactly like `createFrameCoalescer`
@@ -26,16 +26,11 @@
  *   in the `node` jest environment with fake timers + an injected `now`.
  * - All deadlines are typed, documented multiples of the animation duration or
  *   of a frame — never symptom-tuned magic constants.
- * - Operates on MINIMAL typed style-target interfaces (mirrors
- *   `SurvivorReflowLeafStyleTarget` in `survivor-reflow.ts`), so the renderer
- *   feeds it real `HTMLElement`s / WAAPI `Animation`s without the module
- *   depending on the DOM.
  *
  * The recovery layer composes AROUND the existing machine: M3 feeds the existing
- * `POINTER_CANCEL` edge (no new FSM phase / event), M1 hardens the animation
- * arming, and M4 is the single idempotent teardown every exit path calls. The
- * FSM / candidate-tree / geometry core and the content-agnostic presentation
- * rule are untouched.
+ * `POINTER_CANCEL` edge (no new FSM phase / event) and M1 hardens the ghost's
+ * animation arming. The FSM / candidate-tree / geometry core and the
+ * content-agnostic presentation rule are untouched.
  */
 
 /**
@@ -74,14 +69,6 @@ export const DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS: number =
 export const DRAG_RECOVERY_DEFAULT_FRAME_DEADLINE_MS: number = 32;
 
 /**
- * Default M2 transition-completion slack (ms). Names the `+60` mask-close slack
- * the survivor-reflow effect already uses (`survivorReflowDurationMs + 60`) as a
- * single typed knob: the cleanup fires on `transitionend` OR
- * `duration + transitionSlackMs`, whichever first.
- */
-export const DRAG_RECOVERY_DEFAULT_TRANSITION_SLACK_MS: number = 60;
-
-/**
  * Injected frame + timer scheduler for M1's rAF-with-timeout race. The renderer
  * supplies the real `window.requestAnimationFrame` / `window.setTimeout`
  * family; tests supply controllable fakes. Kept separate from
@@ -102,8 +89,8 @@ export interface RacedFrameHandle {
 }
 
 /**
- * M1 — rAF-with-timeout race primitive (fixes V1 ghost-hop + V2 survivor-reflow
- * frozen-at-`First`).
+ * M1 — rAF-with-timeout race primitive (fixes V1, the ghost hop frozen at its
+ * `First`).
  *
  * Races `requestFrame` against `setTimer(frameDeadlineMs)`. The FIRST to fire
  * runs `callback`; the loser is cancelled. The run is IDEMPOTENT — a `hasRun`
@@ -160,184 +147,10 @@ export function scheduleFrameOrTimeout(
   };
 }
 
-/** A `transitionend`-event source — the minimal subset M2 subscribes to. */
-export interface TransitionEndSource {
-  addEventListener: (type: "transitionend", listener: () => void) => void;
-  removeEventListener: (type: "transitionend", listener: () => void) => void;
-}
-
-/** Injected timer scheduler for M2 / M3 (no frame half needed). */
+/** Injected timer scheduler for M3 (no frame half needed). */
 export interface TimerScheduler {
   setTimer: (callback: () => void, ms: number) => number;
   clearTimer: (handle: number) => void;
-}
-
-/** A cancelable, run-at-most-once transition-completion handle returned by M2. */
-export interface TransitionSettledHandle {
-  /** Detach the listener + clear the timer if the completion has not yet fired. */
-  cancel: () => void;
-}
-
-/**
- * M2 — transition-completion guarantee (generalizes the existing `+60` mask
- * slack / `+40` fly-back slack the codebase already uses).
- *
- * Fires `onSettled` EXACTLY ONCE, on `transitionend` OR after a
- * `durationMs + transitionSlackMs` timeout — WHICHEVER FIRST. The timeout is the
- * starvation backstop: if the element is interrupted / unmounted / the
- * `transitionend` never arrives (which the codebase has no listeners for today,
- * so this is also the first place a `transitionend` is even consulted), the
- * timer still runs the cleanup. Idempotent + self-detaching.
- */
-export function onTransitionSettled(params: {
-  target: TransitionEndSource;
-  durationMs: number;
-  transitionSlackMs: number;
-  scheduler: TimerScheduler;
-  onSettled: () => void;
-}): TransitionSettledHandle {
-  let hasSettled: boolean = false;
-  let timerHandle: number | null = null;
-
-  const cleanup = (): void => {
-    params.target.removeEventListener("transitionend", onTransitionEnd);
-    if (timerHandle != null) {
-      params.scheduler.clearTimer(timerHandle);
-      timerHandle = null;
-    }
-  };
-
-  const settleOnce = (): void => {
-    if (hasSettled) {
-      return;
-    }
-    hasSettled = true;
-    cleanup();
-    params.onSettled();
-  };
-
-  function onTransitionEnd(): void {
-    settleOnce();
-  }
-
-  params.target.addEventListener("transitionend", onTransitionEnd);
-  timerHandle = params.scheduler.setTimer(settleOnce, params.durationMs + params.transitionSlackMs);
-
-  return {
-    cancel: (): void => {
-      if (hasSettled) {
-        return;
-      }
-      hasSettled = true;
-      cleanup();
-    },
-  };
-}
-
-/**
- * The two strings a transform-free element's `getComputedStyle(el).transform`
- * resolves to: `"none"` (the element has no transform box) and the identity
- * matrix (a transform that composes to identity). Anything else is a LIVE or
- * STRANDED non-identity transform. Used by M2b's stuck-transition discriminator
- * — checking COMPUTED transform (not inline) is the only way to tell a stalled
- * compositor transition (inline already `"none"`, computed still mid-flight)
- * from a genuinely-settled element.
- */
-export const IDENTITY_COMPUTED_TRANSFORMS: ReadonlyArray<string> = [
-  "none",
-  "matrix(1, 0, 0, 1, 0, 0)",
-];
-
-/** TRUE iff a `getComputedStyle(el).transform` string composes to identity. */
-export function isComputedTransformIdentity(computedTransform: string): boolean {
-  return IDENTITY_COMPUTED_TRANSFORMS.includes(computedTransform);
-}
-
-/** A cancelable, run-at-most-once transform-settle guard handle (M2b). */
-export interface TransformSettleGuardHandle {
-  /** Disarm the guard if it has not yet fired. Idempotent. */
-  cancel: () => void;
-}
-
-/**
- * M2b — stuck-transition transform-settle self-heal (fixes the seated mid-FLIP
- * transform-completion / teardown gap).
- *
- * A survivor-reflow FLIP arms its play-to-identity write via M1 (inline
- * `transform` → `"none"`), but the COMPOSITOR transition that animates from the
- * inverted First to that identity can stall under CPU throttle / a starved
- * compositor — or, in WAAPI coherent-dip mode, the dip can stall before its
- * `onfinish` pins identity. In both cases the element's INLINE transform reads
- * settled (`"none"` for a CSS transition, the inverted First for a `fill:none`
- * dip) while its COMPUTED transform is still non-identity, so the pane appears
- * frozen mid-move. The M3 idle watchdog cannot recover this while a committable
- * seat is latched (Fix A's `shouldSuppressCompetingCancel` deliberately removes
- * the watchdog's strip path so a seated drop is never snapped back).
- *
- * This guard closes that gap WITHOUT reopening the snap-back race: it is
- * DISTINCT from the M3 FSM watchdog — it issues NO `POINTER_CANCEL`, NO FSM
- * transition, NO snap-back — it ONLY force-settles the stuck visual to its final
- * committed box. It arms a single timer at `durationMs + transitionSlackMs`
- * (the same slack window M2's mask-close uses); when the timer fires it reads
- * each tracked element's COMPUTED transform and, IFF any is still non-identity,
- * runs `forceSettle` (the renderer's idempotent transient-style strip, which
- * cancels the tracked WAAPI dips then clears the inline transforms to identity).
- *
- * Because it only fires after the slack window AND only acts on a non-identity
- * COMPUTED transform, it never fights a legitimate in-flight transition (which
- * has reached identity by then). Cancel + re-arm per reflow batch (a superseding
- * batch disarms the stale guard, exactly like M1/M2), and idempotent with the M2
- * mask-close strip + the settle-phase strip — `forceSettle` clearing an
- * already-identity element is a no-op.
- */
-export function armTransformSettleGuard(params: {
-  readComputedTransforms: () => ReadonlyArray<string>;
-  durationMs: number;
-  transitionSlackMs: number;
-  scheduler: TimerScheduler;
-  forceSettle: () => void;
-}): TransformSettleGuardHandle {
-  let hasFired: boolean = false;
-  let timerHandle: number | null = null;
-
-  const clearPending = (): void => {
-    if (timerHandle != null) {
-      params.scheduler.clearTimer(timerHandle);
-      timerHandle = null;
-    }
-  };
-
-  const fireOnce = (): void => {
-    if (hasFired) {
-      return;
-    }
-    hasFired = true;
-    clearPending();
-    const stranded: boolean = params
-      .readComputedTransforms()
-      .some(
-        (computedTransform: string): boolean =>
-          !isComputedTransformIdentity(computedTransform),
-      );
-    if (stranded) {
-      params.forceSettle();
-    }
-  };
-
-  timerHandle = params.scheduler.setTimer(
-    fireOnce,
-    params.durationMs + params.transitionSlackMs,
-  );
-
-  return {
-    cancel: (): void => {
-      if (hasFired) {
-        return;
-      }
-      hasFired = true;
-      clearPending();
-    },
-  };
 }
 
 /**
@@ -415,75 +228,4 @@ export function createDragWatchdog(params: {
       clearTimer();
     },
   };
-}
-
-/**
- * Minimal style surface M4 clears on the ghost node + each survivor
- * `[data-leaf-id]` element. Mirrors `SurvivorReflowLeafStyleTarget`
- * (`survivor-reflow.ts`); `transform` / `transition` are always present on a
- * `CSSStyleDeclaration`, the rest are optional so a fake test target can omit
- * them and a real element is structurally assignable.
- */
-export interface TransientDragStyleTarget {
-  readonly style: {
-    transform: string;
-    transition: string;
-    transformOrigin?: string;
-    willChange?: string;
-    contain?: string;
-  };
-}
-
-/** A cancelable handle (WAAPI `Animation` or an M1 `RacedFrameHandle`). */
-export interface CancelableHandle {
-  cancel: () => void;
-}
-
-/**
- * M4 — idempotent transient-style teardown (fixes the §1 transient-style
- * inventory gap + V6 visibility-hide cleanup).
- *
- * Clears `transform` / `transition` / `transform-origin` (and `will-change` /
- * `contain`, future-proof) to identity on the ghost node and every survivor
- * leaf, and cancels every tracked WAAPI animation + raced M1 handle. Idempotent
- * — clearing to identity and cancelling an already-finished handle are both
- * no-ops — so it is safe to call on EVERY exit path: settle teardown (after
- * pointer-capture release), watchdog expiry (M3), and visibilitychange
- * reconciliation (M5). `null` entries are skipped so the renderer can pass its
- * refs verbatim.
- */
-export function stripTransientDragStyles(params: {
-  ghost: TransientDragStyleTarget | null;
-  leaves: ReadonlyArray<TransientDragStyleTarget | null>;
-  animations?: ReadonlyArray<CancelableHandle | null>;
-  racedHandles?: ReadonlyArray<CancelableHandle | null>;
-}): void {
-  for (const handle of params.animations ?? []) {
-    handle?.cancel();
-  }
-  for (const handle of params.racedHandles ?? []) {
-    handle?.cancel();
-  }
-  clearTransientStyle(params.ghost);
-  for (const leaf of params.leaves) {
-    clearTransientStyle(leaf);
-  }
-}
-
-/** Reset one style target's transient drag properties to identity. */
-function clearTransientStyle(target: TransientDragStyleTarget | null): void {
-  if (target == null) {
-    return;
-  }
-  target.style.transform = "none";
-  target.style.transition = "none";
-  if (target.style.transformOrigin !== undefined) {
-    target.style.transformOrigin = "";
-  }
-  if (target.style.willChange !== undefined) {
-    target.style.willChange = "auto";
-  }
-  if (target.style.contain !== undefined) {
-    target.style.contain = "";
-  }
 }
