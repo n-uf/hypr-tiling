@@ -66,7 +66,12 @@ export const META_DESCRIPTION: string =
 export const INSTALL_SNIPPET: string =
   "pnpm add @n-uf/hypr-tiling react react-dom";
 
-export type FeatureGroup = "core" | "recent";
+export type FeatureGroup = "core" | "recent" | "latest";
+
+/** The release the "recent" features shipped since. */
+export const FEATURE_RECENT_SINCE: string = "26.9.x";
+/** The release the "latest" features ship in. */
+export const FEATURE_LATEST_SINCE: string = "26.11.4";
 
 export interface FeatureFact {
   readonly term: string;
@@ -108,16 +113,6 @@ export const FEATURE_FACTS: ReadonlyArray<FeatureFact> = [
     group: "recent",
   },
   {
-    term: "Drop preview",
-    detail: "Drop indicator, or snap the pane to its slot.",
-    group: "recent",
-  },
-  {
-    term: "Drag chrome",
-    detail: "Themeable lift shadow and drop indicator.",
-    group: "recent",
-  },
-  {
     term: "Pane identity",
     detail: "Same React instance through drag and drop.",
     group: "recent",
@@ -132,6 +127,16 @@ export const FEATURE_FACTS: ReadonlyArray<FeatureFact> = [
     detail: "Several layout trees over one tile pool.",
     group: "recent",
   },
+  {
+    term: "Drop preview",
+    detail: "Drop indicator, or snap the pane to its slot.",
+    group: "latest",
+  },
+  {
+    term: "Drag chrome",
+    detail: "Themeable lift shadow and drop indicator.",
+    group: "latest",
+  },
 ];
 
 export const FEATURE_CORE: ReadonlyArray<FeatureFact> = FEATURE_FACTS.filter(
@@ -139,6 +144,9 @@ export const FEATURE_CORE: ReadonlyArray<FeatureFact> = FEATURE_FACTS.filter(
 );
 export const FEATURE_RECENT: ReadonlyArray<FeatureFact> = FEATURE_FACTS.filter(
   (fact: FeatureFact): boolean => fact.group === "recent",
+);
+export const FEATURE_LATEST: ReadonlyArray<FeatureFact> = FEATURE_FACTS.filter(
+  (fact: FeatureFact): boolean => fact.group === "latest",
 );
 
 interface SeoFaqItem {
@@ -566,7 +574,8 @@ function MosaicFactList({
   sinceMark,
 }: {
   facts: ReadonlyArray<FeatureFact>;
-  sinceMark: boolean;
+  /** The release shown beside each term ("since …"), or null for none. */
+  sinceMark: string | null;
 }): React.ReactElement {
   return (
     <dl className="flex flex-col divide-y divide-white/[0.05]">
@@ -578,9 +587,9 @@ function MosaicFactList({
           >
             <dt className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[15px] font-medium text-stone-100">
               {fact.term}
-              {sinceMark ? (
+              {sinceMark != null ? (
                 <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-amber-200/70">
-                  since 26.9.x
+                  since {sinceMark}
                 </span>
               ) : null}
             </dt>
@@ -735,17 +744,21 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     title: "features",
     accent: "amber",
     summary:
-      "Core: split tree, drag & drop, resize, tab groups, keyboard. Since 26.9.x: pane collapse, drop preview, drag chrome, pane identity, persist layout, workspaces (TilingWorkspaceSet).",
+      "Core: split tree, drag & drop, resize, tab groups, keyboard. Since 26.9.x: pane collapse, pane identity, persist layout, workspaces (TilingWorkspaceSet). Since 26.11.4: drop preview, drag chrome.",
     content: (
       <div className="flex flex-col gap-4">
         <SectionHeading>Ships today</SectionHeading>
         <div className="flex flex-col gap-3">
           <Eyebrow>core tiling</Eyebrow>
-          <MosaicFactList facts={FEATURE_CORE} sinceMark={false} />
+          <MosaicFactList facts={FEATURE_CORE} sinceMark={null} />
         </div>
         <div className="flex flex-col gap-3">
-          <Eyebrow>since 26.9.x</Eyebrow>
-          <MosaicFactList facts={FEATURE_RECENT} sinceMark={true} />
+          <Eyebrow>since {FEATURE_RECENT_SINCE}</Eyebrow>
+          <MosaicFactList facts={FEATURE_RECENT} sinceMark={FEATURE_RECENT_SINCE} />
+        </div>
+        <div className="flex flex-col gap-3">
+          <Eyebrow>since {FEATURE_LATEST_SINCE}</Eyebrow>
+          <MosaicFactList facts={FEATURE_LATEST} sinceMark={FEATURE_LATEST_SINCE} />
         </div>
       </div>
     ),

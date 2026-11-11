@@ -2,7 +2,10 @@ import * as React from "react";
 import {
   DISCOVERABILITY_PARAGRAPHS,
   FEATURE_CORE,
+  FEATURE_LATEST,
+  FEATURE_LATEST_SINCE,
   FEATURE_RECENT,
+  FEATURE_RECENT_SINCE,
   INSTALL_CONTROLLED_PARAGRAPH,
   INSTALL_INTRO_PARAGRAPH,
   INSTALL_SNIPPET,
@@ -340,8 +343,10 @@ function FeaturesContent(): React.ReactElement {
       <EditorialHeading>Ships today</EditorialHeading>
       <EditorialKicker>core tiling</EditorialKicker>
       <EditorialIndex items={FEATURE_CORE} />
-      <EditorialKicker>since 26.9.x</EditorialKicker>
+      <EditorialKicker>since {FEATURE_RECENT_SINCE}</EditorialKicker>
       <EditorialIndex items={FEATURE_RECENT} />
+      <EditorialKicker>since {FEATURE_LATEST_SINCE}</EditorialKicker>
+      <EditorialIndex items={FEATURE_LATEST} />
     </div>
   );
 }
