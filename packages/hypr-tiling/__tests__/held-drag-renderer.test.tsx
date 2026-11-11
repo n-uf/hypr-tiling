@@ -17,7 +17,14 @@ import * as React from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { TilingRenderer } from "../react/tiling-renderer";
 import { resolveTileRect } from "../engine/drag-landing";
-import type { TilingDragPreview, TilingLayoutNode, TilingLeafNode, TilingTile } from "../engine/types";
+import type {
+  TilingDragPreview,
+  TilingExternalDragHover,
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingOnExternalDrop,
+  TilingTile,
+} from "../engine/types";
 
 interface Box {
   x: number;
@@ -155,10 +162,16 @@ function Host({
   onLayoutReported,
   dragPreview,
   dragPreviewMakesRoom,
+  paneIdentity = "stable",
+  externalDragHover,
+  onExternalDrop,
 }: {
   onLayoutReported: (next: TilingLayoutNode) => void;
   dragPreview?: TilingDragPreview;
   dragPreviewMakesRoom?: boolean;
+  paneIdentity?: "stable" | "slot";
+  externalDragHover?: TilingExternalDragHover | null;
+  onExternalDrop?: TilingOnExternalDrop;
 }): React.ReactElement {
   const [layout, setLayout] = React.useState<TilingLayoutNode>(LAYOUT);
   return (
@@ -166,9 +179,11 @@ function Host({
       layout={layout}
       tiles={TILES}
       config={CONFIG}
-      paneIdentity="stable"
+      paneIdentity={paneIdentity}
       dragPreview={dragPreview}
       dragPreviewMakesRoom={dragPreviewMakesRoom}
+      externalDragHover={externalDragHover}
+      onExternalDrop={onExternalDrop}
       interaction={{
         dragRecovery: { enable: false },
         customCursor: false,
@@ -440,6 +455,88 @@ describe("held drag — home and cancel restore the exact layout", (): void => {
       await wait(700);
     });
     expectAtRest(wrapperOf(container, "a"));
+  });
+});
+
+describe('held drag — paneIdentity "slot"', (): void => {
+  it("lifts and holds the pane like stable mode, but the lifted pane is a second mount", async (): Promise<void> => {
+    restGeometry();
+    const changes: TilingLayoutNode[] = [];
+    const { container } = render(
+      <Host onLayoutReported={(next): void => void changes.push(next)} paneIdentity="slot" />,
+    );
+    const article: HTMLElement = wrapperOf(container, "a").querySelector("article")!;
+    await liftA(container, 140, 60);
+    const holder: HTMLElement | null = lifted(container);
+    expect(holder).not.toBeNull();
+    const a: HTMLElement = wrapperOf(container, "a");
+    expect(holder!.contains(a)).toBe(true);
+    // One copy of a on screen, held 1:1 and on top, as in stable mode.
+    expect(container.querySelectorAll('[data-hpt-leaf="a"]')).toHaveLength(1);
+    expect(a.style.transform).toBe("translate(40px, 40px)");
+    expect(a.hasAttribute("data-hpt-leaf-raised")).toBe(true);
+    // Slot mode renders each pane where its slot is, so the lifted pane is
+    // mounted afresh (state inside the tile does not carry over); only
+    // `paneIdentity: "stable"` keeps the same instance.
+    expect(a.querySelector("article")).not.toBe(article);
+    // The drop still lands where the indicator said.
+    await moveTo(960, 300);
+    const indicator: Box | null = indicatorRect(container);
+    GEOMETRY.set("a", { x: 500, y: 0, width: 500, height: 600 });
+    GEOMETRY.set("b", { x: 0, y: 0, width: 500, height: 600 });
+    await release(960, 300);
+    expect(changes).toHaveLength(1);
+    expect(resolveTileRect(changes[0]!, "a", CONTAINER, CONFIG)).toEqual(indicator);
+    expect(lifted(container)).toBeNull();
+  });
+});
+
+describe("held drag — host claim (onExternalDrop)", (): void => {
+  const HOVER: TilingExternalDragHover = { targetId: "ws:ops", point: { x: 320, y: 24 } };
+
+  it("a release over a host target calls onExternalDrop exactly once with the hover; nothing commits here", async (): Promise<void> => {
+    restGeometry();
+    const changes = jest.fn((_next: TilingLayoutNode): void => undefined);
+    const onExternalDrop = jest.fn<TilingOnExternalDrop>();
+    const { container } = render(
+      <Host onLayoutReported={changes} externalDragHover={HOVER} onExternalDrop={onExternalDrop} />,
+    );
+    await liftA(container, 140, 60);
+    await moveTo(320, 24);
+    await release(320, 24);
+    expect(onExternalDrop).toHaveBeenCalledTimes(1);
+    expect(onExternalDrop).toHaveBeenCalledWith("A", "ws:ops", { x: 320, y: 24 }, HOVER);
+    expect(changes).not.toHaveBeenCalled();
+    expect(lifted(container)).toBeNull();
+    // Later events do not claim again.
+    await release(320, 24);
+    expect(onExternalDrop).toHaveBeenCalledTimes(1);
+  });
+
+  it("without a hover the release never calls onExternalDrop, and the pane settles home", async (): Promise<void> => {
+    restGeometry();
+    const changes = jest.fn((_next: TilingLayoutNode): void => undefined);
+    const onExternalDrop = jest.fn<TilingOnExternalDrop>();
+    const { container } = render(<Host onLayoutReported={changes} onExternalDrop={onExternalDrop} />);
+    await liftA(container, 140, 60);
+    await release(140, 60);
+    expect(onExternalDrop).not.toHaveBeenCalled();
+    expect(changes).not.toHaveBeenCalled();
+    expect(lifted(container)).toBeNull();
+  });
+
+  it("a declined claim (onExternalDrop returns false) cancels: the pane settles home", async (): Promise<void> => {
+    restGeometry();
+    const changes = jest.fn((_next: TilingLayoutNode): void => undefined);
+    const onExternalDrop = jest.fn<TilingOnExternalDrop>(() => false);
+    const { container } = render(
+      <Host onLayoutReported={changes} externalDragHover={HOVER} onExternalDrop={onExternalDrop} />,
+    );
+    await liftA(container, 140, 60);
+    await release(140, 60);
+    expect(onExternalDrop).toHaveBeenCalledTimes(1);
+    expect(changes).not.toHaveBeenCalled();
+    expect(container.querySelectorAll('[data-hpt-leaf="a"]')).toHaveLength(1);
   });
 });
 
