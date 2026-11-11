@@ -7,6 +7,49 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
+## Unreleased
+
+### Every layout change glides
+
+Panes used to animate only while a drag reflowed them (a 170 ms CSS transform
+that scaled each pane per axis); every other layout change snapped. Now every
+change glides: opening and closing a pane, a swap, a keyboard move,
+maximize and restore, group changes, a drag's reflow, and any layout the host
+sets from outside. Each pane moves on one settle curve from `@n-uf/motion`
+(now a dependency, `26.11.3`): it launches from where it is drawn toward its
+new place, covers 90 % of the way in 92 ms by default, and never passes its
+target, so there is no overshoot, no size wobble, and a second change
+mid-flight carries on from where the pane is instead of jumping.
+
+Content is never stretched. A pane is laid out once at its new size; while it
+glides it is only translated, its chrome (background, border, radius, shadow)
+is drawn at the in-between size by a frame layer behind it, and its content is
+clipped to that size. A newly opened pane pops in with a uniform scale
+(0.87 → 1) and a fade. A pane under a divider you are dragging follows it 1:1.
+At rest nothing extra is written: a resting pane looks exactly as before.
+Panes snap under `prefers-reduced-motion` and with `dragAnimationEnabled: false`.
+The dragged ghost keeps its own hop for now.
+
+Each leaf wrapper now carries `data-hpt-leaf` (its tile id) and holds one
+hidden `[data-hpt-leaf-frame]` element ahead of the tile.
+
+### Breaking changes
+
+- `survivorReflowSpeedPercent` now sets the tempo of all pane motion: `100` is
+  the default (90 % in 92 ms), `200` twice as fast; still clamped to `[10, 400]`.
+- Removed `dragReflowEasing` (panes no longer move on a CSS easing) and
+  `DEFAULT_DRAG_REFLOW_EASING`. `dragHopEasing` still sets the ghost's hop.
+- Removed `swapBounceMagnitudePercent`: the swap-landing overshoot is gone
+  (panes and the seated ghost never pass their target).
+- Removed `interaction.coherentTransit` and its resolved field: the swap "dip"
+  (both boxes shrinking to ~70 % mid-swap) is gone.
+- Removed `interaction.dragRecovery.transitionSlackMs` and its resolved field:
+  there is no CSS transition left to wait for.
+- `./devtools`: `AnimationControlDefaults` / `ANIMATION_CONTROL_DEFAULTS` lose
+  `swapBounceMagnitudePercent` and `coherentTransit`; the observability panel
+  drops the swap-bounce slider and the coherent-transit checkbox, and shows the
+  pane tempo as its time to 90 %.
+
 ## 26.11.2 — 2026-11-09
 
 ### React is an optional peer
