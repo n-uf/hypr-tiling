@@ -93,7 +93,7 @@ unrounded, by the same pass the renderer lays panes out with
 ### Tailwind content requirement
 
 The renderer styles its **visual** surfaces (pane shells, header, dividers,
-focus frame, ghost) by emitting Tailwind utility class strings (via `clsx` +
+focus frame, drop indicator) by emitting Tailwind utility class strings (via `clsx` +
 `tailwind-merge`) — those classes only resolve to real styles if Tailwind scans
 this package's built output and generates the matching CSS. If you do not
 register the package in your Tailwind `content` glob, those surfaces render
@@ -130,7 +130,7 @@ stylesheet:
 ```
 
 A custom `overlayPortalContainer` does not change that scan: library
-`dragChrome` tokens still come from this package's dist. If the ghost
+`dragChrome` tokens still come from this package's dist. If the drag cursor
 renders **host-only** Tailwind utilities (classes declared only in the
 host app), those still need the host's own `content` / `@source` globs —
 the portal mount does not pull them into the library scan.
@@ -263,34 +263,32 @@ browser focus rings:
 
 ### Drag-state chrome (`theme.dragChrome`)
 
-Every drag surface the renderer paints — the ghost wrapper's elevation delta,
-the content-less seat the ghost hops into, the picked-up pane's dim, the
-drop-target highlight, the pointer-pinned drop-validity badge — reads the
-theme's optional, **partial** `dragChrome` slot. Omitted tokens inherit the
-pane shell (`resolveDragChrome(theme)`), so a theme that passes nothing drags
-with its own at-rest look: no library-imposed radius, ring, or shadow. To make
-a square, flat host drag square and flat:
+Every drag surface the renderer paints — the lifted pane's shadow, the drop
+indicator, the drop-target highlight, the pointer-pinned drop-validity badge —
+reads the theme's optional, **partial** `dragChrome` slot. The dragged pane is
+the real pane (no ghost copy), so it keeps its own at-rest look; omitted tokens
+fall back to the defaults (`resolveDragChrome(theme)`). To make a square, flat
+host drag square and flat:
 
 ```tsx
 const THEME: TilingTheme = {
   ...TILING_THEME_REGISTRY["clean-flat"],
   paneShell: { ...base.paneShell, surface: "… rounded-none border border-slate-700 bg-slate-900" },
   dragChrome: {
-    ghostLifted: "opacity-95 shadow-[0_8px_20px_-12px_rgba(0,0,0,0.5)]",
-    sourceReservation: "rounded-none border border-dashed border-slate-600 bg-slate-900/60",
-    sourcePane: "opacity-50",          // whole pane (title + content), applied by the renderer
+    liftedPane: "drop-shadow-[0_8px_20px_rgba(0,0,0,0.5)]", // follows the pane as it is drawn
+    dropIndicator: "rounded-none border border-dashed border-amber-500 bg-amber-500/15",
     cursorBadge: "rounded-none border",
-    resolveSeatFrame: () => "",        // frameless seat
   },
 };
 ```
 
 **Theme scoping.** `dragChrome` tokens are literal class strings so
-Tailwind's JIT can emit them — that is not a portal constraint. Host CSS
-that scopes colours via CSS variables, `data-theme`, or a scoped `dark`
-class will not reach the ghost / cursor / cancel overlays unless they
-mount on the overlay portal container (default `document.body`, see
-`overlayPortalContainer`):
+Tailwind's JIT can emit them — that is not a portal constraint. The lifted
+pane and the drop indicator render inside the renderer, so they inherit the
+host's scoped CSS. Only the custom drag cursor portals; host CSS that scopes
+colours via CSS variables, `data-theme`, or a scoped `dark` class reaches it
+only if it mounts on the overlay portal container (default `document.body`,
+see `overlayPortalContainer`):
 
 ```tsx
 const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -313,10 +311,10 @@ render once in a hidden tile-keyed pool and their DOM node is relocated into
 whichever slot shows their tile. Hooks, state, refs, iframes, and scroll
 positions are preserved. When the renderer hydrates server markup it stays in
 the legacy in-place mode (`"slot"`); pass `paneIdentity="stable"` to opt an SSR
-host in (server HTML then carries empty pane slots). The drag ghost remains a
-transient second `renderTile` on the overlay portal container (default
-`document.body`, see `overlayPortalContainer`) — DOM mount is configurable;
-the ghost staying outside the React root's event-delegation scope is not.
+host in (server HTML then carries empty pane slots). A drag lifts the real
+pane: in stable mode the same instance is held under the pointer and dropped;
+in slot mode the lifted pane is mounted afresh at the lift and again at the
+drop (state inside the tile does not carry over).
 
 ```tsx
 <TilingRenderer paneIdentity="stable" /* "auto" (default) | "stable" | "slot" */ />
@@ -324,12 +322,14 @@ the ghost staying outside the React root's event-delegation scope is not.
 
 ### Overlay portal container (theme scoping)
 
-Drag overlays (ghost, custom cursor, cancel fly-back) portal to
-`document.body` by default so their `position: fixed` coordinates stay
-window-relative — immune to ancestor `transform` / `filter` /
-`backdrop-filter` / `contain: paint` containing blocks. A host whose theme
-tokens live on a scoped root (CSS variables that the ghost must inherit) can
-redirect the portal:
+The custom drag cursor portals to `document.body` by default so its
+`position: fixed` coordinates stay window-relative — immune to ancestor
+`transform` / `filter` / `backdrop-filter` / `contain: paint` containing
+blocks. (The lifted pane does not portal: it is a fixed layer inside the
+renderer whose containing block is measured, so it escapes the viewport's
+clip and follows scroll and scale.) A host whose theme tokens live on a
+scoped root (CSS variables that the cursor must inherit) can redirect the
+portal:
 
 ```tsx
 <TilingRenderer
@@ -346,41 +346,34 @@ picked up without remounting the renderer. `null` / omitted falls back to
 **Containing-block caveat.** The container must not sit under an ancestor
 with `transform`, `filter`, `backdrop-filter`, `perspective`,
 `contain: paint` (or `layout` / `strict` / `content`), or `will-change` of
-those. The overlays still use window-relative client coordinates; a
-containing-block ancestor reintroduces ghost↔seat drift.
+those. The cursor uses window-relative client coordinates; a
+containing-block ancestor offsets it from the pointer.
 
-### External drop targets & compact ghost
+### External drop targets
 
 When a tile is dragged over host chrome outside the tiling tree (a
-workspace tab strip, a chat panel), the host reports that hover and the
-ghost can collapse from the tile footprint to a small chip under the
-cursor. On release the host claims the leaf **before** the drag FSM
-settles, so the cancel fly-back does not run. This is the 26.9.x
-standalone subset of the WorkspaceSet drag scope — see
+workspace tab strip, a chat panel), the host reports that hover; the held
+pane stays visible over it (it is not clipped by the viewport). On release
+the host claims the leaf **before** the drag FSM settles: the pane leaves
+the tree and fades out where it was drawn. This is the standalone subset of
+the WorkspaceSet drag scope — see
 [`_agent/workspace-set-concept.md`](../../_agent/workspace-set-concept.md)
-§5.5 (ghost mode).
+§5.5.
 
 ```tsx
 <TilingRenderer
-  dragGhostMode="auto"
   externalDragHover={
     tabOver ? { targetId: tabOver.id, point: tabOver.point } : null
   }
   onExternalDrop={(leafId, targetId, point) => {
     moveItemToTab(leafId, targetId, point); // synchronous claim
   }}
-  theme={{
-    ...baseTheme,
-    ghostChip: ({ title, leafId }) => <span>{title ?? leafId}</span>,
-  }}
   /* … */
 />
 ```
 
-`"footprint"` (default) is today's tile-sized ghost. `"compact"` is
-always the chip. `"auto"` toggles on `externalDragHover`. Omit
-`onExternalDrop` (or return `false` from it) and release still cancels
-with the fly-back.
+Omit `onExternalDrop` (or return `false` from it) and the release cancels:
+the layout stays as it was at the lift and the pane settles home.
 
 ## Workspaces
 
@@ -427,7 +420,6 @@ function Dashboard() {
           onWorkspacesChange={setSet}
           tiles={tiles}
           config={DEFAULT_TILING_LAYOUT_CONFIG}
-          dragGhostMode="auto"
           {...tabs.rendererProps} // tabs become native drop targets
         />
       </div>
@@ -651,7 +643,7 @@ wrap-around; other switches derive `prev` / `next` from tab order.
 `prefers-reduced-motion: reduce` resolves to `"none"` (instant, no clone).
 A tainted or oversized `<canvas>` capture falls `"slide"` → `"fade"`. Theme
 token `workspaceTransition` (`durationMs`, `easing`) supplies the timed
-curve (default 200 ms, drag-hop easing). Because the clone is a snapshot,
+curve (default 200 ms, `cubic-bezier(0.2, 0.8, 0.2, 1)`). Because the clone is a snapshot,
 `inactiveWorkspaces: "keep-mounted"` is not needed for the animation — it
 only matters for panes whose live state must survive the switch.
 
@@ -736,7 +728,7 @@ switches to it (one `onWorkspacesChange`; a `switch.transition` animates it)
 and fires `onMoveLeaf` + `onWorkspaceSwitch({ via: "spring-load" })` — then
 the drag **continues** on the leaf's new seat in the destination tree under
 the still-held pointer, so the user can place it, spring-load on to a third
-workspace, or press Escape to fly it back to that seat. The active
+workspace, or press Escape to settle it back into that seat. The active
 workspace's own tab never dwells; leaving the tab before the deadline resets
 the dwell; releasing or cancelling mid-dwell runs the ordinary tab drop /
 cancel. The dwell FSM (`springLoadReducer`) and the drag `REARM` edge ship on
@@ -896,8 +888,8 @@ would change the layout, `canGroupMultiSelection` is true and
 `onGroupMultiSelection(clickedLeafId)` folds them into one tabbed group at the
 clicked pane's slot. Escape clears the selection; hosts can call
 `onClearMultiSelection()` from their own Cancel control to run the same clear
-path without walking every pane's toggle. Inactive retained panes and the
-drag-ghost / drag-cancel surfaces report `multiSelectionCount: 0`.
+path without walking every pane's toggle. Inactive retained panes report
+`multiSelectionCount: 0`.
 
 ## Maximize
 
@@ -974,7 +966,7 @@ interaction={{
   a remappable keymap.
 - **Theming engine** — three built-in themes (`neon-terminal`, `clean-flat`,
   `mosaic`), eight accent hues, a themeable drag state (`dragChrome`),
-  `overlayPortalContainer` for theme-scoped drag ghosts, and live theme
+  `overlayPortalContainer` for a theme-scoped drag cursor, and live theme
   switching with no remount.
 - **Titlebar-only pane collapse** — opt-in `paneTitleBarControls.collapse`
   pins a pane to its chrome extent; `resizeFloor` defaults to `"chrome"`;
@@ -983,8 +975,11 @@ interaction={{
   (`TilingWorkspaceSet`): set ops, `useTilingWorkspaceSetController`,
   `useTilingWorkspaceTabs` + native tab drop, `WORKSPACE_KEY_BINDINGS`,
   swipe / slide-fade transition / spring-load. See Workspaces above.
-- **Compact drag ghost** — `dragGhostMode` (`footprint` / `compact` / `auto`),
-  host-reported `externalDragHover`, and `onExternalDrop` claim-before-settle.
+- **Held drag** — the real pane is lifted and held under the pointer; a drop
+  indicator at the exact landing rect or snap-to-slot (`dragPreview`,
+  `dragPreviewMakesRoom`).
+- **External drop** — host-reported `externalDragHover`, and `onExternalDrop`
+  claim-before-settle.
   In set mode a `kind: "workspace-tab"` hover is an engine-owned drop target.
 - **Stable pane identity** — host pane content survives drag → drop → settle
   and every other tree edit without remounting (`paneIdentity`).
