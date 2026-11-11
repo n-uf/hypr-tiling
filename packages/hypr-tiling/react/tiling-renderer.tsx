@@ -32,6 +32,7 @@ import {
   canRearmDrag,
   createFrameCoalescer,
   deriveCandidateTree,
+  detachDragSubject,
   isCommittableTarget,
   presentationDragSourceLeafId,
   presentationResolvedTarget,
@@ -41,6 +42,7 @@ import {
   type DragMachinePoint,
   type DragMachineState,
   type DragPointerType,
+  type DragSubject,
   type FrameCoalescer,
 } from "../engine/drag-machine";
 import {
@@ -183,6 +185,7 @@ import {
   findLeafByDirection,
   findLeafById,
   groupLeaves,
+  insertGroupAdjacent,
   insertLeafAdjacent,
   isStructurallyValidLayout,
   readLeafNodeIds,
@@ -307,6 +310,7 @@ import {
   leafMotionFrameLoop,
   measureLeafLayoutRect,
   reportLeafMotionProbe,
+  writeGroupStripMotion,
   writeLeafMotionFrame,
 } from "./leaf-motion-dom";
 import { TILING_TILE_ACCENT_SWATCHES } from "../engine/accent-hues";
@@ -1176,11 +1180,13 @@ export function resolveLiveDisplayLayout(
   liveDragModeEnabled: boolean,
   dragSourceLeafId: string | null,
   layout: TilingLayoutNode,
+  subject?: DragSubject,
 ): TilingLayoutNode {
   if (!liveDragModeEnabled || dragSourceLeafId == null) {
     return layout;
   }
-  const frozen: TilingLayoutNode = removeLeafTile(layout, dragSourceLeafId);
+  // A whole tab group (`subject: "group"`) leaves as one: the gap it closes is its slot.
+  const frozen: TilingLayoutNode = detachDragSubject(layout, dragSourceLeafId, subject);
   return frozen === layout ? layout : frozen;
 }
 
@@ -1211,11 +1217,12 @@ export function resolveStableDragHitFootprints(
   viewport: { width: number; height: number },
   config: TilingLayoutConfig,
   originalFootprints: ReadonlyMap<string, TilingPaneFootprint>,
+  subject?: DragSubject,
 ): ReadonlyMap<string, TilingPaneFootprint> {
   if (!liveDragModeEnabled || dragSourceLeafId == null) {
     return originalFootprints;
   }
-  const gapClosed: TilingLayoutNode = removeLeafTile(layout, dragSourceLeafId);
+  const gapClosed: TilingLayoutNode = detachDragSubject(layout, dragSourceLeafId, subject);
   return footprintsByLeafId(
     collectLeafFootprints(
       gapClosed,
@@ -4564,6 +4571,15 @@ const TilingRendererComponent = React.forwardRef<
   // Selectors off the single FSM state — the renderer reads these exactly where
   // it used to read the old useState slots.
   const dragSourceLeafId: string | null = activeDragSourceLeafId(dragState);
+  // What the drag moves: the whole tab group the source is the active member
+  // of (grabbed by its title bar or the empty part of its strip), or the one
+  // pane (a tab torn off, an ungrouped pane). A group subject whose source is
+  // no longer in a group is the one pane.
+  const dragSubjectGroup: TilingGroupNode | null =
+    dragState.phase !== "idle" && dragState.subject === "group"
+      ? findGroupContainingLeaf(layout, dragState.sourceLeafId)
+      : null;
+  const dragSubject: DragSubject = dragSubjectGroup != null ? "group" : "pane";
   const dropState: TilingDropState | null = activeResolvedTarget(dragState);
   const presentationSourceLeafId: string | null =
     presentationDragSourceLeafId(dragState);
@@ -5011,6 +5027,7 @@ const TilingRendererComponent = React.forwardRef<
   const landingLeafId: string | null = resolveDragLandingLeafId(
     presentationSourceLeafId,
     presentationDropState,
+    dragSubject,
   );
   // ── The held drag (live mode) ────────────────────────────────────────────
   // Past the pickup threshold the REAL pane is lifted out of the layout: the
@@ -5050,12 +5067,12 @@ const TilingRendererComponent = React.forwardRef<
   const liveDragDisplayLayout: TilingLayoutNode = React.useMemo(
     (): TilingLayoutNode =>
       roomTarget == null
-        ? resolveLiveDisplayLayout(true, dragSourceLeafId, layout)
-        : deriveCandidateTree(layout, dragSourceLeafId, roomTarget),
+        ? resolveLiveDisplayLayout(true, dragSourceLeafId, layout, dragSubject)
+        : deriveCandidateTree(layout, dragSourceLeafId, roomTarget, dragSubject),
     // `roomTarget` identity changes on every pointer move, so key on what
     // decides the tree instead — identical resolves are free.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [layout, dragSourceLeafId, roomTargetKey],
+    [layout, dragSourceLeafId, dragSubject, roomTargetKey],
   );
   // The pane is held (drawn in its lifted wrapper) for the whole drag except
   // while the snap preview has it settled into a slot in the tree.
@@ -5088,6 +5105,7 @@ const TilingRendererComponent = React.forwardRef<
         layout,
         dragState.sourceLeafId,
         dragState.resolvedTarget,
+        dragState.subject,
       );
     }, [dragState, layout, liveDragModeEnabled]);
   // Claimed settle: hold the gap-closed tree (source already detached) so the
@@ -5098,7 +5116,9 @@ const TilingRendererComponent = React.forwardRef<
     liveDragModeEnabled &&
     dragState.phase === "settling" &&
     dragState.outcome === "claimed"
-      ? removeLeafTile(layout, dragState.sourceLeafId)
+      ? // A host claim takes the leaf it is handed (`onExternalDrop(leafId)`),
+        // so even a dragged group gives up only that pane here.
+        removeLeafTile(layout, dragState.sourceLeafId)
       : null;
   const displayLayout: TilingLayoutNode =
     isLiveDragging && dragSourceLeafId != null
@@ -5137,8 +5157,9 @@ const TilingRendererComponent = React.forwardRef<
         container: viewportSize,
         config,
         groupStrip: dragLandingGroupStrip,
+        subject: dragSubject,
       }),
-    [layout, viewportSize, config, dragLandingGroupStrip],
+    [layout, viewportSize, config, dragLandingGroupStrip, dragSubject],
   );
   const resolveDropLandingRectRef = React.useRef(resolveDropLandingRect);
   resolveDropLandingRectRef.current = resolveDropLandingRect;
@@ -5151,9 +5172,18 @@ const TilingRendererComponent = React.forwardRef<
   // place at the lift, at its lift size; and the grab offset the pointer holds
   // it by (layout px). The footprint and the offset are client px measured at
   // the press, so they are converted through the viewport's frame then.
+  // A dragged group is held as its frame (strip and active pane): `layoutRect`
+  // is the frame, `leafRect` the active pane inside it (beside the strip).
+  const liftedGroupStripPx: number =
+    dragSubjectGroup != null &&
+    dragLandingGroupStrip.visible &&
+    dragSubjectGroup.members.length >= 2
+      ? dragLandingGroupStrip.heightPx
+      : 0;
   const liftGeometry: {
     readonly tileId: string;
     readonly layoutRect: TilingRect;
+    readonly leafRect: TilingRect;
     readonly grab: DragMachinePoint;
   } | null = React.useMemo(() => {
     if (!isLiveDragging || dragState.phase !== "dragging" || dragSourceTileId == null) {
@@ -5164,14 +5194,26 @@ const TilingRendererComponent = React.forwardRef<
       x: dragState.anchorFootprint.left,
       y: dragState.anchorFootprint.top,
     });
+    const layoutRect: TilingRect = {
+      x: topLeft.x,
+      y: topLeft.y,
+      width: clientToViewportLength(frame, dragState.anchorFootprint.width),
+      height: clientToViewportLength(frame, dragState.anchorFootprint.height),
+    };
+    const stripPx: number = Math.min(liftedGroupStripPx, layoutRect.height);
+    const leafRect: TilingRect =
+      stripPx <= 0
+        ? layoutRect
+        : {
+            x: layoutRect.x,
+            y: dragLandingGroupStrip.placement === "top" ? layoutRect.y + stripPx : layoutRect.y,
+            width: layoutRect.width,
+            height: layoutRect.height - stripPx,
+          };
     return {
       tileId: dragSourceTileId,
-      layoutRect: {
-        x: topLeft.x,
-        y: topLeft.y,
-        width: clientToViewportLength(frame, dragState.anchorFootprint.width),
-        height: clientToViewportLength(frame, dragState.anchorFootprint.height),
-      },
+      layoutRect,
+      leafRect,
       grab: {
         x: clientToViewportLength(frame, dragState.pointerAnchorOffset.x),
         y: clientToViewportLength(frame, dragState.pointerAnchorOffset.y),
@@ -5182,6 +5224,7 @@ const TilingRendererComponent = React.forwardRef<
   }, [
     isLiveDragging,
     dragSourceTileId,
+    liftedGroupStripPx,
     dragState.phase === "dragging" ? dragState.anchorFootprint : null,
     dragState.phase === "dragging" ? dragState.pointerAnchorOffset : null,
   ]);
@@ -5221,14 +5264,22 @@ const TilingRendererComponent = React.forwardRef<
     (client: DragMachinePoint, flush: boolean): void => {
       const lift = liftGeometryRef.current;
       const motion: LeafMotion | null = leafMotionRef.current;
-      const rect: TilingRect | null = heldRectAt(client);
-      if (lift == null || motion == null || rect == null || !isPaneHeldRef.current) {
+      const frameRect: TilingRect | null = heldRectAt(client);
+      if (lift == null || motion == null || frameRect == null || !isPaneHeldRef.current) {
         return;
       }
+      // The motion moves the (active) pane: held where the frame is, offset
+      // by its place in the frame (a group's pane sits beside its strip).
+      const rect: TilingRect = {
+        x: frameRect.x + (lift.leafRect.x - lift.layoutRect.x),
+        y: frameRect.y + (lift.leafRect.y - lift.layoutRect.y),
+        width: lift.leafRect.width,
+        height: lift.leafRect.height,
+      };
       if (dragPreviewRef.current === "snap") {
-        motion.target(lift.tileId, rect, lift.layoutRect);
+        motion.target(lift.tileId, rect, lift.leafRect);
       } else {
-        motion.hold(lift.tileId, rect, lift.layoutRect);
+        motion.hold(lift.tileId, rect, lift.leafRect);
       }
       if (flush) {
         motion.flush();
@@ -5323,6 +5374,7 @@ const TilingRendererComponent = React.forwardRef<
             leafWrappersRef.current.get(frame.id);
           if (wrapper != null) {
             writeLeafMotionFrame(wrapper, frame);
+            writeGroupStripMotion(wrapper, frame);
           }
           // The dropped pane comes down once its drop settle has ended.
           if (
@@ -5428,7 +5480,7 @@ const TilingRendererComponent = React.forwardRef<
       // from the lift, not measured.
       const liftedRect: TilingRect | null =
         element.closest("[data-hpt-lifted]") != null
-          ? (liftGeometryRef.current?.layoutRect ?? null)
+          ? (liftGeometryRef.current?.leafRect ?? null)
           : null;
       if (liftedRect != null) {
         placeLiftedLayer();
@@ -5494,10 +5546,12 @@ const TilingRendererComponent = React.forwardRef<
           viewportSize,
           config,
           leafFootprintsById,
+          dragSubject,
         ),
       [
         config,
         dragSourceLeafId,
+        dragSubject,
         layout,
         leafFootprintsById,
         liveDragModeEnabled,
@@ -6337,12 +6391,25 @@ const TilingRendererComponent = React.forwardRef<
     ) {
       return;
     }
-    const nextLayout: TilingLayoutNode = insertLeafAdjacent(
+    // A pane in a tab group moves the whole group, as its title bar drags it.
+    const sourceGroup: TilingGroupNode | null = findGroupContainingLeaf(
       layout,
       current.sourceLeafId,
-      current.targetLeafId,
-      current.placement,
     );
+    const nextLayout: TilingLayoutNode =
+      sourceGroup != null && sourceGroup.members.length >= 2
+        ? insertGroupAdjacent(
+            layout,
+            sourceGroup.id,
+            current.targetLeafId,
+            current.placement,
+          )
+        : insertLeafAdjacent(
+            layout,
+            current.sourceLeafId,
+            current.targetLeafId,
+            current.placement,
+          );
     commitLayoutChange(
       normalizeLayout(nextLayout, {
         containerWidthPx: viewportSizeRef.current.width,
@@ -7768,6 +7835,7 @@ const TilingRendererComponent = React.forwardRef<
             layout,
             dragState.sourceLeafId,
             dragState.resolvedTarget,
+            dragState.subject,
           )
         : null;
     // Commit-time tree verification: a corrupt candidate (duplicated/orphaned
@@ -7805,6 +7873,9 @@ const TilingRendererComponent = React.forwardRef<
       const committedFocusLeafId: string | null = resolveDragCommitFocusLeafId(
         dragState.sourceLeafId,
         dragState.resolvedTarget,
+        findGroupContainingLeaf(layout, dragState.sourceLeafId) != null
+          ? dragState.subject
+          : undefined,
       );
       if (committedFocusLeafId != null) {
         setFocusedLeaf(committedFocusLeafId);
@@ -8265,6 +8336,127 @@ const TilingRendererComponent = React.forwardRef<
     allowHeightPin: true,
   };
 
+  /**
+   * A group's frame (strip and active pane, client px) from its active pane's
+   * rect: the strip's rendered height (scaled like the pane) added on its side.
+   */
+  const groupFrameClientRect = React.useCallback(
+    (paneRect: TilingClientRectLike): TilingClientRectLike => {
+      if (!dragLandingGroupStrip.visible) {
+        return paneRect;
+      }
+      const strip: number =
+        dragLandingGroupStrip.heightPx *
+        measureViewportClientFrame(viewportRef.current).scale;
+      return {
+        left: paneRect.left,
+        top: dragLandingGroupStrip.placement === "top" ? paneRect.top - strip : paneRect.top,
+        width: paneRect.width,
+        height: paneRect.height + strip,
+      };
+    },
+    [dragLandingGroupStrip],
+  );
+
+  /**
+   * A press on a group's tab strip. On a tab: tear that pane off (a one-pane
+   * drag held where the group's pane is; its home is the whole group, and a
+   * click below the threshold still just switches tabs). On the empty part of
+   * the strip: drag the whole group. Its eject / ungroup controls are left to
+   * their own clicks.
+   */
+  const beginGroupStripPress = React.useCallback(
+    (
+      event: React.PointerEvent<HTMLElement>,
+      group: TilingGroupNode,
+      tabMemberId: string | null,
+    ): void => {
+      const target: EventTarget | null = event.target;
+      if (
+        tabMemberId == null &&
+        target instanceof Element &&
+        target.closest("button") != null
+      ) {
+        return;
+      }
+      const sourceLeafId: string = tabMemberId ?? group.activeMemberId;
+      if (!isLeafRearrangeEligible(sourceLeafId)) {
+        return;
+      }
+      if (event.pointerType === "mouse" && event.button !== 0) {
+        return;
+      }
+      if (event.pointerType === "touch" && !interactionCapabilities.touchDrag.enable) {
+        return;
+      }
+      const phase: DragMachineState["phase"] = dragStateRef.current.phase;
+      if (phase === "armed" || phase === "dragging") {
+        return;
+      }
+      const section: Element | null = event.currentTarget.closest("[data-group-id]");
+      const contentBox: Element | null =
+        section?.querySelector("[data-hpt-group-content-box]") ?? null;
+      const activeTileId: string | undefined = group.members.find(
+        (member: TilingLeafNode): boolean => member.id === group.activeMemberId,
+      )?.tileId;
+      const paneRect: TilingClientRectLike | null =
+        (activeTileId != null ? drawnClientRectOf(activeTileId) : null) ??
+        contentBox?.getBoundingClientRect() ??
+        null;
+      if (paneRect == null) {
+        return;
+      }
+      const frameRect: TilingClientRectLike = groupFrameClientRect(paneRect);
+      if (tabMemberId == null) {
+        // The strip's own surface: no text selection, the group's pane focused.
+        event.preventDefault();
+        clearMultiSelection();
+        setFocusedLeaf(group.activeMemberId);
+      }
+      onLiveHitLogChange?.(null);
+      const anchor: TilingClientRectLike = tabMemberId == null ? frameRect : paneRect;
+      lastDragClientPointRef.current = { x: event.clientX, y: event.clientY };
+      dispatchDrag({
+        type: "POINTER_DOWN",
+        pointerId: event.nativeEvent.pointerId,
+        pointerType: resolveDragPointerType(event.pointerType),
+        sourceLeafId,
+        subject: tabMemberId == null ? "group" : "pane",
+        ...(tabMemberId == null
+          ? {}
+          : {
+              homeFootprint: {
+                left: frameRect.left,
+                top: frameRect.top,
+                width: frameRect.width,
+                height: frameRect.height,
+              },
+            }),
+        anchorFootprint: {
+          left: anchor.left,
+          top: anchor.top,
+          width: anchor.width,
+          height: anchor.height,
+        },
+        pointerAnchorOffset: {
+          x: event.clientX - anchor.left,
+          y: event.clientY - anchor.top,
+        },
+        originClient: { x: event.clientX, y: event.clientY },
+      });
+    },
+    [
+      clearMultiSelection,
+      dispatchDrag,
+      drawnClientRectOf,
+      groupFrameClientRect,
+      interactionCapabilities.touchDrag.enable,
+      isLeafRearrangeEligible,
+      onLiveHitLogChange,
+      setFocusedLeaf,
+    ],
+  );
+
   const renderBranch = React.useCallback(
     (
       node: TilingLayoutNode,
@@ -8492,15 +8684,23 @@ const TilingRendererComponent = React.forwardRef<
             // Pick the pane up where it is DRAWN: mid-glide the article's own
             // box is its layout size at a translated origin, so ask the leaf
             // motion (viewport-relative) and only fall back to the box at rest.
-            const sourcePaneRect: TilingClientRectLike =
+            const paneRect: TilingClientRectLike =
               drawnClientRectOf(node.tileId) ??
               sourcePaneElement.getBoundingClientRect();
+            // The title bar of a pane in a tab group picks up the WHOLE group
+            // (held by its frame: strip and pane); a tab tears off one pane.
+            const isGroupedPane: boolean =
+              (findGroupContainingLeaf(layout, node.id)?.members.length ?? 0) >= 2;
+            const sourcePaneRect: TilingClientRectLike = isGroupedPane
+              ? groupFrameClientRect(paneRect)
+              : paneRect;
             lastDragClientPointRef.current = { x: event.clientX, y: event.clientY };
             dispatchDrag({
               type: "POINTER_DOWN",
               pointerId: event.nativeEvent.pointerId,
               pointerType: resolveDragPointerType(event.pointerType),
               sourceLeafId: node.id,
+              ...(isGroupedPane ? { subject: "group" as const } : {}),
               anchorFootprint: {
                 left: sourcePaneRect.left,
                 top: sourcePaneRect.top,
@@ -8768,6 +8968,29 @@ const TilingRendererComponent = React.forwardRef<
               };
             },
           );
+        // A whole group held elsewhere keeps its slot here as one empty place
+        // (strip included), so the group shows only once, where it is held.
+        if (
+          !isLiftedPane &&
+          dragSubject === "group" &&
+          heldSlotLeafId != null &&
+          groupNode.members.some(
+            (member: TilingLeafNode): boolean => member.id === heldSlotLeafId,
+          )
+        ) {
+          return (
+            <div
+              className="h-full max-h-full min-h-0 w-full min-w-0"
+              data-drag-held-slot-leaf={heldSlotLeafId}
+              data-drag-held-slot-group={groupNode.id}
+            >
+              <HeldSlotReservation
+                observabilityColors={observabilityColors}
+                observabilityColorEnables={observabilityColorEnables}
+              />
+            </div>
+          );
+        }
         const groupStrip: React.ReactElement | null = showStrip ? (
           <GroupTabStrip
             groupId={groupNode.id}
@@ -8800,6 +9023,20 @@ const TilingRendererComponent = React.forwardRef<
                 groupId: groupNode.id,
               });
             }}
+            onStripPointerDown={
+              isLiftedPane
+                ? undefined
+                : (event: React.PointerEvent<HTMLElement>): void => {
+                    beginGroupStripPress(event, groupNode, null);
+                  }
+            }
+            onTabPointerDown={
+              isLiftedPane
+                ? undefined
+                : (event: React.PointerEvent<HTMLElement>, memberId: string): void => {
+                    beginGroupStripPress(event, groupNode, memberId);
+                  }
+            }
           />
         ) : null;
         return (
@@ -8826,7 +9063,13 @@ const TilingRendererComponent = React.forwardRef<
                     : "100%",
               }}
             >
-              {renderBranch(activeMember, containerWidthPx, memberHeightPx)}
+              {renderBranch(
+                activeMember,
+                containerWidthPx,
+                memberHeightPx,
+                undefined,
+                isLiftedPane,
+              )}
             </div>
             {groupStripPlacement === "bottom" ? groupStrip : null}
           </section>
@@ -9308,6 +9551,9 @@ const TilingRendererComponent = React.forwardRef<
       dragState.phase,
       presentationSourceLeafId,
       heldSlotLeafId,
+      dragSubject,
+      beginGroupStripPress,
+      groupFrameClientRect,
       dragSourceTileId,
       raisedTileId,
       isLiveDragging,
@@ -9419,7 +9665,11 @@ const TilingRendererComponent = React.forwardRef<
         }}
       >
         {renderBranch(
-          { ...liftedSourceLeaf, sizing: undefined },
+          // A dragged group is lifted whole: it renders as a group (strip and
+          // active pane), the same members, order and active tab.
+          dragSubjectGroup != null
+            ? { ...dragSubjectGroup, sizing: undefined }
+            : { ...liftedSourceLeaf, sizing: undefined },
           liftGeometry.layoutRect.width,
           liftGeometry.layoutRect.height,
           undefined,
