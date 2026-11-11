@@ -7,6 +7,79 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
+## Unreleased
+
+### Dragging a pane feels like Hyprland
+
+A live drag (`dragMode: "live"`, the default) used to paint a separate ghost
+of the pane: shrunk to 90 % on pickup, hopping into a reserved seat with its
+own easing, and flying back on a cancel. Now the pane itself is dragged. Past
+the click threshold the REAL pane (the same mount, its content and state) is
+lifted out of the layout and held exactly under the pointer every frame, at
+the size it was picked up, while the other panes close the gap on the settle
+curve. It is drawn above every other pane, with a lifted shadow, from the lift
+until its drop has settled. A press that never passes the threshold changes
+nothing.
+
+Where it will land is shown by the new `dragPreview` prop:
+
+- `"indicator"` (default): a drop indicator marks the exact rect the pane will
+  land in, jumping between targets. With `dragPreviewMakesRoom` the other panes
+  also make room there while you drag.
+- `"snap"`: once the pointer is well inside a landing slot (24 px, or a quarter
+  of the slot's smaller side when that is less) the pane settles into the slot
+  and the others make room; it stays there until the pointer leaves the slot,
+  then settles back under the pointer.
+
+On release the pane settles from where it is drawn into its slot and never
+passes it. A release whose pointer never left the pane's own place, Escape,
+`pointercancel` and the other cancel paths put the layout back exactly as it
+was at the lift, and every pane settles home. Every kind of drop works as
+before (split sides, master/stack, swaps, group and tab drops, workspace tabs,
+spring-loaded tabs, host claims); the indicator rect is the rect the drop
+commits.
+
+The dragged pane lives inside the renderer: `overlayPortalContainer` now only
+hosts the custom drag cursor. The lifted wrapper carries `data-hpt-lifted`, the
+dragged pane's leaf wrapper `data-hpt-leaf-raised`, the indicator
+`data-hpt-drop-indicator`.
+
+### Added
+
+- `dragPreview?: "indicator" | "snap"` (type `TilingDragPreview`) and
+  `dragPreviewMakesRoom?: boolean` on the renderer.
+- Theme drag chrome tokens `dragChrome.liftedPane` (the lifted shadow, a
+  `drop-shadow` that follows the pane as it is drawn) and
+  `dragChrome.dropIndicator` (orange, a colour no pane accent uses: translucent
+  fill, soft halo, rounded).
+
+### Breaking changes
+
+- Removed `dragHopEasing`, `ghostTransitSpeedPercent` and `DEFAULT_DRAG_HOP_EASING`:
+  there is no ghost hop. Panes, the dragged one included, move on the settle
+  curve (`survivorReflowSpeedPercent`).
+- Removed `dragGhostMode` and `TilingDragGhostMode` (the compact ghost chip), the
+  theme's `ghostChip` slot and `TilingGhostChipContext`.
+- Removed `interaction.slotHopInEnabled` and `interaction.ghostPickupScalePercent`
+  (and their resolved fields), and `interaction.dragRecovery.frameDeadlineMs`
+  (it armed the ghost's animation frame).
+- Removed `TilingRenderTileProps.surface` and `TilingRenderSurface`: `renderTile`
+  only ever renders the pane (no `"drag-ghost"` / `"drag-cancel"` copies).
+- Removed `TilingTheme.ghost` and `TilingThemeGhostTokens`; removed the
+  `dragChrome` tokens `ghostLifted`, `ghostSeated`, `ghostTransition`,
+  `cancelFlyBack`, `sourceReservation` and `resolveSeatFrame`.
+- A release whose pointer never left the pane's own place now cancels instead
+  of committing whatever was under it.
+- `./engine`: removed `isCssEasing`, `resolveDragEasing`,
+  `BASELINE_DRAG_HOP_DURATION_MS` and `INSTANT_DRAG_DURATION_MS`. The drag
+  machine's `dragging` state holds `heldFootprint` (was `ghostFootprint`) and
+  `leftHome`; its `settling` state no longer carries the fly-back footprints.
+- `./devtools`: `AnimationControlDefaults` / `ANIMATION_CONTROL_DEFAULTS` keep
+  only `survivorReflowSpeedPercent`; the observability panel drops the link
+  toggle, the ghost transit speed, the hop easing presets, the ghost pickup
+  scale and the slot hop-in checkbox (and their props); `TilingLiveHitLogState.ghostSeatLeafId`
+  is now `landingLeafId`.
+
 ## 26.11.3 — 2026-11-10
 
 ### Every layout change glides
