@@ -8363,35 +8363,36 @@ const TilingRendererComponent = React.forwardRef<
    * drag held where the group's pane is; its home is the whole group, and a
    * click below the threshold still just switches tabs). On the empty part of
    * the strip: drag the whole group. Its eject / ungroup controls are left to
-   * their own clicks.
+   * their own clicks. Returns whether the press began a drag (only then does
+   * the strip keep it from reaching ancestors).
    */
   const beginGroupStripPress = React.useCallback(
     (
       event: React.PointerEvent<HTMLElement>,
       group: TilingGroupNode,
       tabMemberId: string | null,
-    ): void => {
+    ): boolean => {
       const target: EventTarget | null = event.target;
       if (
         tabMemberId == null &&
         target instanceof Element &&
         target.closest("button") != null
       ) {
-        return;
+        return false;
       }
       const sourceLeafId: string = tabMemberId ?? group.activeMemberId;
       if (!isLeafRearrangeEligible(sourceLeafId)) {
-        return;
+        return false;
       }
       if (event.pointerType === "mouse" && event.button !== 0) {
-        return;
+        return false;
       }
       if (event.pointerType === "touch" && !interactionCapabilities.touchDrag.enable) {
-        return;
+        return false;
       }
       const phase: DragMachineState["phase"] = dragStateRef.current.phase;
       if (phase === "armed" || phase === "dragging") {
-        return;
+        return false;
       }
       const section: Element | null = event.currentTarget.closest("[data-group-id]");
       const contentBox: Element | null =
@@ -8404,7 +8405,7 @@ const TilingRendererComponent = React.forwardRef<
         contentBox?.getBoundingClientRect() ??
         null;
       if (paneRect == null) {
-        return;
+        return false;
       }
       const frameRect: TilingClientRectLike = groupFrameClientRect(paneRect);
       if (tabMemberId == null) {
@@ -8444,6 +8445,7 @@ const TilingRendererComponent = React.forwardRef<
         },
         originClient: { x: event.clientX, y: event.clientY },
       });
+      return true;
     },
     [
       clearMultiSelection,
@@ -8991,6 +8993,13 @@ const TilingRendererComponent = React.forwardRef<
             </div>
           );
         }
+        // Presses on the strip only mean a drag when some member can be
+        // rearranged; otherwise the strip is plain (a touch on it still scrolls).
+        const isStripDraggable: boolean =
+          !isLiftedPane &&
+          groupNode.members.some((member: TilingLeafNode): boolean =>
+            isLeafRearrangeEligible(member.id),
+          );
         const groupStrip: React.ReactElement | null = showStrip ? (
           <GroupTabStrip
             groupId={groupNode.id}
@@ -9023,19 +9032,19 @@ const TilingRendererComponent = React.forwardRef<
                 groupId: groupNode.id,
               });
             }}
+            stripTouchDrag={isStripDraggable && interactionCapabilities.touchDrag.enable}
             onStripPointerDown={
-              isLiftedPane
-                ? undefined
-                : (event: React.PointerEvent<HTMLElement>): void => {
+              isStripDraggable
+                ? (event: React.PointerEvent<HTMLElement>): void => {
                     beginGroupStripPress(event, groupNode, null);
                   }
+                : undefined
             }
             onTabPointerDown={
-              isLiftedPane
-                ? undefined
-                : (event: React.PointerEvent<HTMLElement>, memberId: string): void => {
-                    beginGroupStripPress(event, groupNode, memberId);
-                  }
+              isStripDraggable
+                ? (event: React.PointerEvent<HTMLElement>, memberId: string): boolean =>
+                    beginGroupStripPress(event, groupNode, memberId)
+                : undefined
             }
           />
         ) : null;
