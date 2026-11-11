@@ -346,6 +346,41 @@ export function writeLeafMotionFrame(wrapper: HTMLElement, frame: LeafMotionFram
 /** Clear whatever leaf motion wrote on a wrapper (unmount, reset). */
 export function clearLeafMotion(wrapper: HTMLElement): void {
   endMove(wrapper);
+  writeGroupStripMotion(wrapper, null);
+}
+
+/** The tab strip of the group whose active pane is `wrapper`, or `null`. */
+function groupStripOf(wrapper: HTMLElement): HTMLElement | null {
+  const box: HTMLElement | null = wrapper.parentElement;
+  if (box == null || !box.hasAttribute("data-hpt-group-content-box")) {
+    return null;
+  }
+  return box.parentElement?.querySelector<HTMLElement>(":scope > [data-hpt-group-tab-placement]") ?? null;
+}
+
+/**
+ * A group's tab strip moves with its active pane, so a group (held by its
+ * frame while dragged, or settling into a new slot) moves as one: the strip is
+ * translated with the pane, kept on the pane's top (or bottom) edge at the
+ * pane's drawn width. `null` (or a frame at rest) clears what was written.
+ */
+export function writeGroupStripMotion(wrapper: HTMLElement, frame: LeafMotionFrame | null): void {
+  const strip: HTMLElement | null = groupStripOf(wrapper);
+  if (strip == null) {
+    return;
+  }
+  if (frame == null || isAtRest(frame)) {
+    if (strip.style.transform !== "" || strip.style.width !== "") {
+      strip.style.removeProperty("transform");
+      strip.style.removeProperty("width");
+    }
+    return;
+  }
+  const r = frame.reveal;
+  const bottom: boolean = strip.getAttribute("data-hpt-group-tab-placement") === "bottom";
+  const dy: number = bottom ? r.dy + (r.height - frame.target.height) : r.dy;
+  strip.style.transform = `translate(${px(r.dx)}, ${px(dy)})`;
+  strip.style.width = px(r.width);
 }
 
 /**

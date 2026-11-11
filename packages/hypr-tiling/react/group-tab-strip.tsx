@@ -30,6 +30,10 @@ export interface GroupTabStripProps {
   onActivate: (memberNumber: number) => void;
   onEject: (memberId: string) => void;
   onUngroup: () => void;
+  /** A press on the strip's own surface (not a tab or control): drags the whole group. */
+  onStripPointerDown?: (event: React.PointerEvent<HTMLElement>) => void;
+  /** A press on a tab: tears that member off (a click still only activates it). */
+  onTabPointerDown?: (event: React.PointerEvent<HTMLElement>, memberId: string) => void;
 }
 
 /** One item the shared strip paints. `selected` drives `aria-selected`. */
@@ -56,6 +60,10 @@ export interface TabStripProps {
   trailing: React.ReactNode;
   tabIndexAttrName: "data-member-index" | null;
   nested: boolean;
+  /** A press on the strip itself (tabs stop theirs from reaching it). */
+  onPointerDown?: (event: React.PointerEvent<HTMLElement>) => void;
+  /** A press on a tab. */
+  onTabPointerDown?: (event: React.PointerEvent<HTMLElement>, index: number) => void;
 }
 
 const TAB_MIN_WIDTH_PX: number = 56;
@@ -160,6 +168,8 @@ export function TabStrip(props: TabStripProps): React.ReactElement {
     trailing,
     tabIndexAttrName,
     nested,
+    onPointerDown,
+    onTabPointerDown,
   } = props;
   const tabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
   const pendingFocusIndex = React.useRef<number | null>(null);
@@ -239,7 +249,12 @@ export function TabStrip(props: TabStripProps): React.ReactElement {
         className,
         isMergeTarget ? "ring-2 ring-violet-400/50" : "",
       )}
-      style={stripThemeStyle(theme, height, nested)}
+      style={
+        onPointerDown != null
+          ? { ...stripThemeStyle(theme, height, nested), touchAction: "none" }
+          : stripThemeStyle(theme, height, nested)
+      }
+      onPointerDown={onPointerDown}
       {...placementAttrs}
     >
       {nested ? (
@@ -280,6 +295,16 @@ export function TabStrip(props: TabStripProps): React.ReactElement {
               onClick={(): void => {
                 onActivate(index);
               }}
+              onPointerDown={
+                onTabPointerDown != null
+                  ? (event: React.PointerEvent<HTMLButtonElement>): void => {
+                      // A tab tears its own pane off; the strip's whole-group
+                      // grip never sees this press.
+                      event.stopPropagation();
+                      onTabPointerDown(event, index);
+                    }
+                  : undefined
+              }
               onDoubleClick={
                 onTabDoubleClick != null
                   ? (): void => {
@@ -352,6 +377,8 @@ export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
     onActivate,
     onEject,
     onUngroup,
+    onStripPointerDown,
+    onTabPointerDown,
   } = props;
   const theme = options.theme;
   const [hoveredControl, setHoveredControl] = React.useState<"eject" | "ungroup" | null>(null);
@@ -451,6 +478,17 @@ export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
       trailing={trailing}
       tabIndexAttrName="data-member-index"
       nested={nested}
+      onPointerDown={onStripPointerDown}
+      onTabPointerDown={
+        onTabPointerDown != null
+          ? (event: React.PointerEvent<HTMLElement>, index: number): void => {
+              const member: GroupTabStripMember | undefined = members[index];
+              if (member != null) {
+                onTabPointerDown(event, member.id);
+              }
+            }
+          : undefined
+      }
     />
   );
 }
