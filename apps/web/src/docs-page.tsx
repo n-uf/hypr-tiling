@@ -92,7 +92,7 @@ export default {
   content: [
     "./src/**/*.{ts,tsx}",
     // Required: hypr-tiling ships utility classes in its dist output.
-    // Without this glob Tailwind purges the pane / divider / ghost classes.
+    // Without this glob Tailwind purges the pane / divider / drag classes.
     "./node_modules/@n-uf/hypr-tiling/dist/**/*.{js,mjs,cjs}",
   ],
 };`;
@@ -1256,7 +1256,7 @@ export function DocsPage({
               <SectionLead>
                 The library ships utility classes in its <Code>dist</Code>, not
                 CSS. Add that directory to your Tailwind <Code>content</Code> globs
-                or the pane, divider, and drag-ghost classes get purged.
+                or the pane, divider, and drag classes get purged.
               </SectionLead>
               <Pre>{TAILWIND_CONTENT_SNIPPET}</Pre>
             </Step>
@@ -1388,14 +1388,10 @@ export function DocsPage({
                   <Code>isDragSource</Code>) and compose with theme tokens from{" "}
                   <Code>useTilingTheme()</Code> (<Code>resolveAccentText</Code>,{" "}
                   <Code>resolveFocusFrame</Code>). Render the body only when{" "}
-                  <Code>paneBodyRenderMode</Code> is <Code>"render-content"</Code> so
-                  the drag ghost mirrors your pane. The ghost / cursor / cancel
-                  overlays mount on the overlay portal container (default{" "}
-                  <Code>document.body</Code>, see{" "}
-                  <Code>overlayPortalContainer</Code>) so{" "}
-                  <Code>position: fixed</Code> stays window-relative and the
-                  ghost stays outside the React root&rsquo;s event-delegation
-                  scope. The homepage&rsquo;s own tiles
+                  <Code>paneBodyRenderMode</Code> is <Code>"render-content"</Code>.
+                  A dragged pane is your own pane, lifted and held under the
+                  pointer (<Code>isDragSource</Code> is true), so it keeps its
+                  look and state through the drag. The homepage&rsquo;s own tiles
                   are built exactly this way — and the &ldquo;panes&rdquo; switch on
                   the homepage flips them to a light minimalist variant built with
                   these primitives.
@@ -1438,11 +1434,11 @@ export function DocsPage({
                   portal constraint. Host CSS variables, <Code>data-theme</Code>,
                   or a scoped <Code>dark</Code> class on a wrapper must pass
                   that wrapper as <Code>overlayPortalContainer</Code> (element
-                  or thunk; default <Code>document.body</Code>) so the ghost
-                  inherits them. The container must not sit under a{" "}
+                  or thunk; default <Code>document.body</Code>) so the drag
+                  cursor inherits them. The container must not sit under a{" "}
                   <Code>transform</Code> / <Code>filter</Code> /{" "}
                   <Code>backdrop-filter</Code> / <Code>contain: paint</Code>{" "}
-                  ancestor; overlay z-indexes 220 / 230 are relative to that
+                  ancestor; the cursor&rsquo;s z-index 230 is relative to that
                   stacking context.
                 </>
               }

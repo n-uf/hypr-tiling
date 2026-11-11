@@ -31,8 +31,7 @@ import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
 // maximize + group (header actions), focus (pane root), multi-select
 // (Alt/Opt+click header) — and is built on ONLY the public `@n-uf/hypr-tiling`
 // `.` API and the helper primitives. The body renders `tile.content` (the
-// editorial content supplied by the page) through `TilingPaneBody`, so the drag
-// ghost reuses the same render path.
+// editorial content supplied by the page) through `TilingPaneBody`.
 
 const DROP_TARGET_RING: string = "ring-1 ring-[#241f17]/45";
 const DROP_HOVER_RING: string = "ring-1 ring-[#241f17]/25";

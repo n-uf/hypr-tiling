@@ -84,7 +84,7 @@ export const FEATURE_FACTS: ReadonlyArray<FeatureFact> = [
   },
   {
     term: "Drag & drop",
-    detail: "Live ghost; swap, insert, or group-merge.",
+    detail: "The real pane, held; swap, insert, or group.",
     group: "core",
   },
   {
@@ -108,13 +108,13 @@ export const FEATURE_FACTS: ReadonlyArray<FeatureFact> = [
     group: "recent",
   },
   {
-    term: "Compact ghost",
-    detail: "Chip ghost plus host external-drop claim.",
+    term: "Drop preview",
+    detail: "Drop indicator, or snap the pane to its slot.",
     group: "recent",
   },
   {
     term: "Drag chrome",
-    detail: "Themeable ghost; overlay portal for tokens.",
+    detail: "Themeable lift shadow and drop indicator.",
     group: "recent",
   },
   {
@@ -735,7 +735,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     title: "features",
     accent: "amber",
     summary:
-      "Core: split tree, drag & drop, resize, tab groups, keyboard. Since 26.9.x: pane collapse, compact ghost, drag chrome, pane identity, persist layout, workspaces (TilingWorkspaceSet).",
+      "Core: split tree, drag & drop, resize, tab groups, keyboard. Since 26.9.x: pane collapse, drop preview, drag chrome, pane identity, persist layout, workspaces (TilingWorkspaceSet).",
     content: (
       <div className="flex flex-col gap-4">
         <SectionHeading>Ships today</SectionHeading>
@@ -874,14 +874,14 @@ export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
     title: "Render your own pane frame & header",
     section: "howto",
     summary:
-      "renderTile is a FULL-PANE render prop, not a content slot — it returns the whole pane (frame + header + body) and receives every handle and state flag, so you can own the ENTIRE pane look-and-feel. Take the easy path with the optional helper primitives (TilingPaneRoot, TilingDragHandle, TilingPaneAction, TilingPaneBody), which encode the wiring rules so they can't be gotten wrong, or wire the raw DOM by hand: root on article[data-leaf-id]; wire onHandlePointerDown on your header (drag), onToggleMaximize, onFocus, and onToggleMultiSelect + onGroupMultiSelection + onClearMultiSelection (title-bar group icon, Alt/Opt+click, or drag a header onto a title bar via groupDropTargetRef); style from isFocused / isMaximized / isDragSource and compose with theme tokens from useTilingTheme (resolveAccentText, resolveFocusFrame). Render the body only when paneBodyRenderMode is render-content so the drag ghost stays in sync. The ghost mounts on the overlay portal container (default document.body, see overlayPortalContainer).",
+      "renderTile is a FULL-PANE render prop, not a content slot — it returns the whole pane (frame + header + body) and receives every handle and state flag, so you can own the ENTIRE pane look-and-feel. Take the easy path with the optional helper primitives (TilingPaneRoot, TilingDragHandle, TilingPaneAction, TilingPaneBody), which encode the wiring rules so they can't be gotten wrong, or wire the raw DOM by hand: root on article[data-leaf-id]; wire onHandlePointerDown on your header (drag), onToggleMaximize, onFocus, and onToggleMultiSelect + onGroupMultiSelection + onClearMultiSelection (title-bar group icon, Alt/Opt+click, or drag a header onto a title bar via groupDropTargetRef); style from isFocused / isMaximized / isDragSource and compose with theme tokens from useTilingTheme (resolveAccentText, resolveFocusFrame). Render the body only when paneBodyRenderMode is render-content. A dragged pane is your own pane, lifted and held under the pointer (isDragSource is true), so it keeps its look and state through the drag.",
   },
   {
     id: "howto-theming",
     title: "Theme & color panes",
     section: "howto",
     summary:
-      "Pick a built-in theme with the themeId prop (live switching, no remount), give a pane its own accent via tile.accent, or wrap a subtree in TilingThemeProvider and read the active TilingTheme with useTilingTheme. resolveTilingTheme maps an id to its token object. Host CSS variables / scoped dark must pass overlayPortalContainer (default document.body) so the drag ghost inherits them.",
+      "Pick a built-in theme with the themeId prop (live switching, no remount), give a pane its own accent via tile.accent, or wrap a subtree in TilingThemeProvider and read the active TilingTheme with useTilingTheme. resolveTilingTheme maps an id to its token object. Host CSS variables / scoped dark must pass overlayPortalContainer (default document.body) so the drag cursor inherits them.",
   },
   {
     id: "howto-capabilities",

@@ -9,8 +9,7 @@ import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
 // Custom pane renderer for the homepage ("mosaic" identity) — a worked example
 // of a fully custom pane frame + header (see the /docs "custom look-and-feel"
 // guide). The body honors the renderer's canonical `paneBodyRenderMode` (the
-// single source of truth shared by every drag surface), so the in-tree pane and
-// the drag ghost paint identically and the ghost is never an empty-bodied shell.
+// single source of truth for every pane, the dragged one included).
 // The content toggle is off by the library default
 // (`paneSwitching.showContentToggle: false`), so the renderer pins
 // content-visible at rest and `render-content` resolves without any config — the
