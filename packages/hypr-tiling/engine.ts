@@ -261,8 +261,8 @@ export type {
 // ── Demoted from the `.` consumer surface (see @packageDocumentation) ──────────
 // Reachable here for power users, but off the curated consumer API and its docs.
 // `accentHue` resolves an accent to its Tailwind hue atoms (custom-chrome helper,
-// not dogfooded by any renderer prop). Pure (no React) — this entry must never
-// import from `react/`.
+// not dogfooded by any renderer prop). Pure (no React) — this entry never
+// reaches into the React layer.
 export { accentHue, type TilingAccentHue } from "./engine/accent-hues";
 
 // H8 — workspace commands, gate, keymap fragment
