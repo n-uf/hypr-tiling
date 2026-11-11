@@ -417,10 +417,12 @@ function HomeTopBar({
           Reset all
         </button>
       </div>
+      {/* The drop switch needs the room of a wide bar: below lg it would push the skin switch off the
+          edge, so it shows from lg up (the drag keeps the stored or default preview either way). */}
       <DragPreviewSwitch
         preview={dragPreview}
         onChange={onDragPreviewChange}
-        className={`ml-auto ${tokens.switchGroup}`}
+        className={`ml-auto ${tokens.switchGroup} max-lg:hidden`}
         labelClassName={tokens.switchLabel}
         activeClassName={tokens.switchActive}
         inactiveClassName={tokens.switchInactive}
@@ -428,7 +430,7 @@ function HomeTopBar({
       <div
         role="group"
         aria-label="Site skin"
-        className={tokens.switchGroup}
+        className={`${tokens.switchGroup} max-lg:ml-auto`}
       >
         <span aria-hidden className={tokens.switchLabel}>
           skin
