@@ -1158,8 +1158,9 @@ export interface TilingWorkspacesCapability {
    * workspace's tab for `dwellMs` (default `500`) and the pane commits into
    * that workspace (`moveLeafToWorkspace`), the set switches there
    * (`onWorkspaceSwitch({ via: "spring-load" })`) and the drag continues on
-   * the pane's new seat under the still-held pointer. `false` (default)
-   * disables it; an object enables it and overrides `dwellMs`. Needs a
+   * the pane's new seat under the still-held pointer. A dragged tab group is
+   * carried whole (`moveGroupToWorkspace`) and the drag continues as a group
+   * drag. `false` (default) disables it; an object enables it and overrides `dwellMs`. Needs a
    * `kind: "workspace-tab"` external hover (`resolveExternalDragHover` /
    * `useTilingWorkspaceTabs`, or the `externalDragHover` prop); the active
    * workspace's own tab never dwells. `null` reads as `false` (so a resolved

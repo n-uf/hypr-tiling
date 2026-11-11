@@ -31,22 +31,50 @@ dragged pane, not where the preview has moved them (snap to slot, or
 A tab group dragged by its title bar or the empty part of its strip now moves
 as one to a workspace tab (in set mode): every member, in order, with its
 active tab, through `moveGroupToWorkspace`; `onMoveLeaf` is called once per
-member. A host claim (`onExternalDrop`) of a dragged group now receives the
-whole group: a fifth argument, `subject`, lists every member in tab order, and
-the renderer shows the whole group gone while the claim settles (take it out of
-your layout with `removeGroupNode(layout, subject.groupId)`). The arguments
-that were there are unchanged, and a host that ignores `subject` still gets the
-active pane's leaf id first. A tab torn off a group still hands over just its
-pane. A group spring-loaded over a workspace tab still carries its active pane.
+member. A group spring-loaded over a workspace tab (`springLoad`) is carried
+whole too, and the drag continues on its new seat as a group drag. A host claim
+(`onExternalDrop`) of a dragged group now receives the whole group: a fifth
+argument, `subject`, lists every member in tab order, and the renderer shows the
+whole group gone while the claim settles. The arguments that were there are
+unchanged, and a host that ignores `subject` still gets the active pane's leaf
+id first. A tab torn off a group still hands over just its pane.
+
+```tsx
+import { removeGroupNode } from "@n-uf/hypr-tiling/engine";
+
+<TilingRenderer
+  onExternalDrop={(leafId, targetId, point, hover, subject) => {
+    for (const member of subject.members) {
+      moveItemToTarget(member.id, targetId, point); // take every member
+    }
+    if (subject.kind === "group") {
+      setLayout((tree) => removeGroupNode(tree, subject.groupId));
+    }
+  }}
+  /* … */
+/>;
+```
 
 ### Added
 
 - `moveGroupToWorkspace(set, groupId, to, placement?)`, from the main entry and
   `./engine`: `moveLeafToWorkspace` for a whole tab group.
-- `TilingExternalDropSubject` (`kind: "pane" | "group"`, `groupId`, `members`,
-  `activeLeafId`), the new fifth argument of `TilingOnExternalDrop`. A call
-  typed against `TilingOnExternalDrop` (a test double, say) needs the extra
-  argument.
+- `TilingExternalDropSubject`, the new fifth argument of `TilingOnExternalDrop`:
+  `{ kind: "pane", groupId: null, members, activeLeafId }` for one pane, or
+  `{ kind: "group", groupId, members, activeLeafId }` for a whole group, so
+  `kind === "group"` narrows `groupId` to a `string`.
+
+### Breaking changes
+
+- `TilingOnExternalDrop` gains a required fifth parameter, `subject`
+  (`TilingExternalDropSubject`). Implementers are unaffected (a function that
+  takes fewer parameters is still assignable). Code that CALLS a
+  `TilingOnExternalDrop` — a wrapper forwarding to a nested renderer, a test
+  double — must now pass it.
+- A host that claims a dragged group must take every `subject.members` entry (and
+  take the group out of its layout). The renderer shows the whole group gone
+  while the claim settles, so a host that takes only the active pane would see
+  the members it leaves flash out and back until its layout lands.
 
 ## 26.11.4 — 2026-11-10
 
