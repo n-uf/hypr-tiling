@@ -86,12 +86,19 @@ export interface LeafMotion {
   /**
    * The leaf's new layout rect. A known leaf glides there from where it is
    * drawn; an unknown leaf appears there at once. Under reduced motion it snaps.
+   *
+   * `layout` is where the leaf's element is laid out when that is not `rect`
+   * (a lifted pane, laid out once where it was picked up, settling toward the
+   * pointer); default `rect`. The frame is drawn relative to it.
    */
-  target(id: string, rect: Rect): void;
+  target(id: string, rect: Rect, layout?: Rect): void;
   /** Put the leaf exactly at `rect`, at rest (first mount, a snap). */
   jump(id: string, rect: Rect): void;
-  /** Hold the leaf 1:1 at `rect` (a divider or a pointer owns it); the next `target` launches from there. */
-  hold(id: string, rect: Rect): void;
+  /**
+   * Hold the leaf 1:1 at `rect` (a divider or a pointer owns it); the next
+   * `target` launches from there. `layout` as in {@link LeafMotion.target}.
+   */
+  hold(id: string, rect: Rect, layout?: Rect): void;
   /** Pop the leaf in (uniform scale + opacity from {@link LEAF_MOTION_POP_IN_FROM}); a no-op under reduced motion. */
   open(id: string): void;
   /** Forget a leaf (it left the layout). */
@@ -121,7 +128,10 @@ export interface LeafMotion {
 
 interface LeafEntry {
   readonly settle: Settle<Rect>;
+  /** Where the settle is headed (or held). */
   goal: Rect;
+  /** Where the element is laid out (the frame's `target`); usually `goal`. */
+  layout: Rect;
   pop: Settle<number> | null;
 }
 
@@ -149,7 +159,7 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
 
   const frameOf = (id: string, entry: LeafEntry): LeafMotionFrame => {
     const drawn: Rect = copyRect(entry.settle.value as Rect);
-    const target: Rect = entry.goal;
+    const target: Rect = entry.layout;
     return {
       id,
       drawn,
@@ -242,11 +252,14 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
     if (existing != null) {
       existing.settle.jumpTo(rect);
       existing.goal = copyRect(rect);
+      existing.layout = existing.goal;
       return existing;
     }
+    const goal: Rect = copyRect(rect);
     const entry: LeafEntry = {
       settle: createSettle<Rect>(copyRect(rect), { omega }),
-      goal: copyRect(rect),
+      goal,
+      layout: goal,
       pop: null,
     };
     leaves.set(id, entry);
@@ -263,17 +276,28 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
     get time(): number {
       return time;
     },
-    target(id: string, rect: Rect): void {
+    target(id: string, rect: Rect, layout?: Rect): void {
       const entry: LeafEntry | undefined = leaves.get(id);
       if (entry == null) {
-        place(id, rect);
+        const placed: LeafEntry = place(id, rect);
+        if (layout != null) {
+          placed.layout = copyRect(layout);
+        }
         dirty.add(id);
         return;
+      }
+      const nextLayout: Rect = layout ?? rect;
+      if (!sameRect(entry.layout, nextLayout)) {
+        entry.layout = copyRect(nextLayout);
+        dirty.add(id);
       }
       if (sameRect(entry.goal, rect)) {
         return;
       }
       entry.goal = copyRect(rect);
+      if (layout == null) {
+        entry.layout = entry.goal;
+      }
       if (reducedMotion()) {
         entry.settle.jumpTo(entry.goal);
         entry.pop = null;
@@ -288,12 +312,22 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
       entry.pop = null;
       dirty.add(id);
     },
-    hold(id: string, rect: Rect): void {
+    hold(id: string, rect: Rect, layout?: Rect): void {
       const entry: LeafEntry | undefined = leaves.get(id);
-      if (entry != null && entry.settle.settled && sameRect(entry.goal, rect)) {
+      const nextLayout: Rect = layout ?? rect;
+      if (
+        entry != null &&
+        entry.settle.settled &&
+        sameRect(entry.goal, rect) &&
+        sameRect(entry.layout, nextLayout)
+      ) {
         return;
       }
-      place(id, rect).settle.hold(rect);
+      const held: LeafEntry = place(id, rect);
+      held.settle.hold(rect);
+      if (layout != null) {
+        held.layout = copyRect(layout);
+      }
       dirty.add(id);
     },
     open(id: string): void {
