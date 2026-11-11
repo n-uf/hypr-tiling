@@ -12,8 +12,6 @@ export const ANIMATION_CONTROL_DEFAULTS: AnimationControlDefaults;
 // @public
 export interface AnimationControlDefaults {
     // (undocumented)
-    coherentTransit: boolean;
-    // (undocumented)
     ghostPickupScalePercent: number;
     // (undocumented)
     ghostTransitSpeedPercent: number;
@@ -21,8 +19,6 @@ export interface AnimationControlDefaults {
     speedLinked: boolean;
     // (undocumented)
     survivorReflowSpeedPercent: number;
-    // (undocumented)
-    swapBounceMagnitudePercent: number;
 }
 
 // @public (undocumented)
