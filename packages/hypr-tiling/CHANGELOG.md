@@ -7,7 +7,7 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
-## Unreleased
+## 26.11.3 — 2026-11-10
 
 ### Every layout change glides
 
