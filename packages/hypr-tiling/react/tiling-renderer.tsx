@@ -5055,8 +5055,8 @@ const TilingRendererComponent = React.forwardRef<
   //   in; with `dragPreviewMakesRoom` the others also make room there (the
   //   tree with the pane in that slot, its place kept empty).
   // - "snap": once the pointer is well inside a landing slot the pane itself
-  //   settles into it and the others make room; it stays there until the
-  //   pointer leaves that slot.
+  //   settles into it and the others make room; it stays there while the
+  //   pointer is in that slot and the drop under it is the same.
   const isLiveDragging: boolean =
     liveDragModeEnabled && dragState.phase === "dragging";
   const dragSourceTileId: string | null =

@@ -2995,8 +2995,10 @@ export interface TilingRendererCommonProps {
    *   jumping between targets. See also {@link TilingRendererCommonProps.dragPreviewMakesRoom}.
    * - `"snap"`: once the pointer is well inside a landing slot (24 px, or a
    *   quarter of the slot's smaller side when that is less), the pane settles
-   *   into the slot and the others make room; it stays there until the pointer
-   *   leaves the slot, then settles back under the pointer at its lift size.
+   *   into the slot and the others make room; it stays there while the pointer
+   *   is in the slot and the drop under it is the same, then settles back under
+   *   the pointer at its lift size. The drop a release commits is the one
+   *   under the pointer, whatever slot the pane settled into first.
    */
   dragPreview?: TilingDragPreview;
   /**
