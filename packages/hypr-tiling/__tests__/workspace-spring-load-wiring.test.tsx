@@ -147,6 +147,7 @@ interface HostProps {
   readonly onExternalDragHoverChange?: (hover: TilingExternalDragHover | null) => void;
   readonly externalDragHover?: TilingExternalDragHover | null;
   readonly theme?: TilingTheme;
+  readonly tiles?: ReadonlyArray<TilingTile>;
 }
 
 /** A controlled host that APPLIES every emitted set and forwards the callbacks. */
@@ -168,7 +169,7 @@ function Host(props: HostProps): React.ReactElement {
       onWorkspacesChange: handleChange,
       onMoveLeaf: props.onMoveLeaf,
       onWorkspaceSwitch: props.onWorkspaceSwitch,
-      tiles: TILES,
+      tiles: props.tiles ?? TILES,
       config: { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 },
       theme: props.theme,
       interaction: {
@@ -309,6 +310,59 @@ describe("N3 wiring — spring-loaded tab drop on the set-mode renderer", (): vo
     expect(liveLeafIds(result.container)).toEqual(["leaf:a", "leaf:c"]);
     // A stale release afterwards is inert.
     releasePointer(100, 100);
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("a dragged tab group is carried whole: moved, reported per member, and re-armed as a group in the destination", (): void => {
+    const tiles: ReadonlyArray<TilingTile> = [...TILES, { id: "d", title: "delta", accent: "cyan" }];
+    const initial: TilingWorkspaceSet = {
+      workspaces: [
+        {
+          id: "main",
+          name: "Main",
+          layout: {
+            kind: "split",
+            id: "main-root",
+            axis: "horizontal",
+            ratio: 0.5,
+            first: leaf("a"),
+            second: { kind: "group", id: "g", members: [leaf("b"), leaf("c")], activeMemberId: "leaf:b" },
+          },
+        },
+        { id: "ops", name: "Ops", layout: leaf("d") },
+      ],
+      activeId: "main",
+    };
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onMoveLeaf = jest.fn((_leafId: string, _from: string, _to: string): void => {});
+    const result: RenderResult = render(
+      React.createElement(Host, { tiles, initial, onWorkspacesChange, onMoveLeaf }),
+    );
+    startLiveDrag(result.container, "leaf:b");
+    // Held as a group.
+    expect(document.querySelector("[data-hpt-lifted] [data-group-id]")).not.toBeNull();
+    movePointer(320, 24);
+    advance(DWELL_MS + 10);
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+    const next: TilingWorkspaceSet = onWorkspacesChange.mock.calls[0][0];
+    expect(next.activeId).toBe("ops");
+    // Both members left `main` and sit in `ops`, in one group with the same active tab.
+    expect(next.workspaces[0].layout).toEqual(leaf("a"));
+    const query = queryWorkspaceSet(next);
+    expect(query.workspacesOfLeaf("leaf:b")).toEqual(["ops"]);
+    expect(query.workspacesOfLeaf("leaf:c")).toEqual(["ops"]);
+    expect(JSON.stringify(next.workspaces[1].layout)).toContain('"activeMemberId":"leaf:b"');
+    expect(onMoveLeaf.mock.calls).toEqual([
+      ["leaf:b", "main", "ops"],
+      ["leaf:c", "main", "ops"],
+    ]);
+    // The drag continues there as a group drag: the lifted layer holds the group.
+    expect(activeWorkspaceId(result)).toBe("ops");
+    expect(document.querySelector("[data-hpt-lifted] [data-group-id]")).not.toBeNull();
+    // Escape puts the group back on its new seat, with both tabs.
+    pressEscape();
+    expect(document.querySelector("[data-hpt-lifted]")).toBeNull();
+    expect(result.container.querySelectorAll('[data-group-id="g"] [role="tab"]')).toHaveLength(2);
     expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
   });
 

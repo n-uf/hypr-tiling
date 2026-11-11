@@ -3911,6 +3911,8 @@ interface TilingDragIdentity {
   readonly pointerId: number | null;
   readonly pointerType: DragPointerType | null;
   readonly sourceLeafId: string | null;
+  /** What the gesture moves: the one pane, or the whole tab group of `sourceLeafId`. */
+  readonly subject: DragSubject;
 }
 
 const IDLE_DRAG_IDENTITY: TilingDragIdentity = {
@@ -3918,6 +3920,7 @@ const IDLE_DRAG_IDENTITY: TilingDragIdentity = {
   pointerId: null,
   pointerType: null,
   sourceLeafId: null,
+  subject: "pane",
 };
 
 function dragIdentityOf(state: DragMachineState): TilingDragIdentity {
@@ -3927,11 +3930,18 @@ function dragIdentityOf(state: DragMachineState): TilingDragIdentity {
       pointerId: state.pointerId,
       pointerType: state.pointerType,
       sourceLeafId: state.sourceLeafId,
+      subject: state.subject ?? "pane",
     };
   }
   return state.phase === "idle"
     ? IDLE_DRAG_IDENTITY
-    : { phase: state.phase, pointerId: null, pointerType: null, sourceLeafId: state.sourceLeafId };
+    : {
+        phase: state.phase,
+        pointerId: null,
+        pointerType: null,
+        sourceLeafId: state.sourceLeafId,
+        subject: state.subject ?? "pane",
+      };
 }
 
 /**
@@ -3947,6 +3957,8 @@ interface TilingSpringLoadRearmRequest {
   readonly pointerType: DragPointerType;
   /** The moved leaf — the source of the re-armed drag. */
   readonly leafId: string;
+  /** What moved with it: the one pane, or its whole tab group (re-armed as a group). */
+  readonly subject: DragSubject;
   /** The destination workspace whose tree must render before the rearm. */
   readonly workspaceId: string;
   /** The workspace the drag started in (still active until the host applies the switch). */
@@ -4635,6 +4647,7 @@ const TilingRendererComponent = React.forwardRef<
       pointerId: dragIdentity.pointerId,
       pointerType: dragIdentity.pointerType,
       sourceLeafId: dragIdentity.sourceLeafId,
+      subject: dragIdentity.subject,
     });
   }, [
     springLoadBridgeActive,
@@ -4642,6 +4655,7 @@ const TilingRendererComponent = React.forwardRef<
     dragIdentity.pointerId,
     dragIdentity.pointerType,
     dragIdentity.sourceLeafId,
+    dragIdentity.subject,
   ]);
   /**
    * Step 3c of the spring-load contract: end the live drag as the claimed
@@ -8058,17 +8072,32 @@ const TilingRendererComponent = React.forwardRef<
     lastDragClientPointRef.current = request.client;
     pendingSpringLoadRearmRef.current = null;
     setPendingSpringLoadRearm(null);
+    // A group is lifted as its frame, strip and pane together: the pane's box
+    // grown by the strip it shows on its placement side.
+    const rearmGroup: TilingGroupNode | null =
+      request.subject === "group" ? findGroupContainingLeaf(layout, request.leafId) : null;
+    const rearmStripPx: number =
+      rearmGroup != null &&
+      rearmGroup.members.length >= 2 &&
+      dragLandingGroupStrip.visible
+        ? dragLandingGroupStrip.heightPx *
+          measureViewportClientFrame(viewportRef.current).scale
+        : 0;
     dispatchDrag({
       type: "REARM",
       pointerId: request.pointerId,
       pointerType: request.pointerType,
       sourceLeafId: request.leafId,
+      ...(rearmGroup != null ? { subject: "group" as const } : {}),
       tileId: leaf.tileId,
       anchorFootprint: {
         left: seatRect.left,
-        top: seatRect.top,
+        top:
+          dragLandingGroupStrip.placement === "top"
+            ? seatRect.top - rearmStripPx
+            : seatRect.top,
         width: seatRect.width,
-        height: seatRect.height,
+        height: seatRect.height + rearmStripPx,
       },
       client: request.client,
     });
@@ -8080,6 +8109,7 @@ const TilingRendererComponent = React.forwardRef<
     paneWorkspaceId,
     dispatchDrag,
     drawnClientRectOf,
+    dragLandingGroupStrip,
     inputDriver,
     pointerCapturePort,
   ]);
@@ -10927,12 +10957,23 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       sendSpringLoad({ type: "RESET" });
       return;
     }
-    const moved: TilingWorkspaceSet = moveLeafToWorkspace(
-      current,
-      intent.leafId,
-      intent.workspaceId,
-      intent.placement,
-    );
+    // A group drag carries the whole group over (as a release on the tab
+    // does), and is re-armed as a group on its new seat.
+    const activeLayout: TilingLayoutNode | null = activeWorkspace(current)?.layout ?? null;
+    const dragGroup: TilingGroupNode | null =
+      identity.subject === "group" && activeLayout != null
+        ? findGroupContainingLeaf(activeLayout, intent.leafId)
+        : null;
+    const movedSubject: DragSubject = dragGroup != null ? "group" : "pane";
+    const moved: TilingWorkspaceSet =
+      dragGroup != null
+        ? moveGroupToWorkspace(current, dragGroup.id, intent.workspaceId, intent.placement)
+        : moveLeafToWorkspace(
+            current,
+            intent.leafId,
+            intent.workspaceId,
+            intent.placement,
+          );
     if (moved === current) {
       // Unknown destination (or a no-op re-seat): nothing to commit; the
       // release then settles through the ordinary path.
@@ -10948,6 +10989,7 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       pointerId: identity.pointerId,
       pointerType: identity.pointerType,
       leafId: intent.leafId,
+      subject: movedSubject,
       workspaceId: intent.workspaceId,
       fromWorkspaceId: from,
       client,
@@ -10959,7 +11001,9 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       workspaceSwitchDirection(current, from, next.activeId),
     );
     onWorkspacesChangeRef.current(next);
-    onMoveLeafRef.current?.(intent.leafId, from, intent.workspaceId);
+    for (const member of dragGroup != null ? dragGroup.members : [{ id: intent.leafId }]) {
+      onMoveLeafRef.current?.(member.id, from, intent.workspaceId);
+    }
     onWorkspaceSwitchRef.current?.({ from, to: intent.workspaceId, via: "spring-load" });
     setFocusMemory(
       (memory: ReadonlyMap<string, string>): ReadonlyMap<string, string> =>
