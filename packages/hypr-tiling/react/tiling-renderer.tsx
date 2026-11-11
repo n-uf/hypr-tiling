@@ -561,9 +561,19 @@ const RAISED_PANE_Z_INDEX: number = 50;
 /**
  * Snap preview: the pointer must be this far inside a landing slot (CSS px,
  * at most a quarter of the slot's smaller side) before the pane snaps into it;
- * it stays snapped until the pointer leaves that slot.
+ * it stays snapped while the pointer is in that slot and the drop resolved at
+ * the pointer is still that drop. A different drop under the pointer (a tab
+ * strip, a merge zone, another slot) takes over at once, so the committed drop
+ * never depends on the path the pointer took.
  */
 const DRAG_SNAP_INSET_PX: number = 24;
+
+/** What decides the tree a drop target commits: equal keys are the same drop. */
+function dropTargetKey(target: TilingDropState | null): string {
+  return target == null
+    ? ""
+    : `${target.leafId}|${target.action}|${target.finalEdge ?? ""}|${target.selectedSplitZone ?? ""}|${target.memberInsertIndex ?? ""}`;
+}
 
 /** Whether point (`x`, `y`) lies in `rect` shrunk by `inset` on every side (edges included). */
 function isInsideRect(rect: TilingRect, x: number, y: number, inset: number): boolean {
@@ -5060,10 +5070,7 @@ const TilingRendererComponent = React.forwardRef<
       : dragPreviewMakesRoom
         ? committableDropState
         : null;
-  const roomTargetKey: string =
-    roomTarget == null
-      ? ""
-      : `${roomTarget.leafId}|${roomTarget.action}|${roomTarget.finalEdge ?? ""}|${roomTarget.selectedSplitZone ?? ""}|${roomTarget.memberInsertIndex ?? ""}`;
+  const roomTargetKey: string = dropTargetKey(roomTarget);
   const liveDragDisplayLayout: TilingLayoutNode = React.useMemo(
     (): TilingLayoutNode =>
       roomTarget == null
@@ -7421,19 +7428,9 @@ const TilingRendererComponent = React.forwardRef<
       sourceLeafId: string,
       previousTarget: TilingDropState | null,
     ): TilingDropState | null => {
-      // Snap preview: while the pointer stays in the slot the pane is snapped
-      // into, that drop is the target, whatever lies under the pointer in the
-      // tree the others closed over.
-      const snapped = snappedRef.current;
-      if (snapped != null) {
-        const point: DragMachinePoint = clientToViewportPoint(
-          viewportClientFrame(),
-          { x: clientX, y: clientY },
-        );
-        if (isInsideRect(snapped.slot, point.x, point.y, 0)) {
-          return snapped.target;
-        }
-      }
+      // The drop is resolved at the pointer alone, the same in every drop
+      // preview: the snap preview's slot does not hold a drop the pointer has
+      // moved off.
       return resolvePointerTargetRef.current(
         clientX,
         clientY,
@@ -7491,9 +7488,11 @@ const TilingRendererComponent = React.forwardRef<
 
     // Snap preview hysteresis, after each processed sample: the pane snaps
     // into the resolved drop's landing slot once the pointer is well inside it
-    // (min(24 px, a quarter of its smaller side)) and stays until the pointer
-    // leaves that slot; the others make room meanwhile (the render reads
-    // `snappedTarget`).
+    // (min(24 px, a quarter of its smaller side)) and stays while the pointer
+    // is in that slot and the drop resolved at the pointer is still that drop;
+    // the others make room meanwhile (the render reads `snappedTarget`). The
+    // hysteresis is visual only: it never holds a drop the pointer is no
+    // longer over, so a release commits what the pointer is over.
     const updateSnap = (client: DragMachinePoint): void => {
       const current = snappedRef.current;
       const live: DragMachineState = controller.getState().drag;
@@ -7508,24 +7507,40 @@ const TilingRendererComponent = React.forwardRef<
         viewportClientFrame(),
         client,
       );
-      let next = current != null && isInsideRect(current.slot, x, y, 0) ? current : null;
-      if (next == null && live.leftHome) {
+      let next =
+        current != null &&
+        dropTargetKey(live.resolvedTarget) === dropTargetKey(current.target) &&
+        isInsideRect(current.slot, x, y, 0)
+          ? current
+          : null;
+      if (next == null && (live.leftHome || current != null)) {
         const target: TilingDropState | null = live.resolvedTarget;
         const slot: TilingRect | null = resolveDropLandingRectRef.current(
           live.sourceLeafId,
           target,
         );
-        if (
-          target != null &&
-          slot != null &&
-          isInsideRect(
-            slot,
-            x,
-            y,
-            Math.min(DRAG_SNAP_INSET_PX, Math.min(slot.width, slot.height) / 4),
-          )
-        ) {
-          next = { target, slot };
+        if (target != null && slot != null) {
+          // Another drop under the pointer takes the pane at once if it lands
+          // in the very slot the pane is in (the pane stays put), or once the
+          // pointer is well inside its slot.
+          const sameSlot: boolean =
+            current != null &&
+            isInsideRect(slot, x, y, 0) &&
+            Math.abs(slot.x - current.slot.x) < 0.5 &&
+            Math.abs(slot.y - current.slot.y) < 0.5 &&
+            Math.abs(slot.width - current.slot.width) < 0.5 &&
+            Math.abs(slot.height - current.slot.height) < 0.5;
+          if (
+            sameSlot ||
+            isInsideRect(
+              slot,
+              x,
+              y,
+              Math.min(DRAG_SNAP_INSET_PX, Math.min(slot.width, slot.height) / 4),
+            )
+          ) {
+            next = { target, slot };
+          }
         }
       }
       if (next !== current) {
