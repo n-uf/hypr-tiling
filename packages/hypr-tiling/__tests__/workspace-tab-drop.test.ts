@@ -122,7 +122,7 @@ afterEach((): void => {
 });
 
 type SetHarnessProps = Partial<
-  Omit<TilingRendererWorkspaceSetProps, "tiles" | "config" | "workspaces" | "onWorkspacesChange">
+  Omit<TilingRendererWorkspaceSetProps, "config" | "workspaces" | "onWorkspacesChange">
 > & {
   workspaces?: TilingWorkspaceSet;
   onWorkspacesChange?: (next: TilingWorkspaceSet) => void;
@@ -322,7 +322,123 @@ describe("TilingRenderer workspace-tab drop target (set mode)", (): void => {
       "chat",
       { x: 5, y: 5 },
       { targetId: "chat", point: { x: 5, y: 5 } },
+      expect.objectContaining({ kind: "pane", groupId: null, activeLeafId: "leaf:a" }),
     );
+    expect(onWorkspacesChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("TilingRenderer workspace-tab drop target — a tab group", (): void => {
+  const GROUP_TILES: ReadonlyArray<TilingTile> = [...TILES, { id: "d", title: "delta", accent: "cyan" }];
+
+  /** main: a | g[b*, c] ; ops: d */
+  function groupedWorkspaces(): TilingWorkspaceSet {
+    return {
+      workspaces: [
+        {
+          id: "main",
+          name: "Main",
+          layout: {
+            kind: "split",
+            id: "main-root",
+            axis: "horizontal",
+            ratio: 0.5,
+            first: leaf("a"),
+            second: { kind: "group", id: "g", members: [leaf("b"), leaf("c")], activeMemberId: "leaf:b" },
+          },
+        },
+        { id: "ops", name: "Ops", layout: leaf("d") },
+      ],
+      activeId: "main",
+    };
+  }
+
+  it("a group dragged by its title bar moves whole: members, order and active tab, one move report per pane", async (): Promise<void> => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onMoveLeaf = jest.fn((_leafId: string, _from: string, _to: string): void => {});
+    const onExternalDrop: jest.Mock<TilingOnExternalDrop> = jest.fn();
+    const view = render(
+      React.createElement(SetHarness, {
+        tiles: GROUP_TILES,
+        workspaces: groupedWorkspaces(),
+        externalDragHover: TAB_HOVER,
+        onWorkspacesChange,
+        onMoveLeaf,
+        onExternalDrop,
+      }),
+    );
+    await startLiveDrag(view.container, "leaf:b");
+    await releaseDrag();
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+    const next: TilingWorkspaceSet = onWorkspacesChange.mock.calls[0][0];
+    // Main is left with alpha alone; ops seats the same group (same id, members, order, active tab) after delta.
+    expect(next.workspaces[0].layout).toEqual(leaf("a"));
+    const ops: TilingLayoutNode | null = next.workspaces[1].layout;
+    expect(ops?.kind).toBe("split");
+    const seated: TilingLayoutNode | null = ops?.kind === "split" ? ops.second : null;
+    expect(seated).toEqual({ kind: "group", id: "g", members: [leaf("b"), leaf("c")], activeMemberId: "leaf:b" });
+    expect(ops?.kind === "split" ? ops.first : null).toEqual(leaf("d"));
+    const seats: TilingWorkspaceSetQuery = queryWorkspaceSet(next);
+    expect(seats.workspacesOfLeaf("leaf:b")).toEqual(["ops"]);
+    expect(seats.workspacesOfLeaf("leaf:c")).toEqual(["ops"]);
+    expect(onMoveLeaf.mock.calls).toEqual([
+      ["leaf:b", "main", "ops"],
+      ["leaf:c", "main", "ops"],
+    ]);
+    expect(onExternalDrop).not.toHaveBeenCalled();
+  });
+
+  it("a tab dragged off the group moves just that pane; the group keeps the rest", async (): Promise<void> => {
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const onMoveLeaf = jest.fn((_leafId: string, _from: string, _to: string): void => {});
+    const view = render(
+      React.createElement(SetHarness, {
+        tiles: GROUP_TILES,
+        workspaces: groupedWorkspaces(),
+        externalDragHover: TAB_HOVER,
+        onWorkspacesChange,
+        onMoveLeaf,
+      }),
+    );
+    const tabElement: HTMLElement | null = view.container.querySelector('[data-group-id="g"] [data-member-index="1"]');
+    expect(tabElement).not.toBeNull();
+    await act(async (): Promise<void> => {
+      dispatchPointer(tabElement as HTMLElement, "pointerdown", { clientX: 20, clientY: 20 });
+    });
+    await flushFrames();
+    await act(async (): Promise<void> => {
+      dispatchPointer(window, "pointermove", { clientX: 40, clientY: 40 });
+    });
+    await flushFrames();
+    await releaseDrag();
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+    const next: TilingWorkspaceSet = onWorkspacesChange.mock.calls[0][0];
+    const seats: TilingWorkspaceSetQuery = queryWorkspaceSet(next);
+    expect(seats.workspacesOfLeaf("leaf:c")).toEqual(["ops"]);
+    expect(seats.workspacesOfLeaf("leaf:b")).toEqual(["main"]);
+    expect(onMoveLeaf.mock.calls).toEqual([["leaf:c", "main", "ops"]]);
+  });
+
+  it("a host claim of a plain external hover receives the whole group", async (): Promise<void> => {
+    const onExternalDrop: jest.Mock<TilingOnExternalDrop> = jest.fn();
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const view = render(
+      React.createElement(SetHarness, {
+        tiles: GROUP_TILES,
+        workspaces: groupedWorkspaces(),
+        externalDragHover: { targetId: "chat", point: { x: 5, y: 5 } },
+        onWorkspacesChange,
+        onExternalDrop,
+      }),
+    );
+    await startLiveDrag(view.container, "leaf:b");
+    await releaseDrag();
+    expect(onExternalDrop).toHaveBeenCalledTimes(1);
+    const subject = onExternalDrop.mock.calls[0][4];
+    expect(subject.kind).toBe("group");
+    expect(subject.groupId).toBe("g");
+    expect(subject.activeLeafId).toBe("leaf:b");
+    expect(subject.members.map((member: TilingLeafNode): string => member.id)).toEqual(["leaf:b", "leaf:c"]);
     expect(onWorkspacesChange).not.toHaveBeenCalled();
   });
 });
@@ -352,6 +468,7 @@ describe("TilingRenderer workspace-tab hover in single-layout mode", (): void =>
       "tab:ops",
       { x: 320, y: 24 },
       TAB_HOVER,
+      expect.objectContaining({ kind: "pane", groupId: null, activeLeafId: "leaf:a" }),
     );
   });
 

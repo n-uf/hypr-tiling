@@ -13,8 +13,11 @@ import {
 import { PLACEMENT_BY_DROP_ZONE } from "./projected-layout";
 import type { TilingDropIntentState, TilingEdgeZone } from "./drop-intent-resolver";
 import type {
+  TilingExternalDropSubject,
+  TilingGroupNode,
   TilingLayoutNode,
   TilingLeafDropZone,
+  TilingLeafNode,
   TilingPaneFootprint,
 } from "./types";
 
@@ -109,6 +112,35 @@ export function detachDragSubject(
 ): TilingLayoutNode {
   const groupId: string | null = dragSubjectGroupId(layout, sourceLeafId, subject);
   return groupId == null ? removeLeafTile(layout, sourceLeafId) : removeGroupNode(layout, groupId);
+}
+
+/**
+ * What a claim of the drag (a host `onExternalDrop`, a workspace-tab drop)
+ * hands over: the whole group of a group drag, its members in tab order, or
+ * the one pane.
+ */
+export function resolveExternalDropSubject(
+  layout: TilingLayoutNode,
+  sourceLeafId: string,
+  subject: DragSubject | undefined,
+): TilingExternalDropSubject {
+  const group: TilingGroupNode | null =
+    subject === "group" ? findGroupContainingLeaf(layout, sourceLeafId) : null;
+  if (group != null) {
+    return {
+      kind: "group",
+      groupId: group.id,
+      members: group.members,
+      activeLeafId: sourceLeafId,
+    };
+  }
+  const leaf: TilingLeafNode | null = findLeafById(layout, sourceLeafId);
+  return {
+    kind: "pane",
+    groupId: null,
+    members: leaf == null ? [] : [leaf],
+    activeLeafId: sourceLeafId,
+  };
 }
 
 /**

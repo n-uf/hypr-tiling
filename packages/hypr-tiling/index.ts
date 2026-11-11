@@ -291,6 +291,7 @@ export type {
   TilingExternalDropHover,
   TilingWorkspaceTabDragHover,
   TilingOnExternalDrop,
+  TilingExternalDropSubject,
   TilingExternalDragHoverResolver,
   TilingPaneCollapsedChangeEvent,
   TilingChromeFocusOutline,

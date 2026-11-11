@@ -2833,17 +2833,41 @@ export type TilingExternalDragHover =
   | TilingWorkspaceTabDragHover;
 
 /**
+ * What a claim hands over: the one dragged pane, or the whole tab group when
+ * the drag moved a group (grabbed by its title bar or the empty part of its
+ * strip). Passed as the 5th argument of {@link TilingOnExternalDrop}; a host
+ * that ignores it still receives the active pane's leaf id first, as before.
+ */
+export interface TilingExternalDropSubject {
+  /** `"pane"`: one pane (an ungrouped pane or a tab torn off); `"group"`: its whole tab group. */
+  readonly kind: "pane" | "group";
+  /** The group handed over; `null` for a single pane. */
+  readonly groupId: string | null;
+  /** The leaves handed over, in tab order (just the one leaf for a pane). */
+  readonly members: ReadonlyArray<TilingLeafNode>;
+  /** The active tab of the group (the dragged leaf for a pane): the `leafId` argument. */
+  readonly activeLeafId: string;
+}
+
+/**
  * Fired on release while {@link TilingRendererCommonProps.externalDragHover} is
  * non-null, **before** the drag FSM settles, so the host can claim the leaf
  * synchronously. Return `false` to DECLINE the claim (the target refused the
  * leaf): the release then cancels and the pane settles home. `void` / `true`
  * claims.
+ *
+ * `leafId` is the dragged pane (a dragged group's active tab). `subject` says
+ * what the claim hands over: for a dragged group every member, in tab order
+ * (`subject.members`); the host takes them all, and the renderer shows the
+ * whole group gone until the host's layout lands (`removeGroupNode` takes it
+ * out of a tree).
  */
 export type TilingOnExternalDrop = (
   leafId: string,
   targetId: string,
   point: TilingClientPoint,
   hover: TilingExternalDragHover,
+  subject: TilingExternalDropSubject,
 ) => void | boolean;
 
 /**

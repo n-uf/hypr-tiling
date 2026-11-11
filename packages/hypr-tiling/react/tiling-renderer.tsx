@@ -39,6 +39,7 @@ import {
   previousZoneSeed,
   resolveDragCommitFocusLeafId,
   resolveDragLandingLeafId,
+  resolveExternalDropSubject,
   type DragMachinePoint,
   type DragMachineState,
   type DragPointerType,
@@ -189,7 +190,6 @@ import {
   insertLeafAdjacent,
   isStructurallyValidLayout,
   readLeafNodeIds,
-  removeLeafTile,
   removeMemberFromGroup,
   setActiveGroupMember,
   setLeafCollapsed,
@@ -208,6 +208,7 @@ import {
   TILING_MAIN_WORKSPACE_ID,
   activeWorkspace,
   cycleWorkspace,
+  moveGroupToWorkspace,
   moveLeafToWorkspace,
   queryWorkspaceSet,
   repairWorkspaceSet,
@@ -250,6 +251,7 @@ import type {
   TilingClientPoint,
   TilingExternalDragHover,
   TilingExternalDragHoverResolver,
+  TilingExternalDropSubject,
   TilingOnExternalDrop,
   TilingDropIntentDebugState,
   TilingFocusDirection,
@@ -5122,15 +5124,14 @@ const TilingRendererComponent = React.forwardRef<
     }, [dragState, layout, liveDragModeEnabled]);
   // Claimed settle: hold the gap-closed tree (source already detached) so the
   // leaf does not flash back while the host's synchronous `onExternalDrop`
-  // layout update lands. `removeLeafTile` is a no-op if the host already
-  // removed it in the same tick.
+  // layout update lands. A no-op if the host already removed it in the same
+  // tick.
   const settlingClaimedHold: TilingLayoutNode | null =
     liveDragModeEnabled &&
     dragState.phase === "settling" &&
     dragState.outcome === "claimed"
-      ? // A host claim takes the leaf it is handed (`onExternalDrop(leafId)`),
-        // so even a dragged group gives up only that pane here.
-        removeLeafTile(layout, dragState.sourceLeafId)
+      ? // A claim takes what the drag moved: the pane, or its whole group.
+        detachDragSubject(layout, dragState.sourceLeafId, dragState.subject)
       : null;
   const displayLayout: TilingLayoutNode =
     isLiveDragging && dragSourceLeafId != null
@@ -7749,12 +7750,18 @@ const TilingRendererComponent = React.forwardRef<
         onDrop != null &&
         claimState.phase === "dragging"
       ) {
+        // A dragged group is handed over whole: the host gets every member.
         const claimed: boolean =
           onDrop(
             claimState.sourceLeafId,
             hover.targetId,
             hover.point,
             hover,
+            resolveExternalDropSubject(
+              layoutRef.current,
+              claimState.sourceLeafId,
+              claimState.subject,
+            ),
           ) !== false;
         if (claimed) {
           // The pane leaves this tree with the claim: it fades where it was
@@ -10478,29 +10485,39 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
   // fires this synchronously on release BEFORE the FSM settles `claimed`, so
   // the moved set lands in the same tick and nothing settles home. Any
   // other external hover is the host's to claim through its own callback.
+  // A dragged group moves whole: every member, in order, with its active tab.
   const handleExternalDrop: TilingOnExternalDrop = React.useCallback(
     (
       leafId: string,
       targetId: string,
       point: TilingClientPoint,
       hover: TilingExternalDragHover,
+      subject: TilingExternalDropSubject,
     ): boolean => {
       if (hover.kind !== "workspace-tab") {
         // Not a tab: the host's claim (absent host callback → decline, i.e.
         // the same cancel single-layout mode does without one).
         return (
           onExternalDrop != null &&
-          onExternalDrop(leafId, targetId, point, hover) !== false
+          onExternalDrop(leafId, targetId, point, hover, subject) !== false
         );
       }
       const current: TilingWorkspaceSet = workspacesRef.current;
       const from: string = current.activeId;
-      const moved: TilingWorkspaceSet = moveLeafToWorkspace(
-        current,
-        leafId,
-        hover.workspaceId,
-        hover.placement,
-      );
+      const moved: TilingWorkspaceSet =
+        subject.kind === "group" && subject.groupId != null
+          ? moveGroupToWorkspace(
+              current,
+              subject.groupId,
+              hover.workspaceId,
+              hover.placement,
+            )
+          : moveLeafToWorkspace(
+              current,
+              leafId,
+              hover.workspaceId,
+              hover.placement,
+            );
       if (moved === current) {
         // Unknown destination workspace (or a no-op re-seat): decline the
         // claim so the release settles through the ordinary cancel.
@@ -10523,7 +10540,10 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
         );
       }
       onWorkspacesChangeRef.current(next);
-      onMoveLeafRef.current?.(leafId, from, hover.workspaceId);
+      // One report per leaf that moved (a group's members, in tab order).
+      for (const member of subject.kind === "group" ? subject.members : [{ id: leafId }]) {
+        onMoveLeafRef.current?.(member.id, from, hover.workspaceId);
+      }
       if (next.activeId !== from) {
         onWorkspaceSwitchRef.current?.({ from, to: next.activeId, via: "tab-drop" });
         setFocusMemory(
