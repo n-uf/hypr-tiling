@@ -1,4 +1,15 @@
-import { findLeafById, insertLeafAdjacent, mergeDraggedLeafIntoTarget, removeLeafTile, swapLeafTiles } from "./state";
+import {
+  findGroupContainingLeaf,
+  findLeafById,
+  insertGroupAdjacent,
+  insertLeafAdjacent,
+  mergeDraggedLeafIntoTarget,
+  mergeGroupIntoTarget,
+  removeGroupNode,
+  removeLeafTile,
+  swapGroupWithSlot,
+  swapLeafTiles,
+} from "./state";
 import { PLACEMENT_BY_DROP_ZONE } from "./projected-layout";
 import type { TilingDropIntentState, TilingEdgeZone } from "./drop-intent-resolver";
 import type {
@@ -66,6 +77,41 @@ export type DragResolvedTarget = TilingDropIntentState;
 export type DragSettleOutcome = "commit" | "cancel" | "claimed";
 
 /**
+ * What a drag moves. `"pane"`: the one pane on `sourceLeafId` (a tab torn off
+ * its group, or an ungrouped pane). `"group"`: the whole tab group
+ * `sourceLeafId` is the active member of — grabbed by its title bar or the
+ * empty part of its tab strip — moved as one unit (same members, order and
+ * active tab). Absent on a state means `"pane"`; a group subject whose source
+ * is not in a group is treated as `"pane"`.
+ */
+export type DragSubject = "pane" | "group";
+
+/**
+ * The group a drag of `subject` on `sourceLeafId` moves as a whole, or `null`
+ * when it moves the one pane.
+ */
+export function dragSubjectGroupId(
+  layout: TilingLayoutNode,
+  sourceLeafId: string,
+  subject: DragSubject | undefined,
+): string | null {
+  return subject === "group" ? (findGroupContainingLeaf(layout, sourceLeafId)?.id ?? null) : null;
+}
+
+/**
+ * The tree with the dragged subject taken out and the gap closed: the pane
+ * (`removeLeafTile`) or its whole group (`removeGroupNode`).
+ */
+export function detachDragSubject(
+  layout: TilingLayoutNode,
+  sourceLeafId: string,
+  subject?: DragSubject,
+): TilingLayoutNode {
+  const groupId: string | null = dragSubjectGroupId(layout, sourceLeafId, subject);
+  return groupId == null ? removeLeafTile(layout, sourceLeafId) : removeGroupNode(layout, groupId);
+}
+
+/**
  * The single discriminated-union drag-lifecycle state. One `useReducer` in the
  * renderer owns this; every non-idle phase has at least one enumerated edge back
  * to `idle`, so "stuck/parked" is structurally impossible (every terminal pointer
@@ -99,6 +145,10 @@ export type DragMachineState =
        */
       touchDrag: boolean;
       sourceLeafId: string;
+      /** What the drag moves (absent: the one pane). */
+      subject?: DragSubject;
+      /** The home a release must leave to commit (absent: `anchorFootprint`). */
+      homeFootprint?: TilingPaneFootprint;
       anchorFootprint: TilingPaneFootprint;
       pointerAnchorOffset: DragMachinePoint;
       originClient: DragMachinePoint;
@@ -110,6 +160,10 @@ export type DragMachineState =
       /** Carried through from `armed` so the dragging layer can read the device class. */
       touchDrag: boolean;
       sourceLeafId: string;
+      /** What the drag moves (absent: the one pane). */
+      subject?: DragSubject;
+      /** The home a release must leave to commit (absent: `anchorFootprint`). */
+      homeFootprint?: TilingPaneFootprint;
       anchorFootprint: TilingPaneFootprint;
       pointerAnchorOffset: DragMachinePoint;
       /** Where the pointer holds the pane: pointer minus grab offset, at its lift size. */
@@ -126,6 +180,8 @@ export type DragMachineState =
       phase: "settling";
       outcome: DragSettleOutcome;
       sourceLeafId: string;
+      /** What the drag moved (absent: the one pane). */
+      subject?: DragSubject;
       resolvedTarget: DragResolvedTarget | null;
     };
 
@@ -135,6 +191,13 @@ export type DragMachineEvent =
       pointerId: number;
       pointerType: DragPointerType;
       sourceLeafId: string;
+      /** What the press picks up: the pane (default) or its whole tab group. */
+      subject?: DragSubject;
+      /**
+       * The place a release must leave to commit, when it is not
+       * `anchorFootprint` (a tab torn off its group: the whole group).
+       */
+      homeFootprint?: TilingPaneFootprint;
       anchorFootprint: TilingPaneFootprint;
       pointerAnchorOffset: DragMachinePoint;
       originClient: DragMachinePoint;
@@ -372,9 +435,14 @@ export function deriveCandidateTree(
   layout: TilingLayoutNode,
   sourceLeafId: string | null,
   resolvedTarget: DragResolvedTarget | null,
+  subject?: DragSubject,
 ): TilingLayoutNode {
   if (sourceLeafId == null) {
     return layout;
+  }
+  const groupId: string | null = dragSubjectGroupId(layout, sourceLeafId, subject);
+  if (groupId != null) {
+    return deriveGroupCandidateTree(layout, groupId, sourceLeafId, resolvedTarget);
   }
   if (resolvedTarget == null || resolvedTarget.leafId === sourceLeafId) {
     return removeLeafTile(layout, sourceLeafId);
@@ -407,6 +475,43 @@ export function deriveCandidateTree(
 }
 
 /**
+ * {@link deriveCandidateTree} for a whole tab group (`subject: "group"`): the
+ * group node itself moves — swapped with the target's slot, inserted beside
+ * it, or merged into it (every member joins as a tab, the dragged active tab
+ * active) — and with no committable target the group is taken out.
+ */
+function deriveGroupCandidateTree(
+  layout: TilingLayoutNode,
+  groupId: string,
+  sourceLeafId: string,
+  resolvedTarget: DragResolvedTarget | null,
+): TilingLayoutNode {
+  if (resolvedTarget == null || resolvedTarget.leafId === sourceLeafId) {
+    return removeGroupNode(layout, groupId);
+  }
+  if (findLeafById(layout, resolvedTarget.leafId) == null) {
+    return removeGroupNode(layout, groupId);
+  }
+  if (resolvedTarget.action === "swap") {
+    return swapGroupWithSlot(layout, groupId, resolvedTarget.leafId);
+  }
+  if (resolvedTarget.action === "group-merge") {
+    return mergeGroupIntoTarget(layout, groupId, resolvedTarget.leafId, resolvedTarget.memberInsertIndex);
+  }
+  if (resolvedTarget.action === "edge-insert") {
+    const edgeZone: TilingEdgeZone | null = resolveCommitEdgeZone(resolvedTarget);
+    if (edgeZone == null) {
+      return removeGroupNode(layout, groupId);
+    }
+    return insertGroupAdjacent(layout, groupId, resolvedTarget.leafId, PLACEMENT_BY_DROP_ZONE[edgeZone], {
+      preserveParentSplitAxis: false,
+      splitRatio: 0.5,
+    });
+  }
+  return removeGroupNode(layout, groupId);
+}
+
+/**
  * The candidate-tree leaf whose SLOT the dragged pane lands in — the slot the
  * drop indicator marks, the snap preview settles the pane into, and the others
  * make room around. Where the dragged pane lands in `deriveCandidateTree`
@@ -420,16 +525,24 @@ export function deriveCandidateTree(
  *   source pane, next to the target) → the SOURCE leaf.
  * - no / self / non-committable target (`removeLeafTile` gap-closes the source
  *   out of the tree) → `null`: there is no landing slot.
+ *
+ * A whole group (`subject: "group"`) moves as its node, keyed by its active
+ * member, which stays active in every action — the landing slot is the
+ * SOURCE leaf's for any committable target.
  */
 export function resolveDragLandingLeafId(
   sourceLeafId: string | null,
   resolvedTarget: DragResolvedTarget | null,
+  subject?: DragSubject,
 ): string | null {
   if (sourceLeafId == null) {
     return null;
   }
   if (resolvedTarget == null || resolvedTarget.leafId === sourceLeafId) {
     return null;
+  }
+  if (subject === "group") {
+    return isCommittableTarget(resolvedTarget, sourceLeafId) ? sourceLeafId : null;
   }
   if (resolvedTarget.action === "swap") {
     return resolvedTarget.leafId;
@@ -460,16 +573,23 @@ export function resolveDragLandingLeafId(
  *   + content, source active) → focus the SOURCE leaf (NOT the target seat).
  * - no / self / non-committable target (`removeLeafTile` gap-closes the source)
  *   → `null`: there is no committed slot, so focus is left untouched.
+ *
+ * A whole group keeps its active member (the source) in every action: focus
+ * the SOURCE leaf.
  */
 export function resolveDragCommitFocusLeafId(
   sourceLeafId: string | null,
   resolvedTarget: DragResolvedTarget | null,
+  subject?: DragSubject,
 ): string | null {
   if (sourceLeafId == null) {
     return null;
   }
   if (resolvedTarget == null || resolvedTarget.leafId === sourceLeafId) {
     return null;
+  }
+  if (subject === "group") {
+    return isCommittableTarget(resolvedTarget, sourceLeafId) ? sourceLeafId : null;
   }
   if (resolvedTarget.action === "swap") {
     return resolvedTarget.leafId;
@@ -689,7 +809,24 @@ function settleFrom(state: Extract<DragMachineState, { phase: "dragging" }>, out
     phase: "settling",
     outcome,
     sourceLeafId: state.sourceLeafId,
+    ...(state.subject != null ? { subject: state.subject } : {}),
     resolvedTarget: outcome === "commit" ? state.resolvedTarget : null,
+  };
+}
+
+/** The `armed` state a `POINTER_DOWN` opens. */
+function armedFrom(event: Extract<DragMachineEvent, { type: "POINTER_DOWN" }>): DragMachineState {
+  return {
+    phase: "armed",
+    pointerId: event.pointerId,
+    pointerType: event.pointerType,
+    touchDrag: event.pointerType === "touch",
+    sourceLeafId: event.sourceLeafId,
+    ...(event.subject != null ? { subject: event.subject } : {}),
+    ...(event.homeFootprint != null ? { homeFootprint: event.homeFootprint } : {}),
+    anchorFootprint: event.anchorFootprint,
+    pointerAnchorOffset: event.pointerAnchorOffset,
+    originClient: event.originClient,
   };
 }
 
@@ -701,7 +838,7 @@ function movedTo(
   return {
     ...state,
     heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, client),
-    leftHome: state.leftHome || !isPointInFootprint(state.anchorFootprint, client),
+    leftHome: state.leftHome || !isPointInFootprint(state.homeFootprint ?? state.anchorFootprint, client),
   };
 }
 
@@ -720,16 +857,7 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
   switch (state.phase) {
     case "idle": {
       if (event.type === "POINTER_DOWN") {
-        return {
-          phase: "armed",
-          pointerId: event.pointerId,
-          pointerType: event.pointerType,
-          touchDrag: event.pointerType === "touch",
-          sourceLeafId: event.sourceLeafId,
-          anchorFootprint: event.anchorFootprint,
-          pointerAnchorOffset: event.pointerAnchorOffset,
-          originClient: event.originClient,
-        };
+        return armedFrom(event);
       }
       if (event.type === "REARM") {
         // Spring-load continuation: the previous drag settled `claimed` and
@@ -783,11 +911,13 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             pointerType: state.pointerType,
             touchDrag: state.touchDrag,
             sourceLeafId: state.sourceLeafId,
+            ...(state.subject != null ? { subject: state.subject } : {}),
+            ...(state.homeFootprint != null ? { homeFootprint: state.homeFootprint } : {}),
             anchorFootprint: state.anchorFootprint,
             pointerAnchorOffset: state.pointerAnchorOffset,
             heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, event.client),
             resolvedTarget: null,
-            leftHome: !isPointInFootprint(state.anchorFootprint, event.client),
+            leftHome: !isPointInFootprint(state.homeFootprint ?? state.anchorFootprint, event.client),
           };
         }
         // Touch long-press elapsed while the finger is held within tolerance →
@@ -804,6 +934,8 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             pointerType: state.pointerType,
             touchDrag: state.touchDrag,
             sourceLeafId: state.sourceLeafId,
+            ...(state.subject != null ? { subject: state.subject } : {}),
+            ...(state.homeFootprint != null ? { homeFootprint: state.homeFootprint } : {}),
             anchorFootprint: state.anchorFootprint,
             pointerAnchorOffset: state.pointerAnchorOffset,
             heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, state.originClient),
@@ -821,16 +953,7 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
           return { phase: "idle" };
         case "POINTER_DOWN":
           // Re-arm on a fresh primary press (the prior press is abandoned).
-          return {
-            phase: "armed",
-            pointerId: event.pointerId,
-            pointerType: event.pointerType,
-            touchDrag: event.pointerType === "touch",
-            sourceLeafId: event.sourceLeafId,
-            anchorFootprint: event.anchorFootprint,
-            pointerAnchorOffset: event.pointerAnchorOffset,
-            originClient: event.originClient,
-          };
+          return armedFrom(event);
         default:
           return state;
       }
@@ -870,16 +993,7 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
           return { phase: "idle" };
         case "POINTER_DOWN":
           // Preempt a residual settle with a new pickup.
-          return {
-            phase: "armed",
-            pointerId: event.pointerId,
-            pointerType: event.pointerType,
-            touchDrag: event.pointerType === "touch",
-            sourceLeafId: event.sourceLeafId,
-            anchorFootprint: event.anchorFootprint,
-            pointerAnchorOffset: event.pointerAnchorOffset,
-            originClient: event.originClient,
-          };
+          return armedFrom(event);
         default:
           return state;
       }

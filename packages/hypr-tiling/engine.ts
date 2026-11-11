@@ -47,6 +47,10 @@ export {
   insertLeafAdjacent,
   removeLeafTile,
   swapLeafTiles,
+  removeGroupNode,
+  swapGroupWithSlot,
+  insertGroupAdjacent,
+  mergeGroupIntoTarget,
   updateSplitRatio,
   toggleSplitAxis,
   groupLeaves,
@@ -361,4 +365,5 @@ export {
   type DragMachineState,
   type DragPointerType,
   type DragRearmEvent,
+  type DragSubject,
 } from "./engine/drag-machine";

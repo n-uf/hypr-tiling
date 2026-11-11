@@ -1966,6 +1966,189 @@ export function mergeDraggedLeafIntoTarget(
   return normalizeStaticAxisFill(replaceNodeById(extraction.nextNode, targetLeafId, group));
 }
 
+// ── Whole-group moves (a dragged tab group) ─────────────────────────────────
+//
+// A tab group dragged by its title bar or strip moves as one unit: the same
+// group node (same id, members, order and active tab) leaves its slot and
+// lands in another. These mirror the single-pane movers (`removeLeafTile`,
+// `swapLeafTiles`, `insertLeafAdjacent`, `mergeDraggedLeafIntoTarget`) with
+// the group as the moved node. A target is named by a leaf id, as the drop
+// resolver reports it; a group target is named by its active member.
+
+/** The slot node carrying `leafId`: its group when it is a group member, else the leaf. */
+export function slotNodeOfLeaf(
+  layout: TilingLayoutNode,
+  leafId: string,
+): TilingLeafNode | TilingGroupNode | null {
+  return findGroupContainingLeaf(layout, leafId) ?? findLeafById(layout, leafId);
+}
+
+/**
+ * Pull the node `slot` (by reference) out of the tree, collapsing its parent
+ * split. `nextNode` is `null` when `slot` was the whole tree, and the input
+ * (by reference) when `slot` is not in it (`extracted: false`).
+ */
+function extractSlotNode(
+  node: TilingLayoutNode,
+  slot: TilingLayoutNode,
+): { nextNode: TilingLayoutNode | null; extracted: boolean } {
+  if (node === slot) {
+    return { nextNode: null, extracted: true };
+  }
+  if (node.kind !== "split") {
+    return { nextNode: node, extracted: false };
+  }
+  const first = extractSlotNode(node.first, slot);
+  if (first.extracted) {
+    return { nextNode: first.nextNode == null ? node.second : { ...node, first: first.nextNode }, extracted: true };
+  }
+  const second = extractSlotNode(node.second, slot);
+  if (second.extracted) {
+    return { nextNode: second.nextNode == null ? node.first : { ...node, second: second.nextNode }, extracted: true };
+  }
+  return { nextNode: node, extracted: false };
+}
+
+/**
+ * Remove the group `groupId` from the tree and close the gap (the sibling
+ * takes its parent's slot) — {@link removeLeafTile} for a whole group.
+ * Unchanged when the group is absent or is the whole tree.
+ */
+export function removeGroupNode(layout: TilingLayoutNode, groupId: string): TilingLayoutNode {
+  const group: TilingGroupNode | null = findGroupById(layout, groupId);
+  if (group == null) {
+    return layout;
+  }
+  const extraction = extractSlotNode(layout, group);
+  if (!extraction.extracted || extraction.nextNode == null) {
+    return layout;
+  }
+  return normalizeStaticAxisFill(extraction.nextNode);
+}
+
+/**
+ * Exchange the group `groupId` with the slot that carries `targetLeafId` (a
+ * leaf, or the group it is a member of): each takes the other's place, both
+ * unchanged. Unchanged when either is absent or the target is in the group.
+ */
+export function swapGroupWithSlot(
+  layout: TilingLayoutNode,
+  groupId: string,
+  targetLeafId: string,
+): TilingLayoutNode {
+  const group: TilingGroupNode | null = findGroupById(layout, groupId);
+  const target: TilingLayoutNode | null = slotNodeOfLeaf(layout, targetLeafId);
+  if (group == null || target == null || target === group) {
+    return layout;
+  }
+  const exchange = (node: TilingLayoutNode): TilingLayoutNode => {
+    if (node === group) {
+      return target;
+    }
+    if (node === target) {
+      return group;
+    }
+    if (node.kind !== "split") {
+      return node;
+    }
+    return { ...node, first: exchange(node.first), second: exchange(node.second) };
+  };
+  return exchange(layout);
+}
+
+/**
+ * Move the group `groupId` beside the slot carrying `targetLeafId`, wrapping
+ * them in a new split with the group on the `placement` side —
+ * {@link insertLeafAdjacent} for a whole group.
+ */
+export function insertGroupAdjacent(
+  layout: TilingLayoutNode,
+  groupId: string,
+  targetLeafId: string,
+  placement: TilingMovePlacement,
+  options?: Partial<TilingInsertionOptions>,
+): TilingLayoutNode {
+  const group: TilingGroupNode | null = findGroupById(layout, groupId);
+  if (group == null || group.members.some((member: TilingLeafNode): boolean => member.id === targetLeafId)) {
+    return layout;
+  }
+  const normalizedOptions: TilingInsertionOptions = normalizedInsertionOptions(options);
+  const extraction = extractSlotNode(layout, group);
+  if (!extraction.extracted || extraction.nextNode == null) {
+    return layout;
+  }
+  const axis: "horizontal" | "vertical" = resolveInsertionAxis(
+    extraction.nextNode,
+    targetLeafId,
+    placement,
+    normalizedOptions,
+  );
+  return normalizeStaticAxisFill(
+    insertLeafAroundTarget(
+      extraction.nextNode,
+      targetLeafId,
+      group,
+      `split-${groupId}-${targetLeafId}-${placement}`,
+      axis,
+      placement,
+      normalizedOptions.splitRatio,
+    ),
+  );
+}
+
+/**
+ * Merge every member of the group `groupId` into the slot carrying
+ * `targetLeafId`, in order: into the target's group at `insertIndex` (appended
+ * when omitted), or into a new group `[target, ...members]` in a loose target
+ * leaf's slot. The dragged group's active tab becomes the target's active tab
+ * — {@link mergeDraggedLeafIntoTarget} for a whole group.
+ */
+export function mergeGroupIntoTarget(
+  layout: TilingLayoutNode,
+  groupId: string,
+  targetLeafId: string,
+  insertIndex?: number,
+): TilingLayoutNode {
+  const group: TilingGroupNode | null = findGroupById(layout, groupId);
+  if (group == null || group.members.some((member: TilingLeafNode): boolean => member.id === targetLeafId)) {
+    return layout;
+  }
+  const extraction = extractSlotNode(layout, group);
+  if (!extraction.extracted || extraction.nextNode == null) {
+    return layout;
+  }
+  const remaining: TilingLayoutNode = extraction.nextNode;
+  const moved: ReadonlyArray<TilingLeafNode> = group.members.map(asGroupMember);
+  const targetGroup: TilingGroupNode | null = findGroupContainingLeaf(remaining, targetLeafId);
+  if (targetGroup != null) {
+    const members: TilingLeafNode[] = targetGroup.members.slice();
+    const at: number =
+      insertIndex == null || !Number.isFinite(insertIndex)
+        ? members.length
+        : Math.max(0, Math.min(Math.trunc(insertIndex), members.length));
+    members.splice(at, 0, ...moved);
+    return normalizeStaticAxisFill(
+      replaceNodeById(remaining, targetGroup.id, {
+        ...targetGroup,
+        members,
+        activeMemberId: group.activeMemberId,
+      }),
+    );
+  }
+  const hostLeaf: TilingLeafNode | null = findLeafById(remaining, targetLeafId);
+  if (hostLeaf == null) {
+    return layout;
+  }
+  return normalizeStaticAxisFill(
+    replaceNodeById(remaining, targetLeafId, {
+      kind: "group",
+      id: `group-${targetLeafId}`,
+      members: [asGroupMember(hostLeaf), ...moved],
+      activeMemberId: group.activeMemberId,
+    }),
+  );
+}
+
 /**
  * Remove `memberId` from `groupId` and re-seat it as a sibling leaf beside the
  * group's slot. The group collapses to a bare leaf when only one member would
