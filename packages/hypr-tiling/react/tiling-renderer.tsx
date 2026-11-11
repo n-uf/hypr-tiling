@@ -321,6 +321,7 @@ import {
 } from "./group-tab-strip";
 import { createDomMeasurementPort } from "./dom-measurement-port";
 import { createDomPointerCapturePort } from "./dom-pointer-capture-port";
+import { WORKSPACE_TRANSITION_LAYER_ATTR } from "./dom-view-capture";
 import {
   clearLeafMotion,
   leafMotionFrameLoop,
@@ -4405,10 +4406,22 @@ type TilingResizeCursor = "col" | "row" | "default";
  * chrome.
  */
 const TILING_CHROME_CURSOR_STYLE_HREF: string = "hypr-tiling-chrome-cursor";
+
+/**
+ * Leaf motion's overflow switch, flipped without a React render: while any
+ * pane glides the leaf motion sets {@link LEAF_MOTION_ACTIVE_ATTR} on the
+ * viewport, and the structural containers that clip at rest
+ * (`overflow-hidden` + `hpt-motion-overflow`) let a gliding pane out of its
+ * slot (the pane's own content clip still applies). Shipped in the chrome
+ * stylesheet below, so it works whatever a consumer's Tailwind scans.
+ */
+const LEAF_MOTION_ACTIVE_ATTR: string = "data-hpt-leaf-motion-active";
+const LEAF_MOTION_OVERFLOW_CLASS: string = "overflow-hidden hpt-motion-overflow";
 const TILING_CHROME_CURSOR_CSS: string = `
 .hpt-root [${TILING_RESIZE_CURSOR_ATTR}="col"] { cursor: col-resize; }
 .hpt-root [${TILING_RESIZE_CURSOR_ATTR}="row"] { cursor: row-resize; }
 .hpt-root [${TILING_RESIZE_CURSOR_ATTR}="default"] { cursor: default; }
+.hpt-root [${LEAF_MOTION_ACTIVE_ATTR}] .hpt-motion-overflow { overflow: visible !important; }
 `;
 
 /**
@@ -5386,14 +5399,6 @@ const TilingRendererComponent = React.forwardRef<
   // before any competing cancel can fire. Owned by the watchdog effect; null when
   // no drag is in flight.
   const watchdogRef = React.useRef<DragWatchdog | null>(null);
-  // While any leaf is moving, the structural layout containers (section /
-  // split-child / leaf wrapper) switch from `overflow-hidden` to
-  // `overflow-visible` so a gliding leaf is not clipped by its own slot or an
-  // ancestor split (the pane CONTENT keeps the article's own `overflow-hidden`
-  // and its leaf-motion clip, so nothing actually spills). Set by the leaf
-  // motion when the first leaf starts to move and when the last one rests.
-  const [isLeafMotionActive, setIsLeafMotionActive] =
-    React.useState<boolean>(false);
   // The root-bound pointer-capture seam. Ref-backed and stable — created once.
   const pointerCapturePort: PointerCapturePort = React.useMemo(
     (): PointerCapturePort => createDomPointerCapturePort(rootRef),
@@ -5901,13 +5906,14 @@ const TilingRendererComponent = React.forwardRef<
     liveDragModeEnabled && dragSourceLeafId != null
       ? liveCandidateDisplayLayout
       : (settlingCommitCandidate ?? settlingClaimedHold ?? layout);
-  // During a live drag and while any leaf glides, the structural layout
-  // containers go `overflow-visible` so gliding leaves are not clipped by their
-  // own slot or an ancestor split. Only flips the structural divs — the article
+  // During a live drag the structural layout containers go `overflow-visible`
+  // so reflowing leaves are not clipped by their own slot or an ancestor split.
+  // Outside a drag, a glide opens them without a render: the leaf motion sets
+  // `LEAF_MOTION_ACTIVE_ATTR` on the viewport and the chrome stylesheet lets
+  // `.hpt-motion-overflow` out. Only flips the structural divs — the article
   // keeps its own `overflow-hidden`, so pane content never spills.
   const isLeafMotionOverflowWindow: boolean =
-    (liveDragModeEnabled && dragState.phase === "dragging") ||
-    isLeafMotionActive;
+    liveDragModeEnabled && dragState.phase === "dragging";
   // The cursor-following ghost is derived from the FSM dragging state + the
   // pickup snapshot ref (no separate ghost useState to keep in sync).
   const dragVisualState: TilingDragVisualState | null =
@@ -6035,7 +6041,17 @@ const TilingRendererComponent = React.forwardRef<
         }
         reportLeafMotionProbe(tick, motion.omega);
       },
-      onActiveChange: setIsLeafMotionActive,
+      onActiveChange: (active: boolean): void => {
+        const viewport: HTMLDivElement | null = viewportRef.current;
+        if (viewport == null) {
+          return;
+        }
+        if (active) {
+          viewport.setAttribute(LEAF_MOTION_ACTIVE_ATTR, "");
+        } else {
+          viewport.removeAttribute(LEAF_MOTION_ACTIVE_ATTR);
+        }
+      },
     });
     leafMotionRef.current = motion;
     return (): void => {
@@ -6048,6 +6064,7 @@ const TilingRendererComponent = React.forwardRef<
       }
       leafWrappersRef.current = new Map<string, HTMLElement>();
       leafMotionContainerSizeRef.current = null;
+      viewportRef.current?.removeAttribute(LEAF_MOTION_ACTIVE_ATTR);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -6084,6 +6101,11 @@ const TilingRendererComponent = React.forwardRef<
     for (const element of Array.from(
       container.querySelectorAll<HTMLElement>("[data-hpt-leaf]"),
     )) {
+      // A workspace-transition snapshot (a clone of the old view inside the
+      // viewport) is a picture, not panes.
+      if (element.closest(`[${WORKSPACE_TRANSITION_LAYER_ATTR}]`) != null) {
+        continue;
+      }
       const leafId: string | null = element.getAttribute("data-hpt-leaf");
       if (leafId != null && !wrappers.has(leafId)) {
         wrappers.set(leafId, element);
@@ -9298,7 +9320,7 @@ const TilingRendererComponent = React.forwardRef<
             className={cn(
               isLeafMotionOverflowWindow
                 ? "overflow-visible"
-                : "overflow-hidden",
+                : LEAF_MOTION_OVERFLOW_CLASS,
               leafHeightClass,
               leafWidthClass,
               showMoveAffordance ? "relative" : "",
@@ -9452,12 +9474,12 @@ const TilingRendererComponent = React.forwardRef<
               "hpt-group relative flex h-full max-h-full min-h-0 w-full min-w-0 flex-col",
               isLeafMotionOverflowWindow
                 ? "overflow-visible"
-                : "overflow-hidden",
+                : LEAF_MOTION_OVERFLOW_CLASS,
             )}
           >
             {groupStripPlacement === "top" ? groupStrip : null}
             <div
-              className="hpt-group-active relative min-h-0 w-full flex-1 overflow-hidden"
+              className="hpt-group-active hpt-motion-overflow relative min-h-0 w-full flex-1 overflow-hidden"
               data-hpt-group-content-box=""
               style={{
                 height:
@@ -9511,7 +9533,7 @@ const TilingRendererComponent = React.forwardRef<
               "relative h-full max-h-full min-h-0 w-full min-w-0",
               isLeafMotionOverflowWindow
                 ? "overflow-visible"
-                : "overflow-hidden",
+                : LEAF_MOTION_OVERFLOW_CLASS,
             )}
           >
             {masterSlots.map(
@@ -9770,7 +9792,7 @@ const TilingRendererComponent = React.forwardRef<
             "relative flex h-full max-h-full min-h-0 w-full min-w-0",
             isLeafMotionOverflowWindow
               ? "overflow-visible"
-              : "overflow-hidden",
+              : LEAF_MOTION_OVERFLOW_CLASS,
             isHorizontal ? "flex-row" : "flex-col",
           )}
         >
@@ -9779,7 +9801,7 @@ const TilingRendererComponent = React.forwardRef<
               "flex min-h-0 min-w-0",
               isLeafMotionOverflowWindow
                 ? "overflow-visible"
-                : "overflow-hidden",
+                : LEAF_MOTION_OVERFLOW_CLASS,
             )}
             style={{
               ...mainFlexStyle(distribution.first),
@@ -9917,7 +9939,7 @@ const TilingRendererComponent = React.forwardRef<
               "flex min-h-0 min-w-0",
               isLeafMotionOverflowWindow
                 ? "overflow-visible"
-                : "overflow-hidden",
+                : LEAF_MOTION_OVERFLOW_CLASS,
             )}
             style={{
               ...mainFlexStyle(distribution.second),
