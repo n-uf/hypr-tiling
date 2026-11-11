@@ -39,8 +39,8 @@ function probe(namespace) {
   return {
     exportCount: Object.keys(namespace).length,
     accentHueCyanText: namespace.accentHue("cyan").text,
-    baselineDragHopDurationMs: namespace.BASELINE_DRAG_HOP_DURATION_MS,
-    instantDragDurationMs: namespace.INSTANT_DRAG_DURATION_MS,
+    workspaceTransitionDurationMs: namespace.DEFAULT_WORKSPACE_TRANSITION_DURATION_MS,
+    layoutReconcileIdleMs: namespace.LAYOUT_RECONCILE_IDLE_MS,
     mainWorkspaceId: namespace.TILING_MAIN_WORKSPACE_ID,
     hasBuildDefaultDwindleLayout:
       typeof namespace.buildDefaultDwindleLayout === "function",
