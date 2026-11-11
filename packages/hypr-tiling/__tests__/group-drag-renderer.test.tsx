@@ -11,17 +11,19 @@
  * reports the rect in `GEOMETRY`; a group tab strip (and its tabs) reports
  * `GEOMETRY["strip"]` (nothing when unset); the viewport is 1000×600.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
+import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import * as React from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { TilingRenderer } from "../react/tiling-renderer";
 import { resolveTileRect } from "../engine/drag-landing";
-import { findGroupContainingLeaf } from "../engine/state";
+import { findGroupContainingLeaf, removeGroupNode, removeLeafTile } from "../engine/state";
 import type {
+  TilingExternalDragHover,
   TilingGroupNode,
   TilingInteractionCapabilities,
   TilingLayoutNode,
   TilingLeafNode,
+  TilingOnExternalDrop,
   TilingRenderTileProps,
   TilingTile,
 } from "../engine/types";
@@ -171,22 +173,50 @@ function HostTile(args: TilingRenderTileProps): React.ReactElement {
   );
 }
 
+/**
+ * `externalDragHover` + `onClaim`: a host target the pointer is over; the host
+ * claims what is handed over and takes it out of its layout (the group whole
+ * when the claim hands over a group, `takeGroup`; else just the pane).
+ */
 function Host({
   onLayoutReported,
   hostTiles = false,
   capabilities,
+  externalDragHover,
+  onClaim,
+  takeGroup = true,
 }: {
   onLayoutReported: (next: TilingLayoutNode) => void;
   hostTiles?: boolean;
   capabilities?: TilingInteractionCapabilities;
+  externalDragHover?: TilingExternalDragHover | null;
+  onClaim?: TilingOnExternalDrop;
+  takeGroup?: boolean;
 }): React.ReactElement {
   const [layout, setLayout] = React.useState<TilingLayoutNode>(LAYOUT);
+  // The tiles the host has claimed leave its pool with them.
+  const [claimedTileIds, setClaimedTileIds] = React.useState<ReadonlyArray<string>>([]);
   return (
     <TilingRenderer
       layout={layout}
-      tiles={TILES}
+      tiles={TILES.filter((tile: TilingTile): boolean => !claimedTileIds.includes(tile.id))}
       config={CONFIG}
       paneIdentity="stable"
+      externalDragHover={externalDragHover}
+      onExternalDrop={
+        onClaim == null
+          ? undefined
+          : (leafId, targetId, point, hover, subject): void => {
+              onClaim(leafId, targetId, point, hover, subject);
+              const taken: ReadonlyArray<TilingLeafNode> = takeGroup
+                ? subject.members
+                : subject.members.filter((member: TilingLeafNode): boolean => member.id === leafId);
+              setClaimedTileIds((ids) => [...ids, ...taken.map((member: TilingLeafNode): string => member.tileId)]);
+              setLayout((current: TilingLayoutNode): TilingLayoutNode =>
+                takeGroup && subject.groupId != null ? removeGroupNode(current, subject.groupId) : removeLeafTile(current, leafId),
+              );
+            }
+      }
       interaction={{
         dragRecovery: { enable: false },
         customCursor: false,
@@ -497,5 +527,94 @@ describe("group drag — the strip only claims presses it can use", (): void => 
     expect(await press(tab(container, 0), "mouse", 0)).toBe(0);
     expect(await press(tab(container, 0), "mouse", 2)).toBe(1);
     expect(lifted(container)).toBeNull();
+  });
+});
+
+describe("group drag — a host claim hands over the whole group", (): void => {
+  const HOVER: TilingExternalDragHover = { targetId: "chat", point: { x: 320, y: 24 } };
+
+  it("passes every member, in tab order, and the group leaves the layout with the claim", async (): Promise<void> => {
+    restGeometry();
+    const changes: TilingLayoutNode[] = [];
+    const claimed = jest.fn<TilingOnExternalDrop>();
+    const { container } = render(
+      <Host onLayoutReported={(next): void => void changes.push(next)} externalDragHover={HOVER} onClaim={claimed} />,
+    );
+    await pressOn(header(container, "c"), 600, STRIP_PX + 10);
+    groupLiftedGeometry();
+    await moveTo(320, 24);
+    await release(320, 24);
+    expect(claimed).toHaveBeenCalledTimes(1);
+    const [leafId, targetId, point, hover, subject] = claimed.mock.calls[0]!;
+    // The existing arguments are as before: the active pane's leaf, the target, the point and the hover.
+    expect([leafId, targetId, point, hover]).toEqual(["C", "chat", { x: 320, y: 24 }, HOVER]);
+    expect(subject.kind).toBe("group");
+    expect(subject.groupId).toBe("g");
+    expect(subject.activeLeafId).toBe("C");
+    expect(subject.members.map((member: TilingLeafNode): string => member.id)).toEqual(["B", "C"]);
+    expect(subject.members.map((member: TilingLeafNode): string => member.tileId)).toEqual(["b", "c"]);
+    // The host took the group; the renderer reported no layout of its own and no pane of the group is left.
+    expect(changes).toHaveLength(0);
+    expect(lifted(container)).toBeNull();
+    await act(async (): Promise<void> => {
+      await wait(50);
+    });
+    expect(container.querySelector('[data-group-id="g"]')).toBeNull();
+    expect(container.querySelector('[data-hpt-leaf="b"]')).toBeNull();
+    expect(container.querySelector('[data-hpt-leaf="c"]')).toBeNull();
+    expect(container.querySelector('[data-hpt-leaf="a"]')).not.toBeNull();
+  });
+
+  it("a torn-off tab hands over just that pane", async (): Promise<void> => {
+    restGeometry();
+    const claimed = jest.fn<TilingOnExternalDrop>();
+    const { container } = render(
+      <Host onLayoutReported={(): void => undefined} externalDragHover={HOVER} onClaim={claimed} takeGroup={false} />,
+    );
+    await pressOn(tab(container, 0), 530, 10);
+    GEOMETRY.set("c", { x: 500, y: 0, width: 500, height: 600 });
+    await moveTo(320, 24);
+    await release(320, 24);
+    expect(claimed).toHaveBeenCalledTimes(1);
+    const [leafId, , , , subject] = claimed.mock.calls[0]!;
+    expect(leafId).toBe("B");
+    expect(subject.kind).toBe("pane");
+    expect(subject.groupId).toBeNull();
+    expect(subject.members.map((member: TilingLeafNode): string => member.id)).toEqual(["B"]);
+    // The group keeps its other pane.
+    await act(async (): Promise<void> => {
+      await wait(50);
+    });
+    expect(container.querySelector('[data-hpt-leaf="c"]')).not.toBeNull();
+    expect(container.querySelector('[data-hpt-leaf="b"]')).toBeNull();
+  });
+
+  it("a host that declines leaves the group where it was", async (): Promise<void> => {
+    restGeometry();
+    const changes: TilingLayoutNode[] = [];
+    const { container } = render(
+      <TilingRenderer
+        layout={LAYOUT}
+        tiles={TILES}
+        config={CONFIG}
+        paneIdentity="stable"
+        externalDragHover={HOVER}
+        onExternalDrop={(): boolean => false}
+        interaction={{
+          dragRecovery: { enable: false },
+          customCursor: false,
+          paneSwitching: { showTabStrip: false, showSwitcherOverlay: false },
+        }}
+        onLayoutChange={(next: TilingLayoutNode): void => void changes.push(next)}
+      />,
+    );
+    await pressOn(header(container, "c"), 600, STRIP_PX + 10);
+    groupLiftedGeometry();
+    // Lifted, but never out of its own place: the declined release cancels.
+    await moveTo(610, 60);
+    await release(610, 60);
+    expect(changes).toHaveLength(0);
+    expect(lifted(container)).toBeNull();
+    expect(container.querySelectorAll('[data-group-id="g"] [role="tab"]')).toHaveLength(2);
   });
 });

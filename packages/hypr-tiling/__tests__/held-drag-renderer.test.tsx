@@ -505,7 +505,13 @@ describe("held drag — host claim (onExternalDrop)", (): void => {
     await moveTo(320, 24);
     await release(320, 24);
     expect(onExternalDrop).toHaveBeenCalledTimes(1);
-    expect(onExternalDrop).toHaveBeenCalledWith("A", "ws:ops", { x: 320, y: 24 }, HOVER);
+    expect(onExternalDrop).toHaveBeenCalledWith(
+      "A",
+      "ws:ops",
+      { x: 320, y: 24 },
+      HOVER,
+      expect.objectContaining({ kind: "pane", groupId: null, activeLeafId: "A" }),
+    );
     expect(changes).not.toHaveBeenCalled();
     expect(lifted(container)).toBeNull();
     // Later events do not claim again.

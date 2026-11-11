@@ -365,12 +365,24 @@ the WorkspaceSet drag scope — see
   externalDragHover={
     tabOver ? { targetId: tabOver.id, point: tabOver.point } : null
   }
-  onExternalDrop={(leafId, targetId, point) => {
-    moveItemToTab(leafId, targetId, point); // synchronous claim
+  onExternalDrop={(leafId, targetId, point, hover, subject) => {
+    // synchronous claim; a dragged tab group is handed over whole
+    for (const member of subject.members) {
+      moveItemToTab(member.id, targetId, point);
+    }
   }}
   /* … */
 />
 ```
+
+`leafId` is the dragged pane (a dragged group's active tab). The fifth
+argument, `subject`, says what the claim hands over: one pane
+(`kind: "pane"`), or, when the drag moved a tab group, the whole group
+(`kind: "group"`) with every member in tab order in `subject.members`. The
+host takes all of them and takes the group out of its layout
+(`removeGroupNode(layout, subject.groupId)`); a host that ignores `subject`
+still gets the active pane's leaf id first, as before. A workspace tab in
+set mode takes the whole group on its own (`moveGroupToWorkspace`).
 
 Omit `onExternalDrop` (or return `false` from it) and the release cancels:
 the layout stays as it was at the lift and the pane settles home.
