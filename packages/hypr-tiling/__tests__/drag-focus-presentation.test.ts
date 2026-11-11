@@ -1,15 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
-import { createElement, type ReactElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import {
-  TILING_OBSERVABILITY_COLOR_DEFAULTS,
   TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
-  DragSourceSlotReservation,
-  buildDragPaneSnapshot,
-  buildGhostTileArgs,
   dragCursorToneClassName,
-  renderDragPaneShell,
-  type GhostTileCapabilityFlags,
 } from "../react/tiling-renderer";
 import { resolveDragCommitFocusLeafId } from "../engine/drag-machine";
 import { accentHue } from "../engine/accent-hues";
@@ -22,23 +14,16 @@ import {
   type TilingThemeDragChromeTokens,
 } from "../react/theme";
 import type { TilingDropIntentState } from "../engine/drop-intent-resolver";
-import type {
-  TilingDragPaneSnapshot,
-  TilingRenderTileProps,
-  TilingTile,
-} from "../engine/types";
 
 /**
- * Drag-visuals contract after the focus-follows-dragged-pane change:
+ * Drag-visuals contract (focus follows the dragged pane):
  *
  * 1. No non-source pane wears a drag ring: the drop TARGET / hover-target / and
- *    the drop-eligible candidate all paint nothing (the faint dashed eligibility
- *    hint was removed too) — `resolvePaneDropAffordanceClasses` returns "" for
- *    every state except an invalid drop (the rose error ring).
- * 2. The dragged ghost (`renderDragPaneShell`) AND the seat it hops into
- *    (`DragSourceSlotReservation`) both wear the focus frame, so the single
- *    focus affordance travels with the dragged pane.
- * 3. On commit the dragged pane's content leaf is the one focused
+ *    the drop-eligible candidate all paint nothing — `resolvePaneDropAffordanceClasses`
+ *    returns "" for every state except an invalid drop (the rose error ring).
+ * 2. The dragged pane is the real pane (it keeps its own focus frame); the
+ *    theme's `dragChrome` adds the lifted look and the drop indicator.
+ * 3. On commit the dragged pane's leaf is the one focused
  *    (`resolveDragCommitFocusLeafId`), so the dragged pane ends up focused.
  */
 
@@ -168,521 +153,62 @@ describe("drop-affordance rings — eligible / hover-target / drop-target paint 
   });
 });
 
-describe("dragged ghost wears the focus frame (focus follows the dragged pane)", (): void => {
-  it("the floating ghost shell carries the accent focus frame", (): void => {
-    const tile: TilingTile = {
-      id: "tile-a",
-      title: "Alpha",
-      accent: "violet",
-      rows: ["row one"],
-    };
-    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(tile);
-    const markup: string = renderToStaticMarkup(
-      renderDragPaneShell(snapshot, NEON, true),
-    );
-    expect(markup).toContain(accentHue("violet").focusGlowSoft);
-  });
-});
-
 /**
- * The floating ghost routes through the consumer `renderTile` when one is
- * provided (so a custom skin's pane chrome travels with the drag), and falls
- * back to `renderDragPaneShell` (the built-in default surface) only when
- * `renderTile == null`. `buildGhostTileArgs` is the ghost's `TilingRenderTileProps`
- * builder; `DragPaneOverlay` renders `renderTile(buildGhostTileArgs(...))` inside
- * the transform wrapper, or `renderDragPaneShell(...)` when there is no renderer.
- * This exercises the pure builder + a mirror of the component's one-line routing,
- * which is the part that does NOT require a simulated DOM pointer drag.
+ * The `dragChrome` slot: OPTIONAL and PARTIAL; omitted tokens resolve to a
+ * neutral default; the neon-terminal look is expressed purely through it.
  */
-describe("floating drag ghost routes through consumer renderTile (custom skin travels with the drag)", (): void => {
-  const GHOST_TILE: TilingTile = {
-    id: "tile-src",
-    title: "Source Pane",
-    description: "carried body",
-    accent: "violet",
-    rows: ["ghost row one"],
-    content: createElement("div", { "data-custom-body": "1" }, "custom body"),
-  };
-  const SOURCE_LEAF = "leaf-src";
-  /**
-   * A deliberately non-uniform flag set (mixed true/false) so the tests can
-   * prove the ghost args carry the REAL resolved values, not hardcoded ones.
-   */
-  const REAL_FLAGS: GhostTileCapabilityFlags = {
-    isRearrangeEnabled: true,
-    isMaximizeEnabled: true,
-    isTitleBarSizingEnabled: false,
-    isTitleBarAcquireSpaceEnabled: true,
-    isCollapseEnabled: false,
-    isMultiSelectGroupingEnabled: false,
-  };
-
-  it("buildGhostTileArgs sets the traveling-pane flags a consumer expects", (): void => {
-    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
-    const args: TilingRenderTileProps = buildGhostTileArgs(
-      snapshot,
-      SOURCE_LEAF,
-      3,
-      420,
-      true,
-      "drag-ghost",
-      REAL_FLAGS,
-    );
-    expect(args.leafId).toBe(SOURCE_LEAF);
-    expect(args.tile.id).toBe("tile-src");
-    expect(args.tile.title).toBe("Source Pane");
-    expect(args.tile.content).toBe(GHOST_TILE.content);
-    expect(args.paneOrdinal).toBe(3);
-    expect(args.paneWidthPx).toBe(420);
-    // The traveling pane: it is the drag source, wears the focus frame, paints
-    // content per the uniform CONTENT rule.
-    expect(args.isDragSource).toBe(true);
-    expect(args.isFocused).toBe(true);
-    expect(args.paneBodyRenderMode).toBe("render-content");
-    // Every other role flag is in its resting/false state.
-    expect(args.isDropTarget).toBe(false);
-    expect(args.isDropEligible).toBe(false);
-    expect(args.isHoveringDropCandidate).toBe(false);
-    expect(args.isInvalidDrop).toBe(false);
-    expect(args.isMaximized).toBe(false);
-    expect(args.isMoveSource).toBe(false);
-    expect(args.isMultiSelected).toBe(false);
-    expect(args.dropZone).toBeNull();
-    expect(args.preview).toBeNull();
-    // The traveling ghost is a single-pane silhouette — never a seated group
-    // member — so the drag surfaces carry no group context.
-    expect(args.group).toBeNull();
-  });
-
-  it("ghost args discriminate as surface 'drag-ghost' (in-tree panes are 'pane')", (): void => {
-    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
-    const ghost: TilingRenderTileProps = buildGhostTileArgs(
-      snapshot,
-      SOURCE_LEAF,
-      1,
-      300,
-      true,
-      "drag-ghost",
-      REAL_FLAGS,
-    );
-    expect(ghost.surface).toBe("drag-ghost");
-    const cancel: TilingRenderTileProps = buildGhostTileArgs(
-      snapshot,
-      SOURCE_LEAF,
-      1,
-      300,
-      true,
-      "drag-cancel",
-      REAL_FLAGS,
-    );
-    expect(cancel.surface).toBe("drag-cancel");
-  });
-
-  it("ghost args carry the REAL capability display flags (no mid-drag silhouette pop)", (): void => {
-    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
-    const args: TilingRenderTileProps = buildGhostTileArgs(
-      snapshot,
-      SOURCE_LEAF,
-      1,
-      300,
-      true,
-      "drag-ghost",
-      REAL_FLAGS,
-    );
-    // The mixed true/false fixture flows through verbatim — capability-keyed
-    // chrome (maximize button, sizing controls, multi-select affordance) keeps
-    // the exact visibility it had on the in-tree pane.
-    expect(args.isRearrangeEnabled).toBe(true);
-    expect(args.isMaximizeEnabled).toBe(true);
-    expect(args.isTitleBarSizingEnabled).toBe(false);
-    expect(args.isTitleBarAcquireSpaceEnabled).toBe(true);
-    expect(args.isMultiSelectGroupingEnabled).toBe(false);
-    // And the inverse mix proves nothing is hardcoded.
-    const inverse: TilingRenderTileProps = buildGhostTileArgs(
-      snapshot,
-      SOURCE_LEAF,
-      1,
-      300,
-      true,
-      "drag-ghost",
-      {
-        isRearrangeEnabled: false,
-        isMaximizeEnabled: false,
-        isTitleBarSizingEnabled: true,
-        isTitleBarAcquireSpaceEnabled: false,
-        isCollapseEnabled: false,
-        isMultiSelectGroupingEnabled: true,
-      },
-    );
-    expect(inverse.isMaximizeEnabled).toBe(false);
-    expect(inverse.isTitleBarSizingEnabled).toBe(true);
-    expect(inverse.isMultiSelectGroupingEnabled).toBe(true);
-  });
-
-  it("respects the content toggle: hidden content → render-empty body mode", (): void => {
-    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
-    const hidden: TilingRenderTileProps = buildGhostTileArgs(
-      snapshot,
-      SOURCE_LEAF,
-      1,
-      300,
-      false,
-      "drag-ghost",
-      REAL_FLAGS,
-    );
-    expect(hidden.isPaneContentVisible).toBe(false);
-    expect(hidden.paneBodyRenderMode).toBe("render-empty");
-  });
-
-  it("ghost interaction handlers are safe no-ops (ghost is aria-hidden / non-interactive)", (): void => {
-    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
-    const args: TilingRenderTileProps = buildGhostTileArgs(
-      snapshot,
-      SOURCE_LEAF,
-      1,
-      300,
-      true,
-      "drag-ghost",
-      REAL_FLAGS,
-    );
-    // Invoking every wired callback must not throw and must return nothing.
-    expect(args.onToggleMaximize()).toBeUndefined();
-    expect(args.onSetSizingMode("static-width")).toBeUndefined();
-    expect(args.onAcquireSpace("right")).toBeUndefined();
-    expect(args.onFocus()).toBeUndefined();
-    expect(args.onToggleMultiSelect()).toBeUndefined();
-    expect(args.onGroupMultiSelection(SOURCE_LEAF)).toBeUndefined();
-    expect(args.onClearMultiSelection()).toBeUndefined();
-    expect(args.onHandlePointerDown({} as never)).toBeUndefined();
-    expect(args.onPointerMove({} as never)).toBeUndefined();
-    expect(args.onPointerLeave({} as never)).toBeUndefined();
-  });
-
-  it("with a custom renderTile the ghost paints the custom skin (its data-leaf-id + body travel)", (): void => {
-    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
-    const args: TilingRenderTileProps = buildGhostTileArgs(
-      snapshot,
-      SOURCE_LEAF,
-      1,
-      300,
-      true,
-      "drag-ghost",
-      REAL_FLAGS,
-    );
-    // A custom skin: a root carrying data-leaf-id + a distinctive marker + a body
-    // gated on paneBodyRenderMode (the documented custom-pane contract).
-    const renderTile = (a: TilingRenderTileProps): ReactElement =>
-      createElement(
-        "section",
-        { "data-leaf-id": a.leafId, "data-custom-skin": "yes" },
-        a.tile.title,
-        a.paneBodyRenderMode === "render-content" ? a.tile.content : null,
-      );
-    // DragPaneOverlay routing (renderTile != null → renderTile(ghostArgs)).
-    const markup: string = renderToStaticMarkup(renderTile(args));
-    expect(markup).toContain("data-custom-skin");
-    expect(markup).toContain(`data-leaf-id="${SOURCE_LEAF}"`);
-    expect(markup).toContain("Source Pane");
-    expect(markup).toContain("data-custom-body");
-    // The custom skin does NOT carry the library's built-in ghost surface chrome.
-    expect(markup).not.toContain("drag header to swap");
-  });
-
-  it("with no renderTile the ghost falls back to the built-in default surface exactly", (): void => {
-    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(GHOST_TILE);
-    // DragPaneOverlay routing (renderTile == null → renderDragPaneShell(...)).
-    const markup: string = renderToStaticMarkup(
-      renderDragPaneShell(snapshot, NEON, true),
-    );
-    // Built-in ghost surface chrome present; no custom-skin markers.
-    expect(markup).toContain("Source Pane");
-    expect(markup).not.toContain("data-custom-skin");
-    expect(markup).toContain(accentHue("violet").focusGlowSoft);
-  });
-});
-
-/**
- * The cancel fly-back mirrors the pickup-ghost characterization exactly:
- * `DragCancelOverlay` renders `renderTile(buildGhostTileArgs(snapshot, …,
- * "drag-cancel", flags))` when a consumer `renderTile` is supplied, keeping
- * `renderDragPaneShell` as the `renderTile == null` built-in fallback. Same
- * inert-handlers / real-capability-flags / no-group semantics as
- * `"drag-ghost"`; the only difference a custom pane observes is the
- * `surface: "drag-cancel"` discriminator.
- */
-describe("cancel fly-back routes through consumer renderTile (custom skin glides home)", (): void => {
-  const CANCEL_TILE: TilingTile = {
-    id: "tile-cancel",
-    title: "Cancelled Pane",
-    accent: "emerald",
-    rows: ["going home"],
-    content: createElement("div", { "data-cancel-body": "1" }, "cancel body"),
-  };
-  const SOURCE_LEAF = "leaf-cancel-src";
-  const FLAGS: GhostTileCapabilityFlags = {
-    isRearrangeEnabled: true,
-    isMaximizeEnabled: false,
-    isTitleBarSizingEnabled: true,
-    isTitleBarAcquireSpaceEnabled: false,
-    isCollapseEnabled: false,
-    isMultiSelectGroupingEnabled: true,
-  };
-
-  it("cancel tileArgs mirror the ghost semantics under the drag-cancel surface", (): void => {
-    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(CANCEL_TILE);
-    const args: TilingRenderTileProps = buildGhostTileArgs(
-      snapshot,
-      SOURCE_LEAF,
-      2,
-      360,
-      true,
-      "drag-cancel",
-      FLAGS,
-    );
-    expect(args.surface).toBe("drag-cancel");
-    expect(args.leafId).toBe(SOURCE_LEAF);
-    expect(args.tile.title).toBe("Cancelled Pane");
-    // REAL capability display flags flow through (mixed fixture, verbatim).
-    expect(args.isMaximizeEnabled).toBe(false);
-    expect(args.isTitleBarSizingEnabled).toBe(true);
-    expect(args.isMultiSelectGroupingEnabled).toBe(true);
-    // Inert-handler + no-group semantics, identical to the pickup ghost.
-    expect(args.group).toBeNull();
-    expect(args.onToggleMaximize()).toBeUndefined();
-    expect(args.onFocus()).toBeUndefined();
-    expect(args.onHandlePointerDown({} as never)).toBeUndefined();
-  });
-
-  it("with a custom renderTile the cancel fly-back paints the custom skin (surface branch observable)", (): void => {
-    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(CANCEL_TILE);
-    const args: TilingRenderTileProps = buildGhostTileArgs(
-      snapshot,
-      SOURCE_LEAF,
-      1,
-      300,
-      true,
-      "drag-cancel",
-      FLAGS,
-    );
-    // A custom skin that branches on the surface discriminator: interactive
-    // controls only on "pane", a marker attribute on the drag surfaces.
-    const renderTile = (a: TilingRenderTileProps): ReactElement =>
-      createElement(
-        "section",
-        {
-          "data-leaf-id": a.leafId,
-          "data-custom-skin": "yes",
-          "data-render-surface": a.surface,
-        },
-        a.tile.title,
-        a.surface === "pane"
-          ? createElement("button", { type: "button" }, "controls")
-          : null,
-        a.paneBodyRenderMode === "render-content" ? a.tile.content : null,
-      );
-    // DragCancelOverlay routing (renderTile != null → renderTile(cancelArgs)).
-    const markup: string = renderToStaticMarkup(renderTile(args));
-    expect(markup).toContain('data-render-surface="drag-cancel"');
-    expect(markup).toContain(`data-leaf-id="${SOURCE_LEAF}"`);
-    expect(markup).toContain("Cancelled Pane");
-    expect(markup).toContain("data-cancel-body");
-    // The surface branch suppressed the interactive controls.
-    expect(markup).not.toContain("<button");
-    // And no built-in shell chrome leaked in.
-    expect(markup).not.toContain("drag header to swap");
-  });
-
-  it("with no renderTile the cancel fly-back keeps the built-in shell fallback exactly", (): void => {
-    const snapshot: TilingDragPaneSnapshot = buildDragPaneSnapshot(CANCEL_TILE);
-    // DragCancelOverlay routing (renderTile == null → renderDragPaneShell(...)).
-    const markup: string = renderToStaticMarkup(
-      renderDragPaneShell(snapshot, NEON, true),
-    );
-    expect(markup).toContain("Cancelled Pane");
-    expect(markup).not.toContain("data-custom-skin");
-    expect(markup).toContain(accentHue("emerald").focusGlowSoft);
-  });
-});
-
-describe("seat / hop-in slot wears the focus frame", (): void => {
-  it("the reservation seat carries the DRAGGED pane's focus frame", (): void => {
-    const markup: string = renderToStaticMarkup(
-      createElement(DragSourceSlotReservation, {
-        theme: NEON,
-        accent: "emerald",
-        observabilityColors: TILING_OBSERVABILITY_COLOR_DEFAULTS,
-        observabilityColorEnables: TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
-      }),
-    );
-    expect(markup).toContain(accentHue("emerald").focusGlowSoft);
-    expect(markup).toContain("data-drag-source-reservation");
-  });
-
-  it("the reservation seat carries the focus frame even when the source-border observability layer is off", (): void => {
-    const markup: string = renderToStaticMarkup(
-      createElement(DragSourceSlotReservation, {
-        theme: NEON,
-        accent: "rose",
-        observabilityColors: TILING_OBSERVABILITY_COLOR_DEFAULTS,
-        observabilityColorEnables: {
-          ...TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
-          dragSourceBorderEnabled: false,
-        },
-      }),
-    );
-    expect(markup).toContain(accentHue("rose").focusGlowSoft);
-  });
-});
-
-/**
- * `theme.dragChrome` — the drag-state chrome slot. Contract:
- *
- * 1. A theme that passes NOTHING drags with its own resting chrome: the seat
- *    wears `paneShell.surface`, the seat frame is `resolveFocusFrame`, the ghost
- *    wrapper carries only a small neutral elevation/opacity delta, no drop
- *    target highlight. No `rounded-xl`, no cyan ring, no slate shadow appears
- *    unless the theme authored it.
- * 2. The slot is PARTIAL: an override of one token leaves every other token at
- *    its pane-shell-inheriting default.
- * 3. The library's neon-terminal look is expressed purely through the slot.
- * 4. The renderer-painted drag surfaces (`DragSourceSlotReservation`, the
- *    cursor badge tone helper) read the resolved tokens, never inline classes.
- */
-describe("dragChrome slot — pane-shell-inheriting defaults + partial overrides", (): void => {
+describe("dragChrome slot — neutral defaults + partial overrides", (): void => {
   const CLEAN_FLAT: TilingTheme = TILING_THEME_REGISTRY["clean-flat"];
-  // A square, flat, hairline host theme (the DashAI shape) that passes NO drag
-  // chrome at all.
-  const SQUARE_HOST: TilingTheme = {
-    ...CLEAN_FLAT,
-    id: "square-host",
-    label: "square host",
-    paneShell: {
-      ...CLEAN_FLAT.paneShell,
-      surface:
-        "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-none border border-slate-700 bg-slate-900",
-    },
-    dragChrome: undefined,
-  };
+  const SQUARE_HOST: TilingTheme = { ...CLEAN_FLAT, id: "square-host", label: "square host", dragChrome: undefined };
 
-  it("a theme with no dragChrome resolves every token from its pane shell (seat = paneShell.surface, frame = resolveFocusFrame)", (): void => {
+  it("a theme with no dragChrome resolves every token to the neutral default", (): void => {
     const chrome: TilingThemeDragChromeTokens = resolveDragChrome(SQUARE_HOST);
-    expect(chrome.sourceReservation).toBe(SQUARE_HOST.paneShell.surface);
-    expect(chrome.sourceReservation).toContain("rounded-none");
-    expect(chrome.resolveSeatFrame("violet")).toBe(
-      SQUARE_HOST.resolveFocusFrame("violet"),
-    );
     expect(chrome.dropTarget).toBe("");
     expect(chrome.sourcePane).toBe("opacity-60");
-    // The default ghost delta is a small neutral elevation + opacity — never the
-    // neon scale / slate-950 shadow, and nothing round.
-    expect(chrome.ghostLifted).not.toContain("scale-");
-    expect(chrome.ghostLifted).not.toContain("rgba(2,6,23");
-    expect(chrome.ghostLifted).not.toContain("rounded");
-    expect(chrome.ghostSeated).not.toContain("scale-");
-    expect(chrome.cancelFlyBack).toBe("");
+    // The lifted look is a shadow that follows the drawn pane, never a size or
+    // opacity change (the pane is held 1:1).
+    expect(chrome.liftedPane).toContain("drop-shadow");
+    expect(chrome.liftedPane).not.toMatch(/scale-|opacity-/);
+    // The drop indicator: a colour no pane accent uses, a translucent fill, a
+    // halo, rounded.
+    expect(chrome.dropIndicator).toContain("orange");
+    expect(chrome.dropIndicator).toMatch(/bg-orange-\d+\/\[?0?\.?\d+\]?/);
+    expect(chrome.dropIndicator).toContain("shadow-");
+    expect(chrome.dropIndicator).toContain("rounded");
+  });
+
+  it("the indicator colour is not a pane accent", (): void => {
+    for (const accent of ["cyan", "sky", "violet", "indigo", "emerald", "amber", "rose", "pink"]) {
+      for (const theme of Object.values(TILING_THEME_REGISTRY)) {
+        expect(resolveDragChrome(theme).dropIndicator).not.toContain(`${accent}-`);
+      }
+    }
   });
 
   it("the slot is partial — overriding one token keeps every other token at its default", (): void => {
-    const themed: TilingTheme = {
-      ...SQUARE_HOST,
-      dragChrome: { sourcePane: "opacity-40" },
-    };
+    const themed: TilingTheme = { ...SQUARE_HOST, dragChrome: { sourcePane: "opacity-40" } };
     const chrome: TilingThemeDragChromeTokens = resolveDragChrome(themed);
     const defaults: TilingThemeDragChromeTokens = resolveDragChrome(SQUARE_HOST);
     expect(chrome.sourcePane).toBe("opacity-40");
-    expect(chrome.sourceReservation).toBe(defaults.sourceReservation);
-    expect(chrome.ghostLifted).toBe(defaults.ghostLifted);
+    expect(chrome.liftedPane).toBe(defaults.liftedPane);
+    expect(chrome.dropIndicator).toBe(defaults.dropIndicator);
     expect(chrome.cursorBadge).toBe(defaults.cursorBadge);
-    expect(chrome.resolveSeatFrame("amber")).toBe(
-      defaults.resolveSeatFrame("amber"),
-    );
   });
 
-  it("neon-terminal expresses its legacy drag look purely through the slot", (): void => {
+  it("neon-terminal expresses its drag look purely through the slot", (): void => {
     const chrome: TilingThemeDragChromeTokens = resolveDragChrome(NEON);
     expect(NEON.dragChrome).toBeDefined();
-    expect(chrome.ghostSeated).toContain("scale-[1.01]");
-    expect(chrome.ghostSeated).toContain("opacity-95");
-    expect(chrome.ghostSeated).toContain("shadow-[0_22px_44px_rgba(2,6,23,0.62)]");
-    expect(chrome.ghostLifted).toContain("opacity-90");
-    expect(chrome.sourceReservation).toBe("rounded-xl");
+    expect(chrome.liftedPane).toContain("drop-shadow-[0_26px_32px_rgba(2,6,23,0.7)]");
+    expect(chrome.dropIndicator).toContain("orange");
     expect(chrome.sourcePane).toBe("opacity-70");
     expect(chrome.cursorBadge).toContain("rounded-full");
     expect(chrome.cursorBadgeValid).toContain("cyan");
     expect(chrome.cursorBadgeInvalid).toContain("rose");
   });
 
-  it("clean-flat and mosaic pass no dragChrome and therefore drag with their own pane shell", (): void => {
-    for (const themeId of ["clean-flat", "mosaic"] as const) {
-      const theme: TilingTheme = TILING_THEME_REGISTRY[themeId];
-      expect(theme.dragChrome).toBeUndefined();
-      const chrome: TilingThemeDragChromeTokens = resolveDragChrome(theme);
-      expect(chrome.sourceReservation).toBe(theme.paneShell.surface);
-      expect(chrome.sourceReservation).not.toContain("rounded-xl");
-    }
-  });
-
-  it("the seat renders the theme's pane shell — no renderer-owned rounded-xl / cyan ring on a square host", (): void => {
-    const markup: string = renderToStaticMarkup(
-      createElement(DragSourceSlotReservation, {
-        theme: SQUARE_HOST,
-        accent: "cyan",
-        observabilityColors: TILING_OBSERVABILITY_COLOR_DEFAULTS,
-        observabilityColorEnables: TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
-      }),
-    );
-    expect(markup).toContain("data-drag-source-reservation");
-    expect(markup).toContain("rounded-none");
-    expect(markup).toContain("bg-slate-900");
-    expect(markup).not.toContain("rounded-xl");
-    // The seat frame is the host's own (clean-flat) focus frame for the dragged
-    // accent — it recolors the resting hairline (`twMerge` resolves the
-    // border-color pair in the frame's favor); the neon glow never appears.
-    expect(markup).toContain(SQUARE_HOST.resolveFocusFrame("cyan"));
-    expect(markup).not.toContain(accentHue("cyan").focusGlowSoft);
-    // No observability seat tint by default (the live-drag debug layers are
-    // opt-in), so the theme's own surface is what paints.
-    expect(markup).not.toContain("background-color:rgba(240, 171, 252");
-  });
-
-  it("the live-drag observability layers (pink seat tint, cyan target ring) are OFF by default", (): void => {
+  it("the live-drag observability layers (source tint, target ring) are OFF by default", (): void => {
     expect(TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS.dragSourceBorderEnabled).toBe(false);
     expect(TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS.dragTargetBorderEnabled).toBe(false);
-    // Opting in still paints the seat tint over the themed surface.
-    const markup: string = renderToStaticMarkup(
-      createElement(DragSourceSlotReservation, {
-        theme: SQUARE_HOST,
-        accent: "cyan",
-        observabilityColors: TILING_OBSERVABILITY_COLOR_DEFAULTS,
-        observabilityColorEnables: {
-          ...TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
-          dragSourceBorderEnabled: true,
-        },
-      }),
-    );
-    expect(markup).toContain("background-color:rgba(240, 171, 252");
-    expect(markup).toContain("rounded-none");
-  });
-
-  it("a host can make the seat frameless through resolveSeatFrame", (): void => {
-    const frameless: TilingTheme = {
-      ...SQUARE_HOST,
-      dragChrome: {
-        sourceReservation: "rounded-none border border-dashed border-slate-600",
-        resolveSeatFrame: (): string => "",
-      },
-    };
-    const markup: string = renderToStaticMarkup(
-      createElement(DragSourceSlotReservation, {
-        theme: frameless,
-        accent: "cyan",
-        observabilityColors: TILING_OBSERVABILITY_COLOR_DEFAULTS,
-        observabilityColorEnables: TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
-      }),
-    );
-    expect(markup).toContain("border-dashed");
-    expect(markup).not.toContain(SQUARE_HOST.resolveFocusFrame("cyan"));
-    expect(markup).not.toContain("rounded-xl");
   });
 
   it("the cursor badge tones come from the slot (valid / invalid / neutral)", (): void => {
@@ -719,11 +245,7 @@ describe("commit-time focus follows the dragged pane to its destination leaf", (
   });
 
   it("edge-insert → focuses the SOURCE leaf (it moves carrying its own content)", (): void => {
-    const target: TilingDropIntentState = makeResolvedTarget(
-      "C",
-      "edge-insert",
-      "right",
-    );
+    const target: TilingDropIntentState = makeResolvedTarget("C", "edge-insert", "right");
     expect(resolveDragCommitFocusLeafId(SOURCE, target)).toBe(SOURCE);
   });
 
@@ -733,19 +255,13 @@ describe("commit-time focus follows the dragged pane to its destination leaf", (
   });
 
   it("non-committable edge-insert (no resolved edge) → null (gap-close, no focus change)", (): void => {
-    const target: TilingDropIntentState = makeResolvedTarget(
-      "C",
-      "edge-insert",
-      null,
-    );
+    const target: TilingDropIntentState = makeResolvedTarget("C", "edge-insert", null);
     expect(resolveDragCommitFocusLeafId(SOURCE, target)).toBeNull();
   });
 
   it("self-target / no target → null (nothing committed)", (): void => {
     expect(resolveDragCommitFocusLeafId(SOURCE, null)).toBeNull();
-    expect(
-      resolveDragCommitFocusLeafId(SOURCE, makeResolvedTarget(SOURCE, "swap")),
-    ).toBeNull();
+    expect(resolveDragCommitFocusLeafId(SOURCE, makeResolvedTarget(SOURCE, "swap"))).toBeNull();
     expect(resolveDragCommitFocusLeafId(null, makeResolvedTarget("C", "swap"))).toBeNull();
   });
 });

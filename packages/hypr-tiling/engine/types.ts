@@ -139,15 +139,16 @@ export type TilingResizeCapability = "both" | "horizontal" | "vertical" | "none"
  * - `"preview"` — non-committing preview (default). The pending result is shown
  *   via the translucent PROJECTED landing overlays (S' / T' / successor) painted
  *   over the unchanged layout; the layout tree is NOT mutated until drop.
- * - `"live"` — Hyprland-faithful detach drag. On pickup the dragged source leaf
- *   is detached and the remaining tree reflows ONCE to close the gap
- *   (`removeLeafTile`); that frozen provisional tree is held for the whole drag
- *   (it does NOT re-reflow as the cursor moves). The detached source follows the
- *   cursor as a ghost, and the drop is resolved + committed exactly ONCE on
- *   release against the original layout via the SAME resolver + reducers preview
- *   uses (`swapLeafTiles` / `insertLeafAdjacent`), so the live commit equals the
- *   preview commit for the same intent. The prop tree is never mutated pre-commit,
- *   so cancel / Escape / dragleave-abort / off-viewport revert is lossless.
+ * - `"live"` — Hyprland-faithful drag. Past the pickup threshold the REAL pane
+ *   is lifted out of the layout and held 1:1 under the pointer while the others
+ *   close the gap (`removeLeafTile`); the drop preview
+ *   ({@link TilingRendererCommonProps.dragPreview}) shows where it will land.
+ *   The drop is resolved + committed exactly ONCE on release against the
+ *   original layout via the SAME resolver + reducers preview uses
+ *   (`swapLeafTiles` / `insertLeafAdjacent`), so the live commit equals the
+ *   preview commit for the same intent. The prop tree is never mutated
+ *   pre-commit, so cancel / Escape / a release that never left the pane's own
+ *   place restores the layout exactly.
  *
  * NOTE on vocabulary: "projected" names the RENDERING TECHNIQUE for the preview
  * overlays (projected geometry, S' / T' / successor). "preview" vs "live" is the
@@ -156,9 +157,8 @@ export type TilingResizeCapability = "both" | "horizontal" | "vertical" | "none"
 export type TilingDragMode = "preview" | "live";
 
 /**
- * Live-drag slot re-resolution / commitment policy after the single ghost hops
- * INTO and FILLS a resolved slot (see
- * `_agent/single-instance-hop-in-drag-design.md` §8):
+ * Live-drag target re-resolution / commitment policy once a committable target
+ * is seated:
  *
  * - `"zone-exit-hold"` — anchored / sticky: the seated slot is pinned through
  *   small cursor movements and re-resolves only when the cursor crosses OUT of
@@ -178,7 +178,7 @@ export type TilingSlotCommitmentMode = "zone-exit-hold" | "delta-responsive";
  * zone hysteresis, so the two never double-count.
  */
 export interface TilingSlotCommitmentCapability {
-  /** Re-resolution policy after the ghost seats in a slot. Default `"delta-responsive"`. */
+  /** Re-resolution policy once a target is seated. Default `"delta-responsive"`. */
   mode?: TilingSlotCommitmentMode;
   /** `delta-responsive` re-aim threshold in CSS px. Default `24`. */
   reresolveDeltaPx?: number;
@@ -186,7 +186,7 @@ export interface TilingSlotCommitmentCapability {
 
 /** Fully-resolved slot-commitment configuration (no optional fields). */
 export interface ResolvedTilingSlotCommitmentCapability {
-  /** Resolved re-resolution policy after the ghost seats in a slot. */
+  /** Resolved re-resolution policy once a target is seated. */
   mode: TilingSlotCommitmentMode;
   /** Resolved `delta-responsive` re-aim threshold in CSS px. */
   reresolveDeltaPx: number;
@@ -221,34 +221,26 @@ export interface ResolvedTilingTouchDragCapability {
 }
 
 /**
- * Drag / transition self-healing recovery configuration. Hardens the live-drag
- * ANIMATION + TIMING layer (not the FSM, which is already un-wedgeable) against
- * frame starvation — background-tab `requestAnimationFrame` suspension, CPU
- * throttling, long tasks, dropped/late pointer events, interrupted transitions.
- * The recovery primitives live in `drag-recovery.ts`; this is their typed knob
- * surface. All deadlines are documented multiples of the animation duration or
- * of a frame, never symptom-tuned constants. Only meaningful in
+ * Drag self-healing recovery configuration. Hardens the live drag (not the
+ * FSM, which is already un-wedgeable) against frame starvation —
+ * background-tab `requestAnimationFrame` suspension, CPU throttling, long
+ * tasks, dropped/late pointer events. The recovery primitives live in
+ * `drag-recovery.ts`; this is their typed knob surface. Only meaningful in
  * `dragMode: "live"`.
  *
  * - `enable` — master gate for the recovery layer (idle watchdog +
- *   rAF-with-timeout arming + idempotent style teardown). Default `true`.
+ *   idempotent style teardown). Default `true`.
  * - `maxDraggingIdleMs` — the drag idle-watchdog deadline: `armed` / `dragging`
  *   with no `POINTER_MOVE` / `TARGET_RESOLVED` progress for longer than this
  *   (measured MONOTONICALLY, so throttle-robust) force-reconciles to `idle` via
  *   the existing `POINTER_CANCEL` edge with pointer capture released. Default
- *   `30 × BASELINE_DRAG_HOP_DURATION_MS ≈ 5100ms`.
- * - `frameDeadlineMs` — the rAF-fallback slack: each FLIP "play-to-identity"
- *   write is armed as a `requestAnimationFrame` racing a `setTimeout` of this
- *   long, first-wins + idempotent, so a starved frame never leaves an element
- *   frozen at its inverted `First`. Default `~2 frames ≈ 32ms`.
+ *   `5100` ms.
  */
 export interface TilingDragRecoveryCapability {
   /** Enable the self-healing recovery layer. Default `true`. */
   enable?: boolean;
-  /** Idle-watchdog deadline (ms). Default `30 × BASELINE_DRAG_HOP_DURATION_MS ≈ 5100`. */
+  /** Idle-watchdog deadline (ms). Default `5100`. */
   maxDraggingIdleMs?: number;
-  /** rAF-fallback slack (ms). Default `~2 frames ≈ 32`. */
-  frameDeadlineMs?: number;
 }
 
 /** Fully-resolved drag-recovery configuration (no optional fields). */
@@ -257,8 +249,6 @@ export interface ResolvedTilingDragRecoveryCapability {
   enable: boolean;
   /** Resolved idle-watchdog deadline (ms). */
   maxDraggingIdleMs: number;
-  /** Resolved rAF-fallback slack (ms). */
-  frameDeadlineMs: number;
 }
 
 /**
@@ -726,12 +716,11 @@ export interface TilingPaneSwitchingCapability {
    * their own content via a custom `renderTile` (e.g. a docs/SEO surface), where
    * the toggle is inert chrome. Suppressing the toggle hands content ownership to
    * the embedding: pane-content is treated as VISIBLE by default
-   * (`isPaneContentVisible` initializes `true`) for ALL drag surfaces — in-tree
-   * panes, the source slot, the hop-in slot, and the portaled drag ghost (the overlay portal container, default `document.body`, see {@link TilingRendererCommonProps.overlayPortalContainer}) — so the
-   * ghost body matches the seated body. With no control rendered, the flag cannot
-   * be flipped off, so this default holds for the lifetime of the embedding.
-   * (Ghost-seat reservation slots still render empty — that is a drag mechanic
-   * resolved by `resolvePaneBodyRenderMode`, independent of this flag.)
+   * (`isPaneContentVisible` initializes `true`) for every pane, the dragged one
+   * included. With no control rendered, the flag cannot be flipped off, so this
+   * default holds for the lifetime of the embedding. (The empty place kept for
+   * a held pane still renders empty — that is a drag mechanic resolved by
+   * `resolvePaneBodyRenderMode`, independent of this flag.)
    */
   showContentToggle?: boolean;
   /**
@@ -1036,23 +1025,6 @@ export interface TilingInteractionCapabilities {
    */
   resizeHandlesVisible?: boolean;
   /**
-   * Live-drag slot hop-in. Selects between the two drag-presentation behaviors
-   * for the dragged pane:
-   *
-   * - `true` (default, ORIGINAL): the single content-honoring ghost HOPS INTO
-   *   and FILLS the resolved slot — the seat rect is measured so the ghost seats
-   *   as the single instance and no separate empty reservation lingers beside a
-   *   free-following ghost.
-   * - `false` (the seat-measurement is deliberately skipped): the ghost
-   *   free-follows the cursor and the in-tree content-less reservation slot stays
-   *   shown — the reservation-plus-ghost duality.
-   *
-   * Orthogonal to the CONTENT toggle: in BOTH modes the pane body honors content
-   * uniformly (see `resolvePaneBodyRenderMode`). Only meaningful in
-   * `dragMode: "live"`. Default `true`.
-   */
-  slotHopInEnabled?: boolean;
-  /**
    * Drag-to-rearrange (move / swap / edge-insert) capability. When `false`,
    * panes are not draggable and no drop overlays / hit-zones activate.
    * Default `true`.
@@ -1060,16 +1032,16 @@ export interface TilingInteractionCapabilities {
   rearrange?: boolean;
   /**
    * Drag-to-rearrange feedback mode: `"preview"` (non-committing projected
-   * overlays) vs `"live"` (Hyprland detach: source detached on pickup, frozen
-   * tree, cursor-following ghost, commit on release). Default `"live"` (the
+   * overlays) vs `"live"` (Hyprland: the real pane lifted and held under the
+   * pointer, the others close the gap, commit on release). Default `"live"` (the
    * resolved default in `TILING_INTERACTION_CAPABILITY_DEFAULTS`).
    * Only meaningful when `rearrange` is enabled; live mode is also unreachable
    * for static-pane layouts (drag-rearrange is auto-gated off there).
    */
   dragMode?: TilingDragMode;
   /**
-   * Live-drag slot re-resolution / commitment policy (the single ghost hops INTO
-   * and FILLS the resolved slot). Only meaningful in `dragMode: "live"`. Default
+   * Live-drag target re-resolution / commitment policy once a target is
+   * seated. Only meaningful in `dragMode: "live"`. Default
    * all-resolved (`mode: "delta-responsive"`, `reresolveDeltaPx: 24`).
    */
   slotCommitment?: TilingSlotCommitmentCapability;
@@ -1080,11 +1052,10 @@ export interface TilingInteractionCapabilities {
    */
   touchDrag?: TilingTouchDragCapability;
   /**
-   * Drag / transition self-healing recovery (idle watchdog + rAF-with-timeout
-   * animation arming + idempotent transient-style teardown). Hardens the
-   * live-drag animation/timing layer against frame starvation. Only meaningful
+   * Drag self-healing recovery (idle watchdog + idempotent transient-style
+   * teardown). Hardens the live drag against frame starvation. Only meaningful
    * in `dragMode: "live"`. Default all-resolved (`enable: true`,
-   * `maxDraggingIdleMs ≈ 5100`, `frameDeadlineMs ≈ 32`).
+   * `maxDraggingIdleMs: 5100`).
    */
   dragRecovery?: TilingDragRecoveryCapability;
   /**
@@ -1096,15 +1067,6 @@ export interface TilingInteractionCapabilities {
    * Only meaningful in `dragMode: "live"`.
    */
   customCursor?: boolean;
-  /**
-   * Ghost pickup scale as a percent of the source pane's full bbox. On drag
-   * start the live-mode ghost animates from the source pane's full bbox to this
-   * fraction of it; values <100% read as lifted/shrunk. The free-following ghost
-   * rests at this scale and morphs toward the resolved slot's bbox on hop-in.
-   * Range `[10, 150]`; clamped where consumed. Default `90`. Only meaningful in
-   * `dragMode: "live"`; skipped under `prefers-reduced-motion`.
-   */
-  ghostPickupScalePercent?: number;
   /** Pane focus selection. When `false`, focus selection is suppressed. Default `true`. */
   focus?: boolean;
   /** Maximize-to-viewport capability. Default all-enabled. */
@@ -1467,8 +1429,6 @@ export interface ResolvedTilingInteractionCapabilities {
   resize: TilingResizeCapability;
   /** Whether split-divider resize handles are visibly rendered. */
   resizeHandlesVisible: boolean;
-  /** Whether the single ghost hops into and fills the resolved slot. */
-  slotHopInEnabled: boolean;
   /** Whether drag-to-rearrange is enabled. */
   rearrange: boolean;
   /** Resolved drag feedback mode (`"preview"` vs `"live"`). */
@@ -1477,12 +1437,10 @@ export interface ResolvedTilingInteractionCapabilities {
   slotCommitment: ResolvedTilingSlotCommitmentCapability;
   /** Resolved touch-drag hardening configuration. */
   touchDrag: ResolvedTilingTouchDragCapability;
-  /** Resolved drag/transition self-healing recovery configuration. */
+  /** Resolved drag self-healing recovery configuration. */
   dragRecovery: ResolvedTilingDragRecoveryCapability;
   /** Whether the custom-rendered drag cursor is used during live drag. */
   customCursor: boolean;
-  /** Resolved ghost pickup scale as a percent of the source pane bbox. */
-  ghostPickupScalePercent: number;
   /** Whether pane focus selection is enabled. */
   focus: boolean;
   /** Resolved maximize-to-viewport capability. */
@@ -1536,7 +1494,7 @@ export type TilingTileAccent =
 /**
  * Closed set of built-in visual theme ids for the renderer. A theme bundles the
  * class-string tokens for every surface (pane shell, header, focus frame,
- * ghost, dividers, root, tab strip) plus the accent-composition resolvers. The
+ * drag chrome, dividers, root, tab strip) plus the accent-composition resolvers. The
  * token interfaces + registry live in `./theme`; this union is the central
  * contract a consumer types its `themeId` state against.
  */
@@ -1559,8 +1517,8 @@ export interface TilingTileAccentSwatch {
 /**
  * Generic tile payload. Only `id` + `title` are required so a product consumer
  * (e.g. a dashboard) can supply a minimal `{ id, title, content }` tile and a
- * custom `renderTile`. The `accent` / `rows` fields drive `DefaultTilingTile`
- * and the drag-pane snapshot chrome; when omitted they fall back (accent →
+ * custom `renderTile`. The `accent` / `rows` fields drive `DefaultTilingTile`;
+ * when omitted they fall back (accent →
  * `"cyan"`, rows → `[]`), so a tile without them renders correctly under the
  * default tile surface. `content` is the slot a custom `renderTile` reads.
  * `titleBarContent` is the optional middle slot between the title and the
@@ -1577,7 +1535,7 @@ export interface TilingTile {
   accent?: TilingTileAccent;
   /** Optional text rows for the default tile body. Falls back to `[]`. */
   rows?: ReadonlyArray<string>;
-  /** Rich body a custom `renderTile` reads (and the drag ghost paints). */
+  /** Rich body a custom `renderTile` reads. */
   content?: React.ReactNode;
   /**
    * Optional custom chrome for the pane titlebar middle slot — rendered
@@ -1857,21 +1815,6 @@ export interface TilingLayoutConfig {
 export const TILING_DEFAULT_COLLAPSED_EXTENT_PX: number = 40;
 
 /**
- * The renderer surface a `renderTile` invocation paints:
- *
- * - `"pane"` — the seated in-tree pane (the normal, interactive case).
- * - `"drag-ghost"` — the floating, portaled pickup ghost that travels with the
- *   cursor during a drag (the overlay portal container, default
- *   `document.body`, see {@link TilingRendererCommonProps.overlayPortalContainer}).
- *   `aria-hidden` + `pointer-events-none`: handlers are inert no-ops,
- *   capability display flags stay real.
- * - `"drag-cancel"` — the cancel fly-back overlay (the ghost gliding home after
- *   a cancelled drag; same overlay portal container as `"drag-ghost"`). Same
- *   inert-handlers / real-flags semantics as `"drag-ghost"`.
- */
-export type TilingRenderSurface = "pane" | "drag-ghost" | "drag-cancel";
-
-/**
  * One member of a tabbed group, as seen by a custom `renderTile` through
  * {@link TilingRenderTileGroupContext.members}. Mirrors what the built-in
  * group tab strip paints per tab: the member's identity, its resolved tile
@@ -1898,8 +1841,8 @@ export interface TilingGroupMemberView {
 /**
  * Group context on {@link TilingRenderTileProps.group}: present when the pane
  * being rendered is a tabbed group's ACTIVE member (the only member that
- * renders, per the stacking contract), `null` for loose leaves and for the
- * drag-ghost / drag-cancel surfaces. A custom pane uses it to paint its own
+ * renders, per the stacking contract), `null` for loose leaves. A custom pane
+ * uses it to paint its own
  * group chrome (tabs, member list, eject/ungroup controls) instead of the
  * built-in strip — typically with the strip suppressed via the `grouping`
  * capability's `showGroupTabStrip: false`.
@@ -1947,21 +1890,13 @@ export interface TilingRenderTileGroupContext {
  * - the drag handle wires `onHandlePointerDown` with `touch-action: none`;
  * - header action buttons must `stopPropagation` on pointer-down + click so a
  *   click does not start a drag or steal focus;
- * - the body renders only when `paneBodyRenderMode === "render-content"` (the
- *   drag ghost reuses the same render path).
+ * - the body renders only when `paneBodyRenderMode === "render-content"`.
+ *
+ * A dragged pane is this same pane, lifted and held under the pointer
+ * (`isDragSource` is `true` while it is dragged); there is no separate drag
+ * copy to paint.
  */
 export interface TilingRenderTileProps {
-  /**
-   * Which renderer surface these args paint (see {@link TilingRenderSurface}).
-   * `"pane"` for the seated in-tree pane; `"drag-ghost"` for the floating
-   * pickup ghost that follows the cursor; `"drag-cancel"` for the cancel
-   * fly-back overlay. On the two drag surfaces every interaction handler is an
-   * inert no-op while the capability display flags stay REAL (reflecting the
-   * resolved capabilities), so capability-keyed chrome does not vanish
-   * mid-drag; a custom pane that wants different drag chrome branches on this
-   * discriminator.
-   */
-  readonly surface: TilingRenderSurface;
   /** The leaf node id this render targets. */
   leafId: string;
   /** The resolved tile payload for this leaf. */
@@ -2075,9 +2010,8 @@ export interface TilingRenderTileProps {
   preview: TilingLeafDropPreview | null;
   /**
    * Group context when this pane is a tabbed group's ACTIVE member (the only
-   * member that renders, per the stacking contract); `null` for loose leaves
-   * and on the `"drag-ghost"` / `"drag-cancel"` surfaces. See
-   * {@link TilingRenderTileGroupContext}.
+   * member that renders, per the stacking contract); `null` for loose leaves.
+   * See {@link TilingRenderTileGroupContext}.
    */
   readonly group: TilingRenderTileGroupContext | null;
   /**
@@ -2096,7 +2030,7 @@ export interface TilingRenderTileProps {
    * centre stays `swap`). The built-in strip is checked first when both
    * contain the point. Ineligible hits (this pane is the drag source, or the
    * source is already a member of this pane's group) fall through to that
-   * body partition. Inert on the drag-ghost / drag-cancel surfaces.
+   * body partition.
    *
    * Gated by `grouping.enable`. Works with `showGroupTabStrip` either way.
    *
@@ -2139,8 +2073,7 @@ export interface TilingRenderTileProps {
    * set is empty. The same count is reported on every pane of that workspace,
    * including panes that are not themselves selected, so a host can show a
    * Cancel control when the count is `1` (the Group control stays hidden until
-   * `canGroupMultiSelection` is true). Inactive retained panes and the
-   * drag-ghost / drag-cancel surfaces report `0`.
+   * `canGroupMultiSelection` is true). Inactive retained panes report `0`.
    */
   readonly multiSelectionCount: number;
   /**
@@ -2233,7 +2166,9 @@ export type TilingLeafDropZone = "center" | "left" | "right" | "top" | "bottom";
  *   `display: none` gate.
  * - `"render-empty"` — body removed from the tree (content toggle off, OR a
  *   collapsed pane under `collapseBodyMode: "unmount"`).
- * - `"render-reservation"` — empty ghost-seat reservation slot during a drag.
+ * - `"render-reservation"` — the empty place a held pane keeps in the tree
+ *   during a live drag (the renderer paints it itself; a `renderTile` never
+ *   receives it).
  */
 export type TilingPaneBodyRenderMode =
   | "render-content"
@@ -2374,8 +2309,8 @@ export interface TilingLiveHitLogState {
   edgeDiagnostics: ReadonlyArray<TilingLiveHitEdgeDebugState>;
   /** The full resolved drop-intent snapshot, or `null`. */
   intent: TilingDropIntentDebugState | null;
-  /** Leaf whose in-tree slot the ghost seats into (swap target or edge-insert source). */
-  ghostSeatLeafId?: string | null;
+  /** Leaf whose slot the dragged pane lands in (swap target or edge-insert source). */
+  landingLeafId?: string | null;
   /** Resolved drop action for the active hover target (observability). */
   presentationDropAction?: TilingDropAction | null;
 }
@@ -2476,27 +2411,6 @@ export interface TilingInsertionOptions {
   splitRatio: number;
 }
 
-export interface TilingDragPaneSnapshot {
-  tileId: string;
-  title: string;
-  description: string | null;
-  /**
-   * The rich content slot captured at pickup — the SAME `React.ReactNode` the
-   * live pane renders (`TilingTile.content`). The ghost paints this so the
-   * dragged pane's real body (table / chart / form) rides along, falling back to
-   * `rows` only when a tile supplies no `content` (the legacy text-row body).
-   */
-  content: React.ReactNode;
-  /**
-   * Titlebar middle-slot chrome captured at pickup (`TilingTile.titleBarContent`).
-   * Custom `renderTile` ghosts rehydrate it onto the ghost tile; the built-in
-   * drag shell paints it between title and the trailing "tile" label.
-   */
-  titleBarContent: React.ReactNode;
-  rows: ReadonlyArray<string>;
-  accent: TilingTileAccent;
-}
-
 /** A measured pane rectangle in client coordinates (CSS px). */
 export interface TilingPaneFootprint {
   /** Left edge (client X). */
@@ -2530,29 +2444,6 @@ export interface TilingProjectedLandingOverlay {
   subject: TilingProjectedLandingSubject;
   leafId: string;
   footprint: TilingPaneFootprint;
-}
-
-export interface TilingDragVisualState {
-  sourceLeafId: string;
-  sourceFootprint: TilingPaneFootprint;
-  /** Cursor-following base rect (client coords) — where the ghost sits when not seated. */
-  activeFootprint: TilingPaneFootprint;
-  /**
-   * The resolved slot's measured rect (client coords) the single ghost hops INTO
-   * and FILLS, or `null` when free-following the cursor (no target / off-screen
-   * slot). Drives the hop-in / hop-out FLIP in `DragPaneOverlay`.
-   */
-  seatFootprint: TilingPaneFootprint | null;
-  pointerAnchorOffsetX: number;
-  pointerAnchorOffsetY: number;
-  snapshot: TilingDragPaneSnapshot;
-}
-
-export interface TilingDragCancelVisualState {
-  sourceLeafId: string;
-  fromFootprint: TilingPaneFootprint;
-  toFootprint: TilingPaneFootprint;
-  snapshot: TilingDragPaneSnapshot;
 }
 
 /**
@@ -2649,11 +2540,9 @@ export type TilingChromeFocusOutline = "suppress" | "native";
  *   (a layout-effect `appendChild`, never a React re-parent). The React instance
  *   — hooks, state, refs, subscriptions, iframes, scroll positions — is the
  *   same object through drag → drop → settle and every other tree edit; only
- *   the DOM parent changes. During a live drag the picked-up pane is parked in
- *   the pool (its slot shows the content-less seat; the single ghost paints
- *   the pane through the overlay portal container, default `document.body`,
- *   see {@link TilingRendererCommonProps.overlayPortalContainer}) and reseats on
- *   drop. Server render emits EMPTY slots (content is placed on the client),
+ *   the DOM parent changes. During a live drag the same node moves into the
+ *   lifted wrapper the pointer holds and back into the tree on the drop.
+ *   Server render emits EMPTY slots (content is placed on the client),
  *   so hydration-time flash is the cost.
  * - `"auto"` (default) — `"stable"` on a client-only mount, `"slot"` when the
  *   first render is a hydration of server markup.
@@ -2661,8 +2550,8 @@ export type TilingChromeFocusOutline = "suppress" | "native";
 export type TilingPaneIdentityMode = "auto" | "stable" | "slot";
 
 /**
- * Host node for the renderer's `position: fixed` drag overlays (ghost, custom
- * cursor, cancel fly-back). An element, `null` (fall back to `document.body`),
+ * Host node for the renderer's `position: fixed` custom drag cursor. An
+ * element, `null` (fall back to `document.body`),
  * or a thunk evaluated every render so a late-mounted container (ref /
  * callback) is picked up without remounting the renderer. See
  * {@link TilingRendererCommonProps.overlayPortalContainer} for the containing-block
@@ -2877,16 +2766,14 @@ export type TilingRendererModeProps =
   | TilingRendererWorkspaceSetProps;
 
 /**
- * How the live-drag ghost paints while a leaf is carried.
+ * How a live drag previews where the held pane will land — see
+ * {@link TilingRendererCommonProps.dragPreview}.
  *
- * - `"footprint"` (default) — today's tile-sized ghost, origin-offset from the
- *   pickup grab point. Unchanged behaviour.
- * - `"compact"` — always the small chip under the cursor.
- * - `"auto"` — `compact` while {@link TilingRendererCommonProps.externalDragHover} is
- *   non-null, `footprint` otherwise. The 26.9.x forward-compatible subset of
- *   the WorkspaceSet drag scope (`_agent/workspace-set-concept.md` §5.5).
+ * - `"indicator"` — a drop indicator marks the exact landing rect.
+ * - `"snap"` — the pane itself settles into the slot under the pointer and the
+ *   others make room.
  */
-export type TilingDragGhostMode = "footprint" | "compact" | "auto";
+export type TilingDragPreview = "indicator" | "snap";
 
 /** Window-client point (CSS px) the host reports for an external hover / drop. */
 export interface TilingClientPoint {
@@ -2906,7 +2793,7 @@ export interface TilingClientPoint {
 export interface TilingExternalDropHover {
   /** Discriminant; omitted on a bare literal. */
   readonly kind?: "external";
-  /** The host target's id (what `onExternalDrop` and the `ghostChip` slot receive). */
+  /** The host target's id (what `onExternalDrop` receives). */
   readonly targetId: string;
   /** Pointer position over the target (window-client CSS px). */
   readonly point: TilingClientPoint;
@@ -2916,15 +2803,15 @@ export interface TilingExternalDropHover {
  * "Pointer is over a WORKSPACE TAB" — the engine-settled external target.
  * In workspace-set mode the renderer applies `moveLeafToWorkspace(leafId,
  * workspaceId, placement)` on release and reports the next set through
- * `onWorkspacesChange` (claim-before-settle: no cancel fly-back, no host
+ * `onWorkspacesChange` (claim-before-settle: nothing settles home, no host
  * hit-test). In single-layout mode it behaves like
  * {@link TilingExternalDropHover} — the host's `onExternalDrop` claims.
- * `targetId` is the tab's own id (what the `ghostChip` slot receives).
+ * `targetId` is the tab's own id.
  */
 export interface TilingWorkspaceTabDragHover {
   /** Discriminant. */
   readonly kind: "workspace-tab";
-  /** The tab's own id (what the `ghostChip` slot receives). */
+  /** The tab's own id. */
   readonly targetId: string;
   /** Pointer position over the tab (window-client CSS px). */
   readonly point: TilingClientPoint;
@@ -2946,29 +2833,11 @@ export type TilingExternalDragHover =
   | TilingWorkspaceTabDragHover;
 
 /**
- * Arguments the theme `ghostChip` slot receives when the compact ghost is
- * painted. `targetId` is present only while {@link TilingExternalDragHover}
- * is set.
- */
-export interface TilingGhostChipContext {
-  /** The dragged leaf. */
-  readonly leafId: string;
-  /** The dragged tile's title, when it has one. */
-  readonly title?: string;
-  /** Where the chip is anchored (window-client CSS px). */
-  readonly point: TilingClientPoint;
-  /** The external target under the pointer, when {@link TilingExternalDragHover} is set. */
-  readonly targetId?: string;
-  /** Present while the hover is a {@link TilingWorkspaceTabDragHover}: the destination workspace. */
-  readonly workspaceId?: string;
-}
-
-/**
  * Fired on release while {@link TilingRendererCommonProps.externalDragHover} is
  * non-null, **before** the drag FSM settles, so the host can claim the leaf
- * synchronously and skip the cancel fly-back. Return `false` to DECLINE the
- * claim (the target refused the leaf): the release then settles through the
- * ordinary cancel fly-back. `void` / `true` claims.
+ * synchronously. Return `false` to DECLINE the claim (the target refused the
+ * leaf): the release then cancels and the pane settles home. `void` / `true`
+ * claims.
  */
 export type TilingOnExternalDrop = (
   leafId: string,
@@ -3008,15 +2877,15 @@ export interface TilingRendererCommonProps {
   className?: string;
   /**
    * Active visual theme id. Selects which built-in `TilingTheme` paints every
-   * renderer surface (pane shells, header, focus frame, ghost, dividers, root,
-   * tab strip) and how per-pane accents compose with it. Undefined resolves to
+   * renderer surface (pane shells, header, focus frame, drag chrome, dividers,
+   * root, tab strip) and how per-pane accents compose with it. Undefined resolves to
    * the library default (`"neon-terminal"`). Reacts to prop changes without
    * remount — a live switch re-themes the whole tree.
    */
   themeId?: TilingThemeId;
   /**
    * Full consumer-authored theme; takes precedence over `themeId`. Every
-   * renderer-painted surface (pane shells, header, focus frame, ghost,
+   * renderer-painted surface (pane shells, header, focus frame, drag chrome,
    * dividers, root, tab strip) and every accent-composition resolver comes
    * from this object, so a consumer owns the complete chrome without touching
    * library internals. Undefined → the built-in theme selected by `themeId`.
@@ -3086,28 +2955,32 @@ export interface TilingRendererCommonProps {
   /** Background opacity `[0, 1]` for the projected landing overlays. */
   projectedOverlayBackgroundAlpha?: number;
   /**
-   * Master gate for pane motion. When `false`, the ghost hop and pickup
-   * entrance collapse to instant placement (durations → ~0) and every layout
-   * change snaps instead of gliding. Default `true`. The speed values are
-   * preserved and re-apply when re-enabled.
+   * Master gate for pane motion. When `false`, every layout change (a drag's
+   * reflow and drop included) snaps instead of gliding; a dragged pane is
+   * still held under the pointer. Default `true`. The speed value is preserved
+   * and re-applies when re-enabled.
    */
   dragAnimationEnabled?: boolean;
   /**
-   * CSS `<easing-function>` for the dragged GHOST's hop transit (hop-in /
-   * hop-out / pickup entrance) and the swap/edge-insert ghost motion. Undefined
-   * → the default snappy decel `cubic-bezier(0.2, 0.8, 0.2, 1)`. An invalid /
-   * empty string falls back to that default (never reaches the compositor as a
-   * broken `transition`). The seated-ghost magnetic `linear()` curve is NOT
-   * replaced by this knob (a sampled non-bezier curve). Panes themselves move on
-   * the settle curve, which has no easing to choose.
+   * How a live drag previews where the pane will land (`dragMode: "live"`).
+   * The dragged pane itself is always the real pane, lifted out of the layout
+   * and held under the pointer, while the others close the gap.
+   *
+   * - `"indicator"` (default): a drop indicator (the theme's
+   *   `dragChrome.dropIndicator`) marks the exact rect the pane will land in,
+   *   jumping between targets. See also {@link TilingRendererCommonProps.dragPreviewMakesRoom}.
+   * - `"snap"`: once the pointer is well inside a landing slot (24 px, or a
+   *   quarter of the slot's smaller side when that is less), the pane settles
+   *   into the slot and the others make room; it stays there until the pointer
+   *   leaves the slot, then settles back under the pointer at its lift size.
    */
-  dragHopEasing?: string;
+  dragPreview?: TilingDragPreview;
   /**
-   * Speed of the dragged GHOST's transit animation (hop-in / hop-out / pickup
-   * entrance) as a percent of the 170ms baseline (`100` = baseline). Lower is
-   * slower; higher is faster. Clamped to `[10, 400]`. Default `100`.
+   * Indicator preview only: the others also make room at the slot the
+   * indicator marks (a live reorder), leaving it empty for the pane. Default
+   * `false`.
    */
-  ghostTransitSpeedPercent?: number;
+  dragPreviewMakesRoom?: boolean;
   /**
    * Speed of pane motion: every layout change (open, close, swap, a keyboard
    * move, maximize / restore, a drag's reflow, a layout set from outside)
@@ -3130,15 +3003,15 @@ export interface TilingRendererCommonProps {
    */
   chromeFocusOutline?: TilingChromeFocusOutline;
   /**
-   * DOM node that hosts the `position: fixed` drag overlays (ghost, custom
-   * cursor, cancel fly-back). Default `document.body`. Accepts an element,
-   * `null` (fall back to `document.body`), or a thunk evaluated every render
-   * so a late-mounted container (ref / callback) is picked up without
-   * remounting the renderer. On the server the resolver returns `null` and
-   * mounts nothing — overlays only paint during a client, post-hydration drag.
+   * DOM node that hosts the `position: fixed` custom drag cursor. Default
+   * `document.body`. Accepts an element, `null` (fall back to
+   * `document.body`), or a thunk evaluated every render so a late-mounted
+   * container (ref / callback) is picked up without remounting the renderer.
+   * On the server the resolver returns `null` and mounts nothing — the cursor
+   * only paints during a client, post-hydration drag.
    *
    * Two independent reasons the default is `document.body`: (1) containing-
-   * block immunity — `position: fixed` stays window-relative; (2) the ghost
+   * block immunity — `position: fixed` stays window-relative; (2) the cursor
    * stays outside the React root's event-delegation scope. Redirecting the
    * DOM mount does not change (2): React still walks fibers, not the DOM,
    * and measurement selectors stay root/viewport-scoped. React context
@@ -3147,35 +3020,25 @@ export interface TilingRendererCommonProps {
    * Containing-block caveat: the container MUST NOT sit under an ancestor
    * with `transform`, `filter`, `backdrop-filter`, `perspective`,
    * `contain: paint` (or `layout` / `strict` / `content`), or `will-change`
-   * of those. The overlays place themselves with window-relative client
-   * coordinates; any ancestor that establishes a containing block for
-   * `position: fixed` reintroduces ghost↔seat drift.
+   * of those: the cursor places itself with window-relative client
+   * coordinates.
    *
-   * Stacking: overlay z-indexes (ghost 220, cursor 230, cancel 219) are
-   * relative to the container's stacking context, not the document.
+   * Stacking: the cursor's z-index (230) is relative to the container's
+   * stacking context, not the document.
    */
   overlayPortalContainer?: TilingOverlayPortalContainer;
   /**
-   * Live-drag ghost presentation. Default `"footprint"` — the tile-sized
-   * ghost, byte-identical to 26.9.1. `"compact"` always paints the chip;
-   * `"auto"` collapses to the chip while {@link TilingRendererCommonProps.externalDragHover} is
-   * non-null and expands back to the footprint when it clears.
-   */
-  dragGhostMode?: TilingDragGhostMode;
-  /**
    * Host tells the engine the pointer is over an external drop target (and
-   * where). In `"auto"` ghost mode this is what toggles compact ↔ footprint.
-   * On release, a non-null value plus {@link TilingRendererCommonProps.onExternalDrop} claims the
-   * drag (no cancel fly-back).
+   * where). On release, a non-null value plus
+   * {@link TilingRendererCommonProps.onExternalDrop} claims the drag.
    */
   externalDragHover?: TilingExternalDragHover | null;
   /**
    * Synchronous claim hook. Fired on `POINTER_UP` while
    * {@link TilingRendererCommonProps.externalDragHover} is non-null, **before** the FSM settles, so
    * the host can take the leaf (move it off this tree) and the engine marks
-   * the drag `claimed` — `DragCancelOverlay` is skipped. Absent → existing
-   * cancel / fly-back behaviour even when hover is set. Return `false` to
-   * decline the claim.
+   * the drag `claimed`. Absent → the release cancels (the pane settles home)
+   * even when hover is set. Return `false` to decline the claim.
    */
   onExternalDrop?: TilingOnExternalDrop;
   /**

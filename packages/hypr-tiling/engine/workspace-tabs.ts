@@ -24,7 +24,7 @@ export interface TilingClientRect {
 
 /** One workspace tab registered as a drop target: its id, workspace and measured rect. */
 export interface TilingWorkspaceTabTarget {
-  /** The tab's own id — what `TilingExternalDragHover.targetId` / the `ghostChip` slot receive. */
+  /** The tab's own id — what `TilingExternalDragHover.targetId` receives. */
   readonly targetId: string;
   /** The workspace the tab stands for (the `moveLeafToWorkspace` destination). */
   readonly workspaceId: string;

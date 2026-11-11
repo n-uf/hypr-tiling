@@ -93,7 +93,7 @@ function threeWorkspaces(activeId: string = "main"): TilingWorkspaceSet {
 function renderTile(args: TilingRenderTileProps): React.ReactNode {
   return React.createElement(
     "article",
-    { "data-tile-id": args.tile.id, "data-surface": args.surface },
+    { "data-tile-id": args.tile.id, "data-surface": "pane" },
     React.createElement("span", { "data-title": args.tile.id }, args.tile.title),
   );
 }

@@ -1,6 +1,5 @@
 import type { ElementRef } from "../engine/element-ref";
 import type { MeasurementPort } from "../engine/measurement-port";
-import { dragSourceReservationSelector } from "../engine/drag-presentation";
 
 /**
  * Refs the {@link createDomMeasurementPort} adapter reads through — the same
@@ -21,8 +20,6 @@ export interface DomMeasurementRefs {
  *   - `measureViewportRect` ← `viewportRef.current?.getBoundingClientRect()`
  *   - `measureLeafRect` ← `rootRef.current?.querySelector('[data-leaf-id="…"]')`
  *     (root-scoped, matching `setLeafSizingFromBbox`'s out-of-viewport-safe path)
- *   - `measureReservationRect` ← `rootRef.current?.querySelector(
- *     dragSourceReservationSelector(leafId))` (the `cc23956`-scoped seat selector)
  *   - `measureGroupTabStripRect` ← `groupTabStripRefs.current.get(groupId)`
  *   - `measureGroupDropTargetRects` ← `groupDropTargetRefs.current.get(leafId)`
  *   - `readComputedTransform` ← `getComputedStyle(leafEl).transform`
@@ -38,10 +35,6 @@ export function createDomMeasurementPort(refs: DomMeasurementRefs): MeasurementP
     measureLeafRect: (leafId: string): DOMRect | null =>
       rootRef.current
         ?.querySelector<HTMLElement>(`[data-leaf-id="${leafId}"]`)
-        ?.getBoundingClientRect() ?? null,
-    measureReservationRect: (leafId: string): DOMRect | null =>
-      rootRef.current
-        ?.querySelector<HTMLElement>(dragSourceReservationSelector(leafId))
         ?.getBoundingClientRect() ?? null,
     measureGroupTabStripRect: (groupId: string): DOMRect | null =>
       groupTabStripRefs.current.get(groupId)?.getBoundingClientRect() ?? null,

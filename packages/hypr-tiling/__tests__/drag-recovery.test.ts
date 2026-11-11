@@ -1,22 +1,19 @@
 import { describe, expect, it, jest } from "@jest/globals";
 import {
-  DRAG_RECOVERY_DEFAULT_FRAME_DEADLINE_MS,
   DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS,
-  DRAG_RECOVERY_MAX_DRAGGING_IDLE_HOP_MULTIPLE,
-  type FrameOrTimeoutScheduler,
+  type TimerScheduler,
   createDragWatchdog,
-  scheduleFrameOrTimeout,
 } from "../engine/drag-recovery";
 
 /**
- * Deterministic fake frame/timer scheduler + monotonic clock. The recovery
+ * Deterministic fake timer scheduler + monotonic clock. The recovery
  * primitives take an INJECTED scheduler (mirrors `createFrameCoalescer` +
- * `FrameScheduler`), so the tests drive frames/timers explicitly rather than
- * leaning on jest's global fake timers — every race is exercised by hand.
+ * `FrameScheduler`), so the tests drive timers explicitly rather than leaning
+ * on jest's global fake timers — every race is exercised by hand.
  *
- * The watchdog keeps exactly one armed timer at a time; `fireActiveTimer` /
- * `fireActiveFrame` fire the most-recently-scheduled live handle, which is the
- * one a real environment would deliver.
+ * The watchdog keeps exactly one armed timer at a time; `fireActiveTimer`
+ * fires the most-recently-scheduled live handle, which is the one a real
+ * environment would deliver.
  */
 interface FakeHandle {
   id: number;
@@ -24,23 +21,9 @@ interface FakeHandle {
   live: boolean;
 }
 
-class FakeScheduler implements FrameOrTimeoutScheduler {
+class FakeScheduler implements TimerScheduler {
   private nextId: number = 1;
   readonly timers: FakeHandle[] = [];
-  readonly frames: FakeHandle[] = [];
-
-  requestFrame = (callback: () => void): number => {
-    const id: number = this.nextId++;
-    this.frames.push({ id, callback, live: true });
-    return id;
-  };
-
-  cancelFrame = (handle: number): void => {
-    const frame: FakeHandle | undefined = this.frames.find((f: FakeHandle): boolean => f.id === handle);
-    if (frame != null) {
-      frame.live = false;
-    }
-  };
 
   setTimer = (callback: () => void, _ms: number): number => {
     const id: number = this.nextId++;
@@ -55,14 +38,6 @@ class FakeScheduler implements FrameOrTimeoutScheduler {
     }
   };
 
-  fireActiveFrame = (): void => {
-    const frame: FakeHandle | undefined = [...this.frames].reverse().find((f: FakeHandle): boolean => f.live);
-    if (frame != null) {
-      frame.live = false;
-      frame.callback();
-    }
-  };
-
   fireActiveTimer = (): void => {
     const timer: FakeHandle | undefined = [...this.timers].reverse().find((t: FakeHandle): boolean => t.live);
     if (timer != null) {
@@ -72,70 +47,11 @@ class FakeScheduler implements FrameOrTimeoutScheduler {
   };
 
   liveTimerCount = (): number => this.timers.filter((t: FakeHandle): boolean => t.live).length;
-  liveFrameCount = (): number => this.frames.filter((f: FakeHandle): boolean => f.live).length;
 }
 
-describe("drag-recovery — non-ad-hoc defaults (documented multiples)", (): void => {
-  it("maxDraggingIdleMs default is 30 × the 170ms baseline hop duration", (): void => {
-    expect(DRAG_RECOVERY_MAX_DRAGGING_IDLE_HOP_MULTIPLE).toBe(30);
-    expect(DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS).toBe(30 * 170);
+describe("drag-recovery — defaults", (): void => {
+  it("maxDraggingIdleMs default is 5100 ms", (): void => {
     expect(DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS).toBe(5100);
-  });
-
-  it("frameDeadlineMs default is ~2 frames", (): void => {
-    expect(DRAG_RECOVERY_DEFAULT_FRAME_DEADLINE_MS).toBe(32);
-  });
-});
-
-describe("drag-recovery — M1 scheduleFrameOrTimeout (rAF-with-timeout race, first-wins + idempotent)", (): void => {
-  it("runs the callback EXACTLY ONCE when the frame wins (timeout loser cancelled)", (): void => {
-    const scheduler: FakeScheduler = new FakeScheduler();
-    const callback = jest.fn();
-    scheduleFrameOrTimeout(scheduler, 32, callback);
-
-    scheduler.fireActiveFrame();
-    expect(callback).toHaveBeenCalledTimes(1);
-    // The loser timer is cancelled, so firing it is a no-op (no double run).
-    expect(scheduler.liveTimerCount()).toBe(0);
-    scheduler.fireActiveTimer();
-    expect(callback).toHaveBeenCalledTimes(1);
-  });
-
-  it("runs the callback EXACTLY ONCE when the timeout wins (starved frame fallback)", (): void => {
-    const scheduler: FakeScheduler = new FakeScheduler();
-    const callback = jest.fn();
-    scheduleFrameOrTimeout(scheduler, 32, callback);
-
-    // Simulate a never-arriving rAF: the timeout fires first.
-    scheduler.fireActiveTimer();
-    expect(callback).toHaveBeenCalledTimes(1);
-    // The loser frame is cancelled, so a late resumed frame never double-runs.
-    expect(scheduler.liveFrameCount()).toBe(0);
-    scheduler.fireActiveFrame();
-    expect(callback).toHaveBeenCalledTimes(1);
-  });
-
-  it("cancel() before either fires drops both handles and never runs the callback", (): void => {
-    const scheduler: FakeScheduler = new FakeScheduler();
-    const callback = jest.fn();
-    const handle = scheduleFrameOrTimeout(scheduler, 32, callback);
-
-    handle.cancel();
-    expect(scheduler.liveTimerCount()).toBe(0);
-    expect(scheduler.liveFrameCount()).toBe(0);
-    scheduler.fireActiveFrame();
-    scheduler.fireActiveTimer();
-    expect(callback).not.toHaveBeenCalled();
-  });
-
-  it("cancel() after the run is a no-op (idempotent)", (): void => {
-    const scheduler: FakeScheduler = new FakeScheduler();
-    const callback = jest.fn();
-    const handle = scheduleFrameOrTimeout(scheduler, 32, callback);
-
-    scheduler.fireActiveFrame();
-    handle.cancel();
-    expect(callback).toHaveBeenCalledTimes(1);
   });
 });
 

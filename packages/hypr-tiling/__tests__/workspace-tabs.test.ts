@@ -363,19 +363,16 @@ describe("useTilingWorkspaceTabs — native drop target through the renderer", (
     mounts?: Map<string, number>;
   }
 
-  /** Counts `pane`-surface mounts per tile; the header is the drag handle like the default tile. */
+  /** Counts pane mounts per tile; the header is the drag handle like the default tile. */
   function CountedPane({ args, mounts }: { args: TilingRenderTileProps; mounts: Map<string, number> }): React.ReactElement {
-    const isPane: boolean = args.surface === "pane";
     React.useEffect((): void => {
-      // Ghost / overlay surfaces mount their own copies during a drag; only the placed pane counts.
-      if (isPane) mounts.set(args.tile.id, (mounts.get(args.tile.id) ?? 0) + 1);
-    }, [args.tile.id, isPane, mounts]);
+      mounts.set(args.tile.id, (mounts.get(args.tile.id) ?? 0) + 1);
+    }, [args.tile.id, mounts]);
     return React.createElement(
       "article",
       {
         "data-leaf-id": args.leafId,
         "data-tile-id": args.tile.id,
-        "data-surface": args.surface,
         onFocus: args.onFocus,
         onPointerMove: args.onPointerMove,
         onPointerLeave: args.onPointerLeave,
@@ -418,7 +415,6 @@ describe("useTilingWorkspaceTabs — native drop target through the renderer", (
         },
         tiles: TILES,
         config: { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 },
-        dragGhostMode: "auto",
         paneIdentity: "stable",
         interaction: {
           dragRecovery: { enable: false },
@@ -482,27 +478,26 @@ describe("useTilingWorkspaceTabs — native drop target through the renderer", (
       dispatchPointer(window, "pointermove", { clientX: 40, clientY: 140 });
     });
     await flushFrames();
-    expect(document.querySelector("[data-drag-ghost][data-drag-ghost-mode='footprint']")).not.toBeNull();
+    // The real pane is lifted out of the tree and held under the pointer.
+    expect(container.querySelector("[data-hpt-lifted] [data-hpt-leaf]")).not.toBeNull();
     expect(tabByWorkspace(container, "ops").hasAttribute("data-drop-target")).toBe(false);
 
-    // Over the `ops` tab: the strip reports the target, the ghost collapses to the chip.
+    // Over the `ops` tab: the strip reports the target; the pane stays held.
     await act(async (): Promise<void> => {
       dispatchPointer(window, "pointermove", { clientX: 150, clientY: 15 });
     });
     await flushFrames();
     expect(tabByWorkspace(container, "ops").hasAttribute("data-drop-target")).toBe(true);
     expect(tabByWorkspace(container, "main").hasAttribute("data-drop-target")).toBe(false);
-    const chip: HTMLElement | null = document.querySelector("[data-drag-ghost-chip][data-drag-ghost-mode='compact']");
-    expect(chip?.getAttribute("data-drag-ghost-target")).toBe("hpt-workspace-tab-ops");
-    expect(chip?.getAttribute("data-drag-ghost-workspace")).toBe("ops");
+    expect(container.querySelector("[data-hpt-lifted] [data-hpt-leaf]")).not.toBeNull();
 
-    // Back off the strip: the target clears and the footprint ghost returns.
+    // Back off the strip: the target clears.
     await act(async (): Promise<void> => {
       dispatchPointer(window, "pointermove", { clientX: 150, clientY: 200 });
     });
     await flushFrames();
     expect(tabByWorkspace(container, "ops").hasAttribute("data-drop-target")).toBe(false);
-    expect(document.querySelector("[data-drag-ghost][data-drag-ghost-mode='footprint']")).not.toBeNull();
+    expect(container.querySelector("[data-hpt-lifted] [data-hpt-leaf]")).not.toBeNull();
 
     // Release over `spare` (an EMPTY workspace): the leaf becomes its root.
     await act(async (): Promise<void> => {

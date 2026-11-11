@@ -78,8 +78,8 @@ import type {
  *    the destination workspace's tree containing `intent.leafId` and (ii) has
  *    the drag machine `idle` (`canRearmDrag(dragState)`; the settle effect of
  *    step 3c has run), measure the leaf's seat
- *    (`[data-leaf-id="<leafId>"]` → `getBoundingClientRect`), rebuild the
- *    ghost snapshot from the leaf's tile, and dispatch to the inner drag
+ *    (where leaf motion draws it, else `[data-leaf-id="<leafId>"]` →
+ *    `getBoundingClientRect`), and dispatch to the inner drag
  *    machine `{ type: "REARM", pointerId, pointerType, sourceLeafId: leafId,
  *    tileId, anchorFootprint, client: lastPoint }` (offset defaults to
  *    `rearmPointerAnchorOffset`). Then run the pickup tail a threshold /

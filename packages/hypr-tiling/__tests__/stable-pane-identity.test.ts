@@ -144,7 +144,7 @@ function ObservedPane({
     {
       "data-leaf-id": args.leafId,
       "data-tile-id": args.tile.id,
-      "data-surface": args.surface,
+      "data-surface": "pane",
       tabIndex: 0,
       onFocus: args.onFocus,
     },

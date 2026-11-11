@@ -1,5 +1,14 @@
 # Drag interaction + presentation subsystem — audit
 
+> **Superseded for presentation (2026-11, the held drag).** The ghost
+> (`DragPaneOverlay`), its reservation seat and hop-in FLIP, the compact chip
+> and the cancel fly-back are gone: the real pane is lifted out of the tree and
+> held 1:1 under the pointer by leaf motion, with a drop indicator or a snap
+> preview (`dragPreview`), and a cancel settles every pane home. The FSM, the
+> resolver, the stable hit footprints, the input driver and the recovery
+> watchdog described below still hold; read the presentation sections as
+> history. See `CHANGELOG.md` (Unreleased) and `engine/drag-landing.ts`.
+
 Scope: the live-drag rearrange pipeline of `@hypr-tiling` — the drag FSM
 (`drag-machine.ts`), geometry seams (`survivor-reflow.ts`, `ghost-transit.ts`,
 `leaf-geometry.ts`, `drop-intent-resolver.ts`), the presentation resolver

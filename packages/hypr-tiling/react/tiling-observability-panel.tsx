@@ -4,16 +4,9 @@ import * as React from "react";
 import {
   DRAG_ANIMATION_SPEED_MAX_PERCENT,
   DRAG_ANIMATION_SPEED_MIN_PERCENT,
-  resolveDragAnimationDurationMs,
   resolveLeafMotionOmega,
   usePrefersReducedMotion,
 } from "./tiling-renderer";
-import {
-  DEFAULT_GHOST_PICKUP_SCALE_PERCENT,
-  GHOST_PICKUP_SCALE_MAX_PERCENT,
-  GHOST_PICKUP_SCALE_MIN_PERCENT,
-} from "../engine/ghost-transit";
-import { DEFAULT_DRAG_HOP_EASING } from "../engine/drag-easing";
 import {
   insertLeafAdjacent,
   moveLeafToRoot,
@@ -42,35 +35,16 @@ import type {
 
 /**
  * ANIMATION control-group defaults — the single source of truth shared by the
- * host initial state and the group's "reset to defaults" affordance. Speeds
- * start linked (100 % = the 170ms ghost hop and the default pane tempo), pickup
- * scale keeps its library default.
+ * host initial state and the group's "reset to defaults" affordance: the pane
+ * tempo at 100 % (90 % of a move in 92 ms).
  */
 export interface AnimationControlDefaults {
-  speedLinked: boolean;
-  ghostTransitSpeedPercent: number;
   survivorReflowSpeedPercent: number;
-  ghostPickupScalePercent: number;
 }
 
 export const ANIMATION_CONTROL_DEFAULTS: AnimationControlDefaults = {
-  speedLinked: true,
-  ghostTransitSpeedPercent: 100,
   survivorReflowSpeedPercent: 100,
-  ghostPickupScalePercent: DEFAULT_GHOST_PICKUP_SCALE_PERCENT,
 };
-
-/**
- * Demo preset set for the consumer-configurable drag-hop easing public-API param
- * (HT-ANIM-EASING-CONFIG). Each is a valid CSS `<easing-function>` string fed to
- * the renderer's `dragHopEasing` prop; "snappy" equals the library default.
- */
-export const DRAG_HOP_EASING_PRESETS: ReadonlyArray<{ id: string; label: string; value: string }> = [
-  { id: "snappy", label: "snappy", value: DEFAULT_DRAG_HOP_EASING },
-  { id: "linear", label: "linear", value: "linear" },
-  { id: "ease-out", label: "ease out", value: "ease-out" },
-  { id: "overshoot", label: "overshoot", value: "cubic-bezier(0.34, 1.56, 0.64, 1)" },
-];
 
 const LIVE_LEDGER_RETENTION_LIMIT: number = 60;
 const CONTROL_PANE_WIDTH_PX: number = 320;
@@ -109,14 +83,8 @@ interface TilingObservabilityPanelProps {
   setObservabilityColorEnables: React.Dispatch<React.SetStateAction<TilingObservabilityColorEnableConfig>>;
   projectedOverlayBgAlphaPercent: number;
   setProjectedOverlayBgAlphaPercent: React.Dispatch<React.SetStateAction<number>>;
-  animationSpeedLinked: boolean;
-  setAnimationSpeedLinked: React.Dispatch<React.SetStateAction<boolean>>;
-  ghostTransitSpeedPercent: number;
-  setGhostTransitSpeedPercent: React.Dispatch<React.SetStateAction<number>>;
   survivorReflowSpeedPercent: number;
   setSurvivorReflowSpeedPercent: React.Dispatch<React.SetStateAction<number>>;
-  dragHopEasing: string;
-  setDragHopEasing: React.Dispatch<React.SetStateAction<string>>;
   projectedOverlayRenderCount: number;
   showDropBorderHints: boolean;
   setShowDropBorderHints: React.Dispatch<React.SetStateAction<boolean>>;
@@ -197,13 +165,13 @@ interface DragModeOption {
 /**
  * Segmented-control options for the drag-to-rearrange feedback mode. "preview"
  * paints the non-committing projected landing overlays over the unchanged tree;
- * "live" detaches the dragged source on pickup (Hyprland-style), reflows the
- * remaining tree once to close the gap, follows the cursor with a ghost, and
- * commits once on release. "projected" is the rendering technique for the
- * preview overlays — it is NOT a mode value here.
+ * "live" lifts the real pane on pickup (Hyprland-style) and holds it under the
+ * pointer while the others close the gap, and commits once on release.
+ * "projected" is the rendering technique for the preview overlays — it is NOT
+ * a mode value here.
  */
 const DRAG_MODE_OPTIONS: ReadonlyArray<DragModeOption> = [
-  { value: "live", label: "live", title: "Hyprland-style detach: source leaf is detached on pickup, the remaining tree reflows once to close the gap, a ghost follows the cursor, and the drop commits once on release (reverts on cancel/Escape)" },
+  { value: "live", label: "live", title: "Hyprland-style: the real pane is lifted on pickup and held under the pointer, the others close the gap, and the drop commits once on release (reverts on cancel/Escape)" },
   { value: "preview", label: "preview", title: "Non-committing preview via translucent projected landing overlays (S' / T' / successor); layout tree untouched until drop" },
 ];
 
@@ -214,14 +182,14 @@ interface SlotCommitmentOption {
 }
 
 /**
- * Segmented-control options for the live-drag slot re-resolution policy after
- * the single ghost hops INTO and FILLS a slot. "delta-responsive" (default)
- * re-aims once the cursor travels past the delta threshold; "zone-exit-hold"
- * pins the seated slot until the cursor leaves the seated pane (sticky).
+ * Segmented-control options for the live-drag target re-resolution policy once
+ * a target is seated. "delta-responsive" (default) re-aims once the cursor
+ * travels past the delta threshold; "zone-exit-hold" pins the seated target
+ * until the cursor leaves the seated pane (sticky).
  */
 const SLOT_COMMITMENT_OPTIONS: ReadonlyArray<SlotCommitmentOption> = [
-  { value: "delta-responsive", label: "delta", title: "Delta-responsive (default): after the ghost hops into a slot, it re-evaluates the target eagerly once the cursor travels beyond the re-aim delta (24px) from the seat anchor — re-aim without fully exiting the pane" },
-  { value: "zone-exit-hold", label: "hold", title: "Zone-exit hold (anchored / sticky): after the ghost hops into a slot it stays pinned through small cursor movements; the target re-resolves only when the cursor crosses OUT of the seated pane's hit zone" },
+  { value: "delta-responsive", label: "delta", title: "Delta-responsive (default): once a target is seated, it re-evaluates the target eagerly once the cursor travels beyond the re-aim delta (24px) from the seat anchor — re-aim without fully exiting the pane" },
+  { value: "zone-exit-hold", label: "hold", title: "Zone-exit hold (anchored / sticky): once a target is seated it stays pinned through small cursor movements; the target re-resolves only when the cursor crosses OUT of the seated pane's hit zone" },
 ];
 
 interface LiveStatusVisibilityOption {
@@ -233,12 +201,12 @@ interface LiveStatusVisibilityOption {
 /**
  * Head-of-pane segmented control governing the LIVE STATUS readout. The panel
  * keeps LIVE STATUS hidden by default ("off") so the readout is opt-in rather
- * than always-pinned; "on" reveals the mode / drag mode / ghost / source /
+ * than always-pinned; "on" reveals the mode / drag mode / lifted / source /
  * target / intent / validity / telemetry / blocked-reason section below.
  */
 const LIVE_STATUS_VISIBILITY_OPTIONS: ReadonlyArray<LiveStatusVisibilityOption> = [
   { value: false, label: "off", title: "Hide the live status readout (default)" },
-  { value: true, label: "on", title: "Show the live status readout (mode / drag mode / ghost / source / target / intent / validity / telemetry / blocked reason)" },
+  { value: true, label: "on", title: "Show the live status readout (mode / drag mode / lifted / source / target / intent / validity / telemetry / blocked reason)" },
 ];
 
 function keyChordModifierPrefix(modifiers: ResolvedTilingKeyChordModifiers): string {
@@ -848,10 +816,10 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
     : isDraggingActive
       ? "dragging"
       : "hovering";
-  const liveGhostLabel: string = !isLiveDragModeActive
+  const liveLiftedLabel: string = !isLiveDragModeActive
     ? "n/a (preview)"
     : isDraggingActive && props.liveHitLog?.dragSourceLeafId != null
-      ? `detached ${props.liveHitLog.dragSourceLeafId}`
+      ? `held ${props.liveHitLog.dragSourceLeafId}`
       : "idle";
   const liveSourceLabel: string = isLiveStatusIdle
     ? "none"
@@ -926,7 +894,6 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
   );
   const projectedFillAlphaEnabled: boolean = hasEnabledProjectedFill(props.observabilityColorEnables);
   const prefersReducedMotion: boolean = usePrefersReducedMotion();
-  const resolvedGhostTransitDurationMs: number = resolveDragAnimationDurationMs(props.ghostTransitSpeedPercent);
   // Pane motion is a settle: report its time to 90 % (ln 10 / ω).
   const resolvedPaneMotionT90Ms: number = Math.round((Math.log(10) / resolveLeafMotionOmega(props.survivorReflowSpeedPercent)) * 1000);
 
@@ -938,16 +905,16 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
       <div className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono text-[10px] uppercase tracking-[0.12em]">
         <div className="text-slate-500">mode</div>
         <div className="text-slate-200">{liveModeLabel}</div>
-        <div className="text-slate-500" title="Drag feedback mode: preview (projected S'/T'/successor overlays) vs live (Hyprland detach: source detached on pickup, ghost follows cursor, commit on release)">drag mode</div>
+        <div className="text-slate-500" title="Drag feedback mode: preview (projected S'/T'/successor overlays) vs live (Hyprland: the real pane lifted and held under the pointer, commit on release)">drag mode</div>
         <div className={isLiveDragModeActive ? "text-cyan-200" : "text-slate-200"}>
           {props.interactionCapabilities.dragMode}
         </div>
-        <div className="text-slate-500" title="Live (Hyprland) ghost: the dragged source detached from the frozen tree and following the cursor">ghost</div>
+        <div className="text-slate-500" title="Live (Hyprland): the pane lifted out of the layout and held under the pointer">lifted</div>
         <div
           className={isLiveDragModeActive && isDraggingActive && props.liveHitLog?.dragSourceLeafId != null ? "text-cyan-200" : "text-slate-200"}
-          title="Live (Hyprland) ghost: the dragged source detached from the frozen tree and following the cursor"
+          title="Live (Hyprland): the pane lifted out of the layout and held under the pointer"
         >
-          {liveGhostLabel}
+          {liveLiftedLabel}
         </div>
         <div className="text-slate-500" title="Pane currently under the cursor">source</div>
         <div className="text-slate-200" title="Pane currently under the cursor">{liveSourceLabel}</div>
@@ -1431,138 +1398,36 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
         sticky={props.animationControlsSticky}
         onStickyChange={props.setAnimationControlsSticky}
         ariaLabel="animation group"
-        offTitle="Disable pane motion and the ghost choreography (transit + pane speeds, ghost pickup-scale) and collapse the controls. Placement becomes instant; per-control values are preserved for re-enabling."
-        onTitle="Enable pane motion and the ghost choreography and expand the controls (link toggle, transit + pane speeds, ghost pickup scale)."
+        offTitle="Disable pane motion (the pane speed) and collapse the controls. Every layout change snaps; the value is preserved for re-enabling."
+        onTitle="Enable pane motion and expand the controls (pane speed)."
       />
       {props.animationControlsEnabled ? (
         <div className="mt-2 space-y-2">
           {prefersReducedMotion ? (
             <div className="rounded border border-amber-400/40 bg-amber-500/10 px-2 py-1 font-mono text-[9px] uppercase leading-relaxed tracking-[0.12em] text-amber-200">
-              reduced motion active — drag choreography is suppressed; these knobs have no visible effect until the OS setting is cleared
+              reduced motion active — panes snap; these knobs have no visible effect until the OS setting is cleared
             </div>
           ) : null}
-          <label
-            className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-300"
-            title="Link the ghost transit speed and the pane motion speed. Linked (default): one slider drives both. Unlinked: two independent sliders."
-          >
-            <StyledCheckbox
-              checked={props.animationSpeedLinked}
-              onChange={(checked: boolean): void => {
-                props.setAnimationSpeedLinked(checked);
-                if (checked) {
-                  // Re-link to parity: survivor reflow adopts the ghost transit speed.
-                  props.setSurvivorReflowSpeedPercent(props.ghostTransitSpeedPercent);
-                }
-              }}
-            />
-            link transit + reflow speed
-          </label>
-          {props.animationSpeedLinked ? (
-            <div className="pl-0.5">
-              <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">
-                drag animation speed: {props.ghostTransitSpeedPercent}% ({resolvedGhostTransitDurationMs}ms hop, panes 90% in {resolvedPaneMotionT90Ms}ms)
-              </label>
-              <RangeSlider
-                min={DRAG_ANIMATION_SPEED_MIN_PERCENT}
-                max={DRAG_ANIMATION_SPEED_MAX_PERCENT}
-                step={5}
-                value={props.ghostTransitSpeedPercent}
-                onChange={(value: number): void => {
-                  props.setGhostTransitSpeedPercent(value);
-                  props.setSurvivorReflowSpeedPercent(value);
-                }}
-                title="Linked speed for both the ghost transit (hop, from the 170ms baseline) and pane motion (every layout change; 100% = 90% of a move in 92ms). Slowest 10% ≈ 1700ms hop."
-              />
-            </div>
-          ) : (
-            <>
-              <div className="pl-0.5">
-                <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">
-                  ghost transit speed: {props.ghostTransitSpeedPercent}% ({resolvedGhostTransitDurationMs}ms hop)
-                </label>
-                <RangeSlider
-                  min={DRAG_ANIMATION_SPEED_MIN_PERCENT}
-                  max={DRAG_ANIMATION_SPEED_MAX_PERCENT}
-                  step={5}
-                  value={props.ghostTransitSpeedPercent}
-                  onChange={props.setGhostTransitSpeedPercent}
-                  title="Speed of the dragged ghost's hop-in/out + pickup entrance, scaled from the 170ms baseline (100% = default)."
-                />
-              </div>
-              <div className="pl-0.5">
-                <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">
-                  pane motion speed: {props.survivorReflowSpeedPercent}% (90% in {resolvedPaneMotionT90Ms}ms)
-                </label>
-                <RangeSlider
-                  min={DRAG_ANIMATION_SPEED_MIN_PERCENT}
-                  max={DRAG_ANIMATION_SPEED_MAX_PERCENT}
-                  step={5}
-                  value={props.survivorReflowSpeedPercent}
-                  onChange={props.setSurvivorReflowSpeedPercent}
-                  title="Tempo of pane motion: every layout change glides each pane from where it is drawn on one settle curve that never passes its target (100% = 90% of a move in 92ms)."
-                />
-              </div>
-            </>
-          )}
           <div className="pl-0.5">
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">
-              hop easing: {DRAG_HOP_EASING_PRESETS.find((preset): boolean => preset.value === props.dragHopEasing)?.label ?? "custom"}
-            </label>
-            <div className="flex flex-wrap gap-1" role="group" aria-label="drag hop easing preset">
-              {DRAG_HOP_EASING_PRESETS.map((preset): React.ReactElement => {
-                const isActive: boolean = preset.value === props.dragHopEasing;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={(): void => props.setDragHopEasing(preset.value)}
-                    title={`Set the ghost hop + cursor transit timing function to ${preset.value}.`}
-                    className={`rounded border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] transition-colors ${
-                      isActive
-                        ? "border-sky-400/70 bg-sky-500/20 text-sky-200"
-                        : "border-white/10 bg-slate-950/70 text-slate-400 hover:border-white/20 hover:text-slate-200"
-                    }`}
-                  >
-                    {preset.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="pl-0.5">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">
-              ghost pickup scale: {props.interactionCapabilities.ghostPickupScalePercent}% (of source bbox)
+              pane motion speed: {props.survivorReflowSpeedPercent}% (90% in {resolvedPaneMotionT90Ms}ms)
             </label>
             <RangeSlider
-              min={GHOST_PICKUP_SCALE_MIN_PERCENT}
-              max={GHOST_PICKUP_SCALE_MAX_PERCENT}
+              min={DRAG_ANIMATION_SPEED_MIN_PERCENT}
+              max={DRAG_ANIMATION_SPEED_MAX_PERCENT}
               step={5}
-              value={props.interactionCapabilities.ghostPickupScalePercent}
-              onChange={(value: number): void => props.setInteractionCapabilities(
-                (previous: ResolvedTilingInteractionCapabilities): ResolvedTilingInteractionCapabilities => ({
-                  ...previous,
-                  ghostPickupScalePercent: value,
-                }),
-              )}
-              title="Size the lifted ghost relative to the source pane's full bbox on drag start. <100% reads as lifted/shrunk; the ghost morphs from this size toward the resolved slot's bbox on hop-in. Skipped under prefers-reduced-motion."
+              value={props.survivorReflowSpeedPercent}
+              onChange={props.setSurvivorReflowSpeedPercent}
+              title="Tempo of pane motion: every layout change (a drag's reflow and drop included) glides each pane from where it is drawn on one settle curve that never passes its target (100% = 90% of a move in 92ms)."
             />
           </div>
           <button
             type="button"
             onClick={(): void => {
-              props.setAnimationSpeedLinked(ANIMATION_CONTROL_DEFAULTS.speedLinked);
-              props.setGhostTransitSpeedPercent(ANIMATION_CONTROL_DEFAULTS.ghostTransitSpeedPercent);
               props.setSurvivorReflowSpeedPercent(ANIMATION_CONTROL_DEFAULTS.survivorReflowSpeedPercent);
-              props.setDragHopEasing(DEFAULT_DRAG_HOP_EASING);
-              props.setInteractionCapabilities(
-                (previous: ResolvedTilingInteractionCapabilities): ResolvedTilingInteractionCapabilities => ({
-                  ...previous,
-                  ghostPickupScalePercent: ANIMATION_CONTROL_DEFAULTS.ghostPickupScalePercent,
-                }),
-              );
             }}
             className="mt-1 w-full rounded border border-white/15 bg-slate-900/80 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-slate-300 transition-colors hover:border-cyan-300/50 hover:text-cyan-100"
-            title="Restore the ANIMATION group to its defaults: linked speeds at 100%, ghost pickup scale 90%."
+            title="Restore the ANIMATION group to its defaults: pane speed 100%."
           >
             reset group to defaults
           </button>
@@ -1711,26 +1576,6 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
 
                 <label
                   className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-300"
-                  title="Live-drag slot hop-in. On (default): the single ghost hops INTO and FILLS the resolved slot as the single instance — no separate empty reservation lingers. Off: the ghost free-follows the cursor and the in-tree content-less reservation slot stays shown (reservation-plus-ghost duality)."
-                >
-                  <StyledCheckbox
-                    disabled={
-                      !props.interactionCapabilities.rearrange
-                      || props.interactionCapabilities.dragMode !== "live"
-                    }
-                    checked={props.interactionCapabilities.slotHopInEnabled}
-                    onChange={(checked: boolean): void => props.setInteractionCapabilities(
-                      (previous: ResolvedTilingInteractionCapabilities): ResolvedTilingInteractionCapabilities => ({
-                        ...previous,
-                        slotHopInEnabled: checked,
-                      }),
-                    )}
-                  />
-                  slot hop-in
-                </label>
-
-                <label
-                  className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-300"
                   title="Drag-to-rearrange (move / swap / edge-insert). When off, panes are not draggable and no drop overlays activate."
                 >
                   <StyledCheckbox
@@ -1748,7 +1593,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 <div className="pl-5">
                   <div
                     className="mb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400"
-                    title="Drag feedback mode: preview = non-committing projected overlays; live = Hyprland detach (source detached on pickup, frozen tree, ghost follows cursor, commit on release)"
+                    title="Drag feedback mode: preview = non-committing projected overlays; live = Hyprland (the real pane lifted and held under the pointer, the others close the gap, commit on release)"
                   >
                     drag mode
                   </div>
@@ -1784,7 +1629,7 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 <div className="pl-5">
                   <div
                     className="mb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400"
-                    title="Live-drag slot re-resolution after the single ghost hops INTO and FILLS a slot: delta-responsive (default) re-aims once the cursor moves past the 24px delta; zone-exit-hold pins the seated slot until the cursor leaves the seated pane."
+                    title="Live-drag target re-resolution once a target is seated: delta-responsive (default) re-aims once the cursor moves past the 24px delta; zone-exit-hold pins the seated target until the cursor leaves the seated pane."
                   >
                     slot commitment
                   </div>

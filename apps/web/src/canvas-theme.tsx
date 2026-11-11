@@ -18,7 +18,7 @@ import {
 // The theme carries its own open `id: "canvas"` (`TilingTheme.id` accepts any
 // consumer-minted string alongside the built-in `TilingThemeId` union) and is
 // passed to the renderer via the `theme` prop, so the renderer-owned surfaces
-// (root/viewport/divider/ghost shell) paint the Canvas vocabulary too — the
+// (root/viewport/divider/drag chrome) paint the Canvas vocabulary too — the
 // Canvas pane chrome, content, and top bar also import `CANVAS_THEME` directly.
 
 /** Resolve an accent (or the default) to its public hue atoms. */
@@ -74,13 +74,9 @@ export const CANVAS_THEME: TilingTheme = {
     selected: "outline-dashed outline-1 -outline-offset-2 outline-slate-300",
     selectedBadge: "border border-slate-300 bg-white text-slate-600",
   },
-  ghost: {
-    surface:
-      "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_60px_-24px_rgba(15,23,42,0.5)]",
-    header:
-      "flex shrink-0 items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-2.5",
-    bodyText: "text-slate-600",
-    subtitleText: "text-slate-400",
+  // The lifted pane on the light desk: a soft slate drop shadow.
+  dragChrome: {
+    liftedPane: "drop-shadow-[0_24px_30px_rgba(15,23,42,0.28)]",
   },
   divider: {
     base: "shrink-0 rounded outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60",

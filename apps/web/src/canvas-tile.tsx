@@ -31,8 +31,7 @@ import { paneContentMetrics, type PaneContentMetrics } from "./pane-metrics";
 //      a tabular pane index. This is the drag surface and owns the Alt/Opt+click
 //      multi-select toggle via `TilingDragHandle`.
 //   2. BODY — a flat neutral panel field (no card rounding, no shadow) that
-//      renders `tile.content` through `TilingPaneBody` so the drag ghost reuses
-//      the same render path.
+//      renders `tile.content` through `TilingPaneBody`.
 //   3. CONTENT-METRICS FOOTER — a thin hairline readout carrying a subtle
 //      per-pane LED identity dot plus the pane's real content metrics (char
 //      count · word count · ~read-time), derived from the shared `./docs`
@@ -174,18 +173,11 @@ export function CanvasTile(args: TilingRenderTileProps): React.ReactElement {
       : "";
   const index: string = String(args.paneOrdinal).padStart(2, "0");
   const metrics: PaneContentMetrics | null = paneContentMetrics(args.tile.id);
-  // Canvas ghost chrome: the drag surfaces (`"drag-ghost"` / `"drag-cancel"`)
-  // carry REAL capability flags but INERT handlers, and the Canvas control
-  // squares are bright saturated "lit key" chips — rendering them on a ghost
-  // would read as live controls that do nothing. Branch on `args.surface`:
-  // interactive controls render on the seated pane only; the traveling
-  // silhouette keeps the label / index / LED identity bands.
-  const isPaneSurface: boolean = args.surface === "pane";
   // Whether either uniform-color control key renders (drives the divider that
-  // separates the control cluster from the per-pane LED identity).
+  // separates the control cluster from the per-pane LED identity). A dragged
+  // pane is this same pane, lifted: it keeps its controls.
   const hasControls: boolean =
-    isPaneSurface &&
-    (args.isMaximizeEnabled || args.isMultiSelectGroupingEnabled);
+    args.isMaximizeEnabled || args.isMultiSelectGroupingEnabled;
 
   return (
     <TilingPaneRoot

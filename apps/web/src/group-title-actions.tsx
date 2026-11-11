@@ -201,22 +201,13 @@ export function GroupTitleActions({
     getGroupSelectionVersion,
   );
   React.useEffect((): (() => void) | void => {
-    if (
-      pane.surface !== "pane" ||
-      !pane.isMultiSelectGroupingEnabled ||
-      !pane.isMultiSelected
-    ) {
+    if (!pane.isMultiSelectGroupingEnabled || !pane.isMultiSelected) {
       return;
     }
     return registerSelectedLeaf(pane.leafId);
-  }, [
-    pane.surface,
-    pane.isMultiSelectGroupingEnabled,
-    pane.isMultiSelected,
-    pane.leafId,
-  ]);
+  }, [pane.isMultiSelectGroupingEnabled, pane.isMultiSelected, pane.leafId]);
 
-  if (pane.surface !== "pane" || !pane.isMultiSelectGroupingEnabled) {
+  if (!pane.isMultiSelectGroupingEnabled) {
     return null;
   }
 

@@ -19,8 +19,7 @@ import type { TilingRenderTileProps } from "../engine/types";
 //                        AND click, so pressing it never starts a drag or
 //                        establishes focus.
 //   • TilingPaneBody   — renders children only in `render-content` mode (the
-//                        drag ghost reuses the same render path; it mounts on
-//                        the overlay portal container, default document.body).
+//                        content toggle and collapse decide it).
 //
 // They ship no styling: a consumer brings their own className/style. The raw
 // `renderTile` args stay the full escape hatch — use the primitives for the
@@ -214,10 +213,8 @@ export interface TilingPaneBodyProps extends React.HTMLAttributes<HTMLDivElement
  * The body wrapper of a custom pane. Always renders its wrapper `<div>` (so the
  * pane keeps its layout), but renders children ONLY when
  * `paneBodyRenderMode === "render-content"`. This keeps a custom pane aligned
- * with the renderer's drag-ghost / hidden-body semantics — the ghost reuses the
- * same render path (overlay portal container, default `document.body`), so an
- * empty body never rides along. Bring your own
- * `className` / `style`.
+ * with the renderer's hidden-body semantics (the content toggle, collapse).
+ * Bring your own `className` / `style`.
  *
  * HT-PANE-COLLAPSE: while `pane.isCollapsed` is true (and the pane is NOT
  * maximized — see below) the wrapper is forced to `display: none` (merged into

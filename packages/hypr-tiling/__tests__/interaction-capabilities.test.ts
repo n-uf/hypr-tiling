@@ -21,7 +21,6 @@ import type {
 const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   resize: "both",
   resizeHandlesVisible: true,
-  slotHopInEnabled: true,
   rearrange: true,
   dragMode: "live",
   slotCommitment: { mode: "delta-responsive", reresolveDeltaPx: 24 },
@@ -29,10 +28,8 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   dragRecovery: {
     enable: true,
     maxDraggingIdleMs: 5100,
-    frameDeadlineMs: 32,
   },
   customCursor: true,
-  ghostPickupScalePercent: 90,
   focus: true,
   maximize: { enable: true, keepGroupTabStrip: true },
   paneSwitching: {
@@ -113,22 +110,6 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     });
   });
 
-  it("defaults slotHopInEnabled to true (the ORIGINAL single-instance hop-in)", (): void => {
-    expect(resolveInteractionCapabilities(undefined).slotHopInEnabled).toBe(true);
-    expect(resolveInteractionCapabilities({}).slotHopInEnabled).toBe(true);
-  });
-
-  it("preserves an explicit slotHopInEnabled false (the seat-skip duality mode)", (): void => {
-    expect(resolveInteractionCapabilities({ slotHopInEnabled: false })).toEqual({
-      ...RESOLVED_DEFAULTS,
-      slotHopInEnabled: false,
-    });
-  });
-
-  it("preserves an explicit slotHopInEnabled true (idempotent with the default)", (): void => {
-    expect(resolveInteractionCapabilities({ slotHopInEnabled: true })).toEqual(RESOLVED_DEFAULTS);
-  });
-
   it("preserves an explicit false (not overridden by the default)", (): void => {
     expect(resolveInteractionCapabilities({ rearrange: false })).toEqual({
       ...RESOLVED_DEFAULTS,
@@ -149,19 +130,9 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     expect(resolveInteractionCapabilities({}).customCursor).toBe(true);
   });
 
-  it("defaults ghostPickupScalePercent to 90", (): void => {
-    expect(resolveInteractionCapabilities(undefined).ghostPickupScalePercent).toBe(90);
-  });
-
-  it("clamps an out-of-range ghostPickupScalePercent into [10, 150]", (): void => {
-    expect(resolveInteractionCapabilities({ ghostPickupScalePercent: 5 }).ghostPickupScalePercent).toBe(10);
-    expect(resolveInteractionCapabilities({ ghostPickupScalePercent: 400 }).ghostPickupScalePercent).toBe(150);
-    expect(resolveInteractionCapabilities({ ghostPickupScalePercent: 120 }).ghostPickupScalePercent).toBe(120);
-  });
-
-  it("is idempotent across the new fields (re-resolving a resolved object)", (): void => {
+  it("is idempotent (re-resolving a resolved object)", (): void => {
     const once: ResolvedTilingInteractionCapabilities = resolveInteractionCapabilities({
-      ghostPickupScalePercent: 75,
+      customCursor: false,
     });
     expect(resolveInteractionCapabilities(once)).toEqual(once);
   });

@@ -223,7 +223,7 @@ export function createDragInputDriver(host: DragInputDriverHost): DragInputDrive
         current.resolvedTarget,
       );
       const seatedTarget: DragResolvedTarget | null = current.resolvedTarget;
-      // Slot-commitment policy: once the ghost has hopped into a seated slot,
+      // Slot-commitment policy: once a committable target is seated,
       // hold it (no retarget) until the policy says re-resolve. The delta gates
       // WHETHER to re-run resolution — it is NOT fed into `resolveDropIntent`'s
       // zone hysteresis, so the two dampers never double-count.

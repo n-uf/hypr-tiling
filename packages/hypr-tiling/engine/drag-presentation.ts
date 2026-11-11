@@ -9,16 +9,17 @@ import type {
 /** Drag phases the presentation derivation observes. */
 export type DragPresentationPhase = DragMachineState["phase"];
 
-/** The settle outcome carried only while the FSM is in `settling`. */
-export type DragSettlingOutcome = "commit" | "cancel" | null;
-
 export interface DragPresentationInput {
   liveDragModeEnabled: boolean;
   dragPhase: DragPresentationPhase;
-  settlingOutcome: DragSettlingOutcome;
   leafId: string;
   pickupOriginLeafId: string | null;
-  ghostSeatLeafId: string | null;
+  /**
+   * The display-tree leaf that keeps the lifted pane's place while the pane
+   * itself is held under the pointer (the slot the others made room around, or
+   * a root leaf with nothing to close over), else `null`.
+   */
+  heldSlotLeafId: string | null;
   /** Resolved action for THIS leaf (null when this leaf is not the drop target). */
   dropAction: TilingDropAction | null;
   /** Resolved zone for THIS leaf (null when this leaf is not the drop target). */
@@ -31,66 +32,23 @@ export interface DragPresentationInput {
 /**
  * The single drag-presentation fact set every drag surface reads. This struct is
  * CONTENT-AGNOSTIC: nothing here branches on `isPaneContentVisible`. Drag
- * presentation is decided purely by drag mechanics (which leaf is the
- * pickup-origin, which is the ghost-seat). Whether a pane body paints content is
- * the separate, drag-independent CONTENT rule (`resolvePaneBodyRenderMode`),
- * applied uniformly to every representation of a pane (in-tree, source slot,
- * hop-in slot, ghost).
+ * presentation is decided purely by drag mechanics. Whether a pane body paints
+ * content is the separate, drag-independent CONTENT rule
+ * (`resolvePaneBodyRenderMode`).
  *
- * - `isGhostSeatReservation` — this leaf's body is the content-less seat the
- *   single ghost hops into (the reservation drag mechanic). True only in live
- *   mode for the ghost-seat leaf while the gesture is materially in flight.
- * - `isPickupOriginLeaf` / `isGhostSeatLeaf` — leaf-role flags the drag-source
- *   chrome reads.
+ * - `isHeldSlotReservation` — this leaf is the empty place kept for the lifted
+ *   pane while the pane is held elsewhere (live mode, while dragging): it is
+ *   painted as a content-less reservation, so the pane is never shown twice.
+ * - `isPickupOriginLeaf` / `isHeldSlotLeaf` — leaf-role flags.
  * - `dropChromeZone` — the zone the drop-target chrome renders, already
  *   resolving the edge-insert-vs-center decision (no caller-side ternary). Null
  *   when this leaf is not a live drop target.
  */
 export interface DragPresentationMode {
-  isGhostSeatReservation: boolean;
+  isHeldSlotReservation: boolean;
   isPickupOriginLeaf: boolean;
-  isGhostSeatLeaf: boolean;
+  isHeldSlotLeaf: boolean;
   dropChromeZone: TilingLeafDropZone | null;
-}
-
-/**
- * The CSS selector the seat-rect measurement uses to find the ghost-seat leaf's
- * reservation rect (client coords) so the single ghost can hop INTO and FILL it.
- *
- * The selector is SCOPED to the ghost-seat leaf (`cc23956`'s per-leaf intent):
- * it matches the `[data-drag-source-reservation]` node that is a descendant of
- * the leaf carrying `data-leaf-id="<ghostSeatLeafId>"`. For this to resolve, the
- * reserved-slot wrapper MUST emit `data-leaf-id={node.id}` — a reserved slot
- * renders `DragSourceSlotReservation` (which carries `data-drag-source-reservation`
- * but no `data-leaf-id`) INSTEAD of `DefaultTilingTile` (the only emitter of
- * `data-leaf-id` on its own article). `cc23956` introduced this scoped selector
- * WITHOUT emitting `data-leaf-id` on the reserved wrapper, so it could never
- * match → `seatFootprint` stayed null → the ghost never hopped and the empty
- * reservation lingered beside the free-following ghost. The renderer closes the
- * gap by emitting `data-leaf-id` on the reserved wrapper; this helper centralizes
- * the selector so the contract is unit-testable.
- */
-export function dragSourceReservationSelector(ghostSeatLeafId: string): string {
-  return `[data-leaf-id="${ghostSeatLeafId}"] [data-drag-source-reservation]`;
-}
-
-/**
- * Whether a drag gesture is materially in flight for presentation purposes.
- * Extends through `settling` commit so the hop-in reservation does not flash off
- * for a frame before the committed layout prop lands. This is the SINGLE
- * settling-commit presentation-phase selector — the resolver, the seat
- * measurement, and the settling-commit display hold all read it, so the
- * "presentation lives through settling-commit" rule is named in exactly one
- * place.
- */
-export function isDragPresentationActive(
-  dragPhase: DragPresentationPhase,
-  settlingOutcome: DragSettlingOutcome,
-): boolean {
-  if (dragPhase === "dragging") {
-    return true;
-  }
-  return dragPhase === "settling" && settlingOutcome === "commit";
 }
 
 /**
@@ -117,47 +75,37 @@ function resolveDropChromeZone(input: DragPresentationInput): TilingLeafDropZone
 }
 
 /**
- * Central resolver for drag presentation: the ghost-seat reservation flag, the
- * pickup-origin / ghost-seat role flags, and the drop-target chrome zone. The
- * single source of truth consumed by every drag surface — and it is fully
- * content-agnostic (no `isPaneContentVisible` input), so its output is identical
- * whether pane content is shown or hidden.
+ * Central resolver for drag presentation: the held-slot reservation flag, the
+ * pickup-origin / held-slot role flags, and the drop-target chrome zone. Fully
+ * content-agnostic (no `isPaneContentVisible` input), so its output is
+ * identical whether pane content is shown or hidden.
  */
 export function resolveDragPresentation(
   input: DragPresentationInput,
 ): DragPresentationMode {
-  const isPresentationActive: boolean = isDragPresentationActive(
-    input.dragPhase,
-    input.settlingOutcome,
-  );
   const isPickupOriginLeaf: boolean =
     input.pickupOriginLeafId != null && input.leafId === input.pickupOriginLeafId;
-  const isGhostSeatLeaf: boolean =
-    input.ghostSeatLeafId != null && input.leafId === input.ghostSeatLeafId;
-
-  // The ghost-seat slot reserves a content-less seat the single ghost hops into
-  // (live mode). The picked-up pane lives ONLY in the ghost, so the seat slot is
-  // never a second painted instance — preserving the single-instance invariant.
-  // This is a drag mechanic, decided without any reference to content state.
-  const isGhostSeatReservation: boolean =
-    input.liveDragModeEnabled && isPresentationActive && isGhostSeatLeaf;
+  const isHeldSlotLeaf: boolean =
+    input.heldSlotLeafId != null && input.leafId === input.heldSlotLeafId;
+  // The pane is drawn where the pointer holds it; its place in the tree stays
+  // empty until the drop lands it there.
+  const isHeldSlotReservation: boolean =
+    input.liveDragModeEnabled && input.dragPhase === "dragging" && isHeldSlotLeaf;
 
   return {
-    isGhostSeatReservation,
+    isHeldSlotReservation,
     isPickupOriginLeaf,
-    isGhostSeatLeaf,
+    isHeldSlotLeaf,
     dropChromeZone: resolveDropChromeZone(input),
   };
 }
 
 /**
- * The ONE pane-body content rule, applied identically to every representation of
- * a pane (in-tree pane at rest, drag source slot, hop-in / new slot, and the
- * portaled drag ghost — the overlay portal container, default `document.body`,
- * see `overlayPortalContainer`):
+ * The ONE pane-body content rule, applied identically to every pane:
  *
- * - ghost-seat reservation → `render-reservation` (a content-less seat; a drag
- *   mechanic, never carries content regardless of the CONTENT toggle).
+ * - held-slot reservation → `render-reservation` (the empty place kept for a
+ *   lifted pane; a drag mechanic, never carries content regardless of the
+ *   CONTENT toggle).
  * - a COLLAPSED pane that is NOT maximized → decided by `collapseBodyMode`
  *   (HT-COLLAPSE-BODY-MODE), overriding the CONTENT toggle either way:
  *   `"keep-mounted"` (default) → `render-content` (body stays mounted;
@@ -168,10 +116,6 @@ export function resolveDragPresentation(
  * - otherwise the body honors the CONTENT toggle: `render-content` when content
  *   is visible, `render-empty` when hidden.
  *
- * `isGhostSeatReservation` is always `false` for the ghost (it is the single
- * painted instance, never a seat), so the ghost simply paints content iff
- * `isPaneContentVisible` — exactly like a resting in-tree pane.
- *
  * HT-PANE-COLLAPSE + maximize: `isMaximized` SUSPENDS the collapse gate
  * for exactly this leaf. Collapse is an in-tree, titlebar-only affordance;
  * maximizing a leaf is the user explicitly asking to see its content full-screen
@@ -181,13 +125,13 @@ export function resolveDragPresentation(
  * footprint); only the render-mode decision for the maximized frame changes.
  */
 export function resolvePaneBodyRenderMode(
-  isGhostSeatReservation: boolean,
+  isHeldSlotReservation: boolean,
   isPaneContentVisible: boolean,
   isCollapsed: boolean = false,
   isMaximized: boolean = false,
   collapseBodyMode: TilingCollapseBodyMode = "keep-mounted",
 ): TilingPaneBodyRenderMode {
-  if (isGhostSeatReservation) {
+  if (isHeldSlotReservation) {
     return "render-reservation";
   }
   if (isCollapsed && !isMaximized) {
@@ -205,11 +149,10 @@ export function resolvePaneBodyRenderMode(
  *   body stays empty until the user flips the checkbox).
  * - toggle suppressed (`showContentToggle === false`) → default `true`. The
  *   embedding owns content and there is no control to flip; treating content as
- *   visible by default means seated tiles AND the drag ghost share one flag, so
- *   the ghost body matches the in-tree body (and the prerendered HTML keeps its
- *   content at rest — SEO intact).
+ *   visible by default keeps the prerendered HTML's content at rest (SEO
+ *   intact).
  *
- * Ghost-seat reservation slots are unaffected: they render empty via
+ * Held-slot reservations are unaffected: they render empty via
  * `resolvePaneBodyRenderMode` regardless of this flag.
  */
 export function resolveInitialPaneContentVisible(

@@ -245,11 +245,13 @@ function pressEscape(): void {
   flushFrames();
 }
 
+/** Leaves laid out in the live tree (not parked, not in a clone, not the lifted pane the pointer holds). */
 function liveLeafIds(container: HTMLElement): ReadonlyArray<string> {
   return Array.from(container.querySelectorAll<HTMLElement>("article[data-leaf-id]"))
     .filter(
       (article: HTMLElement): boolean =>
         article.closest("[data-hpt-pane-pool]") == null &&
+        article.closest("[data-hpt-lifted]") == null &&
         article.closest(`[${WORKSPACE_TRANSITION_CLONE_ATTR}]`) == null,
     )
     .map((article: HTMLElement): string => article.getAttribute("data-leaf-id") ?? "")
@@ -260,8 +262,9 @@ function activeWorkspaceId(result: RenderResult): string | null {
   return result.container.querySelector<HTMLElement>("[data-host-active]")?.getAttribute("data-host-active") ?? null;
 }
 
+/** The lifted pane the pointer holds while a live drag is in flight, or `null`. */
 function ghost(): HTMLElement | null {
-  return document.querySelector<HTMLElement>("[data-drag-ghost]");
+  return document.querySelector<HTMLElement>("[data-hpt-lifted] [data-hpt-leaf]");
 }
 
 describe("N3 wiring — spring-loaded tab drop on the set-mode renderer", (): void => {
@@ -291,19 +294,17 @@ describe("N3 wiring — spring-loaded tab drop on the set-mode renderer", (): vo
     expect(next.workspaces[1].layout?.kind).toBe("split");
     expect(onMoveLeaf).toHaveBeenCalledWith("leaf:a", "main", "ops");
     expect(onWorkspaceSwitch).toHaveBeenCalledWith({ from: "main", to: "ops", via: "spring-load" });
-    // The destination tree is live (the picked-up leaf free-follows as the
-    // ghost, so the tree shows the survivors only) …
+    // The destination tree is live (the picked-up leaf is lifted and held
+    // under the pointer, so the tree shows the survivors only) …
     expect(activeWorkspaceId(result)).toBe("ops");
     expect(liveLeafIds(result.container)).toEqual(["leaf:c"]);
-    // … and the drag continued there: a live ghost, no cancel fly-back.
+    // … and the drag continued there: the pane is still held.
     expect(ghost()).not.toBeNull();
-    expect(document.querySelector("[data-drag-cancel]")).toBeNull();
 
     // The re-armed drag is an ordinary drag: Escape cancels it on the NEW
-    // tree (fly-back to the new seat) and the set is untouched.
+    // tree (the pane settles on its new seat) and the set is untouched.
     pressEscape();
     expect(ghost()).toBeNull();
-    expect(document.querySelector("[data-drag-cancel]")).not.toBeNull();
     expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
     expect(liveLeafIds(result.container)).toEqual(["leaf:a", "leaf:c"]);
     // A stale release afterwards is inert.
@@ -327,9 +328,8 @@ describe("N3 wiring — spring-loaded tab drop on the set-mode renderer", (): vo
     movePointer(100, 300);
     releasePointer(100, 300);
     expect(ghost()).toBeNull();
-    // The release found no target: an ordinary cancel fly-back on the ops
-    // tree; nothing else moved.
-    expect(document.querySelector("[data-drag-cancel]")).not.toBeNull();
+    // The release found no target: an ordinary cancel on the ops tree (the
+    // pane settles on its seat); nothing else moved.
     expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
     expect(onWorkspaceSwitch).toHaveBeenCalledTimes(1);
     expect(liveLeafIds(result.container)).toEqual(["leaf:a", "leaf:c"]);

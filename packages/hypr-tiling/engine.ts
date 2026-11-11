@@ -19,13 +19,11 @@
  * `__tests__/engine-entry-react-free.test.ts` (`pnpm test:dist`) and the
  * `engine ↛ react` layering rule in `scripts/check-guardrails.mjs`.
  *
- * The small "demoted from `.`" group at the bottom of this file — `accentHue`
- * and the two drag-duration reference constants (`BASELINE_DRAG_HOP_DURATION_MS`,
- * `INSTANT_DRAG_DURATION_MS`) — was pulled off the consumer `.` surface
- * (custom-chrome / prop-less internal tuning, not dogfooded by any renderer prop
- * a consumer sets) and is re-exported here for power users. It is pure data and
- * lives in `engine/` (`accent-hues.ts`, `drag-timing.ts`); the React theme
- * engine and renderer import it from there.
+ * The small "demoted from `.`" group at the bottom of this file — `accentHue` —
+ * was pulled off the consumer `.` surface (a custom-chrome helper, not
+ * dogfooded by any renderer prop a consumer sets) and is re-exported here for
+ * power users. It is pure data and lives in `engine/accent-hues.ts`; the React
+ * theme engine imports it from there.
  *
  * @packageDocumentation
  */
@@ -232,8 +230,7 @@ export {
 } from "./engine/pane-sizing";
 export { isResizeAxisEnabled } from "./engine/interaction-capabilities";
 
-// ── Drag easing / cursor / drop-intent ────────────────────────────────────────
-export { isCssEasing, resolveDragEasing } from "./engine/drag-easing";
+// ── Drag cursor / drop-intent / landing ───────────────────────────────────────
 export {
   clampCursorPointToViewport,
   resolveDragCursorPresentation,
@@ -264,17 +261,9 @@ export type {
 // ── Demoted from the `.` consumer surface (see @packageDocumentation) ──────────
 // Reachable here for power users, but off the curated consumer API and its docs.
 // `accentHue` resolves an accent to its Tailwind hue atoms (custom-chrome helper,
-// not dogfooded by any renderer prop). The two duration constants are the
-// prop-less internal reference values behind the drag-animation timing — the
-// consumer-facing knobs (`dragAnimationEnabled`, `ghostTransitSpeedPercent`,
-// `survivorReflowSpeedPercent`, and the `DRAG_ANIMATION_SPEED_*` percents) stay
-// on `.`. Both modules are pure (no React) — this entry must never import from
-// `react/`.
+// not dogfooded by any renderer prop). Pure (no React) — this entry must never
+// import from `react/`.
 export { accentHue, type TilingAccentHue } from "./engine/accent-hues";
-export {
-  BASELINE_DRAG_HOP_DURATION_MS,
-  INSTANT_DRAG_DURATION_MS,
-} from "./engine/drag-timing";
 
 // H8 — workspace commands, gate, keymap fragment
 export { isWorkspaceNavigationCommand } from "./engine/commands";

@@ -17,7 +17,7 @@ export const VIEW_CAPTURE_CANVAS_PIXEL_BUDGET: number = 16_000_000;
 
 /**
  * Renderer pane / leaf / drag attributes used for hit-testing and
- * measurement (`[data-leaf-id]`, `[data-hpt-pane]`, drag-source seats, …).
+ * measurement (`[data-leaf-id]`, `[data-hpt-pane]`, the lifted pane, …).
  * Stripped from the clone so `querySelector` / pointer hit-tests on the
  * live viewport never resolve into the overlay.
  */
@@ -26,23 +26,19 @@ export const HIT_TEST_DATA_ATTRIBUTES: ReadonlyArray<string> = [
   // Leaf motion collects `[data-hpt-leaf]` wrappers under the viewport; a
   // clone's wrappers must not register as panes.
   "data-hpt-leaf",
-  "data-drag-source-reservation-slot",
+  "data-hpt-leaf-raised",
+  "data-hpt-lifted",
+  "data-hpt-drop-indicator",
+  "data-drag-held-slot",
+  "data-drag-held-slot-leaf",
   "data-hpt-pane",
   "data-hpt-pane-pool",
   "data-hpt-pane-slot",
   "data-hpt-resize-cursor",
-  "data-drag-source-reservation",
   "data-drag-source-pane",
   "data-drop-target-pane",
-  "data-drag-ghost",
-  "data-drag-ghost-mode",
-  "data-drag-ghost-wrapper",
-  "data-drag-ghost-chip",
-  "data-drag-ghost-target",
-  "data-drag-ghost-workspace",
   "data-drag-cursor",
   "data-drag-cursor-kind",
-  "data-drag-cancel",
 ];
 
 /**
