@@ -3957,8 +3957,11 @@ interface TilingSpringLoadRearmRequest {
   readonly pointerType: DragPointerType;
   /** The moved leaf — the source of the re-armed drag. */
   readonly leafId: string;
-  /** What moved with it: the one pane, or its whole tab group (re-armed as a group). */
-  readonly subject: DragSubject;
+  /**
+   * The id of the tab group that moved whole (re-armed as a group drag while
+   * it is still that group), or `null` for one pane.
+   */
+  readonly groupId: string | null;
   /** The destination workspace whose tree must render before the rearm. */
   readonly workspaceId: string;
   /** The workspace the drag started in (still active until the host applies the switch). */
@@ -8009,6 +8012,28 @@ const TilingRendererComponent = React.forwardRef<
     setFocusedLeaf,
   ]);
 
+  /**
+   * A group's frame (strip and active pane, client px) from its active pane's
+   * rect: the strip's rendered height (scaled like the pane) added on its side.
+   */
+  const groupFrameClientRect = React.useCallback(
+    (paneRect: TilingClientRectLike): TilingClientRectLike => {
+      if (!dragLandingGroupStrip.visible) {
+        return paneRect;
+      }
+      const strip: number =
+        dragLandingGroupStrip.heightPx *
+        measureViewportClientFrame(viewportRef.current).scale;
+      return {
+        left: paneRect.left,
+        top: dragLandingGroupStrip.placement === "top" ? paneRect.top - strip : paneRect.top,
+        width: paneRect.width,
+        height: paneRect.height + strip,
+      };
+    },
+    [dragLandingGroupStrip],
+  );
+
   // N3 step 4 — spring-load REARM. Runs after every commit while a rearm is
   // queued; acts once (i) the drag machine is `idle` again (the claimed
   // settle above has run its teardown and `SETTLE_DONE`, so nothing of the
@@ -8081,17 +8106,20 @@ const TilingRendererComponent = React.forwardRef<
     lastDragClientPointRef.current = request.client;
     pendingSpringLoadRearmRef.current = null;
     setPendingSpringLoadRearm(null);
-    // A group is lifted as its frame, strip and pane together: the pane's box
-    // grown by the strip it shows on its placement side.
+    // The dragged group again, if it is still that group: a placement that
+    // merged it into another group left that group's id on the leaf, and the
+    // continued drag then carries just the pane. A group is lifted as its
+    // frame, strip and pane together.
     const rearmGroup: TilingGroupNode | null =
-      request.subject === "group" ? findGroupContainingLeaf(layout, request.leafId) : null;
-    const rearmStripPx: number =
-      rearmGroup != null &&
-      rearmGroup.members.length >= 2 &&
-      dragLandingGroupStrip.visible
-        ? dragLandingGroupStrip.heightPx *
-          measureViewportClientFrame(viewportRef.current).scale
-        : 0;
+      request.groupId != null
+        ? (findGroupContainingLeaf(layout, request.leafId)?.id === request.groupId
+            ? findGroupContainingLeaf(layout, request.leafId)
+            : null)
+        : null;
+    const rearmFrame: TilingClientRectLike =
+      rearmGroup != null && rearmGroup.members.length >= 2
+        ? groupFrameClientRect(seatRect)
+        : seatRect;
     dispatchDrag({
       type: "REARM",
       pointerId: request.pointerId,
@@ -8100,13 +8128,10 @@ const TilingRendererComponent = React.forwardRef<
       ...(rearmGroup != null ? { subject: "group" as const } : {}),
       tileId: leaf.tileId,
       anchorFootprint: {
-        left: seatRect.left,
-        top:
-          dragLandingGroupStrip.placement === "top"
-            ? seatRect.top - rearmStripPx
-            : seatRect.top,
-        width: seatRect.width,
-        height: seatRect.height + rearmStripPx,
+        left: rearmFrame.left,
+        top: rearmFrame.top,
+        width: rearmFrame.width,
+        height: rearmFrame.height,
       },
       client: request.client,
     });
@@ -8118,7 +8143,7 @@ const TilingRendererComponent = React.forwardRef<
     paneWorkspaceId,
     dispatchDrag,
     drawnClientRectOf,
-    dragLandingGroupStrip,
+    groupFrameClientRect,
     inputDriver,
     pointerCapturePort,
   ]);
@@ -8454,28 +8479,6 @@ const TilingRendererComponent = React.forwardRef<
     allowWidthPin: true,
     allowHeightPin: true,
   };
-
-  /**
-   * A group's frame (strip and active pane, client px) from its active pane's
-   * rect: the strip's rendered height (scaled like the pane) added on its side.
-   */
-  const groupFrameClientRect = React.useCallback(
-    (paneRect: TilingClientRectLike): TilingClientRectLike => {
-      if (!dragLandingGroupStrip.visible) {
-        return paneRect;
-      }
-      const strip: number =
-        dragLandingGroupStrip.heightPx *
-        measureViewportClientFrame(viewportRef.current).scale;
-      return {
-        left: paneRect.left,
-        top: dragLandingGroupStrip.placement === "top" ? paneRect.top - strip : paneRect.top,
-        width: paneRect.width,
-        height: paneRect.height + strip,
-      };
-    },
-    [dragLandingGroupStrip],
-  );
 
   /**
    * A press on a group's tab strip. On a tab: tear that pane off (a one-pane
@@ -10973,7 +10976,6 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       identity.subject === "group" && activeLayout != null
         ? findGroupContainingLeaf(activeLayout, intent.leafId)
         : null;
-    const movedSubject: DragSubject = dragGroup != null ? "group" : "pane";
     const moved: TilingWorkspaceSet =
       dragGroup != null
         ? moveGroupToWorkspace(current, dragGroup.id, intent.workspaceId, intent.placement)
@@ -10998,7 +11000,7 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       pointerId: identity.pointerId,
       pointerType: identity.pointerType,
       leafId: intent.leafId,
-      subject: movedSubject,
+      groupId: dragGroup?.id ?? null,
       workspaceId: intent.workspaceId,
       fromWorkspaceId: from,
       client,

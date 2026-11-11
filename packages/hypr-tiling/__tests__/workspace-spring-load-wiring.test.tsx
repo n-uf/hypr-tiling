@@ -366,6 +366,62 @@ describe("N3 wiring — spring-loaded tab drop on the set-mode renderer", (): vo
     expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
   });
 
+  it("a group placed into the destination's own group merges there, and the continued drag carries only the dragged pane", (): void => {
+    const tiles: ReadonlyArray<TilingTile> = [
+      ...TILES,
+      { id: "d", title: "delta", accent: "cyan" },
+      { id: "e", title: "epsilon", accent: "amber" },
+    ];
+    const initial: TilingWorkspaceSet = {
+      workspaces: [
+        {
+          id: "main",
+          name: "Main",
+          layout: {
+            kind: "split",
+            id: "main-root",
+            axis: "horizontal",
+            ratio: 0.5,
+            first: leaf("a"),
+            second: { kind: "group", id: "g", members: [leaf("b"), leaf("c")], activeMemberId: "leaf:b" },
+          },
+        },
+        { id: "ops", name: "Ops", layout: { kind: "group", id: "h", members: [leaf("d"), leaf("e")], activeMemberId: "leaf:d" } },
+      ],
+      activeId: "main",
+    };
+    const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
+    const result: RenderResult = render(
+      React.createElement(Host, {
+        tiles,
+        initial,
+        onWorkspacesChange,
+        externalDragHover: { ...OPS_TAB, placement: { kind: "group", groupId: "h" } },
+      }),
+    );
+    startLiveDrag(result.container, "leaf:b");
+    expect(document.querySelector("[data-hpt-lifted] [data-group-id]")).not.toBeNull();
+    advance(DWELL_MS + 10);
+    expect(onWorkspacesChange).toHaveBeenCalledTimes(1);
+    const next: TilingWorkspaceSet = onWorkspacesChange.mock.calls[0][0];
+    // The dragged members joined h as tabs.
+    const merged = next.workspaces[1].layout;
+    expect(merged?.kind === "group" ? merged.id : null).toBe("h");
+    expect(merged?.kind === "group" ? merged.members.map((m: TilingLeafNode): string => m.id) : []).toEqual([
+      "leaf:d",
+      "leaf:e",
+      "leaf:b",
+      "leaf:c",
+    ]);
+    // The drag goes on as the pane: h's own panes (d, e) stay where they are.
+    expect(ghost()).not.toBeNull();
+    expect(document.querySelector("[data-hpt-lifted] [data-group-id]")).toBeNull();
+    expect(document.querySelector("[data-hpt-lifted] [data-hpt-leaf]")?.getAttribute("data-hpt-leaf")).toBe("b");
+    pressEscape();
+    expect(document.querySelector("[data-hpt-lifted]")).toBeNull();
+    expect(result.container.querySelectorAll('[data-group-id="h"] [role="tab"]')).toHaveLength(4);
+  });
+
   it("after the rearm a release away from every tab settles the continued drag as a plain drop (no second set change)", (): void => {
     const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
     const onWorkspaceSwitch = jest.fn((_event: TilingWorkspaceSwitchEvent): void => {});
