@@ -798,12 +798,17 @@ export interface TilingExternalDropHover {
 }
 
 // @public
-export interface TilingExternalDropSubject {
+export type TilingExternalDropSubject = {
+    readonly kind: "pane";
+    readonly groupId: null;
+    readonly members: readonly [TilingLeafNode] | readonly [];
     readonly activeLeafId: string;
-    readonly groupId: string | null;
-    readonly kind: "pane" | "group";
+} | {
+    readonly kind: "group";
+    readonly groupId: string;
     readonly members: ReadonlyArray<TilingLeafNode>;
-}
+    readonly activeLeafId: string;
+};
 
 // @public
 export type TilingFocusDirection = "left" | "right" | "up" | "down";

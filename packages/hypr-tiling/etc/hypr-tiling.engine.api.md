@@ -215,6 +215,7 @@ export interface DragRearmEvent {
     pointerId: number;
     pointerType: DragPointerType;
     sourceLeafId: string;
+    subject?: DragSubject;
     tileId?: string;
     type: "REARM";
 }
