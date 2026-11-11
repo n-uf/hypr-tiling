@@ -85,11 +85,27 @@ function installProbe() {
   const onTop = () => {
     const raised = document.querySelector("[data-hpt-leaf-raised]");
     if (raised == null) return undefined;
+    // An empty pane (its stable content not mounted yet) has nothing to be on top with.
+    if (raised.querySelector(":scope > :not([data-hpt-leaf-frame]):not([data-hpt-leaf-affordance]) *, :scope > article") == null) return null;
     const r = drawnRect(raised);
+    if (r.width <= 0 || r.height <= 0) return null;
     const p = probe.pointer;
     const inside = p != null && p.x > r.x + 1 && p.x < r.x + r.width - 1 && p.y > r.y + 1 && p.y < r.y + r.height - 1;
-    const x = Math.min(Math.max(inside ? p.x : r.x + r.width / 2, 1), window.innerWidth - 1) - window.scrollX;
-    const y = Math.min(Math.max(inside ? p.y : r.y + r.height / 2, 1), window.innerHeight - 1) - window.scrollY;
+    // A lifted pane may be held anywhere in the window; one back in the tree
+    // (settling) is shown only inside the viewport, so look there.
+    const lifted = raised.closest("[data-hpt-lifted]") != null;
+    const vp = document.querySelector("[data-hpt-viewport]")?.getBoundingClientRect();
+    const bounds =
+      lifted || vp == null
+        ? { left: 1, top: 1, right: window.innerWidth - 1, bottom: window.innerHeight - 1 }
+        : {
+            left: Math.max(1, vp.left + 1),
+            top: Math.max(1, vp.top + 1),
+            right: Math.min(window.innerWidth - 1, vp.right - 1),
+            bottom: Math.min(window.innerHeight - 1, vp.bottom - 1),
+          };
+    const x = Math.min(Math.max((inside ? p.x : r.x + r.width / 2) - window.scrollX, bounds.left), bounds.right);
+    const y = Math.min(Math.max((inside ? p.y : r.y + r.height / 2) - window.scrollY, bounds.top), bounds.bottom);
     document.documentElement.setAttribute("data-spec-hit", "");
     const top = document.elementFromPoint(x, y);
     document.documentElement.removeAttribute("data-spec-hit");
@@ -471,8 +487,15 @@ const rectText = (r) => (r == null ? "none" : `${Math.round(r.x)},${Math.round(r
  * One drag of pane `tileId`: press on its header, glide to `to` (stage 1), run
  * `during` (screenshots, Escape), release, wait for rest; then check what the
  * scenario expects. `expect.commit` false: the layout must come back unchanged.
+ *
+ * `start` (from the rest rects) presses somewhere other than the header, e.g. a
+ * tab; the pane is then held where `homeTileId`'s pane was, by the offset of
+ * the press from it. `expect.landing: "group"`: the pane lands in a group whose
+ * whole slot (strip included) the indicator marks; `expect.groupFrame`: the
+ * held pane is a group held by its frame (its strip rides on the pane);
+ * `expect.after(layout)` returns failures about the committed layout.
  */
-async function dragScenario(name, { preview, tileId, to, steps = 30, nearStart = false, layout = INITIAL, setup, teardown, during, expect }) {
+async function dragScenario(name, { preview, tileId, homeTileId, start: startAt, to, steps = 30, nearStart = false, layout = INITIAL, setup, teardown, during, expect }) {
   await page.evaluate((next) => window.__motionLab.setLayout(next), layout);
   await page.evaluate((p) => window.__motionLab.setDragPreview(p), preview);
   await waitIdle();
@@ -482,9 +505,9 @@ async function dragScenario(name, { preview, tileId, to, steps = 30, nearStart =
   }
   const before = await page.evaluate(() => JSON.stringify(window.__motionLab.layout()));
   const rest = await restRects();
-  const home = rest[tileId];
-  const grab = { x: 60, y: 14 };
-  const start = { x: home.x + grab.x, y: home.y + grab.y };
+  const home = rest[homeTileId ?? tileId];
+  const start = startAt != null ? await startAt(rest) : { x: home.x + 60, y: home.y + 14 };
+  const grab = { x: start.x - home.x, y: start.y - home.y };
   const target = typeof to === "function" ? await to(rest) : to;
   await page.mouse.move(start.x, start.y);
   await page.evaluate(() => {
@@ -495,6 +518,23 @@ async function dragScenario(name, { preview, tileId, to, steps = 30, nearStart =
   await glideMouse(start, target, steps);
   await page.waitForTimeout(250);
   await nextFrame();
+  // A group held by its frame: the lifted layer holds the group, and its strip
+  // sits on the pane's edge (it rides with the pane, never left behind).
+  const frameCheck =
+    expect.groupFrame !== true
+      ? null
+      : await page.evaluate((id) => {
+          const pane = document.querySelector(`[data-hpt-lifted] [data-hpt-leaf="${id}"]`);
+          const strip = document.querySelector("[data-hpt-lifted] [data-group-id] [data-hpt-group-tab-placement]");
+          if (pane == null || strip == null) return ["the lifted layer does not hold the group (pane and strip)"];
+          const frame = pane.querySelector(":scope > [data-hpt-leaf-frame]");
+          const p = (pane.style.transform !== "" && frame != null ? frame : pane).getBoundingClientRect();
+          const s = strip.getBoundingClientRect();
+          const failures = [];
+          if (Math.abs(s.bottom - p.top) > 1.5) failures.push(`strip bottom ${Math.round(s.bottom)} is not on the pane's top ${Math.round(p.top)}`);
+          if (Math.abs(s.left - p.left) > 1.5) failures.push(`strip left ${Math.round(s.left)} is not the pane's left ${Math.round(p.left)}`);
+          return failures;
+        }, tileId);
   if (during != null) await during();
   const releaseT = await page.evaluate(() => window.__HPT_MOTION_PROBE__.time ?? 0);
   await page.mouse.up();
@@ -510,6 +550,13 @@ async function dragScenario(name, { preview, tileId, to, steps = 30, nearStart =
   );
   const after = await page.evaluate(() => JSON.stringify(window.__motionLab.layout()));
   const finalRects = await restRects();
+  // The whole slot of the group the pane rests in (strip included), if any.
+  const finalGroupRect = await page.evaluate((id) => {
+    const group = document.querySelector(`[data-hpt-leaf="${id}"]`)?.closest("[data-group-id]");
+    if (group == null) return null;
+    const b = group.getBoundingClientRect();
+    return { x: b.left + window.scrollX, y: b.top + window.scrollY, width: b.width, height: b.height };
+  }, tileId);
   if (teardown != null) {
     await teardown();
     await waitIdle();
@@ -535,12 +582,15 @@ async function dragScenario(name, { preview, tileId, to, steps = 30, nearStart =
   } else {
     // Lifted: the pane left the tree for the pointer.
     if (liftedSamples.length === 0) add("lift", ["the pane was never lifted"]);
+    if (frameCheck != null) add("held as a group", frameCheck);
     // Held 1:1 (indicator): the drawn rect is pointer − grab, at the lift size, on every frame it is held.
     if (preview === "indicator") {
       const held = [];
       for (let i = 0; i < samples.length; i++) {
         const s = samples[i];
-        if (s.id !== tileId || !s.lifted || s.rect == null) continue;
+        // A pane never shown before (a torn-off inactive tab) mounts its
+        // content a commit after its slot: nothing is drawn to measure yet.
+        if (s.id !== tileId || !s.lifted || s.rect == null || s.empty || s.frameNotDrawn) continue;
         const frame = frames.find((f) => f.write === s.write) ?? null;
         const p = frame?.pointer;
         if (p == null) continue;
@@ -599,9 +649,12 @@ async function dragScenario(name, { preview, tileId, to, steps = 30, nearStart =
           node.kind === "group" ? node.members.some((m) => m.tileId === tileId) : node.kind === "split" ? inGroup(node.first) || inGroup(node.second) : false;
         add("group merge", inGroup(JSON.parse(after)) ? [] : [`pane ${tileId} did not end up in a group`]);
       }
+      if (expect.after != null) {
+        add("layout", expect.after(JSON.parse(after)));
+      }
       if (preview === "indicator") {
         const indicated = [...frames].reverse().find((f) => f.indicator != null && f.t <= releaseT)?.indicator ?? null;
-        const landed = finalRects[tileId];
+        const landed = expect.landing === "group" ? (finalGroupRect ?? finalRects[tileId]) : finalRects[tileId];
         add(
           "indicator == landing",
           indicated == null ? ["no drop indicator before the release"] : near(indicated, landed, 1) ? [] : [`indicator ${rectText(indicated)} but the pane landed at ${rectText(landed)}`],
@@ -762,6 +815,29 @@ await dragScenario("drag under a scaled ancestor (scale 0.8)", {
   expect: { commit: true },
 });
 
+// alpha | group-bc [bravo*, charlie]
+const GROUPED = {
+  ...INITIAL,
+  second: {
+    kind: "group",
+    id: "group-bc",
+    members: [
+      { kind: "leaf", id: "leaf-b", tileId: "b" },
+      { kind: "leaf", id: "leaf-c", tileId: "c" },
+    ],
+    activeMemberId: "leaf-b",
+  },
+};
+
+/** The centre-right of a group's tab strip (page px), at rest. */
+const stripPoint = (groupId) =>
+  page.evaluate((id) => {
+    const strip = document.querySelector(`[data-group-id="${id}"] [data-hpt-group-tab-placement]`);
+    if (strip == null) throw new Error(`no tab strip for ${id}`);
+    const b = strip.getBoundingClientRect();
+    return { x: b.left + b.width * 0.75 + window.scrollX, y: b.top + b.height / 2 + window.scrollY };
+  }, groupId);
+
 // A group merge; the indicator is the rect the pane lands in (the group body).
 // Custom tiles make their header a group drop target: charlie onto bravo's
 // title bar groups them. The built-in pane has none, so there alpha goes onto
@@ -774,18 +850,6 @@ if (tilesMode === "custom") {
     expect: { commit: true, group: true },
   });
 } else {
-  const GROUPED = {
-    ...INITIAL,
-    second: {
-      kind: "group",
-      id: "group-bc",
-      members: [
-        { kind: "leaf", id: "leaf-b", tileId: "b" },
-        { kind: "leaf", id: "leaf-c", tileId: "c" },
-      ],
-      activeMemberId: "leaf-b",
-    },
-  };
   await dragScenario("drag alpha onto the bravo + charlie tab strip (group merge)", {
     preview: "indicator",
     tileId: "a",
@@ -810,6 +874,105 @@ await dragScenario("master/stack: drag charlie onto alpha's lower edge", {
   to: (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + rest.a.height * 0.92 }),
   expect: { commit: true },
 });
+
+// Tab groups move as one. The active pane's title bar lifts the whole group:
+// held 1:1 by its frame (the strip rides on the pane), on top, the others
+// close its slot, and it lands as the same group where the indicator was.
+const groupBcIntact = (layout) => {
+  const find = (node) => (node.kind === "group" ? (node.id === "group-bc" ? node : null) : node.kind === "split" ? find(node.first) ?? find(node.second) : null);
+  const group = find(layout);
+  if (group == null) return ["group-bc is gone"];
+  const members = group.members.map((m) => m.id).join(",");
+  return [
+    ...(members !== "leaf-b,leaf-c" ? [`members ${members}, expected leaf-b,leaf-c`] : []),
+    ...(group.activeMemberId !== "leaf-b" ? [`active tab ${group.activeMemberId}, expected leaf-b`] : []),
+  ];
+};
+await dragScenario("drag the bravo + charlie group by its title bar onto alpha's lower edge", {
+  preview: "indicator",
+  tileId: "b",
+  layout: GROUPED,
+  to: (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + rest.a.height * 0.9 }),
+  expect: { commit: true, landing: "group", groupFrame: true, after: groupBcIntact },
+});
+await dragScenario("drag the bravo + charlie group by its strip, Escape puts it back", {
+  preview: "indicator",
+  tileId: "b",
+  layout: GROUPED,
+  start: () => stripPoint("group-bc"),
+  to: (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + rest.a.height * 0.5 }),
+  expect: { commit: false, groupFrame: true },
+  during: async () => {
+    await page.keyboard.press("Escape");
+    await nextFrame();
+  },
+});
+
+// A tab tears off just that pane: charlie (an inactive tab) is held where the
+// group's pane is, and dropped beside alpha; bravo is left alone (a group of
+// one is its bare pane).
+await dragScenario("tear charlie's tab off onto alpha's lower edge", {
+  preview: "indicator",
+  tileId: "c",
+  homeTileId: "b",
+  layout: GROUPED,
+  start: () =>
+    page.evaluate(() => {
+      const tab = document.querySelector('[data-group-id="group-bc"] [data-member-index="1"]');
+      if (tab == null) throw new Error("no charlie tab");
+      const b = tab.getBoundingClientRect();
+      return { x: b.left + b.width / 2 + window.scrollX, y: b.top + b.height / 2 + window.scrollY };
+    }),
+  to: (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + rest.a.height * 0.9 }),
+  expect: {
+    commit: true,
+    after: (layout) => {
+      const groups = [];
+      const walk = (node) => (node.kind === "group" ? groups.push(node) : node.kind === "split" ? (walk(node.first), walk(node.second)) : null);
+      walk(layout);
+      return groups.length === 0 ? [] : [`groups left: ${groups.map((g) => g.id).join(", ")}`];
+    },
+  },
+});
+
+// A whole group dropped on another pane's title bar (custom tiles) or group
+// strip (built-in panes) merges: every pane joins as a tab, its active tab active.
+const TWO_GROUPS = {
+  ...GROUPED,
+  first: {
+    kind: "group",
+    id: "group-ad",
+    members: [
+      { kind: "leaf", id: "leaf-a", tileId: "a" },
+      { kind: "leaf", id: "leaf-d", tileId: "d" },
+    ],
+    activeMemberId: "leaf-a",
+  },
+};
+await dragScenario(
+  tilesMode === "custom" ? "merge the bravo + charlie group into alpha by its title bar" : "merge the bravo + charlie group into the alpha + delta group by its strip",
+  {
+    preview: "indicator",
+    tileId: "b",
+    layout: tilesMode === "custom" ? GROUPED : TWO_GROUPS,
+    to: tilesMode === "custom" ? (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + 14 }) : () => stripPoint("group-ad"),
+    expect: {
+      commit: true,
+      landing: "group",
+      groupFrame: true,
+      after: (layout) => {
+        const find = (node) => (node.kind === "group" ? (node.members.some((m) => m.id === "leaf-b") ? node : null) : node.kind === "split" ? find(node.first) ?? find(node.second) : null);
+        const group = find(layout);
+        const ids = group?.members.map((m) => m.id) ?? [];
+        const expected = tilesMode === "custom" ? ["leaf-a", "leaf-b", "leaf-c"] : ["leaf-a", "leaf-d", "leaf-b", "leaf-c"];
+        return [
+          ...(expected.every((id) => ids.includes(id)) && ids.length === expected.length ? [] : [`merged members ${ids.join(",")}, expected ${expected.join(",")}`]),
+          ...(group?.activeMemberId === "leaf-b" ? [] : [`active tab ${group?.activeMemberId}, expected leaf-b`]),
+        ];
+      },
+    },
+  },
+);
 await page.evaluate((layout) => window.__motionLab.setLayout(layout), INITIAL);
 await waitIdle();
 await page.evaluate(() => window.__motionLab.setDragPreview("indicator"));
