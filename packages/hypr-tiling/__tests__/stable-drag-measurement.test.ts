@@ -47,9 +47,10 @@ function port(parts: {
   tabs?: ReadonlyArray<Tab>;
   hostTargets?: ReadonlyArray<DOMRect>;
   pane?: DOMRect | null;
+  viewport?: DOMRect;
 }): MeasurementPort {
   return {
-    measureViewportRect: (): DOMRect => VIEWPORT,
+    measureViewportRect: (): DOMRect => parts.viewport ?? VIEWPORT,
     measureLeafRect: (): DOMRect | null => parts.pane ?? null,
     measureGroupTabStripRect: (): DOMRect | null => parts.strip ?? null,
     measureGroupTabMemberRects: (): ReadonlyArray<Tab> => parts.tabs ?? [],
@@ -160,5 +161,60 @@ describe("stable drag measurement — host drop targets", (): void => {
     expect(hidden.measureGroupDropTargetRects("A")[0]).toMatchObject({ left: 100, top: 50, right: 600, bottom: 90 });
     // A pane never seen has nothing to stand in.
     expect(hidden.measureGroupDropTargetRects("B")).toEqual([]);
+  });
+});
+
+describe("stable drag measurement — a scaled viewport", (): void => {
+  /** The 1000×600 viewport drawn at 0.8 under a scaled ancestor, its corner at (100, 50). */
+  const SCALED: DOMRect = rect(100, 50, 800, 480);
+
+  it("the strip spans the slot in client px and keeps the height it is drawn with", (): void => {
+    // Drawn lower right, 22.4 client px tall (28 layout px at 0.8).
+    const strip = measure(port({ viewport: SCALED, strip: rect(500, 300, 400, 22.4) })).measureGroupTabStripRect("g");
+    expect(strip).toMatchObject({ left: 100, top: 50, right: 900 });
+    expect(strip?.bottom).toBeCloseTo(72.4, 5);
+  });
+
+  it("tabs translate with the strip, at their drawn size", (): void => {
+    const tabs: ReadonlyArray<Tab> = [{ index: 0, left: 500, top: 300, right: 580, bottom: 322.4 }];
+    const [tab] = measure(port({ viewport: SCALED, strip: rect(500, 300, 400, 22.4), tabs })).measureGroupTabMemberRects("g");
+    expect(tab).toMatchObject({ index: 0, left: 100, top: 50, right: 180 });
+    expect(tab.bottom).toBeCloseTo(72.4, 5);
+  });
+
+  it("a header keeps its place across the pane, and the cache stands in for a hidden pane at the same scale", (): void => {
+    const cache = new Map<string, ReadonlyArray<{ left: number; top: number; right: number; bottom: number }>>();
+    // Alpha is the left half of the viewport: 500 × 600 layout px = 400 × 480 client px at (100, 50).
+    const drawn = measure(
+      port({ viewport: SCALED, pane: rect(500, 50, 400, 480), hostTargets: [rect(500, 50, 400, 32)] }),
+      { hostTargetCache: cache },
+    ).measureGroupDropTargetRects("A")[0];
+    expect(drawn).toMatchObject({ left: 100, top: 50, right: 500 });
+    expect(drawn.bottom).toBeCloseTo(82, 5);
+    const hidden = measure(port({ viewport: SCALED, pane: null }), { hostTargetCache: cache }).measureGroupDropTargetRects("A")[0];
+    expect(hidden).toMatchObject({ left: 100, top: 50, right: 500 });
+    expect(hidden.bottom).toBeCloseTo(82, 5);
+  });
+});
+
+describe("stable drag measurement — a tab torn off its own group", (): void => {
+  it("the torn tab the preview appended is taken out of the tabs it drew: the append index counts the group without it", (): void => {
+    // g[A, B*, C] with B torn off: the base tree has g[A, C]. Hovering g's merge zone appends B,
+    // so the strip draws A, C, B.
+    const base: TilingLayoutNode = { kind: "group", id: "g", members: [leaf("A", "a"), leaf("C", "c")], activeMemberId: "C" };
+    const tabs: ReadonlyArray<Tab> = [
+      { index: 0, left: 100, top: 50, right: 200, bottom: 78 },
+      { index: 1, left: 204, top: 50, right: 304, bottom: 78 },
+      { index: 2, left: 308, top: 50, right: 408, bottom: 78 },
+    ];
+    expect(
+      measure(port({ strip: rect(100, 50, 1000, 28), tabs }), {
+        layout: base,
+        insertedTabs: { targetLeafId: "C", count: 1 },
+      }).measureGroupTabMemberRects("g"),
+    ).toEqual([
+      { index: 0, left: 100, top: 50, right: 200, bottom: 78 },
+      { index: 1, left: 204, top: 50, right: 304, bottom: 78 },
+    ]);
   });
 });

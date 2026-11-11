@@ -38,7 +38,11 @@ export interface StableDragInsertedTabs {
 export interface StableDragMeasurementInput {
   /** Footprints of the tree with the subject taken out (viewport layout px). */
   readonly footprints: ReadonlyMap<string, TilingPaneFootprint>;
-  /** The layout the drag started from (groups are looked up here). */
+  /**
+   * The tree the footprints are laid out from: the drag's layout with the
+   * dragged subject taken out (a tab torn off a group is not one of its
+   * members here). Groups are looked up in it.
+   */
   readonly layout: TilingLayoutNode;
   /** The viewport's layout size (px), to relate footprints to client px. */
   readonly viewportSize: { readonly width: number; readonly height: number };
