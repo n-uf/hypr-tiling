@@ -493,9 +493,12 @@ const rectText = (r) => (r == null ? "none" : `${Math.round(r.x)},${Math.round(r
  * the press from it. `expect.landing: "group"`: the pane lands in a group whose
  * whole slot (strip included) the indicator marks; `expect.groupFrame`: the
  * held pane is a group held by its frame (its strip rides on the pane);
+ * `expect.merge`: the pane joins a group, so snap makes no room for it;
+ * `via(rest)` returns points the pointer passes before `to` (under snap the
+ * path decides which slot the pane settles into and sticks to);
  * `expect.after(layout)` returns failures about the committed layout.
  */
-async function dragScenario(name, { preview, tileId, homeTileId, start: startAt, to, steps = 30, nearStart = false, layout = INITIAL, setup, teardown, during, expect }) {
+async function dragScenario(name, { preview, tileId, homeTileId, start: startAt, to, via, steps = 30, nearStart = false, layout = INITIAL, setup, teardown, during, expect }) {
   await page.evaluate((next) => window.__motionLab.setLayout(next), layout);
   await page.evaluate((p) => window.__motionLab.setDragPreview(p), preview);
   await waitIdle();
@@ -515,7 +518,15 @@ async function dragScenario(name, { preview, tileId, homeTileId, start: startAt,
     window.__HPT_MOTION_PROBE__.frames = [];
   });
   await page.mouse.down();
-  await glideMouse(start, target, steps);
+  // `via(rest)`: points the pointer passes first. Under snap a pane sticks to the
+  // first slot it settles into until the pointer leaves it, so the path decides
+  // which slot a drop meets.
+  let from = start;
+  for (const point of via != null ? await via(rest) : []) {
+    await glideMouse(from, point, Math.ceil(steps / 2));
+    from = point;
+  }
+  await glideMouse(from, target, steps);
   await page.waitForTimeout(250);
   await nextFrame();
   // A group held by its frame: the lifted layer holds the group, and its strip
@@ -661,7 +672,8 @@ async function dragScenario(name, { preview, tileId, homeTileId, start: startAt,
           `${rectText(indicated)} → ${rectText(landed)}`,
         );
       }
-      if (preview === "snap") {
+      if (preview === "snap" && expect.merge !== true) {
+        // (A merge makes no room: the pane lands inside the group it joins.)
         // Snapped: the pane sat in the tree at its slot, and once the others had
         // settled none of them overlapped that slot (they made room).
         const snapped = mine.filter((s) => s.t <= releaseT && !s.lifted && s.raised);
@@ -888,13 +900,19 @@ const groupBcIntact = (layout) => {
     ...(group.activeMemberId !== "leaf-b" ? [`active tab ${group.activeMemberId}, expected leaf-b`] : []),
   ];
 };
-await dragScenario("drag the bravo + charlie group by its title bar onto alpha's lower edge", {
-  preview: "indicator",
-  tileId: "b",
-  layout: GROUPED,
-  to: (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + rest.a.height * 0.9 }),
-  expect: { commit: true, landing: "group", groupFrame: true, after: groupBcIntact },
-});
+// Under both drop previews: snap to slot is the web default.
+for (const preview of ["indicator", "snap"]) {
+  await dragScenario("drag the bravo + charlie group by its title bar onto alpha's lower edge", {
+    preview,
+    tileId: "b",
+    layout: GROUPED,
+    to: (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + rest.a.height * 0.9 }),
+    // Under snap, straight down first: crossing alpha's title bar would settle it into a merge slot it then sticks to.
+    via: preview === "snap" ? (rest) => [{ x: rest.b.x + 60, y: rest.a.y + rest.a.height * 0.9 }] : undefined,
+    // Under snap the group sits in the tree at its slot (no lifted layer to hold by its frame).
+    expect: { commit: true, landing: "group", groupFrame: preview === "indicator", after: groupBcIntact },
+  });
+}
 await dragScenario("drag the bravo + charlie group by its strip, Escape puts it back", {
   preview: "indicator",
   tileId: "b",
@@ -968,30 +986,38 @@ const TWO_GROUPS = {
     activeMemberId: "leaf-a",
   },
 };
-await dragScenario(
-  tilesMode === "custom" ? "merge the bravo + charlie group into alpha by its title bar" : "merge the bravo + charlie group into the alpha + delta group by its strip",
-  {
-    preview: "indicator",
-    tileId: "b",
-    layout: tilesMode === "custom" ? GROUPED : TWO_GROUPS,
-    to: tilesMode === "custom" ? (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + 14 }) : () => stripPoint("group-ad"),
-    expect: {
-      commit: true,
-      landing: "group",
-      groupFrame: true,
-      after: (layout) => {
-        const find = (node) => (node.kind === "group" ? (node.members.some((m) => m.id === "leaf-b") ? node : null) : node.kind === "split" ? find(node.first) ?? find(node.second) : null);
-        const group = find(layout);
-        const ids = group?.members.map((m) => m.id) ?? [];
-        const expected = tilesMode === "custom" ? ["leaf-a", "leaf-b", "leaf-c"] : ["leaf-a", "leaf-d", "leaf-b", "leaf-c"];
-        return [
-          ...(expected.every((id) => ids.includes(id)) && ids.length === expected.length ? [] : [`merged members ${ids.join(",")}, expected ${expected.join(",")}`]),
-          ...(group?.activeMemberId === "leaf-b" ? [] : [`active tab ${group?.activeMemberId}, expected leaf-b`]),
-        ];
+for (const preview of ["indicator", "snap"]) {
+  await dragScenario(
+    tilesMode === "custom" ? "merge the bravo + charlie group into alpha by its title bar" : "merge the bravo + charlie group into the alpha + delta group by its strip",
+    {
+      preview,
+      tileId: "b",
+      layout: tilesMode === "custom" ? GROUPED : TWO_GROUPS,
+      to: tilesMode === "custom" ? (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + 14 }) : () => stripPoint("group-ad"),
+      // Under snap, up onto the strip first and along it: from below, the pointer would settle into a swap or insert slot and stick to it.
+      via:
+        preview === "snap" && tilesMode !== "custom"
+          ? async (rest) => [{ x: rest.b.x + 60, y: (await stripPoint("group-ad")).y }]
+          : undefined,
+      expect: {
+        commit: true,
+        merge: true,
+        landing: "group",
+        groupFrame: preview === "indicator",
+        after: (layout) => {
+          const find = (node) => (node.kind === "group" ? (node.members.some((m) => m.id === "leaf-b") ? node : null) : node.kind === "split" ? find(node.first) ?? find(node.second) : null);
+          const group = find(layout);
+          const ids = group?.members.map((m) => m.id) ?? [];
+          const expected = tilesMode === "custom" ? ["leaf-a", "leaf-b", "leaf-c"] : ["leaf-a", "leaf-d", "leaf-b", "leaf-c"];
+          return [
+            ...(expected.every((id) => ids.includes(id)) && ids.length === expected.length ? [] : [`merged members ${ids.join(",")}, expected ${expected.join(",")}`]),
+            ...(group?.activeMemberId === "leaf-b" ? [] : [`active tab ${group?.activeMemberId}, expected leaf-b`]),
+          ];
+        },
       },
     },
-  },
-);
+  );
+}
 await page.evaluate((layout) => window.__motionLab.setLayout(layout), INITIAL);
 await waitIdle();
 await page.evaluate(() => window.__motionLab.setDragPreview("indicator"));
