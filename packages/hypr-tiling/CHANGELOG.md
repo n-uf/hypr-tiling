@@ -25,13 +25,26 @@ Content is never stretched. A pane is laid out once at its new size; while it
 glides it is only translated, its chrome (background, border, radius, shadow)
 is drawn at the in-between size by a frame layer behind it, and its content is
 clipped to that size. A newly opened pane pops in with a uniform scale
-(0.87 → 1) and a fade. A pane under a divider you are dragging follows it 1:1.
+(0.87 → 1) and a fade. On maximize the pane glides to fill the view; on
+restore it glides back and the other panes, which a maximized view does not
+render, pop in. A closed pane disappears at once and the others glide into
+its space. A pane under a divider you are dragging follows it 1:1.
 At rest nothing extra is written: a resting pane looks exactly as before.
-Panes snap under `prefers-reduced-motion` and with `dragAnimationEnabled: false`.
-The dragged ghost keeps its own hop for now.
+Panes snap under `prefers-reduced-motion`, with `dragAnimationEnabled: false`
+and when the tiling container itself is resized. The dragged ghost keeps its
+own hop for now.
 
 Each leaf wrapper now carries `data-hpt-leaf` (its tile id) and holds one
-hidden `[data-hpt-leaf-frame]` element ahead of the tile.
+hidden `[data-hpt-leaf-frame]` element ahead of the tile. While a pane glides,
+the frame layer takes the pane root's chrome and the root's own background,
+border colour, shadow and backdrop filter are set transparent inline (with its
+transitions off, so they do not replay); they are given back when it rests,
+except any the host changed meanwhile.
+
+The CommonJS build (`dist/index.cjs`, `dist/devtools.cjs`) bundles
+`@n-uf/motion`, which ships ESM only, so `require("@n-uf/hypr-tiling")` keeps
+working on Node versions without `require(esm)` and under CommonJS jest. The
+ES module build imports it as a dependency.
 
 ### Breaking changes
 
