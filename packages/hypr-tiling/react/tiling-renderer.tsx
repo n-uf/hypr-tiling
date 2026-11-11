@@ -408,6 +408,14 @@ function currentGeometryConfig(
   };
 }
 
+/** A client-coordinate box (the subset of `DOMRect` a pickup reads). */
+interface TilingClientRectLike {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 interface TilingSplitPathEntry {
   splitId: string;
   axis: TilingSplitAxis;
@@ -5538,6 +5546,25 @@ const TilingRendererComponent = React.forwardRef<
   // `[data-leaf-id]` element) at click time and pin the chosen dimension(s) to
   // that exact pixel value via `measuredStaticSizing`; FLEX clears the pin
   // (`setLeafSizing(..., undefined)`). Controlled: emitted through onLayoutChange.
+  // Where leaf motion draws a pane right now, in client coordinates (its drawn
+  // rect is viewport-relative), or `null` for a pane it does not know.
+  const drawnClientRectOf = React.useCallback(
+    (tileId: string): TilingClientRectLike | null => {
+      const drawn = leafMotionRef.current?.drawn(tileId) ?? null;
+      const viewport: HTMLDivElement | null = viewportRef.current;
+      if (drawn == null || viewport == null) {
+        return null;
+      }
+      const origin: DOMRect = viewport.getBoundingClientRect();
+      return {
+        left: origin.left + drawn.x,
+        top: origin.top + drawn.y,
+        width: drawn.width,
+        height: drawn.height,
+      };
+    },
+    [],
+  );
   const setLeafSizingFromBbox = React.useCallback(
     (targetLeafId: string, mode: TilingTitleBarSizingMode): void => {
       if (mode === "flexible") {
@@ -5557,8 +5584,22 @@ const TilingRendererComponent = React.forwardRef<
       if (rect == null) {
         return;
       }
-      const measuredWidthPx: number = Math.round(rect.width);
-      const measuredHeightPx: number = Math.round(rect.height);
+      // Pin the LAYOUT size: mid-glide the box can be popping in (scaled), so
+      // prefer the element's offset size, which no transform changes.
+      const paneElement: HTMLElement | null =
+        rootRef.current?.querySelector<HTMLElement>(
+          `[data-leaf-id="${targetLeafId}"]`,
+        ) ?? null;
+      const measuredWidthPx: number = Math.round(
+        paneElement != null && paneElement.offsetWidth > 0
+          ? paneElement.offsetWidth
+          : rect.width,
+      );
+      const measuredHeightPx: number = Math.round(
+        paneElement != null && paneElement.offsetHeight > 0
+          ? paneElement.offsetHeight
+          : rect.height,
+      );
       // `measuredStaticSizing` drops the static pin for any non-positive measured
       // dimension and returns undefined when no positive static dimension remains
       // for the mode; in that case no-op (do not clear/pin) so the pane stays as is.
@@ -9158,7 +9199,11 @@ const TilingRendererComponent = React.forwardRef<
             const sourcePaneElement: HTMLElement =
               event.currentTarget.closest("article[data-leaf-id]") ??
               event.currentTarget;
-            const sourcePaneRect: DOMRect =
+            // Pick the pane up where it is DRAWN: mid-glide the article's own
+            // box is its layout size at a translated origin, so ask the leaf
+            // motion (viewport-relative) and only fall back to the box at rest.
+            const sourcePaneRect: TilingClientRectLike =
+              drawnClientRectOf(node.tileId) ??
               sourcePaneElement.getBoundingClientRect();
             dragSnapshotRef.current = buildDragPaneSnapshot(tileForDisplay);
             lastDragClientPointRef.current = { x: event.clientX, y: event.clientY };
