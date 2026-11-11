@@ -75,11 +75,12 @@ dragged pane's leaf wrapper `data-hpt-leaf-raised`, the indicator
   `drop-shadow` that follows the pane as it is drawn) and
   `dragChrome.dropIndicator` (orange, a colour no pane accent uses: translucent
   fill, soft halo, rounded).
-- `./engine`: `DragSubject` (`"pane" | "group"`); the drag machine's
-  `POINTER_DOWN` event and `armed` / `dragging` / `settling` states take an
-  optional `subject` (absent: the one pane) and `POINTER_DOWN` an optional
-  `homeFootprint` (the place a release must leave to commit, when it is not the
-  anchor). Whole-group reducers `removeGroupNode`, `swapGroupWithSlot`,
+- `./engine`: `DragSubject` (`"pane" | "group"`); the exported
+  `DragMachineState`'s `armed` / `dragging` / `settling` states carry an
+  optional `subject` (absent: the one pane), and its `armed` / `dragging` states
+  an optional `homeFootprint` (the place a release must leave to commit, when
+  it is not the anchor). The drag machine's events are internal. Whole-group
+  reducers `removeGroupNode`, `swapGroupWithSlot`,
   `insertGroupAdjacent` and `mergeGroupIntoTarget`.
 
 ### Breaking changes
