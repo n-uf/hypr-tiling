@@ -181,6 +181,38 @@ describe("leaf motion — a new target glides from where the leaf is drawn", () 
   });
 });
 
+describe("leaf motion — a lifted leaf laid out elsewhere", () => {
+  it("hold with a layout draws the leaf at the held rect relative to where it is laid out", () => {
+    const h: Harness = harness();
+    h.motion.target("a", A);
+    h.motion.hold("a", { x: 120, y: 40, width: 400, height: 300 }, A);
+    const frame: LeafMotionFrame = h.motion.frame("a")!;
+    expect(frame.target).toEqual(A);
+    expect(frame.moving).toBe(false);
+    expect(frame.reveal).toMatchObject({ dx: 120, dy: 40, width: 400, height: 300, clipRight: 0, clipBottom: 0 });
+    expect(h.clock.pendingFrames).toBe(0);
+  });
+
+  it("target with a layout settles toward the goal; a later plain target lays it out there", () => {
+    const h: Harness = harness();
+    h.motion.target("a", A);
+    const pointer: Rect = { x: 200, y: 100, width: 400, height: 300 };
+    h.motion.target("a", pointer, A);
+    expect(h.motion.active).toBe(true);
+    h.clock.runUntilIdle();
+    expect(h.motion.drawn("a")).toEqual(pointer);
+    expect(h.motion.frame("a")!.reveal).toMatchObject({ dx: 200, dy: 100 });
+    h.writes.length = 0;
+    h.motion.target("a", B);
+    expect(h.motion.frame("a")!.target).toEqual(B);
+    h.clock.runUntilIdle();
+    const samples: TargetSample[] = samplesOf(h, "a");
+    expect(checkNoOvershoot(samples, pointer, B).failures).toEqual([]);
+    expect(checkMonotonic(samples, B).failures).toEqual([]);
+    expect(h.motion.frame("a")!.reveal).toMatchObject({ dx: 0, dy: 0, clipRight: 0, clipBottom: 0 });
+  });
+});
+
 describe("leaf motion — hold, jump, reduced motion, tempo", () => {
   it("hold puts the leaf exactly there, at rest, and the next target launches from it", () => {
     const h: Harness = harness();
