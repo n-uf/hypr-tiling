@@ -91,9 +91,6 @@ export function cycleWorkspace(set: TilingWorkspaceSet, direction: TilingPaneCyc
 export const DEFAULT_DRAG_ANIMATION_SPEED_PERCENT: number;
 
 // @public
-export const DEFAULT_DRAG_HOP_EASING: string;
-
-// @public
 export const DEFAULT_TILE_ACCENT: TilingTileAccent;
 
 // @public
@@ -225,7 +222,6 @@ export function resolveDragChrome(theme: TilingTheme): TilingThemeDragChromeToke
 // @public
 export interface ResolvedTilingDragRecoveryCapability {
     enable: boolean;
-    frameDeadlineMs: number;
     maxDraggingIdleMs: number;
 }
 
@@ -286,7 +282,6 @@ export interface ResolvedTilingInteractionCapabilities {
     dragRecovery: ResolvedTilingDragRecoveryCapability;
     dropHitZoneGeometry: ResolvedTilingDropHitZoneGeometryCapability;
     focus: boolean;
-    ghostPickupScalePercent: number;
     grouping: ResolvedTilingGroupingCapability;
     keyBindings: ResolvedTilingKeyBindings;
     keymap: ResolvedTilingKeymap;
@@ -298,7 +293,6 @@ export interface ResolvedTilingInteractionCapabilities {
     resize: TilingResizeCapability;
     resizeHandlesVisible: boolean;
     slotCommitment: ResolvedTilingSlotCommitmentCapability;
-    slotHopInEnabled: boolean;
     touchDrag: ResolvedTilingTouchDragCapability;
     workspaces: ResolvedTilingWorkspacesCapability;
 }
@@ -755,9 +749,6 @@ export interface TilingDeleteWorkspaceResult {
 export type TilingDimension = "width" | "height";
 
 // @public
-export type TilingDragGhostMode = "footprint" | "compact" | "auto";
-
-// @public
 export function TilingDragHandle(input: TilingDragHandleProps): React_2.ReactElement;
 
 // @public
@@ -770,9 +761,11 @@ export interface TilingDragHandleProps extends Omit<React_2.HTMLAttributes<HTMLE
 export type TilingDragMode = "preview" | "live";
 
 // @public
+export type TilingDragPreview = "indicator" | "snap";
+
+// @public
 export interface TilingDragRecoveryCapability {
     enable?: boolean;
-    frameDeadlineMs?: number;
     maxDraggingIdleMs?: number;
 }
 
@@ -803,15 +796,6 @@ export interface TilingExternalDropHover {
 
 // @public
 export type TilingFocusDirection = "left" | "right" | "up" | "down";
-
-// @public
-export interface TilingGhostChipContext {
-    readonly leafId: string;
-    readonly point: TilingClientPoint;
-    readonly targetId?: string;
-    readonly title?: string;
-    readonly workspaceId?: string;
-}
 
 // @public
 export interface TilingGroupingCapability {
@@ -896,7 +880,6 @@ export interface TilingInteractionCapabilities {
     dragRecovery?: TilingDragRecoveryCapability;
     dropHitZoneGeometry?: TilingDropHitZoneGeometryCapability;
     focus?: boolean;
-    ghostPickupScalePercent?: number;
     grouping?: boolean | TilingGroupingCapability;
     keyBindings?: TilingKeyBindings;
     keymap?: TilingKeymap;
@@ -908,7 +891,6 @@ export interface TilingInteractionCapabilities {
     resize?: TilingResizeCapability;
     resizeHandlesVisible?: boolean;
     slotCommitment?: TilingSlotCommitmentCapability;
-    slotHopInEnabled?: boolean;
     touchDrag?: TilingTouchDragCapability;
     workspaces?: boolean | TilingWorkspacesCapability;
 }
@@ -1166,11 +1148,10 @@ export interface TilingRendererCommonProps {
     className?: string;
     config: TilingLayoutConfig;
     dragAnimationEnabled?: boolean;
-    dragGhostMode?: TilingDragGhostMode;
-    dragHopEasing?: string;
+    dragPreview?: TilingDragPreview;
+    dragPreviewMakesRoom?: boolean;
     externalDragHover?: TilingExternalDragHover | null;
     focusedLeafId?: string | null;
-    ghostTransitSpeedPercent?: number;
     interaction?: TilingInteractionCapabilities;
     maximizedLeafId?: string | null;
     onExternalDragHoverChange?: (hover: TilingExternalDragHover | null) => void;
@@ -1215,9 +1196,6 @@ export interface TilingRendererWorkspaceSetProps extends TilingRendererCommonPro
     workspaceDefaults?: TilingWorkspaceSet;
     workspaces: TilingWorkspaceSet;
 }
-
-// @public
-export type TilingRenderSurface = "pane" | "drag-ghost" | "drag-cancel";
 
 // @public
 export interface TilingRenderTileGroupContext {
@@ -1272,7 +1250,6 @@ export interface TilingRenderTileProps {
     paneWidthPx: number;
     preview: TilingLeafDropPreview | null;
     seatCount: number;
-    readonly surface: TilingRenderSurface;
     tile: TilingTile;
     widthSizingMode: TilingPaneSizingMode;
     workspaceId: string;
@@ -1335,8 +1312,6 @@ export interface TilingSpringLoadConfig {
 export interface TilingTheme {
     readonly divider: TilingThemeDividerTokens;
     readonly dragChrome?: Partial<TilingThemeDragChromeTokens>;
-    readonly ghost: TilingThemeGhostTokens;
-    readonly ghostChip?: (ctx: TilingGhostChipContext) => React_2.ReactNode;
     readonly id: TilingThemeId | (string & {});
     readonly label: string;
     readonly paneHeader: TilingThemePaneHeaderTokens;
@@ -1364,27 +1339,15 @@ export interface TilingThemeDividerTokens {
 
 // @public
 export interface TilingThemeDragChromeTokens {
-    readonly cancelFlyBack: string;
     readonly cursorBadge: string;
     readonly cursorBadgeInvalid: string;
     readonly cursorBadgeNeutral: string;
     readonly cursorBadgeValid: string;
+    readonly dropIndicator: string;
     readonly dropIntentLayer: string;
     readonly dropTarget: string;
-    readonly ghostLifted: string;
-    readonly ghostSeated: string;
-    readonly ghostTransition: string;
-    readonly resolveSeatFrame: (accent: TilingTileAccent | undefined) => string;
+    readonly liftedPane: string;
     readonly sourcePane: string;
-    readonly sourceReservation: string;
-}
-
-// @public
-export interface TilingThemeGhostTokens {
-    readonly bodyText: string;
-    readonly header: string;
-    readonly subtitleText: string;
-    readonly surface: string;
 }
 
 // @public
