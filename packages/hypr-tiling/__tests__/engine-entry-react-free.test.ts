@@ -80,8 +80,8 @@ function collectBundleFiles(entryPath: string, specifierPattern: RegExp): Readon
 interface ProbeSurface {
   readonly exportCount: number;
   readonly accentHueCyanText: string;
-  readonly baselineDragHopDurationMs: number;
-  readonly instantDragDurationMs: number;
+  readonly workspaceTransitionDurationMs: number;
+  readonly layoutReconcileIdleMs: number;
   readonly mainWorkspaceId: string;
   readonly hasBuildDefaultDwindleLayout: boolean;
 }
@@ -175,8 +175,8 @@ describe("dist/engine entry is React-free", () => {
       const s: ProbeSurface = surface as ProbeSurface;
       expect(s.exportCount).toBeGreaterThan(50);
       expect(s.accentHueCyanText).toBe("text-cyan-200");
-      expect(s.baselineDragHopDurationMs).toBe(170);
-      expect(s.instantDragDurationMs).toBe(1);
+      expect(s.workspaceTransitionDurationMs).toBe(200);
+      expect(s.layoutReconcileIdleMs).toBe(150);
       expect(s.mainWorkspaceId).toBe("main");
       expect(s.hasBuildDefaultDwindleLayout).toBe(true);
     }
