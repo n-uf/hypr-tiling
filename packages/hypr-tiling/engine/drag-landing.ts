@@ -1,4 +1,10 @@
-import { deriveCandidateTree, isCommittableTarget, type DragResolvedTarget } from "./drag-machine";
+import {
+  deriveCandidateTree,
+  dragSubjectGroupId,
+  isCommittableTarget,
+  type DragResolvedTarget,
+  type DragSubject,
+} from "./drag-machine";
 import { resolveLeafRects, type TilingRect } from "./leaf-geometry";
 import { findGroupContainingLeaf, findLeafById } from "./state";
 import type { TilingLayoutConfig, TilingLayoutNode, TilingLeafNode } from "./types";
@@ -46,7 +52,9 @@ export function findLeafByTileId(node: TilingLayoutNode, tileId: string): Tiling
  * zone) or the pane would not be shown (an inactive group member).
  *
  * A pane that joins a group sits beside the group's tab strip, so the strip is
- * taken off its slot when it is shown (`groupStrip`).
+ * taken off its slot when it is shown (`groupStrip`). A whole group
+ * (`subject: "group"`) is held as its frame, strip and pane together, so it
+ * lands in the whole slot of the group it ends up in.
  */
 export function resolveDragLandingRect(params: {
   readonly layout: TilingLayoutNode;
@@ -55,6 +63,7 @@ export function resolveDragLandingRect(params: {
   readonly container: { readonly width: number; readonly height: number };
   readonly config: TilingLayoutConfig;
   readonly groupStrip?: DragLandingGroupStrip;
+  readonly subject?: DragSubject;
 }): TilingRect | null {
   const { layout, sourceLeafId, target, container, config } = params;
   if (!isCommittableTarget(target, sourceLeafId)) {
@@ -64,8 +73,15 @@ export function resolveDragLandingRect(params: {
   if (source == null) {
     return null;
   }
-  const landed: TilingLayoutNode = deriveCandidateTree(layout, sourceLeafId, target);
-  return resolveTileRect(landed, source.tileId, container, config, params.groupStrip ?? NO_DRAG_LANDING_GROUP_STRIP);
+  const isGroup: boolean = dragSubjectGroupId(layout, sourceLeafId, params.subject) != null;
+  const landed: TilingLayoutNode = deriveCandidateTree(layout, sourceLeafId, target, params.subject);
+  return resolveTileRect(
+    landed,
+    source.tileId,
+    container,
+    config,
+    isGroup ? NO_DRAG_LANDING_GROUP_STRIP : (params.groupStrip ?? NO_DRAG_LANDING_GROUP_STRIP),
+  );
 }
 
 /**
