@@ -5,6 +5,7 @@ import {
   TilingRenderer,
   type TilingCommand,
   type TilingCommandHandle,
+  type TilingDragPreview,
   type TilingLayoutNode,
   type TilingRenderTileProps,
   type TilingTile,
@@ -15,7 +16,9 @@ import "../index.css";
  * Dev-only motion spec scene (see motion-spec.html and scripts/motion-spec.mjs):
  * a tiling layout the spec drives through `window.__motionLab`. `?tiles=custom`
  * renders the panes through a `renderTile` with its own chrome (the path the
- * homepage uses); the default is the library's built-in pane and theme.
+ * homepage uses); the default is the library's built-in pane and theme. The
+ * drag preview starts from `?preview=snap` / `?room=1` and can be switched
+ * with `__motionLab.setDragPreview`.
  */
 
 const ROWS: ReadonlyArray<string> = [
@@ -54,6 +57,8 @@ interface MotionLab {
   /** Commit a layout; the tiles shown are exactly the ones it references. */
   setLayout(next: TilingLayoutNode): void;
   dispatch(command: TilingCommand): void;
+  /** Switch the drag preview (and, for the indicator, whether the others make room). */
+  setDragPreview(preview: TilingDragPreview, makesRoom?: boolean): void;
 }
 
 function tileIdsOf(node: TilingLayoutNode): string[] {
@@ -91,7 +96,17 @@ function CustomPane(args: TilingRenderTileProps): React.ReactElement {
         font: "13px/1.5 ui-sans-serif, system-ui, sans-serif",
       }}
     >
-      <header style={{ padding: "8px 12px", borderBottom: "1px solid rgba(255,255,255,0.08)", fontWeight: 600 }}>
+      <header
+        onPointerDown={args.onHandlePointerDown}
+        style={{
+          padding: "8px 12px",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          fontWeight: 600,
+          touchAction: "none",
+          cursor: "grab",
+          userSelect: "none",
+        }}
+      >
         {args.tile.title}
       </header>
       <div style={{ padding: "8px 12px" }}>
@@ -111,7 +126,13 @@ function MotionScene(): React.ReactElement {
   const layoutRef = React.useRef<TilingLayoutNode>(layout);
   layoutRef.current = layout;
   const handleRef = React.useRef<TilingCommandHandle | null>(null);
-  const custom: boolean = new URLSearchParams(window.location.search).get("tiles") === "custom";
+  const search: URLSearchParams = new URLSearchParams(window.location.search);
+  const custom: boolean = search.get("tiles") === "custom";
+  // The drag preview (`?preview=snap`, `?room=1` for the indicator's make-room).
+  const [dragPreview, setDragPreview] = React.useState<TilingDragPreview>(
+    search.get("preview") === "snap" ? "snap" : "indicator",
+  );
+  const [makesRoom, setMakesRoom] = React.useState<boolean>(search.get("room") === "1");
   const tiles: ReadonlyArray<TilingTile> = React.useMemo((): ReadonlyArray<TilingTile> => {
     const shown: Set<string> = new Set<string>(tileIdsOf(layout));
     return TILES.filter((tile: TilingTile): boolean => shown.has(tile.id));
@@ -123,6 +144,10 @@ function MotionScene(): React.ReactElement {
       layout: (): TilingLayoutNode => layoutRef.current,
       setLayout: (next: TilingLayoutNode): void => setLayout(next),
       dispatch: (command: TilingCommand): void => handleRef.current?.dispatch(command),
+      setDragPreview: (preview: TilingDragPreview, room: boolean = false): void => {
+        setDragPreview(preview);
+        setMakesRoom(room);
+      },
     };
   }, []);
 
@@ -136,6 +161,8 @@ function MotionScene(): React.ReactElement {
         onLayoutChange={setLayout}
         maximizedLeafId={maximizedLeafId}
         onMaximizedLeafChange={setMaximizedLeafId}
+        dragPreview={dragPreview}
+        dragPreviewMakesRoom={makesRoom}
         renderTile={custom ? (args: TilingRenderTileProps): React.ReactNode => <CustomPane {...args} /> : undefined}
       />
     </div>
