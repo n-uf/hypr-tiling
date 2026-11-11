@@ -41,8 +41,7 @@ import {
 //   • header action buttons stopPropagation on pointerDown + click so they don't
 //     start a drag or steal focus.
 //   • render the body only when paneBodyRenderMode === "render-content" (the
-//     drag ghost reuses the same render path, so this keeps the ghost body in
-//     sync and never empty).
+//     content toggle and collapse decide it; a dragged pane is this same pane).
 
 const tiles: TilingTile[] = [
   { id: "editor", title: "editor", accent: "sky", content: <code>main.tsx</code> },
