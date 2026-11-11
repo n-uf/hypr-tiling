@@ -303,6 +303,11 @@ import {
   type TabStripItem,
 } from "./group-tab-strip";
 import { createDomMeasurementPort } from "./dom-measurement-port";
+import {
+  createStableDragMeasurement,
+  type Bounds as StableDragBounds,
+  type StableDragInsertedTabs,
+} from "./stable-drag-measurement";
 import { createDomPointerCapturePort } from "./dom-pointer-capture-port";
 import { WORKSPACE_TRANSITION_LAYER_ATTR } from "./dom-view-capture";
 import {
@@ -7365,6 +7370,59 @@ const TilingRendererComponent = React.forwardRef<
   // (never the reflowing candidate) is what makes reflow moving panes under the
   // cursor unable to lose or hijack the drag. Returns `null` over the source / a
   // gap / outside any pane (→ cancel-on-release / gap-closed candidate).
+  //
+  // The DOM-measured targets (group tab strips and their tabs, host
+  // `groupDropTargetRef` elements) move with the panes while a preview makes
+  // room for the dragged pane; they are mapped back to where they sit with no
+  // room made, so the drop the pointer is over never depends on where the
+  // pane has settled on its way there.
+  const dragMakesRoom: boolean =
+    liveDragModeEnabled && (dragPreview === "snap" || dragPreviewMakesRoom);
+  const dragInsertedTabs: StableDragInsertedTabs | null =
+    roomTarget != null && roomTarget.action === "group-merge"
+      ? {
+          targetLeafId: roomTarget.leafId,
+          insertIndex: roomTarget.memberInsertIndex,
+          count: dragSubjectGroup?.members.length ?? 1,
+        }
+      : null;
+  const dragInsertedTabsKey: string =
+    dragInsertedTabs == null
+      ? ""
+      : `${dragInsertedTabs.targetLeafId}|${dragInsertedTabs.insertIndex ?? ""}|${dragInsertedTabs.count}`;
+  // The host drop target rects of this drag (see `createStableDragMeasurement`).
+  const dragHostTargetCacheRef = React.useRef<
+    Map<string, ReadonlyArray<StableDragBounds>>
+  >(new Map<string, ReadonlyArray<StableDragBounds>>());
+  React.useEffect((): void => {
+    if (!isLiveDragging) {
+      dragHostTargetCacheRef.current.clear();
+    }
+  }, [isLiveDragging]);
+  const dragMeasurementPort: MeasurementPort = React.useMemo(
+    (): MeasurementPort =>
+      dragMakesRoom
+        ? createStableDragMeasurement(measurementPort, {
+            footprints: liveHitFootprintsById,
+            layout,
+            viewportSize,
+            groupStrip: dragLandingGroupStrip,
+            insertedTabs: dragInsertedTabs,
+            hostTargetCache: dragHostTargetCacheRef.current,
+          })
+        : measurementPort,
+    // `dragInsertedTabs` is rebuilt every render; its key decides it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      dragMakesRoom,
+      measurementPort,
+      liveHitFootprintsById,
+      layout,
+      viewportSize,
+      dragLandingGroupStrip,
+      dragInsertedTabsKey,
+    ],
+  );
   const resolvePointerTarget = React.useCallback(
     (
       clientX: number,
@@ -7372,7 +7430,7 @@ const TilingRendererComponent = React.forwardRef<
       sourceLeafId: string,
       previousTarget: TilingDropState | null,
     ): TilingDropState | null =>
-      resolvePointerTargetFromMeasurement(measurementPort, {
+      resolvePointerTargetFromMeasurement(dragMeasurementPort, {
         clientX,
         clientY,
         sourceLeafId,
@@ -7405,7 +7463,7 @@ const TilingRendererComponent = React.forwardRef<
       rearrangeGatedLeafIds,
       viewportSize.height,
       viewportSize.width,
-      measurementPort,
+      dragMeasurementPort,
     ],
   );
   // Mirror the latest `resolvePointerTarget` into a ref so the once-created
