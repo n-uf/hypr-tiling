@@ -19,6 +19,15 @@
 // never stretched (matrix a = d; a pure glide is not scaled at all) and the tempo
 // (90 % within ln(10)/ω ± 25 %). With --shots it also saves a screenshot 60 ms into
 // a swap and one at rest.
+//
+// Then it drags panes with real mouse events, in both drop previews: the lifted
+// pane must be held 1:1 under the pointer on every frame (checkHeld on the rect
+// the page draws), stay on top (document.elementFromPoint) from the lift until
+// its drop settle ends, land exactly in the indicator's rect, settle there with
+// no overshoot or jump; in snap mode the others must make room in the slot it
+// snaps into. A click changes nothing; a release over the pane's own place and
+// Escape put the layout back exactly. With --shots it saves a frame mid-drag in
+// each preview.
 
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -30,7 +39,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const motionTesting = pathToFileURL(
   resolve(here, "../../../packages/hypr-tiling/node_modules/@n-uf/motion/dist/testing.js"),
 ).href;
-const { checkContentScale, checkMonotonic, checkNoJumps, checkNoOvershoot, checkTempo } = await import(motionTesting);
+const { checkContentScale, checkHeld, checkMonotonic, checkNoJumps, checkNoOvershoot, checkTempo } = await import(motionTesting);
 
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
@@ -43,7 +52,44 @@ const shotsDir = option("shots", null);
 
 /** Installed in the page before it loads: collect one sample per pane per drawn frame. */
 function installProbe() {
-  const probe = { samples: [], writes: 0 };
+  const probe = { samples: [], frames: [], writes: 0, pointer: null };
+  // The pointer as the page saw it last (capture on window: before the renderer's listeners).
+  window.addEventListener(
+    "pointermove",
+    (event) => {
+      probe.pointer = { x: event.clientX + window.scrollX, y: event.clientY + window.scrollY };
+    },
+    { capture: true },
+  );
+  // Hit-testing for the on-top check: a live drag makes the viewport inert
+  // (pointer-events: none), which elementFromPoint honours; lift that for the
+  // instant of the check only.
+  const hitStyle = document.createElement("style");
+  hitStyle.textContent = "html[data-spec-hit] [data-hpt-viewport], html[data-spec-hit] [data-hpt-viewport] * { pointer-events: auto !important; }";
+  document.addEventListener("DOMContentLoaded", () => document.head.appendChild(hitStyle));
+  const pageRect = (b) => ({ x: b.left + window.scrollX, y: b.top + window.scrollY, width: b.width, height: b.height });
+  /** The rect a wrapper is drawn at: its frame layer while it moves, else its own box. */
+  const drawnRect = (wrapper) => {
+    const frame = wrapper.querySelector(":scope > [data-hpt-leaf-frame]");
+    const moving = wrapper.style.transform !== "";
+    return pageRect((moving && frame != null ? frame : wrapper).getBoundingClientRect());
+  };
+  /** Whether the raised (dragged) pane is the topmost thing at a point of it: null, a failure, or undefined (nothing raised). */
+  const onTop = () => {
+    const raised = document.querySelector("[data-hpt-leaf-raised]");
+    if (raised == null) return undefined;
+    const r = drawnRect(raised);
+    const p = probe.pointer;
+    const inside = p != null && p.x > r.x + 1 && p.x < r.x + r.width - 1 && p.y > r.y + 1 && p.y < r.y + r.height - 1;
+    const x = Math.min(Math.max(inside ? p.x : r.x + r.width / 2, 1), window.innerWidth - 1) - window.scrollX;
+    const y = Math.min(Math.max(inside ? p.y : r.y + r.height / 2, 1), window.innerHeight - 1) - window.scrollY;
+    document.documentElement.setAttribute("data-spec-hit", "");
+    const top = document.elementFromPoint(x, y);
+    document.documentElement.removeAttribute("data-spec-hit");
+    if (top == null || raised.contains(top)) return null;
+    const under = top.closest("[data-hpt-leaf]")?.getAttribute("data-hpt-leaf");
+    return `pane ${raised.getAttribute("data-hpt-leaf")} is under ${under ? `pane ${under}` : top.tagName.toLowerCase() + (top.hasAttribute("data-hpt-drop-indicator") ? " (drop indicator)" : "")} at (${Math.round(x)}, ${Math.round(y)})`;
+  };
   const offsetRect = (element) => {
     let x = 0;
     let y = 0;
@@ -64,6 +110,8 @@ function installProbe() {
       const matrix = new DOMMatrixReadOnly(getComputedStyle(wrapper).transform === "none" ? undefined : getComputedStyle(wrapper).transform);
       probe.samples.push({
         t: time,
+        // Several writes can share a stepped time (a held pane is drawn on every pointer move): pair by write.
+        write: probe.writes,
         id: wrapper.getAttribute("data-hpt-leaf"),
         rect: box == null ? null : { x: box.left + window.scrollX, y: box.top + window.scrollY, width: box.width, height: box.height },
         wrapperRect: (() => {
@@ -79,8 +127,18 @@ function installProbe() {
         // A stable-identity pane mounts its content one commit after its slot:
         // an empty wrapper has no chrome to draw yet.
         empty: wrapper.querySelector(":scope > :not([data-hpt-leaf-frame]):not([data-hpt-leaf-affordance]) *, :scope > article") == null,
+        lifted: wrapper.closest("[data-hpt-lifted]") != null,
+        raised: wrapper.hasAttribute("data-hpt-leaf-raised"),
       });
     }
+    const indicator = document.querySelector("[data-hpt-drop-indicator]");
+    probe.frames.push({
+      t: time,
+      write: probe.writes,
+      pointer: probe.pointer,
+      indicator: indicator == null ? null : pageRect(indicator.getBoundingClientRect()),
+      onTop: onTop(),
+    });
   };
   window.__HPT_MOTION_PROBE__ = probe;
 }
@@ -166,6 +224,10 @@ function leftovers() {
     }
   }
   if (document.querySelector("[data-hpt-leaf-motion-active]") != null) found.push("viewport still marked as gliding");
+  // A drag leaves nothing behind once everything rests.
+  if (document.querySelector("[data-hpt-leaf-raised]") != null) found.push("a pane still raised");
+  if (document.querySelector("[data-hpt-lifted]") != null) found.push("a pane still lifted");
+  if (document.querySelector("[data-hpt-drop-indicator]") != null) found.push("the drop indicator still shown");
   return found;
 }
 
@@ -325,6 +387,267 @@ await scenario("two layout changes 40 ms apart (root ratio 0.3, then 0.65)", { g
   await new Promise((r) => setTimeout(r, 40));
   lab.setLayout({ ...lab.layout(), ratio: 0.65 });
 });
+
+// ── Drags (real mouse events) ───────────────────────────────────────────────
+
+const INITIAL = {
+  kind: "split",
+  id: "root",
+  axis: "horizontal",
+  ratio: 0.5,
+  first: { kind: "leaf", id: "leaf-a", tileId: "a" },
+  second: {
+    kind: "split",
+    id: "right",
+    axis: "vertical",
+    ratio: 0.5,
+    first: { kind: "leaf", id: "leaf-b", tileId: "b" },
+    second: { kind: "leaf", id: "leaf-c", tileId: "c" },
+  },
+};
+
+const nextFrame = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+
+/** Every pane's layout rect (page px), from offset geometry. */
+const restRects = () =>
+  page.evaluate(() => {
+    const out = {};
+    for (const wrapper of document.querySelectorAll("[data-hpt-leaf]")) {
+      let x = 0;
+      let y = 0;
+      for (let node = wrapper; node != null; node = node.offsetParent) {
+        x += node.offsetLeft;
+        y += node.offsetTop;
+      }
+      out[wrapper.getAttribute("data-hpt-leaf")] = { x, y, width: wrapper.offsetWidth, height: wrapper.offsetHeight };
+    }
+    return out;
+  });
+
+/** Move the mouse along a straight line in `steps`, one animation frame per step. */
+async function glideMouse(from, to, steps) {
+  for (let i = 1; i <= steps; i++) {
+    const f = i / steps;
+    const e = f < 0.5 ? 2 * f * f : 1 - (-2 * f + 2) ** 2 / 2;
+    await page.mouse.move(from.x + (to.x - from.x) * e, from.y + (to.y - from.y) * e);
+    await nextFrame();
+  }
+}
+
+const overlapArea = (a, b) =>
+  Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)) *
+  Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+
+const rectText = (r) => (r == null ? "none" : `${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}×${Math.round(r.height)}`);
+
+/**
+ * One drag of pane `tileId`: press on its header, glide to `to` (stage 1), run
+ * `during` (screenshots, Escape), release, wait for rest; then check what the
+ * scenario expects. `expect.commit` false: the layout must come back unchanged.
+ */
+async function dragScenario(name, { preview, tileId, to, steps = 30, nearStart = false, during, expect }) {
+  await page.evaluate((layout) => window.__motionLab.setLayout(layout), INITIAL);
+  await page.evaluate((p) => window.__motionLab.setDragPreview(p), preview);
+  await waitIdle();
+  const before = await page.evaluate(() => JSON.stringify(window.__motionLab.layout()));
+  const rest = await restRects();
+  const home = rest[tileId];
+  const grab = { x: 60, y: 14 };
+  const start = { x: home.x + grab.x, y: home.y + grab.y };
+  const target = typeof to === "function" ? to(rest) : to;
+  await page.mouse.move(start.x, start.y);
+  await page.evaluate(() => {
+    window.__HPT_MOTION_PROBE__.samples = [];
+    window.__HPT_MOTION_PROBE__.frames = [];
+  });
+  await page.mouse.down();
+  await glideMouse(start, target, steps);
+  await page.waitForTimeout(250);
+  await nextFrame();
+  if (during != null) await during();
+  const releaseT = await page.evaluate(() => window.__HPT_MOTION_PROBE__.time ?? 0);
+  await page.mouse.up();
+  await waitIdle();
+  const { samples, frames, omega, rest: left } = await page.evaluate(
+    (leftoversSource) => ({
+      samples: window.__HPT_MOTION_PROBE__.samples,
+      frames: window.__HPT_MOTION_PROBE__.frames,
+      omega: window.__HPT_MOTION_PROBE__.omega,
+      rest: new Function(`return (${leftoversSource})();`)(),
+    }),
+    leftovers.toString(),
+  );
+  const after = await page.evaluate(() => JSON.stringify(window.__motionLab.layout()));
+  const finalRects = await restRects();
+  const lines = [];
+  const add = (kind, failures, note = "") => lines.push({ id: tileId, kind, failures, note });
+
+  const mine = samples.filter((s) => s.id === tileId);
+  const liftedSamples = mine.filter((s) => s.lifted);
+  const others = new Map();
+  for (const s of samples) {
+    if (s.id === tileId) continue;
+    if (!others.has(s.id)) others.set(s.id, []);
+    others.get(s.id).push(s);
+  }
+
+  if (expect.lift === false) {
+    add("click", [
+      ...(liftedSamples.length > 0 ? [`lifted on a click (${liftedSamples.length} frames)`] : []),
+      ...(samples.some((s) => s.wrapperRect && s.target && !near(s.wrapperRect, s.target, 0.75)) ? ["a pane moved on a click"] : []),
+      ...(after !== before ? ["the layout changed on a click"] : []),
+    ]);
+  } else {
+    // Lifted: the pane left the tree for the pointer.
+    if (liftedSamples.length === 0) add("lift", ["the pane was never lifted"]);
+    // Held 1:1 (indicator): the drawn rect is pointer − grab, at the lift size, on every frame it is held.
+    if (preview === "indicator") {
+      const held = [];
+      for (let i = 0; i < samples.length; i++) {
+        const s = samples[i];
+        if (s.id !== tileId || !s.lifted || s.rect == null) continue;
+        const frame = frames.find((f) => f.write === s.write) ?? null;
+        const p = frame?.pointer;
+        if (p == null) continue;
+        held.push({ t: s.t, rect: s.rect, expected: { x: p.x - grab.x, y: p.y - grab.y, width: home.width, height: home.height } });
+      }
+      const result = checkHeld(held, 1.5);
+      add("held 1:1", held.length < 5 ? [`only ${held.length} held frames sampled`] : result.failures, `${held.length} frames`);
+    }
+    // On top: from the lift until its drop settle ends, nothing covers it; and it comes down after.
+    const liftedFrames = frames.filter((f) => f.onTop !== undefined);
+    const covered = liftedFrames.filter((f) => f.onTop != null).map((f) => `t=${Math.round(f.t)} ${f.onTop}`);
+    const firstLiftT = liftedSamples[0]?.t ?? Infinity;
+    const raisedGap = mine.filter((s) => s.t >= firstLiftT && !s.raised && s.wrapperRect && s.target && !near(s.rect ?? s.wrapperRect, s.target, 0.75));
+    add(
+      "on top",
+      [
+        ...covered,
+        ...(liftedFrames.length === 0 ? ["never raised"] : []),
+        ...raisedGap.slice(0, 3).map((s) => `t=${Math.round(s.t)} came down before its drop settled`),
+        ...(left.some((l) => l.includes("raised")) ? ["still raised at rest"] : []),
+      ],
+      `${liftedFrames.length} frames`,
+    );
+    // The drop: from where it is drawn into its slot, no overshoot, monotonic, no jumps.
+    const finalTarget = mine.at(-1)?.target ?? null;
+    const lastLifted = mine.reduce((index, s, i) => (s.lifted ? i : index), -1);
+    // From the frame its final target was set (after the drop, or after its snap into that slot).
+    const sameTarget = (s) => finalTarget != null && KEYS.every((k) => Math.abs(s.target[k] - finalTarget[k]) < 0.01);
+    let firstFinal = mine.length;
+    for (let i = mine.length - 1; i > lastLifted && sameTarget(mine[i]); i--) firstFinal = i;
+    const settleRun = mine.slice(firstFinal).filter((s) => s.rect != null);
+    if (finalTarget != null && settleRun.length > 0) {
+      const from = settleRun[0].rect;
+      add("drop settle", [
+        ...checkNoOvershoot(settleRun, from, finalTarget).failures,
+        ...checkMonotonic(settleRun, finalTarget).failures,
+        ...checkNoJumps(settleRun, omega, 1.5).failures,
+      ], `${settleRun.length} frames from ${rectText(from)} to ${rectText(finalTarget)}`);
+    }
+    // The others: close the gap at the lift, move (or not) at the drop, never jump or overshoot.
+    for (const [id, all] of others) {
+      const to = all.at(-1).target;
+      const firstFinal = all.findIndex((s) => KEYS.every((k) => Math.abs(s.target[k] - to[k]) < 0.01));
+      const run = all.slice(firstFinal).filter((s) => s.rect != null);
+      const failures = [...checkNoJumps(all.filter((s) => s.rect != null), omega, 1.5).failures.map((f) => `${id}: ${f}`)];
+      if (run.length > 1) {
+        failures.push(...checkNoOvershoot(run, run[0].rect, to).failures.map((f) => `${id}: ${f}`));
+        failures.push(...checkMonotonic(run, to).failures.map((f) => `${id}: ${f}`));
+      }
+      lines.push({ id, kind: "others glide", failures, note: "" });
+    }
+    if (expect.commit) {
+      if (after === before) add("commit", ["the drop committed nothing"]);
+      if (preview === "indicator") {
+        const indicated = [...frames].reverse().find((f) => f.indicator != null && f.t <= releaseT)?.indicator ?? null;
+        const landed = finalRects[tileId];
+        add(
+          "indicator == landing",
+          indicated == null ? ["no drop indicator before the release"] : near(indicated, landed, 1) ? [] : [`indicator ${rectText(indicated)} but the pane landed at ${rectText(landed)}`],
+          `${rectText(indicated)} → ${rectText(landed)}`,
+        );
+      }
+      if (preview === "snap") {
+        // Snapped: the pane sat in the tree at its slot, and once the others had
+        // settled none of them overlapped that slot (they made room).
+        const snapped = mine.filter((s) => s.t <= releaseT && !s.lifted && s.raised);
+        const slot = snapped.at(-1)?.target ?? null;
+        const failures = [];
+        if (slot == null) failures.push("never snapped into a slot");
+        else {
+          if (!near(slot, finalRects[tileId], 1)) failures.push(`snapped into ${rectText(slot)} but landed at ${rectText(finalRects[tileId])}`);
+          for (const [id, all] of others) {
+            const atSnap = all.filter((s) => s.t <= releaseT).at(-1);
+            if (atSnap && overlapArea(atSnap.target, slot) > 1) failures.push(`pane ${id} (${rectText(atSnap.target)}) still in the slot ${rectText(slot)}`);
+          }
+        }
+        add("snap makes room", failures, rectText(slot));
+      }
+    } else if (after !== before) {
+      add("home", ["the layout changed; it should have come back as it was at the lift"]);
+    } else {
+      add("home", [], "layout back as it was");
+    }
+  }
+  if (left.length > 0) lines.push({ id: "-", kind: "at rest", failures: left, note: "" });
+  const ok = lines.every((line) => line.failures.length === 0);
+  failed ||= !ok;
+  results.push({ name, ok, lines });
+  console.log(`${ok ? "PASS" : "FAIL"} ${name} [${preview}]`);
+  for (const line of lines) {
+    console.log(`  ${line.id}: ${line.kind}${line.note ? ` (${line.note})` : ""}`);
+    for (const failure of line.failures.slice(0, 8)) console.log(`    ✗ ${failure}`);
+  }
+}
+
+/** Over bravo's lower edge (bravo fills the right column, the whole width once alpha is lifted). */
+const overBravoBottom = (rest) => ({ x: rest.b.x + rest.b.width * 0.5 - 300, y: rest.b.y + rest.b.height * 0.9 });
+
+for (const preview of ["indicator", "snap"]) {
+  await dragScenario("drag alpha onto bravo's lower edge", {
+    preview,
+    tileId: "a",
+    to: overBravoBottom,
+    expect: { commit: true },
+    during: async () => {
+      if (shotsDir != null) {
+        mkdirSync(shotsDir, { recursive: true });
+        await page.screenshot({ path: resolve(shotsDir, `drag-${preview}-${tilesMode}.png`) });
+      }
+    },
+  });
+}
+await dragScenario("drag charlie onto alpha (swap)", {
+  preview: "indicator",
+  tileId: "c",
+  to: (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + rest.a.height * 0.5 }),
+  expect: { commit: true },
+});
+await dragScenario("click (below the threshold) is a no-op", {
+  preview: "indicator",
+  tileId: "a",
+  to: (rest) => ({ x: rest.a.x + 62, y: rest.a.y + 15 }),
+  steps: 2,
+  expect: { lift: false },
+});
+await dragScenario("release over its own place restores the layout", {
+  preview: "indicator",
+  tileId: "a",
+  to: (rest) => ({ x: rest.a.x + 200, y: rest.a.y + 260 }),
+  expect: { commit: false },
+});
+await dragScenario("Escape restores the layout", {
+  preview: "snap",
+  tileId: "a",
+  to: overBravoBottom,
+  expect: { commit: false },
+  during: async () => {
+    await page.keyboard.press("Escape");
+    await nextFrame();
+  },
+});
+await page.evaluate(() => window.__motionLab.setDragPreview("indicator"));
 
 if (shotsDir != null) {
   mkdirSync(shotsDir, { recursive: true });
