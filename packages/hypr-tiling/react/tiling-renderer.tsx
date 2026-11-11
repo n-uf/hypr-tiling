@@ -9054,7 +9054,13 @@ const TilingRendererComponent = React.forwardRef<
           >
             {groupStripPlacement === "top" ? groupStrip : null}
             <div
-              className="hpt-group-active hpt-motion-overflow relative min-h-0 w-full flex-1 overflow-hidden"
+              // A lifted group's pane is translated where the pointer holds
+              // it: its content box must not clip it (as a live drag opens
+              // every structural box).
+              className={cn(
+                "hpt-group-active hpt-motion-overflow relative min-h-0 w-full flex-1",
+                isLiftedPane || isLeafMotionOverflowWindow ? "overflow-visible" : "overflow-hidden",
+              )}
               data-hpt-group-content-box=""
               style={{
                 height:
