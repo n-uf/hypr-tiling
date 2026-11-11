@@ -19,6 +19,7 @@ import { resolveTileRect } from "../engine/drag-landing";
 import { findGroupContainingLeaf } from "../engine/state";
 import type {
   TilingGroupNode,
+  TilingInteractionCapabilities,
   TilingLayoutNode,
   TilingLeafNode,
   TilingRenderTileProps,
@@ -173,9 +174,11 @@ function HostTile(args: TilingRenderTileProps): React.ReactElement {
 function Host({
   onLayoutReported,
   hostTiles = false,
+  capabilities,
 }: {
   onLayoutReported: (next: TilingLayoutNode) => void;
   hostTiles?: boolean;
+  capabilities?: TilingInteractionCapabilities;
 }): React.ReactElement {
   const [layout, setLayout] = React.useState<TilingLayoutNode>(LAYOUT);
   return (
@@ -188,6 +191,7 @@ function Host({
         dragRecovery: { enable: false },
         customCursor: false,
         paneSwitching: { showTabStrip: false, showSwitcherOverlay: false },
+        ...capabilities,
       }}
       renderTile={hostTiles ? (args: TilingRenderTileProps): React.ReactNode => <HostTile {...args} /> : undefined}
       onLayoutChange={(next: TilingLayoutNode): void => {
@@ -426,5 +430,72 @@ describe("group drag — a group dropped on another pane's title bar merges", ()
     const merged: TilingGroupNode | null = findGroupContainingLeaf(changes[0]!, "A");
     expect(merged?.members.map((m: TilingLeafNode): string => m.id)).toEqual(["A", "B", "C"]);
     expect(merged?.activeMemberId).toBe("C");
+  });
+});
+
+describe("group drag — the strip only claims presses it can use", (): void => {
+  /** A press with the given device and button on `element`; returns what an ancestor (the body) saw. */
+  async function press(element: Element | null, pointerType: "mouse" | "touch", button: number): Promise<number> {
+    if (element == null) {
+      throw new Error("nothing to press");
+    }
+    let seen: number = 0;
+    const spy = (): void => {
+      seen += 1;
+    };
+    document.body.addEventListener("pointerdown", spy);
+    await act(async (): Promise<void> => {
+      element.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          pointerType,
+          button,
+          buttons: 1,
+          clientX: 530,
+          clientY: 10,
+        }),
+      );
+      await wait(5);
+    });
+    document.body.removeEventListener("pointerdown", spy);
+    // Put any armed press away.
+    await release(530, 10);
+    return seen;
+  }
+
+  // jsdom leaves a property it does not know unset (undefined) rather than "".
+  const touchAction = (container: HTMLElement): string => (strip(container) as HTMLElement).style.touchAction ?? "";
+
+  it("rearrange off: the strip keeps the page's touch scrolling and lets every press reach its ancestors", async (): Promise<void> => {
+    restGeometry();
+    const { container } = render(
+      <Host onLayoutReported={(): void => undefined} capabilities={{ rearrange: false }} />,
+    );
+    expect(touchAction(container)).toBe("");
+    expect(await press(tab(container, 0), "mouse", 0)).toBe(1);
+    expect(await press(strip(container), "touch", 0)).toBe(1);
+    expect(lifted(container)).toBeNull();
+  });
+
+  it("touch drag off: no touch-action on the strip and a touch on a tab reaches ancestors; a mouse press still tears off", async (): Promise<void> => {
+    restGeometry();
+    const { container } = render(
+      <Host onLayoutReported={(): void => undefined} capabilities={{ touchDrag: { enable: false } }} />,
+    );
+    expect(touchAction(container)).toBe("");
+    expect(await press(tab(container, 0), "touch", 0)).toBe(1);
+    // The mouse path is untouched: its press on a tab begins the drag and stops there.
+    expect(await press(tab(container, 0), "mouse", 0)).toBe(0);
+  });
+
+  it("drag on: the strip blocks touch panning, a primary press on a tab stays with the strip, another button travels on", async (): Promise<void> => {
+    restGeometry();
+    const { container } = render(<Host onLayoutReported={(): void => undefined} />);
+    expect(touchAction(container)).toBe("none");
+    expect(await press(tab(container, 0), "mouse", 0)).toBe(0);
+    expect(await press(tab(container, 0), "mouse", 2)).toBe(1);
+    expect(lifted(container)).toBeNull();
   });
 });

@@ -32,8 +32,17 @@ export interface GroupTabStripProps {
   onUngroup: () => void;
   /** A press on the strip's own surface (not a tab or control): drags the whole group. */
   onStripPointerDown?: (event: React.PointerEvent<HTMLElement>) => void;
-  /** A press on a tab: tears that member off (a click still only activates it). */
-  onTabPointerDown?: (event: React.PointerEvent<HTMLElement>, memberId: string) => void;
+  /**
+   * A press on a tab: tears that member off (a click still only activates it).
+   * Returns whether the press began a drag; only then is it kept from the
+   * strip and from ancestors.
+   */
+  onTabPointerDown?: (event: React.PointerEvent<HTMLElement>, memberId: string) => boolean;
+  /**
+   * A touch on the strip drags (the browser must not scroll or swipe from it).
+   * Leave unset when touch drag is off: the strip then scrolls like the page.
+   */
+  stripTouchDrag?: boolean;
 }
 
 /** One item the shared strip paints. `selected` drives `aria-selected`. */
@@ -62,8 +71,10 @@ export interface TabStripProps {
   nested: boolean;
   /** A press on the strip itself (tabs stop theirs from reaching it). */
   onPointerDown?: (event: React.PointerEvent<HTMLElement>) => void;
-  /** A press on a tab. */
-  onTabPointerDown?: (event: React.PointerEvent<HTMLElement>, index: number) => void;
+  /** A press on a tab; returns whether it began a drag (then it stops there). */
+  onTabPointerDown?: (event: React.PointerEvent<HTMLElement>, index: number) => boolean;
+  /** Touches on the strip drag it: `touch-action: none`. */
+  touchDrag?: boolean;
 }
 
 const TAB_MIN_WIDTH_PX: number = 56;
@@ -170,6 +181,7 @@ export function TabStrip(props: TabStripProps): React.ReactElement {
     nested,
     onPointerDown,
     onTabPointerDown,
+    touchDrag,
   } = props;
   const tabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
   const pendingFocusIndex = React.useRef<number | null>(null);
@@ -250,7 +262,7 @@ export function TabStrip(props: TabStripProps): React.ReactElement {
         isMergeTarget ? "ring-2 ring-violet-400/50" : "",
       )}
       style={
-        onPointerDown != null
+        onPointerDown != null && touchDrag === true
           ? { ...stripThemeStyle(theme, height, nested), touchAction: "none" }
           : stripThemeStyle(theme, height, nested)
       }
@@ -299,9 +311,11 @@ export function TabStrip(props: TabStripProps): React.ReactElement {
                 onTabPointerDown != null
                   ? (event: React.PointerEvent<HTMLButtonElement>): void => {
                       // A tab tears its own pane off; the strip's whole-group
-                      // grip never sees this press.
-                      event.stopPropagation();
-                      onTabPointerDown(event, index);
+                      // grip never sees that press. A press that begins no drag
+                      // (another button, a gated pane) travels on untouched.
+                      if (onTabPointerDown(event, index)) {
+                        event.stopPropagation();
+                      }
                     }
                   : undefined
               }
@@ -379,6 +393,7 @@ export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
     onUngroup,
     onStripPointerDown,
     onTabPointerDown,
+    stripTouchDrag,
   } = props;
   const theme = options.theme;
   const [hoveredControl, setHoveredControl] = React.useState<"eject" | "ungroup" | null>(null);
@@ -479,13 +494,12 @@ export function GroupTabStrip(props: GroupTabStripProps): React.ReactElement {
       tabIndexAttrName="data-member-index"
       nested={nested}
       onPointerDown={onStripPointerDown}
+      touchDrag={stripTouchDrag}
       onTabPointerDown={
         onTabPointerDown != null
-          ? (event: React.PointerEvent<HTMLElement>, index: number): void => {
+          ? (event: React.PointerEvent<HTMLElement>, index: number): boolean => {
               const member: GroupTabStripMember | undefined = members[index];
-              if (member != null) {
-                onTabPointerDown(event, member.id);
-              }
+              return member != null && onTabPointerDown(event, member.id);
             }
           : undefined
       }
