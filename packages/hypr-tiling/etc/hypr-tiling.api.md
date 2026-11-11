@@ -94,9 +94,6 @@ export const DEFAULT_DRAG_ANIMATION_SPEED_PERCENT: number;
 export const DEFAULT_DRAG_HOP_EASING: string;
 
 // @public
-export const DEFAULT_DRAG_REFLOW_EASING: string;
-
-// @public
 export const DEFAULT_TILE_ACCENT: TilingTileAccent;
 
 // @public
@@ -230,7 +227,6 @@ export interface ResolvedTilingDragRecoveryCapability {
     enable: boolean;
     frameDeadlineMs: number;
     maxDraggingIdleMs: number;
-    transitionSlackMs: number;
 }
 
 // @public
@@ -285,7 +281,6 @@ export interface ResolvedTilingGroupTabStripTheme {
 
 // @public
 export interface ResolvedTilingInteractionCapabilities {
-    coherentTransit: boolean;
     customCursor: boolean;
     dragMode: TilingDragMode;
     dragRecovery: ResolvedTilingDragRecoveryCapability;
@@ -779,7 +774,6 @@ export interface TilingDragRecoveryCapability {
     enable?: boolean;
     frameDeadlineMs?: number;
     maxDraggingIdleMs?: number;
-    transitionSlackMs?: number;
 }
 
 // @public
@@ -897,7 +891,6 @@ export type TilingInactiveWorkspacesMode = "unmount" | "keep-mounted";
 
 // @public
 export interface TilingInteractionCapabilities {
-    coherentTransit?: boolean;
     customCursor?: boolean;
     dragMode?: TilingDragMode;
     dragRecovery?: TilingDragRecoveryCapability;
@@ -1175,7 +1168,6 @@ export interface TilingRendererCommonProps {
     dragAnimationEnabled?: boolean;
     dragGhostMode?: TilingDragGhostMode;
     dragHopEasing?: string;
-    dragReflowEasing?: string;
     externalDragHover?: TilingExternalDragHover | null;
     focusedLeafId?: string | null;
     ghostTransitSpeedPercent?: number;
@@ -1196,7 +1188,6 @@ export interface TilingRendererCommonProps {
     showDropBorderHints?: boolean;
     showDropPreviewOverlays?: boolean;
     survivorReflowSpeedPercent?: number;
-    swapBounceMagnitudePercent?: number;
     theme?: TilingTheme;
     themeId?: TilingThemeId;
     tiles: ReadonlyArray<TilingTile> | ReadonlyMap<string, TilingTile>;
