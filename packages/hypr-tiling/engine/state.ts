@@ -1176,7 +1176,7 @@ function insertLeafAroundTarget(
 function insertLeafIntoSplitContainer(
   node: TilingLayoutNode,
   targetSplitId: string,
-  insertedLeafNode: TilingLeafNode,
+  insertedLeafNode: TilingLeafNode | TilingGroupNode,
   placement: "first" | "second",
   options: TilingInsertionOptions,
 ): TilingLayoutNode {
@@ -1367,10 +1367,14 @@ function collectLeavesReadingOrder(tree: TilingLayoutNode): ReadonlyArray<Tiling
  * absent falls back to `{ kind: "root", side: "second" }`. The result is passed
  * through {@link normalizeStaticAxisFill}. `leaf.id` must not already be in
  * `tree` (the caller extracted it, or it comes from another tree).
+ *
+ * `leaf` may also be a whole tab group: it is seated as one slot (members, order
+ * and active tab kept), and a `group` placement merges all its members into the
+ * target group.
  */
 export function insertLeafInto(
   tree: TilingLayoutNode | null,
-  leaf: TilingLeafNode,
+  leaf: TilingLeafNode | TilingGroupNode,
   placement: TilingWorkspacePlacement = ROOT_SECOND_PLACEMENT,
   options?: Partial<TilingInsertionOptions>,
 ): TilingLayoutNode {
@@ -1434,11 +1438,12 @@ export function insertLeafInto(
       if (group == null) {
         return insertLeafInto(tree, leaf, ROOT_SECOND_PLACEMENT, options);
       }
-      const member: TilingLeafNode = asGroupMember(leaf);
+      const joining: ReadonlyArray<TilingLeafNode> =
+        leaf.kind === "group" ? leaf.members.map(asGroupMember) : [asGroupMember(leaf)];
       const nextGroup: TilingGroupNode = {
         ...group,
-        members: [...group.members, member],
-        activeMemberId: member.id,
+        members: [...group.members, ...joining],
+        activeMemberId: leaf.kind === "group" ? leaf.activeMemberId : leaf.id,
       };
       return normalizeStaticAxisFill(replaceNodeById(tree, group.id, nextGroup));
     }

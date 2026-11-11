@@ -15,6 +15,7 @@ import {
   deleteWorkspace,
   hideFromWorkspace,
   hideTileFromWorkspace,
+  moveGroupToWorkspace,
   moveLeafToWorkspace,
   moveTileToWorkspace,
   normalizeWorkspaceName,
@@ -416,6 +417,89 @@ describe("workspace set — moveLeafToWorkspace", (): void => {
     expect(seat?.collapsed).toBe(true);
     expect(seat?.collapsedDimension).toBe("height");
     expect(seat?.sizing?.heightPx).toBe(40);
+  });
+});
+
+describe("workspace set — moveGroupToWorkspace", (): void => {
+  /** main: g[a, b*] | c ; ops: d | e */
+  function groupedSet(): TilingWorkspaceSet {
+    return {
+      workspaces: [
+        { id: "main", name: "Main", layout: split("root", "horizontal", group("g", ["a", "b"], "b"), leaf("c")) },
+        { id: "ops", name: "Ops", layout: split("root", "horizontal", leaf("d"), leaf("e")) },
+      ],
+      activeId: "main",
+    };
+  }
+
+  it("moves the whole group — members, order and active tab — and seats it last by default", (): void => {
+    const moved: TilingWorkspaceSet = moveGroupToWorkspace(groupedSet(), "g", "ops");
+    expect(tileIdsOf(moved)).toEqual([["c"], ["d", "e", "a", "b"]]);
+    const seated: TilingGroupNode = (moved.workspaces[1].layout as TilingSplitNode).second as TilingGroupNode;
+    expect(seated.kind).toBe("group");
+    expect(seated.id).toBe("g");
+    expect(seated.members.map((member: TilingLeafNode): string => member.id)).toEqual(["leaf:a", "leaf:b"]);
+    expect(seated.activeMemberId).toBe("leaf:b");
+    // The source keeps its other pane, as the bare leaf.
+    expect(moved.workspaces[0].layout).toEqual(leaf("c"));
+    expect(workspaceSetIssues(moved)).toEqual([]);
+  });
+
+  it("empties a source the group was the whole of and seats into an empty destination as the group itself", (): void => {
+    const set: TilingWorkspaceSet = createWorkspace(workspaceSetOfLayout(group("g", ["a", "b"])), { id: "ops", name: "Ops" });
+    const moved: TilingWorkspaceSet = moveGroupToWorkspace(set, "g", "ops");
+    expect(moved.workspaces[0].layout).toBeNull();
+    expect(moved.workspaces[1].layout).toEqual(group("g", ["a", "b"]));
+    expect(workspaceSetIssues(moved)).toEqual([]);
+  });
+
+  it("honours the placement: beside a pane, or merged into another group as tabs", (): void => {
+    const set: TilingWorkspaceSet = groupedSet();
+    const beside: TilingWorkspaceSet = moveGroupToWorkspace(set, "g", "ops", {
+      kind: "adjacent",
+      targetLeafId: "leaf:d",
+      placement: "left",
+    });
+    expect(tileIdsOf(beside)[1]).toEqual(["a", "b", "d", "e"]);
+    const into: TilingWorkspaceSet = {
+      ...set,
+      workspaces: [set.workspaces[0], { ...set.workspaces[1], layout: split("root", "horizontal", group("h", ["d", "e"]), leaf("f")) }],
+    };
+    const merged: TilingWorkspaceSet = moveGroupToWorkspace(into, "g", "ops", { kind: "group", groupId: "h" });
+    const h: TilingGroupNode = (merged.workspaces[1].layout as TilingSplitNode).first as TilingGroupNode;
+    expect(h.members.map((member: TilingLeafNode): string => member.tileId)).toEqual(["d", "e", "a", "b"]);
+    expect(h.activeMemberId).toBe("leaf:b");
+  });
+
+  it("re-seats within the same workspace when `to` is its own workspace", (): void => {
+    const set: TilingWorkspaceSet = groupedSet();
+    const reseated: TilingWorkspaceSet = moveGroupToWorkspace(set, "g", "main", { kind: "root", side: "first" });
+    expect(tileIdsOf(reseated)[0]).toEqual(["a", "b", "c"]);
+    expect((reseated.workspaces[0].layout as TilingSplitNode).first).toEqual(group("g", ["a", "b"], "b"));
+    expect(reseated.workspaces[1]).toBe(set.workspaces[1]);
+  });
+
+  it("takes every member out of every workspace that shows it", (): void => {
+    const set: TilingWorkspaceSet = groupedSet();
+    // `b` is also shown in ops.
+    const shared: TilingWorkspaceSet = {
+      ...set,
+      workspaces: [set.workspaces[0], { ...set.workspaces[1], layout: split("root", "horizontal", leaf("b"), leaf("e")) }],
+    };
+    const moved: TilingWorkspaceSet = moveGroupToWorkspace(shared, "g", "ops");
+    expect(tileIdsOf(moved)).toEqual([["c"], ["e", "a", "b"]]);
+    expect(workspaceSetIssues(moved)).toEqual([]);
+  });
+
+  it("finds the group in the first workspace that has it when the active one does not", (): void => {
+    const moved: TilingWorkspaceSet = moveGroupToWorkspace({ ...groupedSet(), activeId: "ops" }, "g", "ops");
+    expect(tileIdsOf(moved)).toEqual([["c"], ["d", "e", "a", "b"]]);
+  });
+
+  it("is unchanged for an unknown group or workspace", (): void => {
+    const set: TilingWorkspaceSet = groupedSet();
+    expect(moveGroupToWorkspace(set, "zzz", "ops")).toBe(set);
+    expect(moveGroupToWorkspace(set, "g", "nope")).toBe(set);
   });
 });
 
