@@ -23,6 +23,10 @@ export const VIEW_CAPTURE_CANVAS_PIXEL_BUDGET: number = 16_000_000;
  */
 export const HIT_TEST_DATA_ATTRIBUTES: ReadonlyArray<string> = [
   "data-leaf-id",
+  // Leaf motion collects `[data-hpt-leaf]` wrappers under the viewport; a
+  // clone's wrappers must not register as panes.
+  "data-hpt-leaf",
+  "data-drag-source-reservation-slot",
   "data-hpt-pane",
   "data-hpt-pane-pool",
   "data-hpt-pane-slot",
