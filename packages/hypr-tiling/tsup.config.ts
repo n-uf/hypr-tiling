@@ -31,9 +31,21 @@ const shared: Pick<Options, "format" | "dts" | "outExtension"> = {
 export default defineConfig([
   {
     ...shared,
+    format: ["esm"],
     entry: ["index.ts", "devtools.ts"],
     clean: false,
     external: ["react", "react-dom"],
+  },
+  {
+    // `@n-uf/motion` ships ESM only. The CJS build bundles it, so
+    // `require("@n-uf/hypr-tiling")` works on every Node and under CJS jest
+    // (no require(esm)); the ESM build keeps it an external dependency.
+    ...shared,
+    format: ["cjs"],
+    entry: ["index.ts", "devtools.ts"],
+    clean: false,
+    external: ["react", "react-dom"],
+    noExternal: ["@n-uf/motion"],
   },
   {
     ...shared,

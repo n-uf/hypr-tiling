@@ -6,6 +6,9 @@ const base = require("./jest.config.js");
 /** @type {import('jest').Config} */
 module.exports = {
   ...base,
-  testMatch: ["**/__tests__/engine-entry-react-free.test.ts"],
+  testMatch: [
+    "**/__tests__/engine-entry-react-free.test.ts",
+    "**/__tests__/dist-cjs-require.test.ts",
+  ],
   testPathIgnorePatterns: ["/node_modules/"],
 };
