@@ -213,7 +213,7 @@ function Host({
                 : subject.members.filter((member: TilingLeafNode): boolean => member.id === leafId);
               setClaimedTileIds((ids) => [...ids, ...taken.map((member: TilingLeafNode): string => member.tileId)]);
               setLayout((current: TilingLayoutNode): TilingLayoutNode =>
-                takeGroup && subject.groupId != null ? removeGroupNode(current, subject.groupId) : removeLeafTile(current, leafId),
+                takeGroup && subject.kind === "group" ? removeGroupNode(current, subject.groupId) : removeLeafTile(current, leafId),
               );
             }
       }

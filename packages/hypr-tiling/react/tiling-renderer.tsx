@@ -10535,7 +10535,7 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       const current: TilingWorkspaceSet = workspacesRef.current;
       const from: string = current.activeId;
       const moved: TilingWorkspaceSet =
-        subject.kind === "group" && subject.groupId != null
+        subject.kind === "group"
           ? moveGroupToWorkspace(
               current,
               subject.groupId,

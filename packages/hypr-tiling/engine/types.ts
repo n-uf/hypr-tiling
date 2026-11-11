@@ -2838,16 +2838,27 @@ export type TilingExternalDragHover =
  * strip). Passed as the 5th argument of {@link TilingOnExternalDrop}; a host
  * that ignores it still receives the active pane's leaf id first, as before.
  */
-export interface TilingExternalDropSubject {
-  /** `"pane"`: one pane (an ungrouped pane or a tab torn off); `"group"`: its whole tab group. */
-  readonly kind: "pane" | "group";
-  /** The group handed over; `null` for a single pane. */
-  readonly groupId: string | null;
-  /** The leaves handed over, in tab order (just the one leaf for a pane). */
-  readonly members: ReadonlyArray<TilingLeafNode>;
-  /** The active tab of the group (the dragged leaf for a pane): the `leafId` argument. */
-  readonly activeLeafId: string;
-}
+export type TilingExternalDropSubject =
+  | {
+      /** One pane (an ungrouped pane, or a tab torn off its group). */
+      readonly kind: "pane";
+      /** A single pane has no group. */
+      readonly groupId: null;
+      /** Just the dragged leaf. */
+      readonly members: readonly [TilingLeafNode] | readonly [];
+      /** The dragged leaf: the `leafId` argument. */
+      readonly activeLeafId: string;
+    }
+  | {
+      /** The whole tab group. */
+      readonly kind: "group";
+      /** The group handed over. */
+      readonly groupId: string;
+      /** Every member, in tab order. */
+      readonly members: ReadonlyArray<TilingLeafNode>;
+      /** The group's active tab: the `leafId` argument. */
+      readonly activeLeafId: string;
+    };
 
 /**
  * Fired on release while {@link TilingRendererCommonProps.externalDragHover} is
@@ -2859,8 +2870,19 @@ export interface TilingExternalDropSubject {
  * `leafId` is the dragged pane (a dragged group's active tab). `subject` says
  * what the claim hands over: for a dragged group every member, in tab order
  * (`subject.members`); the host takes them all, and the renderer shows the
- * whole group gone until the host's layout lands (`removeGroupNode` takes it
- * out of a tree).
+ * whole group gone until the host's layout lands. A host that took only some
+ * of the members would see the rest flash out and back while the claim
+ * settles. `removeGroupNode` (imported from `@n-uf/hypr-tiling/engine`) takes a
+ * group out of a tree:
+ *
+ * ```ts
+ * onExternalDrop={(leafId, targetId, point, hover, subject) => {
+ *   if (subject.kind === "group") {
+ *     setLayout((tree) => removeGroupNode(tree, subject.groupId));
+ *   }
+ *   // take every subject.members entry ...
+ * }}
+ * ```
  */
 export type TilingOnExternalDrop = (
   leafId: string,
