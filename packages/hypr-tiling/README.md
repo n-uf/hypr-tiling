@@ -370,19 +370,24 @@ the WorkspaceSet drag scope — see
     for (const member of subject.members) {
       moveItemToTab(member.id, targetId, point);
     }
+    if (subject.kind === "group") {
+      setLayout((tree) => removeGroupNode(tree, subject.groupId));
+    }
   }}
   /* … */
 />
 ```
 
-`leafId` is the dragged pane (a dragged group's active tab). The fifth
-argument, `subject`, says what the claim hands over: one pane
-(`kind: "pane"`), or, when the drag moved a tab group, the whole group
-(`kind: "group"`) with every member in tab order in `subject.members`. The
-host takes all of them and takes the group out of its layout
-(`removeGroupNode(layout, subject.groupId)`); a host that ignores `subject`
-still gets the active pane's leaf id first, as before. A workspace tab in
-set mode takes the whole group on its own (`moveGroupToWorkspace`).
+`removeGroupNode` is imported from `@n-uf/hypr-tiling/engine`. `leafId` is the
+dragged pane (a dragged group's active tab). The fifth argument, `subject`,
+says what the claim hands over: one pane (`kind: "pane"`), or, when the drag
+moved a tab group, the whole group (`kind: "group"`, which narrows `groupId`
+to a string) with every member in tab order in `subject.members`. The host
+takes every member and takes the group out of its layout; one that takes only
+some would see the rest flash out and back while the claim settles. A host
+that ignores `subject` still gets the active pane's leaf id first, as before.
+A workspace tab in set mode takes the whole group on its own
+(`moveGroupToWorkspace`).
 
 Omit `onExternalDrop` (or return `false` from it) and the release cancels:
 the layout stays as it was at the lift and the pane settles home.
