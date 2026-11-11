@@ -2,7 +2,10 @@ import * as React from "react";
 import {
   DISCOVERABILITY_PARAGRAPHS,
   FEATURE_CORE,
+  FEATURE_LATEST,
+  FEATURE_LATEST_SINCE,
   FEATURE_RECENT,
+  FEATURE_RECENT_SINCE,
   INSTALL_CONTROLLED_PARAGRAPH,
   INSTALL_INTRO_PARAGRAPH,
   INSTALL_SNIPPET,
@@ -362,8 +365,10 @@ function FeaturesContent(): React.ReactElement {
       <CanvasHeading>Ships today</CanvasHeading>
       <CanvasKicker>core tiling</CanvasKicker>
       <CanvasIndex items={FEATURE_CORE} />
-      <CanvasKicker>since 26.9.x</CanvasKicker>
+      <CanvasKicker>since {FEATURE_RECENT_SINCE}</CanvasKicker>
       <CanvasIndex items={FEATURE_RECENT} />
+      <CanvasKicker>since {FEATURE_LATEST_SINCE}</CanvasKicker>
+      <CanvasIndex items={FEATURE_LATEST} />
     </div>
   );
 }
