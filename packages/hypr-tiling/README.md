@@ -371,7 +371,8 @@ the WorkspaceSet drag scope — see
       moveItemToTab(member.id, targetId, point);
     }
     if (subject.kind === "group") {
-      setLayout((tree) => removeGroupNode(tree, subject.groupId));
+      const groupId = subject.groupId;
+      setLayout((tree) => removeGroupNode(tree, groupId));
     }
   }}
   /* … */

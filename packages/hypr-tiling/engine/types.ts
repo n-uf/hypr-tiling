@@ -1160,11 +1160,13 @@ export interface TilingWorkspacesCapability {
    * (`onWorkspaceSwitch({ via: "spring-load" })`) and the drag continues on
    * the pane's new seat under the still-held pointer. A dragged tab group is
    * carried whole (`moveGroupToWorkspace`) and the drag continues as a group
-   * drag. `false` (default) disables it; an object enables it and overrides `dwellMs`. Needs a
-   * `kind: "workspace-tab"` external hover (`resolveExternalDragHover` /
-   * `useTilingWorkspaceTabs`, or the `externalDragHover` prop); the active
-   * workspace's own tab never dwells. `null` reads as `false` (so a resolved
-   * capability object re-resolves to itself).
+   * drag (as just the pane when a group placement merged it into another
+   * group). `false` (default) disables it; an object enables it and
+   * overrides `dwellMs`. Needs a `kind: "workspace-tab"` external hover
+   * (`resolveExternalDragHover` / `useTilingWorkspaceTabs`, or the
+   * `externalDragHover` prop); the active workspace's own tab never dwells.
+   * `null` reads as `false` (so a resolved capability object re-resolves to
+   * itself).
    */
   springLoad?: TilingSpringLoadCapability | null;
 }
@@ -2879,7 +2881,8 @@ export type TilingExternalDropSubject =
  * ```ts
  * onExternalDrop={(leafId, targetId, point, hover, subject) => {
  *   if (subject.kind === "group") {
- *     setLayout((tree) => removeGroupNode(tree, subject.groupId));
+ *     const groupId = subject.groupId;
+ *     setLayout((tree) => removeGroupNode(tree, groupId));
  *   }
  *   // take every subject.members entry ...
  * }}

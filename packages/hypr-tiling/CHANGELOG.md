@@ -32,7 +32,8 @@ A tab group dragged by its title bar or the empty part of its strip now moves
 as one to a workspace tab (in set mode): every member, in order, with its
 active tab, through `moveGroupToWorkspace`; `onMoveLeaf` is called once per
 member. A group spring-loaded over a workspace tab (`springLoad`) is carried
-whole too, and the drag continues on its new seat as a group drag. A host claim
+whole too, and the drag continues on its new seat as a group drag (as just the
+pane when a group placement merged it into another group). A host claim
 (`onExternalDrop`) of a dragged group now receives the whole group: a fifth
 argument, `subject`, lists every member in tab order, and the renderer shows the
 whole group gone while the claim settles. The arguments that were there are
@@ -48,7 +49,8 @@ import { removeGroupNode } from "@n-uf/hypr-tiling/engine";
       moveItemToTarget(member.id, targetId, point); // take every member
     }
     if (subject.kind === "group") {
-      setLayout((tree) => removeGroupNode(tree, subject.groupId));
+      const groupId = subject.groupId;
+      setLayout((tree) => removeGroupNode(tree, groupId));
     }
   }}
   /* … */
@@ -63,6 +65,8 @@ import { removeGroupNode } from "@n-uf/hypr-tiling/engine";
   `{ kind: "pane", groupId: null, members, activeLeafId }` for one pane, or
   `{ kind: "group", groupId, members, activeLeafId }` for a whole group, so
   `kind === "group"` narrows `groupId` to a `string`.
+- `./engine`: the exported `DragRearmEvent` gains an optional `subject`
+  (`DragSubject`): what a re-armed drag moves (absent: the one pane).
 
 ### Breaking changes
 
