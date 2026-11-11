@@ -7,7 +7,7 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
-## Unreleased
+## 26.11.5 — 2026-11-11
 
 ### The drop under snap to slot depends only on where you release
 
