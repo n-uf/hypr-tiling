@@ -9,6 +9,7 @@
     "content:check": "node scripts/content-index.mjs --check",
     "og": "node scripts/render-og.mjs",
     "icons": "node scripts/render-icons.mjs",
+    "motion:spec": "node scripts/motion-spec.mjs",
     "predev": "node scripts/content-index.mjs --show-drafts",
     "dev": "vite",
     "pretypecheck": "node scripts/content-index.mjs",
