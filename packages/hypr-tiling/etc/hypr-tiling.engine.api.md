@@ -178,6 +178,8 @@ export type DragMachineState = {
     pointerType: DragPointerType;
     touchDrag: boolean;
     sourceLeafId: string;
+    subject?: DragSubject;
+    homeFootprint?: TilingPaneFootprint;
     anchorFootprint: TilingPaneFootprint;
     pointerAnchorOffset: DragMachinePoint;
     originClient: DragMachinePoint;
@@ -187,6 +189,8 @@ export type DragMachineState = {
     pointerType: DragPointerType;
     touchDrag: boolean;
     sourceLeafId: string;
+    subject?: DragSubject;
+    homeFootprint?: TilingPaneFootprint;
     anchorFootprint: TilingPaneFootprint;
     pointerAnchorOffset: DragMachinePoint;
     heldFootprint: TilingPaneFootprint;
@@ -196,6 +200,7 @@ export type DragMachineState = {
     phase: "settling";
     outcome: DragSettleOutcome;
     sourceLeafId: string;
+    subject?: DragSubject;
     resolvedTarget: DragResolvedTarget | null;
 };
 
@@ -216,6 +221,9 @@ export interface DragRearmEvent {
 
 // @public
 export type DragResolvedTarget = TilingDropIntentState;
+
+// @public
+export type DragSubject = "pane" | "group";
 
 // @public
 export const EMPTY_FOCUS_HISTORY: FocusHistory;
@@ -283,6 +291,9 @@ export function hideTileFromWorkspace(set: TilingWorkspaceSet, tileId: string, f
 
 // @public
 export type IncomingWorkspaceSetKind = "echo" | "stale" | "authoritative";
+
+// @public
+export function insertGroupAdjacent(layout: TilingLayoutNode, groupId: string, targetLeafId: string, placement: TilingMovePlacement, options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
 
 // @public
 export function insertLeafAdjacent(layout: TilingLayoutNode, sourceLeafId: string, targetLeafId: string, placement: TilingMovePlacement, options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
@@ -361,6 +372,9 @@ export function matchKeymapAction(event: TilingKeyboardEventLike, keymap: Resolv
 export function measureLayoutFillSlackPx(node: TilingLayoutNode, options: NormalizeLayoutOptions): number;
 
 // @public
+export function mergeGroupIntoTarget(layout: TilingLayoutNode, groupId: string, targetLeafId: string, insertIndex?: number): TilingLayoutNode;
+
+// @public
 export function moveLeafToRoot(layout: TilingLayoutNode, sourceLeafId: string, placement: "first" | "second", options?: Partial<TilingInsertionOptions>): TilingLayoutNode;
 
 // @public
@@ -427,6 +441,9 @@ export function rearmPointerAnchorOffset(anchorFootprint: TilingPaneFootprint, c
 
 // @public
 export function reassertCollapsedExtentPins(node: TilingLayoutNode, collapsedExtentPx: number): TilingLayoutNode;
+
+// @public
+export function removeGroupNode(layout: TilingLayoutNode, groupId: string): TilingLayoutNode;
 
 // @public
 export function removeLeafTile(layout: TilingLayoutNode, leafId: string): TilingLayoutNode;
@@ -604,6 +621,9 @@ export function springLoadFireAt(state: TilingSpringLoadState, config?: TilingSp
 
 // @public
 export function springLoadReducer(state: TilingSpringLoadState, event: TilingSpringLoadEvent, config?: TilingSpringLoadConfig): TilingSpringLoadState;
+
+// @public
+export function swapGroupWithSlot(layout: TilingLayoutNode, groupId: string, targetLeafId: string): TilingLayoutNode;
 
 // @public
 export function swapLeafTiles(node: TilingLayoutNode, firstLeafId: string, secondLeafId: string): TilingLayoutNode;
