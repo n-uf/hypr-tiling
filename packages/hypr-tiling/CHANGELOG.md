@@ -14,12 +14,16 @@ the version number alone does not flag them.
 A live drag (`dragMode: "live"`, the default) used to paint a separate ghost
 of the pane: shrunk to 90 % on pickup, hopping into a reserved seat with its
 own easing, and flying back on a cancel. Now the pane itself is dragged. Past
-the click threshold the REAL pane (the same mount, its content and state) is
-lifted out of the layout and held exactly under the pointer every frame, at
-the size it was picked up, while the other panes close the gap on the settle
-curve. It is drawn above every other pane, with a lifted shadow, from the lift
-until its drop has settled. A press that never passes the threshold changes
-nothing.
+the click threshold the REAL pane is lifted out of the layout and held exactly
+under the pointer every frame, at the size it was picked up, while the other
+panes close the gap on the settle curve. With `paneIdentity: "stable"` it is
+the same mount, its content and state kept; in `"slot"` mode (the default for
+server-rendered pages) the lifted pane is mounted afresh at the lift and again
+at the drop, as slot mode does on every move. It is drawn above every other
+pane, with a lifted shadow, from the lift until its drop has settled, and is
+not clipped by the viewport: it can be held over the workspace tab strip or a
+host drop target. It stays under the pointer through a page scroll and under a
+scaled ancestor. A press that never passes the threshold changes nothing.
 
 Where it will land is shown by the new `dragPreview` prop:
 
@@ -37,7 +41,8 @@ passes it. A release whose pointer never left the pane's own place, Escape,
 was at the lift, and every pane settles home. Every kind of drop works as
 before (split sides, master/stack, swaps, group and tab drops, workspace tabs,
 spring-loaded tabs, host claims); the indicator rect is the rect the drop
-commits.
+commits. A pane a host claims (`onExternalDrop`) fades out where it was drawn
+instead of vanishing.
 
 The dragged pane lives inside the renderer: `overlayPortalContainer` now only
 hosts the custom drag cursor. The lifted wrapper carries `data-hpt-lifted`, the
