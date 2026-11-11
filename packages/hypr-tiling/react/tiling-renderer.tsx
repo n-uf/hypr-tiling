@@ -8552,9 +8552,11 @@ const TilingRendererComponent = React.forwardRef<
           !liveDragModeEnabled && isDragSourceSlot && !renderReservedDragSlot;
         // The dragged pane stays above every other pane (and the drop
         // indicator), with the theme's lifted look, from the lift until its
-        // drop settle ends.
+        // drop settle ends (raised in the very render that lifts it).
         const isRaisedPane: boolean =
-          !renderReservedDragSlot && node.tileId === raisedTileId;
+          !renderReservedDragSlot &&
+          (node.tileId === raisedTileId ||
+            (isLiveDragging && node.tileId === dragSourceTileId));
         if (isRaisedPane) {
           leafWrapperStyle.zIndex = RAISED_PANE_Z_INDEX;
         }
@@ -9232,6 +9234,7 @@ const TilingRendererComponent = React.forwardRef<
       heldSlotLeafId,
       dragSourceTileId,
       raisedTileId,
+      isLiveDragging,
       dropState,
       interactionCapabilities,
       isLeafMotionOverflowWindow,
