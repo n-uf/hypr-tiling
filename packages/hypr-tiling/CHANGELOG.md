@@ -44,6 +44,24 @@ spring-loaded tabs, host claims); the indicator rect is the rect the drop
 commits. A pane a host claims (`onExternalDrop`) fades out where it was drawn
 instead of vanishing.
 
+### A tab group drags as one
+
+Grabbing the title bar of a pane in a tab group used to drag that pane out of
+the group. Now the title bar, or the empty part of the group's tab strip, lifts
+the WHOLE group: it is held 1:1 by its frame (strip and active pane, drawn as a
+group), the others close its slot, the indicator (or snap slot) is the whole
+slot it will take, and it lands as the same group: same members, order and
+active tab. Dropped on another pane's title bar or group strip, it merges: all
+its panes join that group as tabs and its active tab becomes the active tab.
+Escape, `pointercancel` or a release that never left home put it back exactly.
+
+A tab tears off just its pane (the old title-bar behaviour); the group keeps
+the rest, and a group left with one pane becomes that pane. A click on a tab
+still only switches tabs, and every grip has the same pickup threshold.
+Keyboard move mode moves a grouped pane's whole group too, like its title bar.
+A host claim (`onExternalDrop`) or a workspace-tab drop of a dragged group
+still hands over its active pane only.
+
 The dragged pane lives inside the renderer: `overlayPortalContainer` now only
 hosts the custom drag cursor. The lifted wrapper carries `data-hpt-lifted`, the
 dragged pane's leaf wrapper `data-hpt-leaf-raised`, the indicator
@@ -57,6 +75,12 @@ dragged pane's leaf wrapper `data-hpt-leaf-raised`, the indicator
   `drop-shadow` that follows the pane as it is drawn) and
   `dragChrome.dropIndicator` (orange, a colour no pane accent uses: translucent
   fill, soft halo, rounded).
+- `./engine`: `DragSubject` (`"pane" | "group"`); the drag machine's
+  `POINTER_DOWN` event and `armed` / `dragging` / `settling` states take an
+  optional `subject` (absent: the one pane) and `POINTER_DOWN` an optional
+  `homeFootprint` (the place a release must leave to commit, when it is not the
+  anchor). Whole-group reducers `removeGroupNode`, `swapGroupWithSlot`,
+  `insertGroupAdjacent` and `mergeGroupIntoTarget`.
 
 ### Breaking changes
 
