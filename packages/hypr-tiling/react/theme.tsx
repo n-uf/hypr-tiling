@@ -9,7 +9,6 @@ import {
   type TilingAccentHue,
 } from "../engine/accent-hues";
 import type {
-  TilingGhostChipContext,
   TilingTileAccent,
   TilingThemeId,
 } from "../engine/types";
@@ -35,12 +34,12 @@ import {
  * variables would move color decisions out of the type system and defeat the
  * closed-union exhaustiveness the rest of the renderer relies on.
  *
- * That JIT constraint is independent of where the drag ghost mounts. Host
- * CSS that scopes tokens via CSS variables, `data-theme`, or a scoped
+ * That JIT constraint is independent of where the custom drag cursor mounts.
+ * Host CSS that scopes tokens via CSS variables, `data-theme`, or a scoped
  * `dark` class must redirect the overlay portal container
  * (`TilingRendererProps.overlayPortalContainer`) so those inherited values
- * reach the ghost / cursor / cancel overlays. Default remains
- * `document.body`.
+ * reach the cursor overlay. Default remains `document.body`. (A dragged pane
+ * is the real pane, inside the renderer: it inherits like any pane.)
  */
 
 /**
@@ -105,74 +104,45 @@ export interface TilingThemePaneHeaderTokens {
   readonly selectedBadge: string;
 }
 
-/** Drag-ghost shell — the lifted, portaled copy of the dragged pane. */
-export interface TilingThemeGhostTokens {
-  /** Ghost article shell (a touch more opaque + deeper shadow than a pane). */
-  readonly surface: string;
-  /** Ghost header bar. */
-  readonly header: string;
-  /** Ghost body text color. */
-  readonly bodyText: string;
-  /** Ghost subtitle text color. */
-  readonly subtitleText: string;
-}
-
 /**
  * Drag-state chrome — how the rearrange drag LOOKS around the pane shell: the
- * ghost wrapper's elevation delta, the content-less seat the ghost hops into,
- * the picked-up source pane's dimming, the drop-target highlight, and the
- * pointer-pinned drag-cursor badge. Every renderer-painted drag surface reads
- * these tokens (never an inline class string), so a host can make the drag
- * state read exactly like its at-rest pane — square, flat, hairline — without
- * CSS overrides against `[data-drag-ghost]` / `[data-drag-source-reservation]`.
+ * lifted pane's elevation, the drop indicator, the picked-up source pane's
+ * dimming (preview mode), the drop-target highlight, and the pointer-pinned
+ * drag-cursor badge. Every renderer-painted drag surface reads these tokens
+ * (never an inline class string), so a host can restyle the drag without CSS
+ * overrides against `[data-hpt-leaf-raised]` / `[data-hpt-drop-indicator]`.
  *
  * `TilingTheme.dragChrome` is OPTIONAL and PARTIAL: `resolveDragChrome(theme)`
- * fills every omitted token from a pane-shell-inheriting default derived from
- * the theme itself (the seat wears `paneShell.surface`, the seat frame reuses
- * `resolveFocusFrame`, the ghost carries a small neutral elevation/opacity
- * delta). A theme that passes nothing therefore drags with its own resting
- * chrome; the built-in neon-terminal look is expressed purely through this slot.
- * Tokens stay literal class strings (Tailwind JIT) — that is not a portal
- * constraint. Scoped host CSS vars still need `overlayPortalContainer`.
+ * fills every omitted token from a neutral default. The built-in neon-terminal
+ * look is expressed purely through this slot. Tokens stay literal class
+ * strings (Tailwind JIT).
  */
 export interface TilingThemeDragChromeTokens {
   /**
-   * Ghost WRAPPER while the ghost free-follows the pointer (lifted): the
-   * elevation / scale / opacity / tint delta layered OUTSIDE the pane shell
-   * (`theme.ghost.surface` for the default tile, the host's own chrome for a
-   * custom `renderTile`). Keep it a small delta from the at-rest pane.
+   * The dragged pane's LEAF WRAPPER from the lift until its drop settle ends
+   * (it is also raised above every other pane): the lifted look, typically a
+   * `drop-shadow` filter, which follows the pane as it is drawn mid-glide.
+   * Keep it a shadow, not a size or opacity change: the pane is held 1:1.
    */
-  readonly ghostLifted: string;
+  readonly liftedPane: string;
   /**
-   * Ghost wrapper while the ghost is SEATED in the hop-in slot (and under
-   * `prefers-reduced-motion`, where the lifted look is dropped).
+   * The drop indicator (`dragPreview: "indicator"`): the box drawn at the exact
+   * rect the dragged pane will land in, above the resting panes and below the
+   * dragged one. A colour no pane uses, a translucent fill, a soft halo,
+   * rounded. The renderer adds `pointer-events: none` and the position.
    */
-  readonly ghostSeated: string;
-  /**
-   * Ghost wrapper transition between the lifted and seated looks. Omitted
-   * entirely under `prefers-reduced-motion`.
-   */
-  readonly ghostTransition: string;
-  /** Cancel fly-back wrapper (the pane gliding back to its origin). */
-  readonly cancelFlyBack: string;
-  /**
-   * The content-less SEAT the single ghost hops into (`DragSourceSlotReservation`):
-   * the FULL surface class set — background, border, radius, shadow. Fully
-   * covered once the ghost seats, visible only during the hop-in flight. The
-   * default inherits `paneShell.surface` so the seat reads as the at-rest pane.
-   */
-  readonly sourceReservation: string;
+  readonly dropIndicator: string;
   /**
    * The picked-up SOURCE pane as a whole (applied by the renderer to the leaf
    * wrapper, so it dims a custom `renderTile` and the default tile alike): a
    * single opacity, never a per-part (title-only) dim. Preview drag mode only —
-   * in live mode the source slot is the reservation.
+   * in live mode the pane is lifted, never dimmed.
    */
   readonly sourcePane: string;
   /**
-   * The resolved DROP-TARGET leaf wrapper. Default `""`: per the
-   * focus-follows-dragged-pane rule the destination is conveyed by the ghost
-   * hop-in, so no other pane is highlighted. A host may opt into a highlight.
+   * The resolved DROP-TARGET leaf wrapper. Default `""`: the drop preview
+   * shows the destination, so no other pane is highlighted. A host may opt
+   * into a highlight.
    */
   readonly dropTarget: string;
   /**
@@ -189,21 +159,14 @@ export interface TilingThemeDragChromeTokens {
   readonly cursorBadgeValid: string;
   /** Cursor badge surface / border / glyph color over a blocked target. */
   readonly cursorBadgeInvalid: string;
-  /** Cursor badge surface / border / glyph color while free-following (grip). */
+  /** Cursor badge surface / border / glyph color with no target (grip). */
   readonly cursorBadgeNeutral: string;
-  /**
-   * The frame the seat wears during the hop-in flight, composed from the
-   * DRAGGED pane's accent (focus follows the dragged pane). Default: the
-   * theme's `resolveFocusFrame`. Return `""` for a frameless seat.
-   */
-  readonly resolveSeatFrame: (accent: TilingTileAccent | undefined) => string;
 }
 
 /**
  * Workspace-switch motion tokens (N2). Optional + partial — omitted fields
  * resolve through {@link resolveWorkspaceTransition} to the library defaults
- * (200 ms, drag-hop easing). Same additive slot pattern as `dragChrome` /
- * `ghostChip`.
+ * (200 ms, a snappy decel). Same additive slot pattern as `dragChrome`.
  */
 export interface TilingThemeWorkspaceTransitionTokens {
   /** Timed commit / cancel duration in milliseconds. Default 200. */
@@ -271,25 +234,16 @@ export interface TilingTheme {
   readonly paneShell: TilingThemePaneShellTokens;
   /** Pane header chrome tokens. */
   readonly paneHeader: TilingThemePaneHeaderTokens;
-  /** Drag-ghost shell tokens. */
-  readonly ghost: TilingThemeGhostTokens;
   /**
-   * Drag-state chrome tokens (ghost wrapper delta, seat, source dim, drop
+   * Drag-state chrome tokens (lifted pane, drop indicator, source dim, drop
    * target, cursor badge). Optional + partial — omitted tokens resolve through
-   * `resolveDragChrome(theme)` to a pane-shell-inheriting default.
+   * `resolveDragChrome(theme)` to a neutral default.
    */
   readonly dragChrome?: Partial<TilingThemeDragChromeTokens>;
   /**
-   * Compact-ghost chip CONTENTS. The renderer wraps the return in the
-   * cursor-anchored chip shell (`data-drag-ghost-chip`); this slot paints
-   * the label. Default is a minimal neutral chip (tile title, else leaf id).
-   * Optional — omitted themes keep the built-in chip.
-   */
-  readonly ghostChip?: (ctx: TilingGhostChipContext) => React.ReactNode;
-  /**
    * Workspace-switch slide / fade timing. Optional + partial — omitted
-   * tokens resolve through `resolveWorkspaceTransition` to 200 ms and the
-   * drag-hop easing. Built-in themes omit the slot (library defaults).
+   * tokens resolve through `resolveWorkspaceTransition` to 200 ms and a
+   * snappy decel. Built-in themes omit the slot (library defaults).
    */
   readonly workspaceTransition?: Partial<TilingThemeWorkspaceTransitionTokens>;
   /**
@@ -341,10 +295,10 @@ export interface PaneDropAffordanceFlags {
 /**
  * The drop-affordance ring classes a pane shell wears during a drag.
  *
- * Per the focus-follows-dragged-pane rule: during a drag the SOLE affordance
- * belongs to the dragged pane (its ghost + the seat the ghost hops into, both
- * wearing the focus frame), and the destination is conveyed by that hop-in. So
- * no other pane is highlighted: `isDropEligible`, `isHoveringDropCandidate`, and
+ * Per the focus-follows-dragged-pane rule: during a drag the SOLE pane
+ * affordance belongs to the dragged pane (lifted, wearing the focus frame), and
+ * the destination is conveyed by the drop preview. So no other pane is
+ * highlighted: `isDropEligible`, `isHoveringDropCandidate`, and
  * `isDropTarget` are accepted (the shell still computes them) but deliberately
  * paint nothing. The faint dashed eligibility hint that used to mark every
  * candidate re-introduced a focus-like highlight on other panes and was removed.
@@ -362,7 +316,7 @@ export function resolvePaneDropAffordanceClasses(
 /**
  * Built-in theme: NEON-TERMINAL — the neon-terminal direction, REFINED and
  * dialed back from the original heavy look. Calmer glass (blur `xl`→`md`,
- * saturate `150`→`125`; ghost `2xl`→`lg`), softer drop shadows, a lower-contrast
+ * saturate `150`→`125`), softer drop shadows, a lower-contrast
  * focus glow (`focusGlowSoft` alone — a 1px box-shadow ring + soft bloom, no
  * stacked `border`/`ring`), and more disciplined accent use (resting panes wear
  * only a faint accent border — the colored shadow tint is dropped). Keeps the
@@ -398,26 +352,13 @@ const NEON_TERMINAL_THEME: TilingTheme = {
     selected: "outline-dashed outline-1 -outline-offset-2 outline-slate-300/50",
     selectedBadge: "border border-slate-300/40 bg-slate-200/10 text-slate-200",
   },
-  ghost: {
-    surface:
-      "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl bg-[linear-gradient(155deg,rgba(52,57,71,0.80),rgba(13,15,21,0.88))] shadow-[0_20px_48px_-20px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.10),inset_0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-lg backdrop-saturate-[1.25]",
-    header:
-      "flex shrink-0 items-center justify-between border-b border-white/[0.07] bg-white/[0.05] px-3 py-2",
-    bodyText: "text-slate-300",
-    subtitleText: "text-slate-500",
-  },
-  // The neon-terminal drag look — lifted glass ghost with a deep slate drop
-  // shadow, a `rounded-xl` seat, cyan/rose/slate cursor badge — is expressed
-  // ENTIRELY through this slot (the renderer paints no drag chrome of its own),
-  // so a host theme is pixel-identical to the pre-`dragChrome` renderer.
+  // The neon-terminal drag look — a deep slate drop shadow under the lifted
+  // pane, an orange drop indicator, cyan/rose/slate cursor badge — is expressed
+  // ENTIRELY through this slot (the renderer paints no drag chrome of its own).
   dragChrome: {
-    ghostLifted:
-      "scale-[1.01] opacity-90 shadow-[0_30px_60px_rgba(2,6,23,0.72)]",
-    ghostSeated:
-      "scale-[1.01] opacity-95 shadow-[0_22px_44px_rgba(2,6,23,0.62)]",
-    ghostTransition: "transition-[opacity,box-shadow] duration-150",
-    cancelFlyBack: "shadow-[0_18px_34px_rgba(2,6,23,0.5)]",
-    sourceReservation: "rounded-xl",
+    liftedPane: "drop-shadow-[0_26px_32px_rgba(2,6,23,0.7)]",
+    dropIndicator:
+      "rounded-2xl border border-orange-300/80 bg-orange-400/[0.14] shadow-[0_0_0_3px_rgba(251,146,60,0.16),0_0_28px_rgba(251,146,60,0.35)]",
     sourcePane: "opacity-70",
     dropTarget: "",
     dropIntentLayer: "rounded-lg border",
@@ -509,14 +450,6 @@ const CLEAN_FLAT_THEME: TilingTheme = {
     selected: "outline-dashed outline-1 -outline-offset-2 outline-slate-400/60",
     selectedBadge: "border border-slate-400/50 bg-slate-600/40 text-slate-100",
   },
-  ghost: {
-    surface:
-      "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border border-slate-600/60 bg-slate-800 shadow-lg",
-    header:
-      "flex shrink-0 items-center justify-between border-b border-slate-700/60 bg-slate-800/80 px-3 py-2",
-    bodyText: "text-slate-300",
-    subtitleText: "text-slate-500",
-  },
   divider: {
     base: "box-border shrink-0 rounded bg-clip-content outline-none focus-visible:ring-2 focus-visible:ring-slate-400/60",
     visibleInteractive: "bg-slate-600/40 hover:bg-slate-400/60",
@@ -593,14 +526,6 @@ const MOSAIC_THEME: TilingTheme = {
     selected: "outline-dashed outline-1 -outline-offset-2 outline-stone-300/45",
     selectedBadge: "border border-stone-300/40 bg-stone-200/10 text-stone-200",
   },
-  ghost: {
-    surface:
-      "relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border border-amber-300/25 bg-[#16171b] shadow-[0_30px_70px_-22px_rgba(0,0,0,0.95),inset_0_1px_0_rgba(255,255,255,0.06)]",
-    header:
-      "flex shrink-0 items-center justify-between border-b border-white/[0.07] bg-white/[0.04] px-3.5 py-2",
-    bodyText: "text-stone-300",
-    subtitleText: "text-stone-500",
-  },
   divider: {
     base: "box-border shrink-0 rounded-full bg-clip-content outline-none focus-visible:ring-2 focus-visible:ring-amber-300/55",
     visibleInteractive: "bg-white/[0.06] hover:bg-amber-300/45",
@@ -668,17 +593,11 @@ export function resolveTilingTheme(
 
 /**
  * Resolve a theme's drag-state chrome: every `theme.dragChrome` token a theme
- * omits is filled from the PANE-SHELL-INHERITING default. The default drags
- * with the theme's own resting chrome — the seat wears `paneShell.surface`
- * (same radius / border / background / shadow as the at-rest pane), the seat
- * frame reuses `resolveFocusFrame`, the ghost wrapper carries only a small
- * neutral elevation + opacity delta, and no drop-target highlight is painted
- * (focus follows the dragged pane). A theme that passes no `dragChrome` at all
- * therefore never shows a look it did not author. Pure + referentially cheap
- * (no memo needed; callers may still `useMemo` on `theme`). Tokens are
- * Tailwind-JIT literals, not portal-scoped; a host that paints the ghost
- * with inherited CSS variables must still pass
- * `TilingRendererProps.overlayPortalContainer`.
+ * omits is filled from a neutral default — a soft drop shadow under the
+ * lifted pane, an orange drop indicator (a colour no pane accent uses), and
+ * no drop-target highlight (the drop preview shows the destination). Pure +
+ * referentially cheap (no memo needed; callers may still `useMemo` on
+ * `theme`). Tokens are Tailwind-JIT literals.
  */
 export function resolveDragChrome(
   theme: TilingTheme,
@@ -686,15 +605,11 @@ export function resolveDragChrome(
   const overrides: Partial<TilingThemeDragChromeTokens> =
     theme.dragChrome ?? {};
   return {
-    ghostLifted:
-      overrides.ghostLifted ??
-      "opacity-95 shadow-[0_14px_32px_-14px_rgba(0,0,0,0.5)]",
-    ghostSeated: overrides.ghostSeated ?? "opacity-100",
-    ghostTransition:
-      overrides.ghostTransition ??
-      "transition-[opacity,box-shadow] duration-150",
-    cancelFlyBack: overrides.cancelFlyBack ?? "",
-    sourceReservation: overrides.sourceReservation ?? theme.paneShell.surface,
+    liftedPane:
+      overrides.liftedPane ?? "drop-shadow-[0_18px_24px_rgba(0,0,0,0.45)]",
+    dropIndicator:
+      overrides.dropIndicator ??
+      "rounded-lg border border-orange-400/80 bg-orange-400/[0.12] shadow-[0_0_0_3px_rgba(251,146,60,0.14),0_0_24px_rgba(251,146,60,0.3)]",
     sourcePane: overrides.sourcePane ?? "opacity-60",
     dropTarget: overrides.dropTarget ?? "",
     dropIntentLayer: overrides.dropIntentLayer ?? "rounded-lg border",
@@ -709,13 +624,12 @@ export function resolveDragChrome(
     cursorBadgeNeutral:
       overrides.cursorBadgeNeutral ??
       "border-slate-300/70 bg-slate-900/70 text-slate-100 shadow-[0_4px_12px_rgba(2,6,23,0.55)]",
-    resolveSeatFrame: overrides.resolveSeatFrame ?? theme.resolveFocusFrame,
   };
 }
 
 /**
  * Resolve a theme's workspace-switch motion tokens. Omitted fields fall
- * back to 200 ms and the drag-hop easing so a theme that passes nothing
+ * back to 200 ms and a snappy decel so a theme that passes nothing
  * never invents a look it did not author. Pure.
  */
 export function resolveWorkspaceTransition(

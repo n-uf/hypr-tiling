@@ -2,11 +2,11 @@
  * @jest-environment jsdom
  *
  * Overlay portal container: `TilingRendererProps.overlayPortalContainer`
- * redirects the `position: fixed` drag overlays (ghost + cursor badge) off
- * `document.body` into a consumer-supplied host so host theme tokens inherit.
- * jsdom geometry is stubbed (`getBoundingClientRect` + `ResizeObserver` + rAF
- * as `setTimeout(0)`) so a pointer-driven pickup can cross the 6px threshold
- * and actually mount the overlays.
+ * redirects the `position: fixed` custom drag cursor off `document.body` into
+ * a consumer-supplied host so host theme tokens inherit. The dragged pane is
+ * the real pane and stays inside the renderer. jsdom geometry is stubbed
+ * (`getBoundingClientRect` + `ResizeObserver` + rAF as `setTimeout(0)`) so a
+ * pointer-driven pickup can cross the 6px threshold and actually lift it.
  */
 import { afterEach, beforeAll, describe, expect, it } from "@jest/globals";
 import * as React from "react";
@@ -152,31 +152,27 @@ async function startLiveDrag(tree: HTMLElement): Promise<void> {
 }
 
 describe("TilingRenderer overlayPortalContainer", (): void => {
-  it("mounts the drag ghost and cursor badge inside the supplied container", async (): Promise<void> => {
+  it("mounts the cursor badge inside the supplied container; the lifted pane stays in the renderer", async (): Promise<void> => {
     const host: HTMLDivElement = document.createElement("div");
     host.setAttribute("data-overlay-host", "supplied");
     document.body.appendChild(host);
     const tree: HTMLElement = renderRenderer(host);
     await startLiveDrag(tree);
-    expect(host.querySelector("[data-drag-ghost]")).not.toBeNull();
     expect(host.querySelector("[data-drag-cursor]")).not.toBeNull();
-    expect(document.body.querySelector(":scope > [data-drag-ghost]")).toBeNull();
+    expect(host.querySelector("[data-hpt-lifted]")).toBeNull();
+    expect(tree.querySelector("[data-hpt-viewport] [data-hpt-lifted] [data-hpt-leaf]")).not.toBeNull();
     host.remove();
   });
 
   it("falls back to document.body when overlayPortalContainer is absent", async (): Promise<void> => {
     const tree: HTMLElement = renderRenderer();
     await startLiveDrag(tree);
-    const ghost: HTMLElement | null = document.body.querySelector(
-      "[data-drag-ghost]",
-    );
     const cursor: HTMLElement | null = document.body.querySelector(
       "[data-drag-cursor]",
     );
-    expect(ghost).not.toBeNull();
     expect(cursor).not.toBeNull();
-    expect(ghost?.parentElement).toBe(document.body);
     expect(cursor?.parentElement).toBe(document.body);
+    expect(tree.querySelector("[data-hpt-lifted]")).not.toBeNull();
   });
 
   it("honours the function form (evaluated per render, including late-mounted hosts)", async (): Promise<void> => {
@@ -213,8 +209,7 @@ describe("TilingRenderer overlayPortalContainer", (): void => {
     if (host == null) {
       throw new Error("expected the overlay host ref to resolve");
     }
-    expect(host.querySelector("[data-drag-ghost]")).not.toBeNull();
     expect(host.querySelector("[data-drag-cursor]")).not.toBeNull();
-    expect(document.body.querySelector(":scope > [data-drag-ghost]")).toBeNull();
+    expect(document.body.querySelector(":scope > [data-drag-cursor]")).toBeNull();
   });
 });

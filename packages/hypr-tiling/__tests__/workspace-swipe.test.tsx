@@ -94,7 +94,7 @@ function threeWorkspaces(activeId: string = "main"): TilingWorkspaceSet {
 function renderTile(args: TilingRenderTileProps): React.ReactNode {
   return React.createElement(
     "article",
-    { "data-tile-id": args.tile.id, "data-surface": args.surface },
+    { "data-tile-id": args.tile.id, "data-surface": "pane" },
     // A horizontally scrollable strip inside tile "a" for the scroll-chain test.
     args.tile.id === "a"
       ? React.createElement("div", {

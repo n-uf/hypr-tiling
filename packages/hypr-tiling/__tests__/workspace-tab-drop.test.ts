@@ -5,14 +5,13 @@
  * H3): a `kind: "workspace-tab"` `externalDragHover` settles the drag through
  * the 26.9.2 claim-before-settle path with the ENGINE applying
  * `moveLeafToWorkspace` — the host neither hit-tests nor claims. jsdom
- * geometry is stubbed the same way as `compact-drag-ghost.test.ts` so a
- * pointer-driven pickup crosses the 6px threshold and mounts the overlays.
+ * geometry is stubbed so a pointer-driven pickup crosses the 6px threshold and
+ * lifts the pane.
  */
 import { afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import * as React from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { TilingRenderer } from "../react/tiling-renderer";
-import { resolveTilingTheme, type TilingTheme } from "../react/theme";
 import {
   queryWorkspaceSet,
   type TilingWorkspace,
@@ -26,7 +25,6 @@ import {
 } from "../engine/workspace-tabs";
 import type {
   TilingExternalDragHover,
-  TilingGhostChipContext,
   TilingLayoutNode,
   TilingLeafNode,
   TilingOnExternalDrop,
@@ -239,7 +237,7 @@ describe("resolveWorkspaceTabHover — pure tab hit-test", (): void => {
 });
 
 describe("TilingRenderer workspace-tab drop target (set mode)", (): void => {
-  it("release over a tab moves the leaf via moveLeafToWorkspace, reports the next set, and skips the fly-back", async (): Promise<void> => {
+  it("release over a tab moves the leaf via moveLeafToWorkspace and reports the next set", async (): Promise<void> => {
     const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
     const onMoveLeaf = jest.fn(
       (_leafId: string, _from: string, _to: string): void => {},
@@ -247,7 +245,6 @@ describe("TilingRenderer workspace-tab drop target (set mode)", (): void => {
     const onExternalDrop: jest.Mock<TilingOnExternalDrop> = jest.fn();
     const view = render(
       React.createElement(SetHarness, {
-        dragGhostMode: "auto",
         externalDragHover: TAB_HOVER,
         onWorkspacesChange,
         onMoveLeaf,
@@ -271,7 +268,6 @@ describe("TilingRenderer workspace-tab drop target (set mode)", (): void => {
     expect(onMoveLeaf).toHaveBeenCalledWith("leaf:a", "main", "ops");
     // The engine settled it — the host claim hook is NOT consulted for a tab.
     expect(onExternalDrop).not.toHaveBeenCalled();
-    expect(document.querySelector("[data-drag-cancel]")).toBeNull();
   });
 
   it("honours the hover placement when moving", async (): Promise<void> => {
@@ -290,7 +286,7 @@ describe("TilingRenderer workspace-tab drop target (set mode)", (): void => {
     expect(ops?.kind === "split" ? ops.second : null).toEqual(leaf("c"));
   });
 
-  it("a tab for an unknown workspace declines the claim: no set change, ordinary cancel fly-back", async (): Promise<void> => {
+  it("a tab for an unknown workspace declines the claim: no set change, the pane settles home", async (): Promise<void> => {
     const onWorkspacesChange = jest.fn((_next: TilingWorkspaceSet): void => {});
     const onMoveLeaf = jest.fn((_leafId: string, _from: string, _to: string): void => {});
     const view = render(
@@ -304,7 +300,8 @@ describe("TilingRenderer workspace-tab drop target (set mode)", (): void => {
     await releaseDrag();
     expect(onWorkspacesChange).not.toHaveBeenCalled();
     expect(onMoveLeaf).not.toHaveBeenCalled();
-    expect(document.querySelector("[data-drag-cancel]")).not.toBeNull();
+    // Nothing is lifted any more: the pane is back in its own place.
+    expect(view.container.querySelector("[data-hpt-lifted]")).toBeNull();
     expect(placedLeafIds(view.container)).toEqual(["leaf:a", "leaf:b"]);
   });
 
@@ -327,35 +324,6 @@ describe("TilingRenderer workspace-tab drop target (set mode)", (): void => {
       { targetId: "chat", point: { x: 5, y: 5 } },
     );
     expect(onWorkspacesChange).not.toHaveBeenCalled();
-    expect(document.querySelector("[data-drag-cancel]")).toBeNull();
-  });
-
-  it("the compact ghost chip receives the tab's targetId and workspaceId", async (): Promise<void> => {
-    const chip = jest.fn((ctx: TilingGhostChipContext): React.ReactNode =>
-      React.createElement(
-        "span",
-        { "data-chip-target": ctx.targetId, "data-chip-workspace": ctx.workspaceId },
-        ctx.title,
-      ),
-    );
-    const theme: TilingTheme = { ...resolveTilingTheme(undefined), ghostChip: chip };
-    const view = render(
-      React.createElement(SetHarness, {
-        dragGhostMode: "auto",
-        externalDragHover: TAB_HOVER,
-        theme,
-      }),
-    );
-    await startLiveDrag(view.container, "leaf:a");
-    const compactChip: HTMLElement | null = document.querySelector(
-      "[data-drag-ghost-chip][data-drag-ghost-mode='compact']",
-    );
-    expect(compactChip).not.toBeNull();
-    expect(compactChip?.getAttribute("data-drag-ghost-target")).toBe("tab:ops");
-    expect(compactChip?.getAttribute("data-drag-ghost-workspace")).toBe("ops");
-    expect(document.querySelector("[data-chip-target='tab:ops']")).not.toBeNull();
-    expect(document.querySelector("[data-chip-workspace='ops']")?.textContent).toBe("alpha");
-    await releaseDrag();
   });
 });
 
@@ -385,10 +353,9 @@ describe("TilingRenderer workspace-tab hover in single-layout mode", (): void =>
       { x: 320, y: 24 },
       TAB_HOVER,
     );
-    expect(document.querySelector("[data-drag-cancel]")).toBeNull();
   });
 
-  it("a host returning false from onExternalDrop declines the claim and gets the cancel fly-back", async (): Promise<void> => {
+  it("a host returning false from onExternalDrop declines the claim: the pane settles home", async (): Promise<void> => {
     const onExternalDrop = jest.fn((): boolean => false);
     const view = render(
       React.createElement(TilingRenderer, {
@@ -407,6 +374,7 @@ describe("TilingRenderer workspace-tab hover in single-layout mode", (): void =>
     await startLiveDrag(view.container, "leaf:a");
     await releaseDrag();
     expect(onExternalDrop).toHaveBeenCalledTimes(1);
-    expect(document.querySelector("[data-drag-cancel]")).not.toBeNull();
+    expect(view.container.querySelector("[data-hpt-lifted]")).toBeNull();
+    expect(view.container.querySelector('article[data-leaf-id="leaf:a"]')).not.toBeNull();
   });
 });

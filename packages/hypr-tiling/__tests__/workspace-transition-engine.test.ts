@@ -3,7 +3,6 @@
  * progress, slide / fade transforms. No DOM.
  */
 import { describe, expect, it } from "@jest/globals";
-import { DEFAULT_DRAG_HOP_EASING } from "../engine/drag-easing";
 import {
   DEFAULT_WORKSPACE_TRANSITION_CONFIG,
   DEFAULT_WORKSPACE_TRANSITION_DURATION_MS,
@@ -18,14 +17,12 @@ import {
 } from "../engine/workspace-transition";
 
 describe("DEFAULT_WORKSPACE_TRANSITION_CONFIG", (): void => {
-  it("defaults to none / 200 ms / drag-hop easing", (): void => {
+  it("defaults to none / 200 ms / a snappy decel", (): void => {
     expect(DEFAULT_WORKSPACE_TRANSITION_CONFIG.mode).toBe("none");
     expect(DEFAULT_WORKSPACE_TRANSITION_DURATION_MS).toBe(200);
     expect(DEFAULT_WORKSPACE_TRANSITION_CONFIG.durationMs).toBe(200);
-    expect(DEFAULT_WORKSPACE_TRANSITION_EASING).toBe(DEFAULT_DRAG_HOP_EASING);
-    expect(DEFAULT_WORKSPACE_TRANSITION_CONFIG.easing).toBe(
-      DEFAULT_DRAG_HOP_EASING,
-    );
+    expect(DEFAULT_WORKSPACE_TRANSITION_EASING).toBe("cubic-bezier(0.2, 0.8, 0.2, 1)");
+    expect(DEFAULT_WORKSPACE_TRANSITION_CONFIG.easing).toBe(DEFAULT_WORKSPACE_TRANSITION_EASING);
   });
 });
 

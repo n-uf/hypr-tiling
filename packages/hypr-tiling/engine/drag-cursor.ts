@@ -2,9 +2,8 @@ import { isCommittableTarget, type DragResolvedTarget } from "./drag-machine";
 
 /**
  * Custom-rendered drag cursor (interaction tier "c"). A single `position: fixed`
- * sibling of the cursor-following ghost (`DragPaneOverlay`) that REPLACES the OS
- * cursor during an active live drag, transform-pinned to the pointer in the same
- * coalesced rAF/render path as the ghost so it never lags the hardware cursor.
+ * element that REPLACES the OS cursor during an active live drag,
+ * transform-pinned to the pointer the drag machine last saw.
  *
  * This module is the PURE, DOM-less core: it maps the drag FSM's resolved target
  * (`DragResolvedTarget` = the resolver's `TilingDropIntentState`) plus the drop
@@ -19,7 +18,7 @@ import { isCommittableTarget, type DragResolvedTarget } from "./drag-machine";
 /**
  * The semantic cursor states, driven by the drag FSM + resolver operation type +
  * validity (NOT by edge direction):
- * - `grab` — dragging with no committable target (ghost free-following) OR
+ * - `grab` — dragging with no committable target (the pane just held) OR
  *   hovering the drag source itself; neutral "carrying" look.
  * - `insert` — a committable edge-insert slot is resolved; a "drop/place here"
  *   target affordance in the valid accent color. No direction — the found slot
@@ -100,8 +99,7 @@ export interface DragCursorViewportBounds {
 
 /**
  * Clamp the pinned pointer point so the custom cursor element stays fully within
- * the viewport at the edges — the analog of the ghost overlay's off-viewport
- * clamp. `marginPx` reserves room for the cursor element's own extent (so the
+ * the viewport at the edges. `marginPx` reserves room for the cursor element's own extent (so the
  * badge at the right/bottom edge is not clipped). When the bounds are narrower
  * than `2 * marginPx` on an axis (degenerate / tiny viewport), the point snaps
  * to that axis's midpoint rather than inverting. Pure so the clamp is testable

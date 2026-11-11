@@ -3,11 +3,7 @@ import {
   DEFAULT_DRAG_SLOT_COMMITMENT_MODE,
   DEFAULT_TOUCH_LONG_PRESS_MS,
 } from "./drag-machine";
-import {
-  DRAG_RECOVERY_DEFAULT_FRAME_DEADLINE_MS,
-  DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS,
-} from "./drag-recovery";
-import { DEFAULT_GHOST_PICKUP_SCALE_PERCENT, clampGhostPickupScalePercent } from "./ghost-transit";
+import { DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS } from "./drag-recovery";
 import { TILING_DROP_INTENT_CONFIG } from "./drop-intent-resolver";
 import { TILING_KEYMAP_DEFAULTS, resolveKeymap } from "./pane-switching";
 import {
@@ -112,7 +108,6 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
   // Visible chrome (resting + hover bar / resize cursor) whenever resize is on.
   // Opt out with `resizeHandlesVisible: false` for airy gap-only separators.
   resizeHandlesVisible: true,
-  slotHopInEnabled: true,
   rearrange: true,
   dragMode: "live",
   slotCommitment: {
@@ -126,10 +121,8 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
   dragRecovery: {
     enable: true,
     maxDraggingIdleMs: DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS,
-    frameDeadlineMs: DRAG_RECOVERY_DEFAULT_FRAME_DEADLINE_MS,
   },
   customCursor: true,
-  ghostPickupScalePercent: DEFAULT_GHOST_PICKUP_SCALE_PERCENT,
   focus: true,
   maximize: { enable: true, keepGroupTabStrip: true },
   paneSwitching: {
@@ -254,9 +247,6 @@ export function resolveInteractionCapabilities(
     resizeHandlesVisible:
       capabilities?.resizeHandlesVisible
       ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.resizeHandlesVisible,
-    slotHopInEnabled:
-      capabilities?.slotHopInEnabled
-      ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.slotHopInEnabled,
     rearrange: capabilities?.rearrange ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.rearrange,
     dragMode: capabilities?.dragMode ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.dragMode,
     slotCommitment: {
@@ -285,16 +275,8 @@ export function resolveInteractionCapabilities(
         capabilities?.dragRecovery?.maxDraggingIdleMs
           ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.dragRecovery.maxDraggingIdleMs,
       ),
-      frameDeadlineMs: Math.max(
-        0,
-        capabilities?.dragRecovery?.frameDeadlineMs
-          ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.dragRecovery.frameDeadlineMs,
-      ),
     },
     customCursor: capabilities?.customCursor ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.customCursor,
-    ghostPickupScalePercent: clampGhostPickupScalePercent(
-      capabilities?.ghostPickupScalePercent ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.ghostPickupScalePercent,
-    ),
     focus: capabilities?.focus ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.focus,
     maximize: {
       enable: capabilities?.maximize?.enable ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.maximize.enable,

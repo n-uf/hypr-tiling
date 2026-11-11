@@ -2,8 +2,6 @@ import { findLeafById, insertLeafAdjacent, mergeDraggedLeafIntoTarget, removeLea
 import { PLACEMENT_BY_DROP_ZONE } from "./projected-layout";
 import type { TilingDropIntentState, TilingEdgeZone } from "./drop-intent-resolver";
 import type {
-  TilingDragGhostMode,
-  TilingExternalDragHover,
   TilingLayoutNode,
   TilingLeafDropZone,
   TilingPaneFootprint,
@@ -65,50 +63,6 @@ export interface DragMachinePoint {
  */
 export type DragResolvedTarget = TilingDropIntentState;
 
-/**
- * Compact-chip offset from the host-reported pointer point (CSS px). The chip
- * sits just under the cursor so it does not occlude the drop target.
- */
-export const DRAG_GHOST_COMPACT_OFFSET_PX: number = 12;
-
-/** Max width of the compact chip (CSS px); content sizes below this. */
-export const DRAG_GHOST_COMPACT_MAX_WIDTH_PX: number = 220;
-
-/** Footprint ↔ compact scale/opacity transition (ms). Instant under reduced motion. */
-export const DRAG_GHOST_COMPACT_TRANSITION_MS: number = 140;
-
-/**
- * The painted ghost shape. `"footprint"` is the tile-sized ghost; `"compact"`
- * is the cursor-anchored chip. Resolved from `dragGhostMode` + external hover.
- */
-export type DragGhostPresentation = "footprint" | "compact";
-
-/**
- * Resolve the painted ghost shape. Default mode is `"footprint"` (today's
- * behaviour). `"compact"` is always the chip; `"auto"` is the chip only while
- * the host reports an external hover.
- */
-export function resolveDragGhostPresentation(
-  mode: TilingDragGhostMode | undefined,
-  externalHover: TilingExternalDragHover | null | undefined,
-): DragGhostPresentation {
-  if (mode === "compact") {
-    return "compact";
-  }
-  if (mode === "auto" && externalHover != null) {
-    return "compact";
-  }
-  return "footprint";
-}
-
-/** Chip origin: host pointer + the fixed compact offset. */
-export function compactGhostOrigin(point: DragMachinePoint): DragMachinePoint {
-  return {
-    x: point.x + DRAG_GHOST_COMPACT_OFFSET_PX,
-    y: point.y + DRAG_GHOST_COMPACT_OFFSET_PX,
-  };
-}
-
 export type DragSettleOutcome = "commit" | "cancel" | "claimed";
 
 /**
@@ -120,11 +74,12 @@ export type DragSettleOutcome = "commit" | "cancel" | "claimed";
  * - `idle` — no drag in flight.
  * - `armed` — pointer is down on a drag handle but the pickup threshold has not
  *   been crossed; a sub-threshold release is a click, not a drag.
- * - `dragging` — threshold crossed; pointer is captured; the ghost follows the
- *   pointer and `resolvedTarget` tracks the hovered destination.
+ * - `dragging` — threshold crossed; pointer is captured; the lifted pane is held
+ *   under the pointer, `resolvedTarget` tracks the hovered destination and
+ *   `leftHome` whether the pointer has left the pane's own place since the lift.
  * - `settling` — a terminal event fired; `outcome` says whether the renderer
- *   commits (`onLayoutChange`), cancels (revert to the original layout +
- *   fly-back), or was `claimed` by the host (`onExternalDrop` — no fly-back,
+ *   commits (`onLayoutChange`), cancels (the untouched layout comes back and
+ *   every pane settles home), or was `claimed` by the host (`onExternalDrop` —
  *   no in-tree commit). Always transitions to `idle` on `SETTLE_DONE`.
  *
  * `idle` has a second entry edge into `dragging`: {@link DragRearmEvent}
@@ -157,16 +112,21 @@ export type DragMachineState =
       sourceLeafId: string;
       anchorFootprint: TilingPaneFootprint;
       pointerAnchorOffset: DragMachinePoint;
-      ghostFootprint: TilingPaneFootprint;
+      /** Where the pointer holds the pane: pointer minus grab offset, at its lift size. */
+      heldFootprint: TilingPaneFootprint;
       resolvedTarget: DragResolvedTarget | null;
+      /**
+       * Whether the pointer has left `anchorFootprint` (the pane's place at the
+       * lift) since the drag began. A release that never left home is a cancel:
+       * the layout as it was at the lift comes back.
+       */
+      leftHome: boolean;
     }
   | {
       phase: "settling";
       outcome: DragSettleOutcome;
       sourceLeafId: string;
       resolvedTarget: DragResolvedTarget | null;
-      fromFootprint: TilingPaneFootprint;
-      toFootprint: TilingPaneFootprint;
     };
 
 export type DragMachineEvent =
@@ -206,12 +166,12 @@ export type DragMachineEvent =
  * where the renderer releases the old seat / latch cluster and strips the old
  * tree's transient styles, INV-R1). The event carries a footprint measured on
  * the NEW tree: nothing from the previous drag's `anchorFootprint`,
- * `resolvedTarget` or `ghostFootprint` survives into the re-armed state, so a
- * cancel after a rearm flies back to the leaf's new seat, never to the old
+ * `resolvedTarget` or `heldFootprint` survives into the re-armed state, so a
+ * cancel after a rearm settles the leaf on its new seat, never in the old
  * workspace.
  *
- * `tileId` is informational for the host bridge (the renderer rebuilds the
- * ghost snapshot from it); the reducer itself is leaf-keyed and ignores it.
+ * `tileId` is informational for the host bridge; the reducer itself is
+ * leaf-keyed and ignores it.
  */
 export interface DragRearmEvent {
   /** Discriminant. */
@@ -222,7 +182,7 @@ export interface DragRearmEvent {
   pointerType: DragPointerType;
   /** The leaf to drag from its seat in the NEW tree. */
   sourceLeafId: string;
-  /** The tile the leaf carries — for the renderer's ghost snapshot; unused by the reducer. */
+  /** The tile the leaf carries — informational; unused by the reducer. */
   tileId?: string;
   /** The leaf's footprint measured on the NEW tree (its seat after the move). */
   anchorFootprint: TilingPaneFootprint;
@@ -251,9 +211,9 @@ export function canRearmDrag(state: DragMachineState): boolean {
  * The grab offset a re-armed drag uses when the host does not supply one. The
  * pointer is typically OUTSIDE the leaf's new seat at rearm time (it is still
  * over the workspace tab), so a raw `client − footprint.origin` offset would be
- * negative / oversized and the footprint ghost would trail far from the
+ * negative / oversized and the held pane would trail far from the
  * cursor. Inside the footprint the real offset is kept (the grab feels
- * continuous); outside, the ghost is centred under the pointer.
+ * continuous); outside, the pane is centred under the pointer.
  */
 export function rearmPointerAnchorOffset(
   anchorFootprint: TilingPaneFootprint,
@@ -334,8 +294,8 @@ export function resolveTouchArmedMove(params: {
   return crossedThreshold ? "pickup" : "hold";
 }
 
-/** The ghost footprint at the current pointer position (anchored at the pickup grab offset). */
-export function ghostFootprintAt(
+/** Where the pointer holds the lifted pane: pointer minus the grab offset, at its lift size. */
+export function heldFootprintAt(
   anchorFootprint: TilingPaneFootprint,
   pointerAnchorOffset: DragMachinePoint,
   client: DragMachinePoint,
@@ -346,6 +306,16 @@ export function ghostFootprintAt(
     width: anchorFootprint.width,
     height: anchorFootprint.height,
   };
+}
+
+/** Whether `client` is inside `footprint` (edges included): the pointer is still over the pane's home. */
+export function isPointInFootprint(footprint: TilingPaneFootprint, client: DragMachinePoint): boolean {
+  return (
+    client.x >= footprint.left &&
+    client.y >= footprint.top &&
+    client.x <= footprint.left + footprint.width &&
+    client.y <= footprint.top + footprint.height
+  );
 }
 
 /**
@@ -389,7 +359,7 @@ export function isCommittableTarget(
  * (no release-time jump).
  *
  * - no target / self-target / non-committable → `removeLeafTile` (gap-closed
- *   base; the source rides the ghost over the closed gap).
+ *   base; the lifted source is held above the closed gap).
  * - `swap` → `swapLeafTiles`.
  * - `group-merge` → `mergeDraggedLeafIntoTarget` (insert into the target's
  *   group at `memberInsertIndex`, or append when that index is omitted;
@@ -437,27 +407,21 @@ export function deriveCandidateTree(
 }
 
 /**
- * The candidate-tree leaf whose slot CARRIES the dragged pane's content — the
- * single slot the ghost reserves (content-less) and HOPS INTO. Where the dragged
- * content lands in `deriveCandidateTree` differs by action, and the reservation /
- * seat MUST follow it (not the FSM source leaf id), otherwise a SWAP paints the
- * dragged pane twice:
+ * The candidate-tree leaf whose SLOT the dragged pane lands in — the slot the
+ * drop indicator marks, the snap preview settles the pane into, and the others
+ * make room around. Where the dragged pane lands in `deriveCandidateTree`
+ * differs by action:
  *
- * - `swap` (`swapLeafTiles` swaps tileIds IN PLACE) → the dragged content moves
+ * - `swap` (`swapLeafTiles` swaps tileIds IN PLACE) → the dragged pane moves
  *   onto the RESOLVED TARGET leaf; the source leaf now carries the displaced
- *   target content and must render normally. So the seat is the TARGET leaf.
+ *   target pane. So the landing slot is the TARGET leaf's.
+ * - `group-merge` → the target's slot (the group the pane joins, active).
  * - `edge-insert` (`insertLeafAdjacent` moves the source leaf, still carrying the
- *   source content, next to the target) → the SOURCE leaf.
+ *   source pane, next to the target) → the SOURCE leaf.
  * - no / self / non-committable target (`removeLeafTile` gap-closes the source
- *   out of the tree) → `null`: there is no in-tree slot, so the ghost free-follows.
- *
- * Keying the single-instance reservation + the seat measurement on this is the
- * fix for the SWAP double-paint (source slot was wrongly reserved while the
- * dragged content was painted at the target slot under the ghost). The candidate
- * TREE is unchanged (still `swapLeafTiles`), so the preview stays byte-identical
- * to the commit — only WHICH slot the ghost seats into changes.
+ *   out of the tree) → `null`: there is no landing slot.
  */
-export function resolveDragGhostSeatLeafId(
+export function resolveDragLandingLeafId(
   sourceLeafId: string | null,
   resolvedTarget: DragResolvedTarget | null,
 ): string | null {
@@ -483,7 +447,7 @@ export function resolveDragGhostSeatLeafId(
  * The leaf id the dragged pane's CONTENT occupies AFTER a commit — the leaf the
  * renderer focuses so focus follows the dragged pane through the drop (the
  * dragged pane ends the gesture already focused). This differs from the
- * ghost-SEAT leaf for `group-merge`, so it is a distinct resolver:
+ * landing leaf for `group-merge`, so it is a distinct resolver:
  *
  * - `swap` (`swapLeafTiles` swaps tileIds IN PLACE) → the dragged content lands
  *   on the RESOLVED TARGET leaf; the source leaf now carries the displaced
@@ -520,29 +484,7 @@ export function resolveDragCommitFocusLeafId(
 }
 
 /**
- * Single-instance gate. In live mode the picked-up source leaf only appears in
- * the candidate tree when a committable target is resolved (`swap` /
- * `edge-insert`) — `deriveCandidateTree` gap-closes it (`removeLeafTile`)
- * otherwise. When it DOES appear it sits in the destination slot, so painting
- * its full content there is a second copy of the source on top of the ghost.
- * ht's contract is EXACTLY ONE visible instance of the dragged pane content (the
- * ghost), so this returns `true` when the renderer should paint that slot as a
- * content-less RESERVATION instead of the source content: the candidate tree
- * still opens the slot (survivors reflow to make room — real reorganization),
- * and the single ghost (`DragPaneOverlay`) HOPS INTO and FILLS the reservation's
- * measured rect (the hop-in), so the slot is never an empty hole and the source
- * is never painted twice. Preview mode is unaffected (the source keeps its
- * dimmed in-place affordance), since the gate is live-only.
- */
-export function shouldReserveDragSourceSlot(
-  liveDragModeEnabled: boolean,
-  isDragSource: boolean,
-): boolean {
-  return liveDragModeEnabled && isDragSource;
-}
-
-/**
- * Slot re-resolution / commitment policy after the ghost hops into a slot.
+ * Slot re-resolution / commitment policy once a committable target is seated.
  * - `zone-exit-hold` (anchored / sticky): the seated target is pinned through
  *   small cursor movements; it re-resolves ONLY when the cursor crosses OUT of
  *   the seated target's (frozen) hit footprint. High hysteresis.
@@ -601,7 +543,7 @@ export function shouldReresolveSeatedTarget(params: {
  *
  * The renderer mirrors this into a synchronous ref (`committableSeatRef`) on
  * EVERY processed pointer sample, so the RELEASE path commits the exact seat the
- * ghost was shown hopped into WITHOUT re-resolving the release coordinates.
+ * drop preview showed WITHOUT re-resolving the release coordinates.
  * Release-time re-resolution is the snap-back hazard this closes: re-resolving
  * the drop target from the raw `pointerup` coordinates can resolve `null` (the
  * cursor is over a layout gap or off the gap-closed hit footprint) or a different
@@ -748,8 +690,18 @@ function settleFrom(state: Extract<DragMachineState, { phase: "dragging" }>, out
     outcome,
     sourceLeafId: state.sourceLeafId,
     resolvedTarget: outcome === "commit" ? state.resolvedTarget : null,
-    fromFootprint: state.ghostFootprint,
-    toFootprint: state.anchorFootprint,
+  };
+}
+
+/** The dragging state after the pointer moved to `client`: held there, and whether it has now left home. */
+function movedTo(
+  state: Extract<DragMachineState, { phase: "dragging" }>,
+  client: DragMachinePoint,
+): DragMachineState {
+  return {
+    ...state,
+    heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, client),
+    leftHome: state.leftHome || !isPointInFootprint(state.anchorFootprint, client),
   };
 }
 
@@ -795,8 +747,9 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
           sourceLeafId: event.sourceLeafId,
           anchorFootprint: event.anchorFootprint,
           pointerAnchorOffset,
-          ghostFootprint: ghostFootprintAt(event.anchorFootprint, pointerAnchorOffset, event.client),
+          heldFootprint: heldFootprintAt(event.anchorFootprint, pointerAnchorOffset, event.client),
           resolvedTarget: null,
+          leftHome: !isPointInFootprint(event.anchorFootprint, event.client),
         };
       }
       return state;
@@ -832,12 +785,13 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             sourceLeafId: state.sourceLeafId,
             anchorFootprint: state.anchorFootprint,
             pointerAnchorOffset: state.pointerAnchorOffset,
-            ghostFootprint: ghostFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, event.client),
+            heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, event.client),
             resolvedTarget: null,
+            leftHome: !isPointInFootprint(state.anchorFootprint, event.client),
           };
         }
         // Touch long-press elapsed while the finger is held within tolerance →
-        // begin the drag in place. The ghost lifts at the anchor (the finger is at
+        // begin the drag in place. The pane lifts at the anchor (the finger is at
         // ~origin); the next POINTER_MOVE tracks it. Mouse/pen never receive this
         // event (the renderer arms the timer only for touch).
         case "LONG_PRESS": {
@@ -852,8 +806,9 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             sourceLeafId: state.sourceLeafId,
             anchorFootprint: state.anchorFootprint,
             pointerAnchorOffset: state.pointerAnchorOffset,
-            ghostFootprint: ghostFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, state.originClient),
+            heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, state.originClient),
             resolvedTarget: null,
+            leftHome: false,
           };
         }
         // Sub-threshold release / cancel / interruption: it was a click/tap,
@@ -884,17 +839,19 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
     case "dragging": {
       switch (event.type) {
         case "POINTER_MOVE":
-          return {
-            ...state,
-            ghostFootprint: ghostFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, event.client),
-          };
+          return movedTo(state, event.client);
         case "TARGET_RESOLVED":
           return { ...state, resolvedTarget: event.resolvedTarget };
         case "POINTER_UP":
           if (event.claimed === true) {
             return settleFrom(state, "claimed");
           }
-          return settleFrom(state, isCommittableTarget(state.resolvedTarget, state.sourceLeafId) ? "commit" : "cancel");
+          // Home: a release whose pointer never left the pane's own place puts
+          // the layout back as it was at the lift, whatever is under it now.
+          return settleFrom(
+            state,
+            state.leftHome && isCommittableTarget(state.resolvedTarget, state.sourceLeafId) ? "commit" : "cancel",
+          );
         // Every interruption is an enumerated cancel edge → settling(cancel) →
         // idle. This is the structural elimination of "stuck on drag".
         case "POINTER_CANCEL":
@@ -1011,7 +968,7 @@ export function activeResolvedTarget(state: DragMachineState): DragResolvedTarge
 
 /**
  * Pickup-origin leaf for presentation gating. Extends through `settling` commit so
- * hop-in reservation and empty-mode suppression do not flash off pre-commit.
+ * the drop's presentation does not flash off before the committed layout lands.
  */
 export function presentationDragSourceLeafId(
   state: DragMachineState,
@@ -1027,7 +984,7 @@ export function presentationDragSourceLeafId(
 
 /**
  * Resolved target for presentation gating. Mirrors `activeResolvedTarget` but
- * holds through `settling` commit for seat measurement continuity.
+ * holds through `settling` commit, until the committed layout lands.
  */
 export function presentationResolvedTarget(
   state: DragMachineState,

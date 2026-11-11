@@ -11,6 +11,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { TilingRenderer } from "../react/tiling-renderer";
 import { buildGroupTabStripMergeIntent } from "../engine/drop-intent-resolver";
 import { collectGroups } from "../engine/state";
+import { resolveTileRect } from "../engine/drag-landing";
 import type {
   TilingGroupNode,
   TilingLayoutNode,
@@ -122,6 +123,10 @@ beforeAll((): void => {
     if (target === "leaf:a") {
       return clientRect(20, 40, 160, 36);
     }
+    // Pane a's own place (the left half): a drag that leaves it can commit.
+    if (this.tagName === "ARTICLE" && this.dataset.leafId === "leaf:a") {
+      return clientRect(0, 0, 400, 600);
+    }
     return VIEWPORT_RECT;
   };
   restoreViewport = withMeasuredViewport(800, 600);
@@ -142,15 +147,12 @@ function CountedPane({
   args: TilingRenderTileProps;
   mounts: Map<string, number>;
 }): React.ReactElement {
-  const isPane: boolean = args.surface === "pane";
   React.useEffect((): void => {
-    if (isPane) {
-      mounts.set(args.tile.id, (mounts.get(args.tile.id) ?? 0) + 1);
-    }
-  }, [args.tile.id, isPane, mounts]);
+    mounts.set(args.tile.id, (mounts.get(args.tile.id) ?? 0) + 1);
+  }, [args.tile.id, mounts]);
   return React.createElement(
     "article",
-    { "data-leaf-id": args.leafId, "data-surface": args.surface },
+    { "data-leaf-id": args.leafId },
     React.createElement(
       "header",
       {
@@ -244,6 +246,15 @@ describe("host groupDropTargetRef — renderer commit", (): void => {
       dispatchPointer(window, "pointermove", { clientX: 560, clientY: 55 });
     });
     await flushFrames();
+    // The drop indicator marks where the pane lands: b's slot, which it joins.
+    const indicator: HTMLElement | null = view.container.querySelector<HTMLElement>("[data-hpt-drop-indicator]");
+    expect(indicator).not.toBeNull();
+    const indicated = {
+      x: parseFloat(indicator!.style.left),
+      y: parseFloat(indicator!.style.top),
+      width: parseFloat(indicator!.style.width),
+      height: parseFloat(indicator!.style.height),
+    };
     await act(async (): Promise<void> => {
       dispatchPointer(window, "pointerup", { clientX: 560, clientY: 55 });
     });
@@ -253,6 +264,10 @@ describe("host groupDropTargetRef — renderer commit", (): void => {
       .slice(baseline)
       .map((call: ReadonlyArray<unknown>): TilingLayoutNode => call[0] as TilingLayoutNode);
     expect(commits).toHaveLength(1);
+    // Indicator rect == the rect the committed layout gives the pane.
+    expect(
+      resolveTileRect(commits[0], "a", { width: 800, height: 600 }, { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 }),
+    ).toEqual(indicated);
     const groups: ReadonlyArray<TilingGroupNode> = collectGroups(commits[0]);
     expect(groups).toHaveLength(1);
     const memberIds: ReadonlyArray<string> = groups[0].members.map(

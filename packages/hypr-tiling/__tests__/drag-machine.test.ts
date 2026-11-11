@@ -12,23 +12,20 @@ import {
   type DragResolvedTarget,
   type FrameScheduler,
   type TouchArmedMoveResolution,
-  compactGhostOrigin,
   createFrameCoalescer,
   deriveCandidateTree,
   dragMachineReducer,
-  DRAG_GHOST_COMPACT_OFFSET_PX,
-  ghostFootprintAt,
+  heldFootprintAt,
   hasCrossedPickupThreshold,
-  resolveDragGhostPresentation,
   DEFAULT_DRAG_RERESOLVE_DELTA_PX,
   DEFAULT_DRAG_SLOT_COMMITMENT_MODE,
   isCommittableTarget,
+  isPointInFootprint,
   previousZoneSeed,
-  resolveDragGhostSeatLeafId,
+  resolveDragLandingLeafId,
   presentationDragSourceLeafId,
   presentationResolvedTarget,
   resolveTouchArmedMove,
-  shouldReserveDragSourceSlot,
   shouldReresolveSeatedTarget,
   deriveCommittableSeat,
   foldCommittableSeatFallback,
@@ -142,14 +139,17 @@ function toTouchArmed(pointerId: number = 1): DragMachineState {
   return dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, touchPointerDown(pointerId));
 }
 
-/** Drive idle → armed → dragging (threshold crossed). */
+/**
+ * Drive idle → armed → dragging (threshold crossed), with the pointer already
+ * off the pane's own place (ANCHOR spans x 100..300), so a release can commit.
+ */
 function toDragging(pointerId: number = 1): DragMachineState {
   let state: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, pointerDown(pointerId));
-  state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId, client: { x: 200, y: 200 } });
+  state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId, client: { x: 350, y: 200 } });
   return state;
 }
 
-describe("drag-machine — pickup threshold + ghost geometry", (): void => {
+describe("drag-machine — pickup threshold + held geometry", (): void => {
   it("does not cross the threshold under the pickup distance", (): void => {
     expect(hasCrossedPickupThreshold({ x: 0, y: 0 }, { x: 3, y: 3 })).toBe(false);
   });
@@ -158,38 +158,41 @@ describe("drag-machine — pickup threshold + ghost geometry", (): void => {
     expect(hasCrossedPickupThreshold({ x: 0, y: 0 }, { x: DRAG_PICKUP_THRESHOLD_PX, y: 0 })).toBe(true);
   });
 
-  it("anchors the ghost at the grab offset (footprint follows the pointer)", (): void => {
-    const footprint: TilingPaneFootprint = ghostFootprintAt(ANCHOR, { x: 10, y: 10 }, { x: 250, y: 260 });
+  it("holds the pane at the grab offset, at its lift size (footprint follows the pointer)", (): void => {
+    const footprint: TilingPaneFootprint = heldFootprintAt(ANCHOR, { x: 10, y: 10 }, { x: 250, y: 260 });
     expect(footprint).toEqual({ left: 240, top: 250, width: 200, height: 150 });
+  });
+
+  it("isPointInFootprint includes the edges", (): void => {
+    expect(isPointInFootprint(ANCHOR, { x: 100, y: 100 })).toBe(true);
+    expect(isPointInFootprint(ANCHOR, { x: 300, y: 250 })).toBe(true);
+    expect(isPointInFootprint(ANCHOR, { x: 301, y: 200 })).toBe(false);
   });
 });
 
-describe("drag-machine — compact ghost presentation", (): void => {
-  const hover: { targetId: string; point: { x: number; y: number } } = {
-    targetId: "ws:ops",
-    point: { x: 40, y: 12 },
-  };
-
-  it("defaults to footprint (undefined mode, no hover)", (): void => {
-    expect(resolveDragGhostPresentation(undefined, null)).toBe("footprint");
-    expect(resolveDragGhostPresentation("footprint", hover)).toBe("footprint");
+describe("drag-machine — home: a release that never left the pane's place restores the layout", (): void => {
+  it("a drag that stays over its own place cancels on release, even over a committable target", (): void => {
+    let state: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, pointerDown());
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 200, y: 200 } });
+    expect(state.phase === "dragging" && state.leftHome).toBe(false);
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("C", "center", "swap") });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase === "settling" && state.outcome).toBe("cancel");
   });
 
-  it("compact mode is always compact, hover or not", (): void => {
-    expect(resolveDragGhostPresentation("compact", null)).toBe("compact");
-    expect(resolveDragGhostPresentation("compact", hover)).toBe("compact");
+  it("once the pointer left home, coming back over it still commits a committable target", (): void => {
+    let state: DragMachineState = toDragging();
+    expect(state.phase === "dragging" && state.leftHome).toBe(true);
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 200, y: 200 } });
+    expect(state.phase === "dragging" && state.leftHome).toBe(true);
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("C", "center", "swap") });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase === "settling" && state.outcome).toBe("commit");
   });
 
-  it("auto mode is compact only while external hover is set", (): void => {
-    expect(resolveDragGhostPresentation("auto", null)).toBe("footprint");
-    expect(resolveDragGhostPresentation("auto", hover)).toBe("compact");
-  });
-
-  it("anchors the chip at the pointer plus the fixed offset", (): void => {
-    expect(compactGhostOrigin({ x: 100, y: 80 })).toEqual({
-      x: 100 + DRAG_GHOST_COMPACT_OFFSET_PX,
-      y: 80 + DRAG_GHOST_COMPACT_OFFSET_PX,
-    });
+  it("a touch long-press lifts at home: leftHome starts false", (): void => {
+    const state: DragMachineState = dragMachineReducer(toTouchArmed(), { type: "LONG_PRESS", pointerId: 1 });
+    expect(state.phase === "dragging" && state.leftHome).toBe(false);
   });
 });
 
@@ -220,12 +223,12 @@ describe("drag-machine — lifecycle transitions", (): void => {
     expect(next.phase).toBe("idle");
   });
 
-  it("dragging + POINTER_MOVE updates the ghost footprint, keeps phase", (): void => {
+  it("dragging + POINTER_MOVE updates the held footprint, keeps phase", (): void => {
     let state: DragMachineState = toDragging();
     state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 300, y: 320 } });
     expect(state.phase).toBe("dragging");
     if (state.phase === "dragging") {
-      expect(state.ghostFootprint).toEqual({ left: 290, top: 310, width: 200, height: 150 });
+      expect(state.heldFootprint).toEqual({ left: 290, top: 310, width: 200, height: 150 });
     }
   });
 
@@ -433,7 +436,7 @@ describe("drag-machine — commit eligibility (mirrors handleLeafDrop)", (): voi
 });
 
 describe("drag-machine — derived candidate tree IS the live reflow (== commit, never a projection)", (): void => {
-  it("null target → removeLeafTile(layout, source) (gap-closed base; ghost floats free)", (): void => {
+  it("null target → removeLeafTile(layout, source) (gap-closed base; the pane is held above it)", (): void => {
     const layout: TilingSplitNode = baseLayout();
     expect(deriveCandidateTree(layout, "A", null)).toEqual(removeLeafTile(layout, "A"));
     expect(readLeafNodeIds(deriveCandidateTree(layout, "A", null))).not.toContain("A");
@@ -502,82 +505,42 @@ describe("drag-machine — derived candidate tree IS the live reflow (== commit,
   });
 });
 
-describe("drag-machine — single-instance reservation gate (ghost fills the slot)", (): void => {
-  // The source content is suppressed (the single ghost is the only painted
-  // instance, and it HOPS INTO and FILLS the slot) only when BOTH live mode is
-  // on AND this leaf is the drag source. The slot itself still reflows open
-  // (deriveCandidateTree, above) — only the painted content is gated to a
-  // content-less reservation, so survivors still physically reorganize.
-  it("live mode + drag source → reserve the slot (ghost hops in to fill it, single instance)", (): void => {
-    expect(shouldReserveDragSourceSlot(true, true)).toBe(true);
+describe("drag-machine — landing leaf (swap lands in the TARGET slot, not the source slot)", (): void => {
+  // `swapLeafTiles` swaps tileIds IN PLACE, so the dragged pane lands on the
+  // resolved TARGET leaf; the drop indicator / snap slot must follow it there.
+  it("swap → landing leaf is the resolved TARGET leaf (where the dragged pane lands)", (): void => {
+    expect(resolveDragLandingLeafId("A", makeTarget("C", "center", "swap"))).toBe("C");
   });
 
-  it("live mode + NOT the drag source → render the tile normally (a survivor)", (): void => {
-    expect(shouldReserveDragSourceSlot(true, false)).toBe(false);
+  it("edge-insert (committable) → landing leaf is the SOURCE leaf (it moves, still carrying the pane)", (): void => {
+    expect(resolveDragLandingLeafId("A", makeTarget("C", "left", "edge-insert"))).toBe("A");
   });
 
-  it("preview mode + drag source → keep the in-place dimmed source affordance (gate is live-only)", (): void => {
-    expect(shouldReserveDragSourceSlot(false, true)).toBe(false);
+  it("no target / self-target / non-committable → no landing (null)", (): void => {
+    expect(resolveDragLandingLeafId("A", null)).toBeNull();
+    expect(resolveDragLandingLeafId("A", makeTarget("A", "center", "swap"))).toBeNull();
+    expect(resolveDragLandingLeafId("A", makeTarget("C", "center", "none"))).toBeNull();
+    expect(resolveDragLandingLeafId(null, makeTarget("C", "center", "swap"))).toBeNull();
   });
 
-  it("preview mode + NOT the drag source → render the tile normally", (): void => {
-    expect(shouldReserveDragSourceSlot(false, false)).toBe(false);
+  it("the landing leaf RE-TARGETS when the resolved target changes", (): void => {
+    expect(resolveDragLandingLeafId("A", makeTarget("C", "center", "swap"))).toBe("C");
+    expect(resolveDragLandingLeafId("A", makeTarget("B", "center", "swap"))).toBe("B");
   });
 
-  it("only fires for a leaf actually in the candidate tree — a resolved target puts the source in the destination slot", (): void => {
-    // With a committable target the source IS present in the candidate tree (it
-    // sits in the destination slot) → exactly the leaf the gate reserves. Gate
-    // + candidate derivation together: open slot, no in-slot source content,
-    // the single ghost hops in to fill it.
-    const layout: TilingSplitNode = baseLayout();
-    const candidate = deriveCandidateTree(layout, "A", makeTarget("C", "center", "swap"));
-    expect(readLeafNodeIds(candidate)).toContain("A");
-    expect(shouldReserveDragSourceSlot(true, true)).toBe(true);
-
-    // With no target the source is gap-closed OUT of the tree → never rendered,
-    // so there is no in-slot copy to reserve in the first place (ghost free-follows).
-    const gapClosed = deriveCandidateTree(layout, "A", null);
+  it("no target gap-closes the source OUT of the tree (the others close over it)", (): void => {
+    const gapClosed = deriveCandidateTree(baseLayout(), "A", null);
     expect(readLeafNodeIds(gapClosed)).not.toContain("A");
   });
-});
 
-describe("drag-machine — ghost-seat leaf (swap reserves the TARGET slot, not the source slot)", (): void => {
-  // BUG-1 regression: `swapLeafTiles` swaps tileIds IN PLACE, so the dragged
-  // content lands on the resolved TARGET leaf. The single-instance reservation +
-  // the ghost seat must follow it there; reserving the source slot (the old
-  // behavior) double-painted the dragged pane (source-slot ghost + target-slot
-  // content) and hid the displaced pane.
-  it("swap → seat leaf is the resolved TARGET leaf (where the dragged content lands)", (): void => {
-    expect(resolveDragGhostSeatLeafId("A", makeTarget("C", "center", "swap"))).toBe("C");
-  });
-
-  it("edge-insert (committable) → seat leaf is the SOURCE leaf (it moves, still carrying source content)", (): void => {
-    expect(resolveDragGhostSeatLeafId("A", makeTarget("C", "left", "edge-insert"))).toBe("A");
-  });
-
-  it("no target / self-target / non-committable → no seat (null); the ghost free-follows", (): void => {
-    expect(resolveDragGhostSeatLeafId("A", null)).toBeNull();
-    expect(resolveDragGhostSeatLeafId("A", makeTarget("A", "center", "swap"))).toBeNull();
-    expect(resolveDragGhostSeatLeafId("A", makeTarget("C", "center", "none"))).toBeNull();
-    expect(resolveDragGhostSeatLeafId(null, makeTarget("C", "center", "swap"))).toBeNull();
-  });
-
-  it("seat leaf RE-TARGETS when the resolved target changes (preview is reactive to target change)", (): void => {
-    // Hover C (swap) → seat C; re-hover B (swap) → seat B. The seat tracks the
-    // live resolved target so the candidate + ghost re-derive promptly per target.
-    expect(resolveDragGhostSeatLeafId("A", makeTarget("C", "center", "swap"))).toBe("C");
-    expect(resolveDragGhostSeatLeafId("A", makeTarget("B", "center", "swap"))).toBe("B");
-  });
-
-  it("SWAP preview == commit: candidate exchanges the two tiles, dragged content lives ONCE at the seat (target) leaf", (): void => {
+  it("SWAP preview == commit: candidate exchanges the two tiles, dragged pane lives ONCE at the landing (target) leaf", (): void => {
     const layout: TilingSplitNode = baseLayout();
     const target: DragResolvedTarget = makeTarget("C", "center", "swap");
     const candidate = deriveCandidateTree(layout, "A", target);
-    const seatLeafId: string | null = resolveDragGhostSeatLeafId("A", target);
-    expect(seatLeafId).toBe("C");
+    const landingLeafId: string | null = resolveDragLandingLeafId("A", target);
+    expect(landingLeafId).toBe("C");
 
-    // The dragged pane's content (tile-a) sits exactly once, at the seat/target
-    // leaf — this is the slot the single ghost reserves + fills.
+    // The dragged pane (tile-a) sits exactly once, at the landing/target leaf.
     const allLeafIds: ReadonlyArray<string> = readLeafNodeIds(candidate);
     const tileAHolders: ReadonlyArray<string> = allLeafIds.filter(
       (id: string): boolean => findLeafById(candidate, id)?.tileId === "tile-a",
@@ -733,7 +696,7 @@ describe("drag-machine — touch lifecycle (long-press, scroll-escape, multi-tou
     }
   });
 
-  it("touch armed + LONG_PRESS → dragging (ghost lifts at the anchor, touchDrag carried)", (): void => {
+  it("touch armed + LONG_PRESS → dragging (the pane lifts at the anchor, touchDrag carried)", (): void => {
     const armed: DragMachineState = toTouchArmed();
     const dragging: DragMachineState = dragMachineReducer(armed, { type: "LONG_PRESS", pointerId: 1 });
     expect(dragging.phase).toBe("dragging");
@@ -741,8 +704,8 @@ describe("drag-machine — touch lifecycle (long-press, scroll-escape, multi-tou
       expect(dragging.touchDrag).toBe(true);
       expect(dragging.sourceLeafId).toBe("A");
       expect(dragging.resolvedTarget).toBeNull();
-      // The ghost seats at the anchor (finger at ~origin {110,110}, grab offset {10,10}).
-      expect(dragging.ghostFootprint).toEqual({ left: 100, top: 100, width: 200, height: 150 });
+      // Held at the anchor (finger at ~origin {110,110}, grab offset {10,10}).
+      expect(dragging.heldFootprint).toEqual({ left: 100, top: 100, width: 200, height: 150 });
     }
   });
 
@@ -987,7 +950,7 @@ describe("drag-machine — fast drag-release commits at the release position (co
 
 describe("drag-machine — committable-seat SSOT + atomic seated-release commit (dwell-then-release snap-back regression)", (): void => {
   // The seated-then-release snap-back: a deliberate drag seats the dragged pane in
-  // a valid target slot (the ghost hops in and DWELLS there for multiple frames),
+  // a valid target slot (the pointer DWELLS there for multiple frames),
   // then `pointerup` reverted the layout instead of committing. The renderer's
   // RELEASE path used to RE-RESOLVE the drop target from the raw `pointerup`
   // coordinates; that re-resolution could resolve `null` (cursor over a layout gap
@@ -1033,7 +996,7 @@ describe("drag-machine — committable-seat SSOT + atomic seated-release commit 
     state = dragMachineReducer(state, {
       type: "POINTER_MOVE",
       pointerId: 1,
-      client: { x: 200, y: 200 },
+      client: { x: 350, y: 200 },
     });
     state = dragMachineReducer(state, {
       type: "TARGET_RESOLVED",
@@ -1110,7 +1073,7 @@ describe("drag-machine — committable-seat SSOT + atomic seated-release commit 
     state = dragMachineReducer(state, {
       type: "POINTER_MOVE",
       pointerId: 1,
-      client: { x: 200, y: 200 },
+      client: { x: 350, y: 200 },
     });
     state = dragMachineReducer(state, {
       type: "TARGET_RESOLVED",
@@ -1141,8 +1104,6 @@ describe("drag-machine — presentation selectors extend through settling commit
       sourceLeafId: "A",
       outcome: "commit",
       resolvedTarget: seatedSwap,
-      fromFootprint: { left: 0, top: 0, width: 100, height: 100 },
-      toFootprint: { left: 0, top: 0, width: 100, height: 100 },
     };
     expect(presentationDragSourceLeafId(state)).toBe("A");
     expect(activeDragSourceLeafId(state)).toBeNull();
@@ -1156,8 +1117,6 @@ describe("drag-machine — presentation selectors extend through settling commit
       sourceLeafId: "A",
       outcome: "commit",
       resolvedTarget: seatedSwap,
-      fromFootprint: { left: 0, top: 0, width: 100, height: 100 },
-      toFootprint: { left: 0, top: 0, width: 100, height: 100 },
     };
     expect(presentationResolvedTarget(state)).toEqual(seatedSwap);
     expect(activeResolvedTarget(state)).toBeNull();
@@ -1393,9 +1352,11 @@ describe("drag-machine — REARM (spring-load commit-and-rearm continuation drag
       expect(state.anchorFootprint).toEqual(NEW_SEAT);
       expect(state.anchorFootprint).not.toEqual(ANCHOR);
       expect(state.resolvedTarget).toBeNull();
-      // Pointer outside the seat → centred grab, ghost centred under the pointer.
+      // Pointer outside the seat → centred grab, the pane centred under the pointer.
       expect(state.pointerAnchorOffset).toEqual({ x: 120, y: 90 });
-      expect(state.ghostFootprint).toEqual({ left: -80, top: -78, width: 240, height: 180 });
+      expect(state.heldFootprint).toEqual({ left: -80, top: -78, width: 240, height: 180 });
+      // The pointer is off the new seat: a release there commits (or cancels) on its target.
+      expect(state.leftHome).toBe(true);
     }
   });
 
@@ -1410,7 +1371,7 @@ describe("drag-machine — REARM (spring-load commit-and-rearm continuation drag
       rearm({ pointerAnchorOffset: { x: 5, y: 7 } }),
     );
     expect(state.phase === "dragging" && state.pointerAnchorOffset).toEqual({ x: 5, y: 7 });
-    expect(state.phase === "dragging" && state.ghostFootprint).toEqual({
+    expect(state.phase === "dragging" && state.heldFootprint).toEqual({
       left: HELD_POINT.x - 5,
       top: HELD_POINT.y - 7,
       width: 240,
@@ -1470,10 +1431,10 @@ describe("drag-machine — REARM (spring-load commit-and-rearm continuation drag
     expect(dragMachineReducer(cancel, rearm())).toBe(cancel);
   });
 
-  it("after rearm, a move updates the ghost and a resolved target commits in the NEW tree", (): void => {
+  it("after rearm, a move updates the held pane and a resolved target commits in the NEW tree", (): void => {
     let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm());
     state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 700, y: 500 } });
-    expect(state.phase === "dragging" && state.ghostFootprint).toEqual({ left: 580, top: 410, width: 240, height: 180 });
+    expect(state.phase === "dragging" && state.heldFootprint).toEqual({ left: 580, top: 410, width: 240, height: 180 });
     const target: DragResolvedTarget = makeTarget("B", "center", "swap");
     state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: target });
     expect(activeResolvedTarget(state)?.leafId).toBe("B");
@@ -1486,15 +1447,15 @@ describe("drag-machine — REARM (spring-load commit-and-rearm continuation drag
     expect(dragMachineReducer(state, { type: "SETTLE_DONE" }).phase).toBe("idle");
   });
 
-  it("after rearm, a release with no target cancels — fly-back targets the NEW seat, never the old workspace", (): void => {
+  it("after rearm, a release with no target cancels (the pane settles on its NEW seat)", (): void => {
     let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm());
     state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 300, y: 300 } });
     state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
     expect(state.phase).toBe("settling");
     if (state.phase === "settling") {
       expect(state.outcome).toBe("cancel");
-      expect(state.toFootprint).toEqual(NEW_SEAT);
-      expect(state.fromFootprint).toEqual({ left: 180, top: 210, width: 240, height: 180 });
+      expect(state.sourceLeafId).toBe("A");
+      expect(state.resolvedTarget).toBeNull();
     }
   });
 
@@ -1513,7 +1474,6 @@ describe("drag-machine — REARM (spring-load commit-and-rearm continuation drag
       if (state.phase === "settling") {
         expect(state.outcome).toBe("cancel");
         expect(state.resolvedTarget).toBeNull();
-        expect(state.toFootprint).toEqual(NEW_SEAT);
       }
       state = dragMachineReducer(state, { type: "SETTLE_DONE" });
       expect(state.phase).toBe("idle");
@@ -1582,7 +1542,7 @@ describe("drag-machine — REARM (spring-load commit-and-rearm continuation drag
     if (state.phase === "dragging") {
       expect(state.anchorFootprint).toEqual(THIRD_SEAT);
       expect(state.pointerAnchorOffset).toEqual({ x: 5, y: 5 });
-      expect(state.ghostFootprint).toEqual({ left: 10, top: 20, width: 100, height: 50 });
+      expect(state.heldFootprint).toEqual({ left: 10, top: 20, width: 100, height: 50 });
     }
   });
 });

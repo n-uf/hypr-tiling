@@ -39,7 +39,7 @@ export {
 
 // ── Configuration & drag-animation tuning defaults ───────────────────────────
 // Reference values for the corresponding `TilingRendererProps` knobs
-// (`dragAnimationEnabled`, `ghostTransitSpeedPercent`, `survivorReflowSpeedPercent`).
+// (`survivorReflowSpeedPercent`).
 export {
   DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
   DRAG_ANIMATION_SPEED_MAX_PERCENT,
@@ -47,7 +47,6 @@ export {
   DEFAULT_TILING_LAYOUT_CONFIG,
 } from "./react/tiling-renderer";
 export { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "./engine/types";
-export { DEFAULT_DRAG_HOP_EASING } from "./engine/drag-easing";
 
 // ── Theming ──────────────────────────────────────────────────────────────────
 export {
@@ -69,7 +68,6 @@ export {
   type TilingTheme,
   type TilingThemeDividerTokens,
   type TilingThemeDragChromeTokens,
-  type TilingThemeGhostTokens,
   type TilingThemeId,
   type TilingThemePaneHeaderTokens,
   type TilingThemePaneShellTokens,
@@ -286,19 +284,17 @@ export type {
   TilingRendererCommonProps,
   TilingRendererWorkspaceSetProps,
   TilingRendererModeProps,
-  TilingDragGhostMode,
+  TilingDragPreview,
   TilingClientPoint,
   TilingExternalDragHover,
   TilingExternalDropHover,
   TilingWorkspaceTabDragHover,
-  TilingGhostChipContext,
   TilingOnExternalDrop,
   TilingExternalDragHoverResolver,
   TilingPaneCollapsedChangeEvent,
   TilingChromeFocusOutline,
   TilingOverlayPortalContainer,
   TilingPaneIdentityMode,
-  TilingRenderSurface,
   TilingRenderTileProps,
   TilingGroupMemberView,
   TilingRenderTileGroupContext,

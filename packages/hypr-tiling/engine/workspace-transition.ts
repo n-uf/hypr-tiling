@@ -9,8 +9,6 @@
  * snapshot, never a live tree.
  */
 
-import { DEFAULT_DRAG_HOP_EASING } from "./drag-easing";
-
 /**
  * How a workspace switch is painted.
  *
@@ -50,11 +48,8 @@ export interface TilingWorkspaceTransitionConfig {
 /** Default duration for a timed workspace-switch settle. */
 export const DEFAULT_WORKSPACE_TRANSITION_DURATION_MS: number = 200;
 
-/**
- * Default easing — the same snappy decel as {@link DEFAULT_DRAG_HOP_EASING}
- * so workspace switches share the drag-chrome motion language.
- */
-export const DEFAULT_WORKSPACE_TRANSITION_EASING: string = DEFAULT_DRAG_HOP_EASING;
+/** Default easing — a snappy decel. */
+export const DEFAULT_WORKSPACE_TRANSITION_EASING: string = "cubic-bezier(0.2, 0.8, 0.2, 1)";
 
 /**
  * Default config: no motion until a host opts in

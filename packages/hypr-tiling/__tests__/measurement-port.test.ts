@@ -2,7 +2,6 @@ import { describe, expect, it } from "@jest/globals";
 import {
   DEFAULT_TILING_LAYOUT_CONFIG,
   resolvePointerTargetFromMeasurement,
-  resolveSeatFootprint,
 } from "../react/tiling-renderer";
 import { resolveInteractionCapabilities } from "../engine/interaction-capabilities";
 import type { MeasurementPort } from "../engine/measurement-port";
@@ -17,11 +16,11 @@ import type {
 
 /**
  * Stage-3 measurement-port characterization tests. These pin the observable
- * behavior of the two pure cores the `MeasurementPort` now feeds —
- * `resolvePointerTargetFromMeasurement` (the pointer→drop-target hit resolution)
- * and `resolveSeatFootprint` (the ghost-seat clamp) — driven entirely against
- * INJECTED synthetic rects, with no live DOM. They are the behavior-preservation
- * gate for the Stage-3 inline-read → port-call lift.
+ * behavior of the pure core the `MeasurementPort` feeds —
+ * `resolvePointerTargetFromMeasurement` (the pointer→drop-target hit
+ * resolution) — driven entirely against INJECTED synthetic rects, with no live
+ * DOM. They are the behavior-preservation gate for the Stage-3 inline-read →
+ * port-call lift.
  */
 
 /** A DOMRect-shaped fixture (only the rect fields the ports read are populated). */
@@ -49,7 +48,6 @@ function fakePort(overrides: Partial<MeasurementPort>): MeasurementPort {
   return {
     measureViewportRect: (): DOMRect | null => null,
     measureLeafRect: (): DOMRect | null => null,
-    measureReservationRect: (): DOMRect | null => null,
     measureGroupTabStripRect: (): DOMRect | null => null,
     measureGroupTabMemberRects: (): ReadonlyArray<{
       index: number;
@@ -288,68 +286,3 @@ describe("resolvePointerTargetFromMeasurement — synthetic-rect characterizatio
   });
 });
 
-describe("resolveSeatFootprint — off-screen / degenerate seat clamp", (): void => {
-  const onScreenViewport = rect(0, 0, 1000, 800);
-
-  it("nulls the seat when the reservation rect is unmeasurable", (): void => {
-    expect(
-      resolveSeatFootprint({
-        reservationRect: null,
-        viewportRect: onScreenViewport,
-      }),
-    ).toBeNull();
-  });
-
-  it("nulls the seat for a degenerate (zero-width) reservation rect", (): void => {
-    expect(
-      resolveSeatFootprint({
-        reservationRect: rect(10, 10, 0, 120),
-        viewportRect: onScreenViewport,
-      }),
-    ).toBeNull();
-  });
-
-  it("nulls the seat for a degenerate (zero-height) reservation rect", (): void => {
-    expect(
-      resolveSeatFootprint({
-        reservationRect: rect(10, 10, 120, 0),
-        viewportRect: onScreenViewport,
-      }),
-    ).toBeNull();
-  });
-
-  it("nulls the seat when the reservation rect lies entirely off-screen", (): void => {
-    // Entirely left of the viewport (right edge < viewport.left).
-    expect(
-      resolveSeatFootprint({
-        reservationRect: rect(-300, 10, 100, 100),
-        viewportRect: onScreenViewport,
-      }),
-    ).toBeNull();
-    // Entirely below the viewport (top > viewport.bottom).
-    expect(
-      resolveSeatFootprint({
-        reservationRect: rect(10, 1200, 100, 100),
-        viewportRect: onScreenViewport,
-      }),
-    ).toBeNull();
-  });
-
-  it("returns the seat footprint for an on-screen, positive-area reservation rect", (): void => {
-    expect(
-      resolveSeatFootprint({
-        reservationRect: rect(40, 60, 200, 150),
-        viewportRect: onScreenViewport,
-      }),
-    ).toEqual({ left: 40, top: 60, width: 200, height: 150 });
-  });
-
-  it("skips the off-screen clamp when the viewport is unmeasurable (null viewport)", (): void => {
-    expect(
-      resolveSeatFootprint({
-        reservationRect: rect(-300, 10, 100, 100),
-        viewportRect: null,
-      }),
-    ).toEqual({ left: -300, top: 10, width: 100, height: 100 });
-  });
-});

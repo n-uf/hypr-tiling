@@ -22,41 +22,35 @@ import {
   type DragCursorPresentation,
 } from "../engine/drag-cursor";
 import {
-  DEFAULT_DRAG_HOP_EASING,
-  resolveDragEasing,
-} from "../engine/drag-easing";
+  findLeafByTileId,
+  resolveDragLandingRect,
+  type DragLandingGroupStrip,
+} from "../engine/drag-landing";
 import {
   activeDragSourceLeafId,
   activeResolvedTarget,
   canRearmDrag,
-  compactGhostOrigin,
   createFrameCoalescer,
   deriveCandidateTree,
-  DRAG_GHOST_COMPACT_MAX_WIDTH_PX,
-  DRAG_GHOST_COMPACT_TRANSITION_MS,
+  isCommittableTarget,
   presentationDragSourceLeafId,
   presentationResolvedTarget,
   previousZoneSeed,
   resolveDragCommitFocusLeafId,
-  resolveDragGhostPresentation,
-  resolveDragGhostSeatLeafId,
-  type DragGhostPresentation,
+  resolveDragLandingLeafId,
   type DragMachinePoint,
   type DragMachineState,
   type DragPointerType,
   type FrameCoalescer,
 } from "../engine/drag-machine";
 import {
-  isDragPresentationActive,
   resolveDragPresentation,
   resolveInitialPaneContentVisible,
   resolvePaneBodyRenderMode,
 } from "../engine/drag-presentation";
 import {
   createDragWatchdog,
-  scheduleFrameOrTimeout,
   type DragWatchdog,
-  type RacedFrameHandle,
 } from "../engine/drag-recovery";
 import type {
   TilingDropIntentHitZoneDiagnostics,
@@ -97,17 +91,6 @@ import {
   type FocusHistory,
 } from "../engine/focus-history";
 import {
-  buildLinearEasingCss,
-  deriveGhostMorphTransform,
-  deriveGhostPickupBox,
-  ghostPickupScaleFactor,
-  isDegenerateGhostRect,
-  resolveGhostHopFirstRect,
-  type GhostMorphTransform,
-  type GhostPoint,
-  type GhostRect,
-} from "../engine/ghost-transit";
-import {
   shouldArmIdleWatchdog,
   type DragInputDriver,
 } from "../engine/input-driver";
@@ -132,6 +115,7 @@ import {
   resolveMasterStackCssFootprints,
   resolveMasterStackFootprints,
   slotRepresentativeLeafId,
+  type TilingRect,
 } from "../engine/leaf-geometry";
 import { isInteractiveControlTarget } from "../engine/interactive-controls";
 import type { MeasurementPort } from "../engine/measurement-port";
@@ -259,13 +243,10 @@ import type {
   TilingCommand,
   TilingCommandHandle,
   TilingDefaultTileProps,
-  TilingDragCancelVisualState,
-  TilingDragPaneSnapshot,
-  TilingDragVisualState,
+  TilingDragPreview,
   TilingClientPoint,
   TilingExternalDragHover,
   TilingExternalDragHoverResolver,
-  TilingGhostChipContext,
   TilingOnExternalDrop,
   TilingDropIntentDebugState,
   TilingFocusDirection,
@@ -293,7 +274,6 @@ import type {
   TilingPaneHitZoneOverlayDebugState,
   TilingPaneSizing,
   TilingPaneSwitcherState,
-  TilingRenderSurface,
   TilingRenderTileGroupContext,
   TilingRenderTileProps,
   TilingOverlayPortalContainer,
@@ -330,10 +310,6 @@ import {
   writeLeafMotionFrame,
 } from "./leaf-motion-dom";
 import { TILING_TILE_ACCENT_SWATCHES } from "../engine/accent-hues";
-import {
-  BASELINE_DRAG_HOP_DURATION_MS,
-  INSTANT_DRAG_DURATION_MS,
-} from "../engine/drag-timing";
 import {
   TILING_THEMES,
   TilingThemeProvider,
@@ -488,19 +464,6 @@ export const DRAG_ANIMATION_SPEED_MIN_PERCENT: number = 10;
 export const DRAG_ANIMATION_SPEED_MAX_PERCENT: number = 400;
 
 /**
- * Convert a drag animation speed percent to a duration (ms): `100` returns the
- * baseline, lower is slower, higher is faster. The percent is clamped to
- * `[DRAG_ANIMATION_SPEED_MIN_PERCENT, DRAG_ANIMATION_SPEED_MAX_PERCENT]`.
- */
-export function resolveDragAnimationDurationMs(speedPercent: number): number {
-  const clampedPercent: number = Math.min(
-    Math.max(speedPercent, DRAG_ANIMATION_SPEED_MIN_PERCENT),
-    DRAG_ANIMATION_SPEED_MAX_PERCENT,
-  );
-  return Math.round(BASELINE_DRAG_HOP_DURATION_MS * (100 / clampedPercent));
-}
-
-/**
  * The single `window`-backed {@link SchedulerPort} the renderer drives every
  * frame/timer/clock through (M1 rAF-with-timeout race, M2/M3 timer watchdog +
  * transition-settle, the rAF coalescer, the idle-watchdog clock). Created at
@@ -563,30 +526,42 @@ function projectedSubjectFillEnabled(
   return enables.projectedSuccessorFillEnabled;
 }
 
-const DRAG_PANE_PREVIEW_MAX_ROWS: number = 10;
-const DRAG_CANCEL_ANIMATION_MS: number = 220;
-/**
- * Magnetic hop-in easing — the "click into the slot" feel. A sampled CSS
- * `linear()` timing function built once from the pure `magneticEaseProgress`
- * two-segment curve (decelerate approaching the slot, then snap the last ~15%).
- * Applied ONLY to the seated ghost hop-in (free-follow / hop-out / pickup keep
- * `DRAG_HOP_EASING`). See `ghost-transit.ts` §5.
- */
-const GHOST_MAGNETIC_HOP_EASING: string = buildLinearEasingCss();
 const PROJECTED_OVERLAY_Z_INDEX_BASE: number = 80;
 const PROJECTED_OVERLAY_Z_INDEX_OFFSET: number = 1;
-const DRAG_CANCEL_OVERLAY_Z_INDEX: number = 219;
-const DRAG_PANE_OVERLAY_Z_INDEX: number = 220;
 /**
- * The custom drag cursor (`DragCursorOverlay`) sits ABOVE the ghost so the
- * pointer affordance is never occluded by the dragged pane it carries.
- * Overlay z-indexes (cancel 219 / ghost 220 / cursor 230) are relative to
- * the overlay portal container's stacking context (default `document.body`,
- * see `overlayPortalContainer`), not the document.
+ * The custom drag cursor (`DragCursorOverlay`) z-index, relative to the overlay
+ * portal container's stacking context (default `document.body`, see
+ * `overlayPortalContainer`), not the document: above the whole renderer.
  */
 const DRAG_CURSOR_OVERLAY_Z_INDEX: number = 230;
 /** Cursor badge diameter (px); half is reserved as the viewport-clamp margin. */
 const DRAG_CURSOR_BADGE_SIZE_PX: number = 30;
+/** The cursor badge's one-off entrance (scale + opacity). */
+const DRAG_CURSOR_ENTRANCE_MS: number = 140;
+const DRAG_CURSOR_ENTRANCE_EASING: string = "cubic-bezier(0.2, 0.8, 0.2, 1)";
+/**
+ * Inside the viewport (its own stacking context): the drop indicator sits
+ * above every resting pane, and the dragged pane above the indicator, from the
+ * lift until its drop settle ends.
+ */
+const DROP_INDICATOR_Z_INDEX: number = 40;
+const RAISED_PANE_Z_INDEX: number = 50;
+/**
+ * Snap preview: the pointer must be this far inside a landing slot (CSS px,
+ * at most a quarter of the slot's smaller side) before the pane snaps into it;
+ * it stays snapped until the pointer leaves that slot.
+ */
+const DRAG_SNAP_INSET_PX: number = 24;
+
+/** Whether point (`x`, `y`) lies in `rect` shrunk by `inset` on every side (edges included). */
+function isInsideRect(rect: TilingRect, x: number, y: number, inset: number): boolean {
+  return (
+    x >= rect.x + inset &&
+    x <= rect.x + rect.width - inset &&
+    y >= rect.y + inset &&
+    y <= rect.y + rect.height - inset
+  );
+}
 
 /**
  * The tile registry is accepted as an ordered array or a `Map`. A plain array
@@ -1039,41 +1014,6 @@ export function resolvePointerTargetFromMeasurement(
   });
 }
 
-/**
- * Pure ghost-seat clamp (Stage-3 measurement lift). The seat is `null` when its
- * reservation slot is unmeasurable (`null`), DEGENERATE (non-positive area), or
- * OFF-SCREEN (entirely outside the viewport rect); otherwise it is the
- * reservation slot's client footprint. Identical to the former inline guard chain
- * in the seat-measurement layout effect.
- */
-export function resolveSeatFootprint(input: {
-  reservationRect: DOMRect | null;
-  viewportRect: DOMRect | null;
-}): TilingPaneFootprint | null {
-  const rect: DOMRect | null = input.reservationRect;
-  if (rect == null) {
-    return null;
-  }
-  if (rect.width <= 0 || rect.height <= 0) {
-    return null;
-  }
-  const viewportRect: DOMRect | null = input.viewportRect;
-  if (
-    viewportRect != null &&
-    (rect.right < viewportRect.left ||
-      rect.left > viewportRect.right ||
-      rect.bottom < viewportRect.top ||
-      rect.top > viewportRect.bottom)
-  ) {
-    return null;
-  }
-  return {
-    left: rect.left,
-    top: rect.top,
-    width: rect.width,
-    height: rect.height,
-  };
-}
 
 export function resolveLeafDropPreview(
   leafId: string,
@@ -1148,8 +1088,8 @@ export function resolveLeafDropPreview(
 
 /**
  * Live-mode gate for the per-tile in-tile drop-preview shadow (System B). In live
- * (Hyprland) drag mode the destination shows NO result shadow — only the floating
- * ghost over the gap-closed frozen tree — so the per-tile preview is suppressed.
+ * (Hyprland) drag mode the destination shows NO result shadow — the held pane
+ * and its drop preview say where it lands — so the per-tile preview is suppressed.
  * In preview mode the result shadow is the intended feedback, so the pure
  * `resolveLeafDropPreview` value passes through. Mirrors the System A gate shape
  * (`showProjectedLandingOverlays = showDropPreviewOverlays && !liveDragModeEnabled`)
@@ -1168,7 +1108,6 @@ export function resolveLeafDropPreviewForMode(
 }
 
 export {
-  isDragPresentationActive,
   resolveDragPresentation,
   resolveInitialPaneContentVisible,
   resolvePaneBodyRenderMode,
@@ -1244,7 +1183,7 @@ export function resolveLiveDisplayLayout(
  *
  * In live mode the base is the gap-closed tree (`removeLeafTile`): the source is
  * detached once on pickup, so the surviving panes' frozen rects match what the
- * user sees beneath the floating ghost when no target is yet resolved — a closer
+ * user sees beneath the lifted pane when no target is yet resolved — a closer
  * visual/hit correspondence than the raw pre-pickup rects (where the source slot
  * is still occupied). In preview mode the tree never detaches, so the original
  * footprints are the stable reference. Either way the geometry is frozen for the
@@ -1275,160 +1214,35 @@ export function resolveStableDragHitFootprints(
   );
 }
 
-export function buildDragPaneSnapshot(
-  tile: TilingTile,
-): TilingDragPaneSnapshot {
-  // Snapshot always comes from canonical tile payload, never from visibility
-  // presentation state (`render-empty` / `render-reservation`). Whether the
-  // ghost actually paints this captured content is decided later by the uniform
-  // CONTENT rule in `renderDragPaneShell`.
-  return {
-    tileId: tile.id,
-    title: tile.title,
-    description: tile.description ?? null,
-    content: tile.content ?? null,
-    titleBarContent: tile.titleBarContent ?? null,
-    rows: (tile.rows ?? []).slice(0, DRAG_PANE_PREVIEW_MAX_ROWS),
-    accent: tile.accent ?? "cyan",
-  };
-}
-
-export function renderDragPaneShell(
-  snapshot: TilingDragPaneSnapshot,
-  theme: TilingTheme,
-  isPaneContentVisible: boolean,
-): React.ReactElement {
-  // The ghost is just another representation of a pane, so its body obeys the
-  // SAME content rule as an in-tree pane body: content visible → paint content;
-  // content hidden → empty body, frame + header chrome preserved. No
-  // drag-specific branch — `resolvePaneBodyRenderMode(false, …)` because the
-  // ghost is the single painted instance, never a ghost-seat reservation.
-  const shouldRenderGhostContent: boolean =
-    resolvePaneBodyRenderMode(false, isPaneContentVisible) === "render-content";
-  return (
-    <article
-      className={cn(
-        // Lifted ghost: the active theme's ghost surface tokens (a touch more
-        // opaque + deeper shadow than a resting pane) tinted with the dragged
-        // pane's accent. Rendered through the overlay portal container
-        // (default `document.body`, see `overlayPortalContainer`;
-        // `position:fixed`), so any backdrop-filter here never contains it.
-        theme.ghost.surface,
-        theme.resolvePaneAccentSurface(snapshot.accent),
-        // Focus follows the dragged pane: the floating ghost wears the SAME
-        // focus frame the focused pane wears at rest, so the single focus
-        // affordance travels with the pane being dragged (and the pane ends the
-        // drop already focused).
-        theme.resolveFocusFrame(snapshot.accent),
-      )}
-      aria-hidden
-    >
-      <header className={cn(theme.ghost.header, "gap-2")}>
-        <div className="min-w-0 shrink-0">
-          <div
-            className={cn(
-              "truncate font-mono text-[11px] font-semibold uppercase tracking-[0.2em]",
-              theme.resolveAccentText(snapshot.accent),
-            )}
-          >
-            {snapshot.title}
-          </div>
-          <div
-            className={cn(
-              "truncate font-mono text-[9px] uppercase tracking-[0.16em]",
-              theme.ghost.subtitleText,
-            )}
-          >
-            {snapshot.description ?? "drag header to swap"}
-          </div>
-        </div>
-        {snapshot.titleBarContent != null ? (
-          <div className="min-w-0 flex-1 overflow-hidden">
-            {snapshot.titleBarContent}
-          </div>
-        ) : null}
-        <div className="ml-auto shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-slate-400">
-          tile
-        </div>
-      </header>
-
-      <div
-        className={cn(
-          "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 font-mono text-[11px] leading-5",
-          theme.ghost.bodyText,
-        )}
-      >
-        {shouldRenderGhostContent
-          ? snapshot.content != null
-            ? snapshot.content
-            : snapshot.rows.map(
-                (row: string, rowIndex: number): React.ReactElement => (
-                  <div
-                    key={`${snapshot.tileId}-drag-row-${rowIndex}`}
-                    className="whitespace-pre-wrap break-words"
-                  >
-                    {row}
-                  </div>
-                ),
-              )
-          : null}
-      </div>
-    </article>
-  );
-}
-
 /**
- * The picked-up source leaf's destination slot in live mode, painted as a
- * content-less RESERVATION (never the source content) so the dragged pane is
- * painted in exactly ONE place — the ghost (`DragPaneOverlay`), which HOPS INTO
- * and FILLS this reservation's measured rect. The candidate tree still opens
- * this slot (survivors physically reflow to make room), and the reservation
- * carries only a faint accent tint so that during the brief hop-in flight it
- * reads as "lands here" rather than an empty hole — it is fully covered once the
- * ghost seats. `data-drag-source-reservation` + the leaf's `data-leaf-id` are
- * the measurement hooks the seat-rect effect reads. NO title / rows here, so the
- * source content (the single-instance invariant) lives only in the ghost.
+ * The place a lifted pane keeps in the tree while the pointer holds it
+ * elsewhere (indicator mode with `dragPreviewMakesRoom`: the others make room
+ * around it). Empty and unpainted: the drop indicator marks it, and the pane
+ * itself is drawn only once, where it is held. With the observability
+ * `dragSourceBorderEnabled` layer on it gets a faint debug tint.
  */
-export function DragSourceSlotReservation({
-  theme,
-  accent,
+function HeldSlotReservation({
   observabilityColors,
   observabilityColorEnables,
 }: {
-  theme: TilingTheme;
-  accent: TilingTileAccent | undefined;
   observabilityColors: TilingObservabilityColorConfig;
   observabilityColorEnables: TilingObservabilityColorEnableConfig;
-}): React.ReactElement | null {
-  // The seat's surface (radius / border / background / shadow) and the frame it
-  // wears both come from the theme's drag chrome: by default the seat is the
-  // pane shell itself (`paneShell.surface`), so it reads as the at-rest pane,
-  // and the frame is the theme focus frame composed from the DRAGGED pane's
-  // accent (focus follows the dragged pane) — focus thus reads as already
-  // living at the destination during the brief hop-in flight, before the ghost
-  // fully covers the seat. NO renderer-owned radius / ring / shadow here.
-  const dragChrome: TilingThemeDragChromeTokens = resolveDragChrome(theme);
-  const seatFrame: string = dragChrome.resolveSeatFrame(accent);
-  const seatClassName: string = cn(
-    "h-full min-h-0 w-full min-w-0 overflow-hidden",
-    dragChrome.sourceReservation,
-    seatFrame,
-  );
-  if (!observabilityColorEnables.dragSourceBorderEnabled) {
-    return (
-      <div className={seatClassName} data-drag-source-reservation aria-hidden />
-    );
-  }
-  const slotFillColor: string = rgbaFromHex(
-    observabilityColors.dragSourceBorderColorHex,
-    0.06,
-    [240, 171, 252],
-  );
+}): React.ReactElement {
   return (
     <div
-      className={seatClassName}
-      style={{ backgroundColor: slotFillColor }}
-      data-drag-source-reservation
+      className="h-full min-h-0 w-full min-w-0"
+      style={
+        observabilityColorEnables.dragSourceBorderEnabled
+          ? {
+              backgroundColor: rgbaFromHex(
+                observabilityColors.dragSourceBorderColorHex,
+                0.06,
+                [240, 171, 252],
+              ),
+            }
+          : undefined
+      }
+      data-drag-held-slot=""
       aria-hidden
     />
   );
@@ -1463,18 +1277,11 @@ export function DragSourceSlotReservation({
 // `select-none` inheritance, CSS — all follow the node's DOM position (inside
 // the slot), which is exactly where a slot-mode pane would be.
 //
-// Live drag: the picked-up pane's slot renders the content-less seat and does
-// NOT register a target, so the pane PARKS in the (display:none) pool — still
-// mounted — while the single ghost paints the dragged pane; on drop the new
-// slot registers and the same node reseats. The ghost itself still paints
-// through `renderTile(ghostTileArgs)` (a transient second render of the same
-// tile, unchanged from slot mode) because the ghost mounts on the overlay
-// portal container (default `document.body`, see `overlayPortalContainer`).
-// Two independent reasons for that default: containing-block immunity
-// (`position: fixed` stays window-relative) AND the ghost staying outside
-// the React root's event-delegation scope. Redirecting the DOM mount does
-// not change the delegation invariant — React still walks fibers, and
-// measurement selectors stay root/viewport-scoped.
+// Live drag: the lifted pane's wrapper (held under the pointer, outside the
+// tree) registers as the tile's slot, so the SAME node moves there on lift and
+// back into the tree on the drop; a held-slot reservation registers nothing.
+// When the pane is in neither (a claimed external drop settling) it parks in
+// the (display:none) pool, still mounted.
 
 /** The relocation registry a stable-mode leaf slot writes to and a pane host reads. */
 type StablePaneSlotRegistry = Map<string, HTMLElement>;
@@ -1713,10 +1520,8 @@ const OverlayPortalContainerContext: React.Context<
 > = React.createContext<TilingOverlayPortalContainer | undefined>(undefined);
 
 /**
- * Resolves the stacking-context-free anchor for the `position: fixed` drag
- * overlays. ALL of the drag overlays (ghost, custom cursor, cancel fly-back)
- * place themselves with WINDOW-relative client coordinates derived from
- * `getBoundingClientRect()` (the seat is measured the same way).
+ * Resolves the stacking-context-free anchor for the `position: fixed` custom
+ * drag cursor, which places itself with WINDOW-relative client coordinates.
  * `position: fixed` only resolves against the window when NO ancestor
  * establishes a containing block for fixed descendants — and `transform` /
  * `filter` / `backdrop-filter` / `perspective` / `will-change` of those /
@@ -1725,13 +1530,13 @@ const OverlayPortalContainerContext: React.Context<
  * `TilingRendererProps.overlayPortalContainer` (element or thunk) so host
  * theme tokens (CSS variables on a scoped root) still inherit — the
  * redirected container must itself not sit under a containing-block
- * ancestor, or ghost↔seat drift returns.
+ * ancestor, or the cursor drifts off the pointer.
  *
- * The body default also keeps the ghost outside the React root's
+ * The body default also keeps the cursor outside the React root's
  * event-delegation scope. Redirecting the DOM mount does not change that
  * invariant: React still walks fibers, and measurement selectors stay
- * root/viewport-scoped. Overlay z-indexes (cancel 219 / ghost 220 / cursor
- * 230) are relative to the container's stacking context.
+ * root/viewport-scoped. The cursor's z-index (230) is relative to the
+ * container's stacking context.
  *
  * SSR-safe: `document` is read only on the client, so server render yields
  * `null` and mounts nothing. The function form is evaluated every render so
@@ -1764,9 +1569,8 @@ function useOverlayPortalContainer(): HTMLElement | null {
  * `position: fixed` placement is window-relative unless a containing-block
  * ancestor is introduced. The portal preserves the React subtree (state,
  * refs, layout effects, context) of the overlay component — only the DOM
- * node is relocated — so the ghost's FLIP refs / `getBoundingClientRect`
- * reads and the reactive `dragVisualState` updates are unchanged. Event
- * delegation still walks the fiber tree; measurement selectors stay
+ * node is relocated. Event delegation still walks the fiber tree;
+ * measurement selectors stay
  * root/viewport-scoped. Returns `null` when there is no container (SSR
  * only), at which point the overlays are inactive anyway.
  */
@@ -1780,43 +1584,6 @@ function OverlayPortal({
     return null;
   }
   return createPortal(children, container);
-}
-
-/**
- * Safe no-op for the ghost's interaction handlers. The floating ghost is
- * `aria-hidden` + `pointer-events-none` (never itself interactive — the live
- * drag gesture is owned by the captured window listener, and drag mechanics
- * source off the in-tree reservation slot), so every callback a consumer
- * `renderTile` wires (focus, maximize, sizing, multi-select, the drag-handle
- * pointer-down, hover telemetry) is inert on the ghost. Module-level so the ghost
- * tileArgs keep a stable identity across frames. Typed to the parameterless
- * shape and assignable to every `TilingRenderTileProps` handler slot (a
- * zero-arg `() => void` satisfies each `(arg) => void` callback contract).
- */
-const GHOST_TILE_NOOP = (): void => {};
-
-/**
- * The REAL resolved capability display flags the drag surfaces (`"drag-ghost"`
- * / `"drag-cancel"`) carry on their `TilingRenderTileProps`. These mirror the
- * in-tree pane's flags so capability-keyed chrome (maximize button, sizing /
- * acquire-space controls, multi-select affordance) does NOT vanish mid-drag —
- * the mid-drag silhouette pop. The matching HANDLERS stay inert no-ops (the
- * overlays are `aria-hidden` + `pointer-events-none`); a custom pane that
- * wants different drag chrome branches on `surface` instead.
- */
-export interface GhostTileCapabilityFlags {
-  /** Whether drag-to-rearrange is enabled (always true mid-drag by construction). */
-  readonly isRearrangeEnabled: boolean;
-  /** Whether the maximize capability is enabled. */
-  readonly isMaximizeEnabled: boolean;
-  /** Whether the per-pane title-bar sizing control is enabled. */
-  readonly isTitleBarSizingEnabled: boolean;
-  /** Whether the per-pane acquire-space controls are enabled. */
-  readonly isTitleBarAcquireSpaceEnabled: boolean;
-  /** Whether the per-pane collapse-to-titlebar control is enabled. */
-  readonly isCollapseEnabled: boolean;
-  /** Whether Alt/Opt+click header multi-selection grouping is live. */
-  readonly isMultiSelectGroupingEnabled: boolean;
 }
 
 /**
@@ -1836,495 +1603,6 @@ export const SINGLE_LAYOUT_PANE_SEAT: TilingPaneSeatContext = {
   workspaceId: TILING_MAIN_WORKSPACE_ID,
   seatCount: 1,
 };
-
-/**
- * Builds the `TilingRenderTileProps` the drag overlays (the floating pickup
- * ghost and the cancel fly-back) pass to a consumer `renderTile` so a custom
- * pane's chrome TRAVELS with the drag. It is a faithful representation of the
- * dragged SOURCE leaf's resting/focused pane, mirroring the in-tree `tileArgs`
- * construction in `renderBranch`:
- *
- * - `surface` discriminates the overlay (`"drag-ghost"` / `"drag-cancel"`) from
- *   the seated `"pane"` render, so a consumer can branch its drag chrome;
- * - identity + payload come from the pickup `snapshot` (the SAME captured
- *   content `renderDragPaneShell` paints — never a live re-read; the ghost is
- *   the single pickup-time instance), reconstructed into a `TilingTile`;
- * - `isDragSource: true` + `isFocused: true` — the ghost wears the focus frame
- *   at rest (see `renderDragPaneShell`), and focus travels with the dragged pane;
- * - `paneBodyRenderMode` from the SAME uniform CONTENT rule the shell uses
- *   (`resolvePaneBodyRenderMode(false, isPaneContentVisible)` — the ghost is the
- *   single painted instance, never a seat reservation, so `false`);
- * - the capability DISPLAY flags come through REAL (`capabilityFlags`,
- *   reflecting the resolved capabilities) so capability-keyed chrome does not
- *   vanish mid-drag, while every interaction handler stays a safe no-op
- *   (`GHOST_TILE_NOOP`): the overlays are `aria-hidden` + `pointer-events-none`,
- *   so a consumer pane's wired callbacks are inert on them (the live drag
- *   gesture is owned by the captured window listener + the in-tree reservation
- *   slot, not the ghost);
- * - every drop / maximize / multi-select / move STATE flag is in its
- *   resting-false state.
- *
- * Pure + DOM-free so the ghost-routing contract (custom chrome travels; flags;
- * no-op handlers) is unit-testable without simulating a pointer drag.
- */
-export function buildGhostTileArgs(
-  snapshot: TilingDragPaneSnapshot,
-  sourceLeafId: string,
-  paneOrdinal: number,
-  paneWidthPx: number,
-  isPaneContentVisible: boolean,
-  surface: Exclude<TilingRenderSurface, "pane">,
-  capabilityFlags: GhostTileCapabilityFlags,
-  seat: TilingPaneSeatContext = SINGLE_LAYOUT_PANE_SEAT,
-): TilingRenderTileProps {
-  const ghostTile: TilingTile = {
-    id: snapshot.tileId,
-    title: snapshot.title,
-    description: snapshot.description ?? undefined,
-    accent: snapshot.accent,
-    rows: snapshot.rows,
-    content: snapshot.content,
-    titleBarContent: snapshot.titleBarContent ?? undefined,
-  };
-  return {
-    surface,
-    leafId: sourceLeafId,
-    tile: ghostTile,
-    paneOrdinal,
-    workspaceId: seat.workspaceId,
-    seatCount: seat.seatCount,
-    paneWidthPx,
-    isPaneContentVisible,
-    paneBodyRenderMode: resolvePaneBodyRenderMode(false, isPaneContentVisible),
-    isDragSource: true,
-    isDropTarget: false,
-    isDropEligible: false,
-    isHoveringDropCandidate: false,
-    isInvalidDrop: false,
-    isFocused: true,
-    isRearrangeEnabled: capabilityFlags.isRearrangeEnabled,
-    isMoveSource: false,
-    moveTargetPlacement: null,
-    isMaximized: false,
-    isMaximizeEnabled: capabilityFlags.isMaximizeEnabled,
-    onToggleMaximize: GHOST_TILE_NOOP,
-    isTitleBarSizingEnabled: capabilityFlags.isTitleBarSizingEnabled,
-    isTitleBarAcquireSpaceEnabled:
-      capabilityFlags.isTitleBarAcquireSpaceEnabled,
-    widthSizingMode: "flexible",
-    heightSizingMode: "flexible",
-    onSetSizingMode: GHOST_TILE_NOOP,
-    onAcquireSpace: GHOST_TILE_NOOP,
-    isCollapsed: false,
-    collapsedDimension: null,
-    isCollapseEnabled: capabilityFlags.isCollapseEnabled,
-    onToggleCollapse: GHOST_TILE_NOOP,
-    dropZone: null,
-    preview: null,
-    // Drag surfaces never carry group context: the traveling ghost is a
-    // single-pane silhouette, not a seated group member.
-    group: null,
-    isMultiSelectGroupingEnabled: capabilityFlags.isMultiSelectGroupingEnabled,
-    isMultiSelected: false,
-    canGroupMultiSelection: false,
-    multiSelectionCount: 0,
-    onToggleMultiSelect: GHOST_TILE_NOOP,
-    onGroupMultiSelection: GHOST_TILE_NOOP,
-    onClearMultiSelection: GHOST_TILE_NOOP,
-    onFocus: GHOST_TILE_NOOP,
-    onHandlePointerDown: GHOST_TILE_NOOP,
-    onPointerMove: GHOST_TILE_NOOP,
-    onPointerLeave: GHOST_TILE_NOOP,
-    // Drag surfaces must not register a drop target — the ghost would steal
-    // hits from the seated pane that owns the real callback.
-    groupDropTargetRef: GHOST_TILE_NOOP,
-  };
-}
-
-/**
- * The SINGLE painted instance of the dragged pane. It free-follows the cursor
- * (instant, no lag) when no slot is resolved, and HOPS INTO and FILLS the
- * resolved slot when `seatFootprint` is set: the same node's base rect becomes
- * the measured slot rect and a FLIP `transform` animation glides it from where
- * it was (cursor) into the slot. Animating `transform` only (GPU-composited,
- * no layout); the node is `position: fixed` (out of flow) so it never reflows
- * the tree and never exists twice. FLIP `First` is read from the LIVE
- * `getBoundingClientRect` so an interrupted/re-seated hop retargets smoothly
- * from wherever the ghost currently is.
- */
-function DragPaneOverlay({
-  dragVisualState,
-  dragHopDurationMs,
-  hopEasing,
-  pickupScaleFactor,
-  prefersReducedMotion,
-  isPaneContentVisible,
-  frameDeadlineMs,
-  renderTile,
-  ghostPaneOrdinal,
-  ghostCapabilityFlags,
-  ghostPresentation,
-  compactPoint,
-  compactTargetId,
-  compactWorkspaceId,
-}: {
-  dragVisualState: TilingDragVisualState | null;
-  dragHopDurationMs: number;
-  hopEasing: string;
-  pickupScaleFactor: number;
-  prefersReducedMotion: boolean;
-  isPaneContentVisible: boolean;
-  /**
-   * M1 rAF-fallback slack (ms). The FLIP "play-to-identity" arm races
-   * `requestAnimationFrame` against a `setTimeout` of this long, first-wins +
-   * idempotent, so a starved compositor frame never strands the ghost at its
-   * inverted `First`. From `interaction.dragRecovery.frameDeadlineMs`.
-   */
-  frameDeadlineMs: number;
-  /**
-   * The consumer's custom pane renderer (the SAME one the in-tree panes use), or
-   * `undefined` for the built-in default pane. When provided, the floating ghost
-   * paints the dragged pane through `renderTile` so a custom skin's pane chrome
-   * TRAVELS with the drag; when `undefined`, the ghost falls back to the
-   * library's built-in `renderDragPaneShell` (default-chrome behavior preserved
-   * exactly).
-   */
-  renderTile: ((args: TilingRenderTileProps) => React.ReactNode) | undefined;
-  /** 1-based pane ordinal of the dragged source leaf (for the ghost tileArgs). */
-  ghostPaneOrdinal: number;
-  /**
-   * The REAL resolved capability display flags to carry on the ghost tileArgs
-   * (see {@link GhostTileCapabilityFlags}) so capability-keyed chrome does not
-   * vanish mid-drag.
-   */
-  ghostCapabilityFlags: GhostTileCapabilityFlags;
-  /** Painted ghost shape — footprint tile vs cursor-anchored compact chip. */
-  ghostPresentation: DragGhostPresentation;
-  /** Cursor (or host-reported hover) point the compact chip anchors to. */
-  compactPoint: DragMachinePoint | null;
-  /** External target id while hovering one; omitted otherwise. */
-  compactTargetId: string | undefined;
-  compactWorkspaceId: string | undefined;
-}): React.ReactElement | null {
-  const theme: TilingTheme = useTilingTheme();
-  const nodeRef = React.useRef<HTMLDivElement | null>(null);
-  // The in-flight "play-to-identity" arm — an M1 raced (rAF-or-timeout) handle
-  // rather than a bare rAF id, so a starved frame cannot freeze the ghost.
-  const rafRef = React.useRef<RacedFrameHandle | null>(null);
-  // The node's resting box (Last), kept fresh every render so the morph effect
-  // (which is keyed off morph TRIGGERS, not cursor position) reads the current
-  // box without re-running on a position-only move.
-  const baseRectRef = React.useRef<GhostRect | null>(null);
-  // The base rect the ghost was painted at in the PREVIOUS commit — the FLIP
-  // `First` for the next hop at rest. React applies the new base (the slot) to
-  // the node's inline `left`/`top` BEFORE the morph layout effect runs, so a
-  // live `getBoundingClientRect()` inside the effect already reads the new base;
-  // this ref preserves the prior-frame box (the cursor box on a follow→seat
-  // hop-in) so the hop has a non-zero invert and the resolved duration takes
-  // effect. Recorded every render by the layout effect declared after the morph
-  // effect (so the morph effect reads the prior value before it is overwritten).
-  const previousRenderedRectRef = React.useRef<GhostRect | null>(null);
-  // Whether the pickup entrance has played + whether the prior render was seated
-  // — the two transition detectors that distinguish entrance / hop-in / hop-out.
-  const hasEnteredRef = React.useRef<boolean>(false);
-  const prevSeatedRef = React.useRef<boolean>(false);
-
-  const seated: boolean = dragVisualState?.seatFootprint != null;
-  // Under reduced motion the pickup shrink is skipped (full source size).
-  const effectiveFactor: number = prefersReducedMotion ? 1 : pickupScaleFactor;
-  const grab: GhostPoint = {
-    x: dragVisualState?.pointerAnchorOffsetX ?? 0,
-    y: dragVisualState?.pointerAnchorOffsetY ?? 0,
-  };
-  // baseRect = the resting rendered box: the measured slot when seated, else the
-  // grab-anchored pickup-scaled source box (cursor-tracking, instant).
-  const baseRect: GhostRect | null =
-    dragVisualState == null
-      ? null
-      : (dragVisualState.seatFootprint ??
-        deriveGhostPickupBox(
-          dragVisualState.activeFootprint,
-          grab,
-          effectiveFactor,
-        ));
-  baseRectRef.current = baseRect;
-
-  const seatFootprint: TilingPaneFootprint | null =
-    dragVisualState?.seatFootprint ?? null;
-  // Morph-trigger key: changes on seat open/close + re-seat, NOT on a free-follow
-  // cursor move, so steady free-follow never re-runs the morph effect.
-  const seatKey: string =
-    seatFootprint == null
-      ? "free"
-      : `${seatFootprint.left},${seatFootprint.top},${seatFootprint.width},${seatFootprint.height}`;
-  const srcWidth: number = dragVisualState?.sourceFootprint.width ?? 0;
-  const srcHeight: number = dragVisualState?.sourceFootprint.height ?? 0;
-  const hasVisual: boolean = dragVisualState != null;
-
-  React.useLayoutEffect((): (() => void) | void => {
-    const node: HTMLDivElement | null = nodeRef.current;
-    const last: GhostRect | null = baseRectRef.current;
-    if (node == null || last == null || dragVisualState == null) {
-      return;
-    }
-    const justEntered: boolean = !hasEnteredRef.current;
-    hasEnteredRef.current = true;
-    prevSeatedRef.current = seated;
-
-    // A live (transformed) box is the correct FLIP `First` only while a hop is
-    // mid-flight (smooth retarget); at rest the live box already equals the
-    // freshly-applied base (`last`), which would zero the invert.
-    const hadInFlightTransform: boolean = rafRef.current != null;
-
-    const cancelInFlight = (): void => {
-      if (rafRef.current != null) {
-        rafRef.current.cancel();
-        rafRef.current = null;
-      }
-    };
-    cancelInFlight();
-    node.style.transformOrigin = "top left";
-
-    // Reduced motion: instant placement, no morph / pickup / dip / magnet.
-    if (prefersReducedMotion) {
-      node.style.transition = "none";
-      node.style.transform = "none";
-      return;
-    }
-
-    // FLIP `First` resolution. Three cases:
-    //  - pickup ENTRANCE: First is the source's FULL bbox so the shrink-to-pickup
-    //    is visible on the first frame.
-    //  - mid-flight hop (re-seat / retarget): First is the ghost's LIVE box so
-    //    the new hop picks up from the current animated position.
-    //  - hop at rest (free→seat, seat→free): React has already written the new
-    //    base to the node's inline left/top, so the live box equals `last` and
-    //    would zero the invert — use the PRIOR commit's rendered base instead so
-    //    the hop has a real distance to travel and `dragHopDurationMs` is honored.
-    const live: DOMRect = node.getBoundingClientRect();
-    const liveRect: GhostRect = {
-      left: live.left,
-      top: live.top,
-      width: live.width,
-      height: live.height,
-    };
-    const first: GhostRect =
-      justEntered && !seated
-        ? {
-            left: dragVisualState.activeFootprint.left,
-            top: dragVisualState.activeFootprint.top,
-            width: dragVisualState.activeFootprint.width,
-            height: dragVisualState.activeFootprint.height,
-          }
-        : resolveGhostHopFirstRect({
-            previousBaseRect: previousRenderedRectRef.current,
-            liveVisualRect: liveRect,
-            hasInFlightTransform: hadInFlightTransform,
-          });
-
-    if (isDegenerateGhostRect(first) || isDegenerateGhostRect(last)) {
-      node.style.transition = "none";
-      node.style.transform = "none";
-      return;
-    }
-    const invert: GhostMorphTransform | null = deriveGhostMorphTransform(
-      first,
-      last,
-    );
-    if (invert == null) {
-      node.style.transition = "none";
-      node.style.transform = "none";
-      return;
-    }
-
-    // Transform-only FLIP: the seated hop-in (the "click into the slot") uses
-    // the magnetic ease, which never passes the slot; free-follow / hop-out /
-    // entrance keep the standard hop easing. Invert → play to identity on the
-    // next frame.
-    const easing: string = seated ? GHOST_MAGNETIC_HOP_EASING : hopEasing;
-    node.style.transition = "none";
-    node.style.transform = `translate(${invert.tx}px, ${invert.ty}px) scale(${invert.sx}, ${invert.sy})`;
-    void node.getBoundingClientRect();
-    // M1: race the play-to-identity write against a timeout so a starved frame
-    // (background-tab rAF suspension / CPU throttle) still writes the transition
-    // — the ghost can never freeze at its inverted First.
-    rafRef.current = scheduleFrameOrTimeout(
-      WINDOW_SCHEDULER_PORT,
-      frameDeadlineMs,
-      (): void => {
-        node.style.transition = `transform ${dragHopDurationMs}ms ${easing}`;
-        node.style.transform = "none";
-      },
-    );
-    return (): void => {
-      cancelInFlight();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    seated,
-    seatKey,
-    effectiveFactor,
-    srcWidth,
-    srcHeight,
-    dragHopDurationMs,
-    hopEasing,
-    prefersReducedMotion,
-    hasVisual,
-    frameDeadlineMs,
-  ]);
-
-  // Record the base rect painted THIS commit as the FLIP `First` for the next
-  // hop. Runs every commit (including steady free-follow, where the morph effect
-  // is skipped) so the prior-frame box is always current; declared after the
-  // morph effect so that effect reads the PRIOR value before it is overwritten.
-  React.useLayoutEffect((): void => {
-    previousRenderedRectRef.current = baseRectRef.current;
-  });
-
-  if (dragVisualState == null || baseRect == null) {
-    return null;
-  }
-
-  // Elevation cue: the free-following (lifted) ghost reads as floating — deeper
-  // drop-shadow + slightly lower opacity than the seated/at-rest look. Dropped
-  // under reduced motion (no transition, settled look).
-  const lifted: boolean = !seated && !prefersReducedMotion;
-  const dragChrome: TilingThemeDragChromeTokens = resolveDragChrome(theme);
-
-  // Consumer-first ghost body: when a custom `renderTile` is supplied, the
-  // floating ghost paints the dragged pane THROUGH it (`buildGhostTileArgs`) so a
-  // custom skin's pane chrome travels with the drag (the bug this fixes); with no
-  // `renderTile` the ghost keeps the built-in `renderDragPaneShell` default
-  // surface exactly.
-  //
-  // `data-leaf-id` / measurement invariant: a consumer `renderTile` root carries
-  // `data-leaf-id={leafId}`, and here that id is the dragged SOURCE leaf id — the
-  // same id the in-tree reservation slot emits. But the ghost renders through the
-  // overlay `OverlayPortal` (`position: fixed`), OUTSIDE both `rootRef`
-  // (which scopes `measureReservationRect` via `dragSourceReservationSelector`
-  // and `measureLeafRect`) and `viewportRef` (which scopes the leaf-motion
-  // `querySelectorAll('[data-hpt-leaf]')`). Every measurement selector is
-  // root/viewport-scoped, so the portaled ghost's `data-leaf-id` is never
-  // collected — no duplicate-id collision, no `cc23956`-class seat-measurement
-  // regression. Theme context: this component calls `useTilingTheme()` and is
-  // rendered from within the renderer's `TilingThemeProvider` subtree; React
-  // context propagates through `createPortal`, so the consumer `renderTile`'s own
-  // `useTilingTheme()` resolves the active theme inside the portal too. Host
-  // CSS variables inherit only when the portal container sits under the host
-  // theme root (see `overlayPortalContainer`).
-  const snapshot: TilingDragPaneSnapshot = dragVisualState.snapshot;
-  const ghostTileArgs: TilingRenderTileProps = buildGhostTileArgs(
-    snapshot,
-    dragVisualState.sourceLeafId,
-    ghostPaneOrdinal,
-    baseRect.width,
-    isPaneContentVisible,
-    "drag-ghost",
-    ghostCapabilityFlags,
-  );
-  const compact: boolean = ghostPresentation === "compact";
-  const chipPoint: DragMachinePoint = compactGhostOrigin(
-    compactPoint ?? {
-      x: baseRect.left + dragVisualState.pointerAnchorOffsetX,
-      y: baseRect.top + dragVisualState.pointerAnchorOffsetY,
-    },
-  );
-  const chipCtx: TilingGhostChipContext = {
-    leafId: dragVisualState.sourceLeafId,
-    title: snapshot.title,
-    point: compactPoint ?? {
-      x: baseRect.left + dragVisualState.pointerAnchorOffsetX,
-      y: baseRect.top + dragVisualState.pointerAnchorOffsetY,
-    },
-    targetId: compactTargetId,
-    workspaceId: compactWorkspaceId,
-  };
-  const compactTransition: string = prefersReducedMotion
-    ? "none"
-    : `transform ${DRAG_GHOST_COMPACT_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity ${DRAG_GHOST_COMPACT_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`;
-  return (
-    <OverlayPortal>
-      <>
-      <div
-        ref={nodeRef}
-        className="pointer-events-none fixed left-0 top-0"
-        style={{
-          left: baseRect.left,
-          top: baseRect.top,
-          width: baseRect.width,
-          height: baseRect.height,
-          zIndex: DRAG_PANE_OVERLAY_Z_INDEX,
-        }}
-        data-drag-ghost
-        data-drag-ghost-mode={ghostPresentation}
-        aria-hidden
-      >
-        <div
-          // The ghost WRAPPER's elevation / scale / opacity delta is theme drag
-          // chrome (`dragChrome.ghostLifted` while free-following,
-          // `ghostSeated` once seated in the hop-in slot); the pane shell
-          // inside is `theme.ghost.surface` (default tile) or the host's own
-          // chrome (custom `renderTile`). Compact collapse (scale/opacity)
-          // lives HERE so it does not fight the FLIP `transform` on the
-          // outer node.
-          className={cn(
-            "h-full w-full",
-            lifted ? dragChrome.ghostLifted : dragChrome.ghostSeated,
-            prefersReducedMotion ? "" : dragChrome.ghostTransition,
-          )}
-          data-drag-ghost-wrapper
-          style={{
-            opacity: compact ? 0 : 1,
-            transform: compact ? "scale(0.2)" : undefined,
-            transformOrigin: `${dragVisualState.pointerAnchorOffsetX}px ${dragVisualState.pointerAnchorOffsetY}px`,
-            transition: compactTransition,
-          }}
-        >
-          {renderTile == null
-            ? renderDragPaneShell(snapshot, theme, isPaneContentVisible)
-            : renderTile(ghostTileArgs)}
-        </div>
-      </div>
-      <div
-        className="pointer-events-none fixed left-0 top-0"
-        style={{
-          left: chipPoint.x,
-          top: chipPoint.y,
-          maxWidth: DRAG_GHOST_COMPACT_MAX_WIDTH_PX,
-          zIndex: DRAG_PANE_OVERLAY_Z_INDEX,
-          opacity: compact ? 1 : 0,
-          transform: compact ? "scale(1)" : "scale(0.85)",
-          transformOrigin: "0 0",
-          transition: compactTransition,
-        }}
-        data-drag-ghost-chip
-        data-drag-ghost-mode={ghostPresentation}
-        data-drag-ghost-target={compactTargetId}
-        data-drag-ghost-workspace={compactWorkspaceId}
-        aria-hidden
-      >
-        {theme.ghostChip != null
-          ? theme.ghostChip(chipCtx)
-          : <DefaultGhostChip leafId={chipCtx.leafId} title={chipCtx.title} />}
-      </div>
-      </>
-    </OverlayPortal>
-  );
-}
-
-function DefaultGhostChip({
-  leafId,
-  title,
-}: {
-  leafId: string;
-  title?: string;
-}): React.ReactElement {
-  return (
-    <div className="truncate rounded-md border border-neutral-400/30 bg-neutral-900/90 px-2 py-1 text-xs text-neutral-100 shadow-md">
-      {title ?? leafId}
-    </div>
-  );
-}
 
 /**
  * Tracks `(prefers-reduced-motion: reduce)`. The custom drag cursor reads this
@@ -2454,59 +1732,45 @@ function DragCursorGlyph({
 
 /**
  * The custom-rendered drag cursor (interaction tier "c"). A single
- * `position: fixed`, `pointer-events-none` sibling of the ghost overlay that
- * REPLACES the OS cursor during an active live drag (the renderer sets
- * `cursor: none` on the root). It is transform-pinned to the pointer using the
- * SAME `dragVisualState` the ghost reads — derived in the renderer's coalesced
- * rAF/render path — so it updates in the identical React commit as the ghost and
- * never lags the hardware cursor (the pin transform is applied inline per render,
- * with NO transition and NO second rAF loop).
+ * `position: fixed`, `pointer-events-none` element that REPLACES the OS cursor
+ * during an active live drag (the renderer sets `cursor: none` on the root). It
+ * is transform-pinned to the pointer the drag machine last saw — applied inline
+ * per render, with NO transition on the pin and NO second rAF loop.
  *
  * Appearance is driven by `presentation` (from `resolveDragCursorPresentation`):
- * a neutral grip when free-following, a "drop here" target ring on a valid
+ * a neutral grip when no target is found, a "drop here" target ring on a valid
  * edge-insert, an exchange indicator on a valid swap, and a `not-allowed`
  * indicator over a blocked target — SEMANTIC states, never a rotating direction
- * arrow (the found slot already shows direction). The pickup scale/opacity
- * entrance reuses the ghost's `DRAG_HOP_EASING` + `dragHopDurationMs` so the
- * cursor shares the motion language; it is dropped under `prefers-reduced-motion`
- * (static indicator only). The pinned point is clamped to the viewport so the
- * badge stays visible at the edges, mirroring the ghost's off-viewport clamp.
+ * arrow (the drop preview already shows direction). A short scale/opacity
+ * entrance plays once when it appears; it is dropped under
+ * `prefers-reduced-motion` (static indicator only). The pinned point is clamped
+ * to the viewport so the badge stays visible at the edges.
  *
  * Mounts through the overlay portal container (default `document.body`, see
- * `overlayPortalContainer`) at z-index 230 — above the ghost (220) — relative
- * to the container's stacking context. Same containing-block caveat as the
- * ghost: no `transform` / `filter` / `backdrop-filter` / `perspective` /
- * `contain: paint` ancestor. Redirecting the DOM mount does not change the
- * delegation invariant (fiber walk + root/viewport-scoped measurement).
+ * `overlayPortalContainer`) at z-index 230, relative to the container's
+ * stacking context. Containing-block caveat: no `transform` / `filter` /
+ * `backdrop-filter` / `perspective` / `contain: paint` ancestor. Redirecting
+ * the DOM mount does not change the delegation invariant (fiber walk +
+ * root/viewport-scoped measurement).
  */
 function DragCursorOverlay({
-  dragVisualState,
+  pointer,
   presentation,
-  dragHopDurationMs,
-  hopEasing,
   prefersReducedMotion,
 }: {
-  dragVisualState: TilingDragVisualState | null;
+  /** The pointer while a live drag is held (window-client px), else `null`. */
+  pointer: DragMachinePoint | null;
   presentation: DragCursorPresentation;
-  dragHopDurationMs: number;
-  hopEasing: string;
   prefersReducedMotion: boolean;
 }): React.ReactElement | null {
   const theme: TilingTheme = useTilingTheme();
   const dragChrome: TilingThemeDragChromeTokens = resolveDragChrome(theme);
   const [entered, setEntered] = React.useState<boolean>(false);
 
-  // The pickup scale/opacity entrance plays ONCE when the cursor appears. It is
-  // keyed on the STABLE "is a drag active" boolean — NOT on the `dragVisualState`
-  // object, which the renderer re-creates every coalesced frame (per pointer
-  // move). Keying on the object made this effect re-run on every move (and every
-  // cursor-type transition, which is itself a move): the cleanup reset
-  // `entered → false` and the body re-scheduled the rAF `entered → true`, so the
-  // `dragHopDurationMs` transform/opacity transition RE-PLAYED on each frame. The
-  // badge never settled at opacity 1 while moving and re-faded on every
-  // grab→insert→swap→invalid transition — the observed "appears with a lag, same
-  // lag on each transition". Mirrors `DragPaneOverlay`'s `hasVisual`-keyed entrance.
-  const isActive: boolean = dragVisualState != null;
+  // The entrance plays ONCE when the cursor appears: keyed on the STABLE "is a
+  // drag active" boolean, not on the pointer (which changes every move and
+  // would replay it).
+  const isActive: boolean = pointer != null;
   React.useEffect((): (() => void) | void => {
     if (!isActive || prefersReducedMotion) {
       setEntered(isActive);
@@ -2521,20 +1785,16 @@ function DragCursorOverlay({
     };
   }, [isActive, prefersReducedMotion]);
 
-  if (dragVisualState == null) {
+  if (pointer == null) {
     return null;
   }
 
-  const pointerX: number =
-    dragVisualState.activeFootprint.left + dragVisualState.pointerAnchorOffsetX;
-  const pointerY: number =
-    dragVisualState.activeFootprint.top + dragVisualState.pointerAnchorOffsetY;
   const viewportWidth: number =
     typeof window === "undefined" ? 0 : window.innerWidth;
   const viewportHeight: number =
     typeof window === "undefined" ? 0 : window.innerHeight;
   const point: DragCursorPoint = clampCursorPointToViewport(
-    { x: pointerX, y: pointerY },
+    { x: pointer.x, y: pointer.y },
     { left: 0, top: 0, right: viewportWidth, bottom: viewportHeight },
     DRAG_CURSOR_BADGE_SIZE_PX / 2,
   );
@@ -2543,7 +1803,7 @@ function DragCursorOverlay({
   const badgeOpacity: number = entered ? 1 : 0;
   const badgeTransition: string = prefersReducedMotion
     ? "none"
-    : `transform ${dragHopDurationMs}ms ${hopEasing}, opacity ${dragHopDurationMs}ms ${hopEasing}`;
+    : `transform ${DRAG_CURSOR_ENTRANCE_MS}ms ${DRAG_CURSOR_ENTRANCE_EASING}, opacity ${DRAG_CURSOR_ENTRANCE_MS}ms ${DRAG_CURSOR_ENTRANCE_EASING}`;
 
   return (
     <OverlayPortal>
@@ -2572,116 +1832,6 @@ function DragCursorOverlay({
           }}
         >
           <DragCursorGlyph kind={presentation.kind} />
-        </div>
-      </div>
-    </OverlayPortal>
-  );
-}
-
-function DragCancelOverlay({
-  cancelVisualState,
-  isPaneContentVisible,
-  renderTile,
-  cancelPaneOrdinal,
-  ghostCapabilityFlags,
-}: {
-  cancelVisualState: TilingDragCancelVisualState | null;
-  isPaneContentVisible: boolean;
-  /**
-   * The consumer `renderTile`, when supplied: the cancel fly-back paints the
-   * gliding pane THROUGH it (`surface: "drag-cancel"`) so a custom skin keeps
-   * its own chrome for the whole cancel animation; `renderDragPaneShell` stays
-   * the `renderTile == null` built-in fallback — the exact pattern of the
-   * pickup-ghost routing in `DragPaneOverlay`.
-   */
-  renderTile: ((args: TilingRenderTileProps) => React.ReactNode) | undefined;
-  /** 1-based pane ordinal of the cancelled drag's source leaf. */
-  cancelPaneOrdinal: number;
-  /**
-   * The REAL resolved capability display flags for the cancel tileArgs (see
-   * {@link GhostTileCapabilityFlags}); handlers stay inert no-ops.
-   */
-  ghostCapabilityFlags: GhostTileCapabilityFlags;
-}): React.ReactElement | null {
-  const theme: TilingTheme = useTilingTheme();
-  const [isAnimating, setIsAnimating] = React.useState<boolean>(false);
-
-  React.useEffect((): (() => void) | void => {
-    if (cancelVisualState == null) {
-      setIsAnimating(false);
-      return;
-    }
-
-    const frameRequest: number = window.requestAnimationFrame((): void => {
-      setIsAnimating(true);
-    });
-
-    return (): void => {
-      window.cancelAnimationFrame(frameRequest);
-    };
-  }, [cancelVisualState]);
-
-  if (cancelVisualState == null) {
-    return null;
-  }
-
-  // Same overlay-portal invariant as the pickup ghost (`DragPaneOverlay`): the
-  // cancel overlay mounts through the overlay portal container (default
-  // `document.body`, see `overlayPortalContainer`; `position: fixed`), OUTSIDE
-  // both `rootRef` (which scopes `measureReservationRect` / `measureLeafRect`)
-  // and `viewportRef` (which scopes the leaf-motion
-  // `querySelectorAll('[data-hpt-leaf]')`) — so a consumer `renderTile` root
-  // carrying `data-leaf-id` here is never collected by a measurement selector
-  // (no `cc23956`-class regression). Theme context propagates through
-  // `createPortal`. Redirecting the DOM mount does not change the delegation
-  // invariant. Overlay z-index 219 is relative to the container's stacking
-  // context.
-  const cancelTileArgs: TilingRenderTileProps = buildGhostTileArgs(
-    cancelVisualState.snapshot,
-    cancelVisualState.sourceLeafId,
-    cancelPaneOrdinal,
-    cancelVisualState.fromFootprint.width,
-    isPaneContentVisible,
-    "drag-cancel",
-    ghostCapabilityFlags,
-  );
-
-  return (
-    <OverlayPortal>
-      <div
-        className="pointer-events-none fixed left-0 top-0"
-        style={{
-          left: isAnimating
-            ? cancelVisualState.toFootprint.left
-            : cancelVisualState.fromFootprint.left,
-          top: isAnimating
-            ? cancelVisualState.toFootprint.top
-            : cancelVisualState.fromFootprint.top,
-          width: isAnimating
-            ? cancelVisualState.toFootprint.width
-            : cancelVisualState.fromFootprint.width,
-          height: isAnimating
-            ? cancelVisualState.toFootprint.height
-            : cancelVisualState.fromFootprint.height,
-          opacity: isAnimating ? 0.16 : 0.7,
-          transitionProperty: "left, top, width, height, opacity",
-          transitionDuration: `${DRAG_CANCEL_ANIMATION_MS}ms`,
-          transitionTimingFunction: "cubic-bezier(0.16, 1, 0.3, 1)",
-          zIndex: DRAG_CANCEL_OVERLAY_Z_INDEX,
-        }}
-        aria-hidden
-        data-drag-cancel
-      >
-        <div
-          className={cn("h-full w-full", resolveDragChrome(theme).cancelFlyBack)}
-        >
-          {renderTile == null
-            ? renderDragPaneShell(
-                cancelVisualState.snapshot,
-                theme,
-                isPaneContentVisible,
-              )
-            : renderTile(cancelTileArgs)}
         </div>
       </div>
     </OverlayPortal>
@@ -3116,15 +2266,15 @@ function DefaultTilingTile({
         // / eligibility / invalid rings, and the drag-source observability
         // border all supply their own width when active. A backdrop-filter in
         // the surface token creates a containing block for position:fixed
-        // DESCENDANTS only — the drag ghost is portaled to the overlay portal
+        // DESCENDANTS only — the drag cursor is portaled to the overlay portal
         // container (default `document.body`, see `overlayPortalContainer`;
         // not a descendant), so this never reintroduces drift.
         theme.paneShell.surface,
         theme.resolvePaneAccentSurface(tile.accent),
         // Drop-affordance rings. The hover-target / resolved-target highlight
         // (which reused the accent focus color) is intentionally GONE — during a
-        // drag the only focus affordance is the dragged ghost + its seat, and the
-        // destination is shown by the ghost hop-in. Only the rose invalid-drop
+        // drag the only focus affordance is the dragged pane, and the
+        // destination is shown by the drop preview. Only the rose invalid-drop
         // ring remains (the faint dashed eligibility hint was removed in
         // `773dcff`; `resolvePaneDropAffordanceClasses` now emits the
         // invalid-drop ring alone).
@@ -3629,15 +2779,15 @@ function buildDraggingLiveHitLogState(params: {
   dragState: Extract<DragMachineState, { phase: "dragging" }>;
   dropState: TilingDropState | null;
   dragSourceLeafId: string;
-  ghostSeatLeafId: string | null;
+  landingLeafId: string | null;
   leafFootprintsById: ReadonlyMap<string, TilingPaneFootprint>;
   viewportElement: HTMLDivElement | null;
 }): TilingLiveHitLogState {
   const clientX: number =
-    params.dragState.ghostFootprint.left +
+    params.dragState.heldFootprint.left +
     params.dragState.pointerAnchorOffset.x;
   const clientY: number =
-    params.dragState.ghostFootprint.top +
+    params.dragState.heldFootprint.top +
     params.dragState.pointerAnchorOffset.y;
   const viewportRect: DOMRect | undefined =
     params.viewportElement?.getBoundingClientRect();
@@ -3649,9 +2799,9 @@ function buildDraggingLiveHitLogState(params: {
     params.leafFootprintsById.get(params.dragSourceLeafId) ?? null;
   const presentationFields: Pick<
     TilingLiveHitLogState,
-    "ghostSeatLeafId" | "presentationDropAction"
+    "landingLeafId" | "presentationDropAction"
   > = {
-    ghostSeatLeafId: params.ghostSeatLeafId,
+    landingLeafId: params.landingLeafId,
     presentationDropAction: params.dropState?.action ?? null,
   };
 
@@ -4846,8 +3996,8 @@ const TilingRendererComponent = React.forwardRef<
     observabilityColorEnables = TILING_OBSERVABILITY_COLOR_ENABLE_DEFAULTS,
     projectedOverlayBackgroundAlpha = 0.9,
     dragAnimationEnabled = true,
-    dragHopEasing,
-    ghostTransitSpeedPercent = DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
+    dragPreview = "indicator",
+    dragPreviewMakesRoom = false,
     survivorReflowSpeedPercent = DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
     chromeFocusOutline = "suppress",
     showDropBorderHints = true,
@@ -4859,7 +4009,6 @@ const TilingRendererComponent = React.forwardRef<
     onDropIntentChange,
     onLiveHitLogChange,
     overlayPortalContainer,
-    dragGhostMode = "footprint",
     externalDragHover: externalDragHoverProp = null,
     onExternalDrop,
     resolveExternalDragHover,
@@ -4889,15 +4038,11 @@ const TilingRendererComponent = React.forwardRef<
   onLayoutChangeRef.current = onLayoutChange;
   const onPaneCollapsedChangeRef = React.useRef(onPaneCollapsedChange);
   onPaneCollapsedChangeRef.current = onPaneCollapsedChange;
-  // Engine-resolved external hover (`resolveExternalDragHover`): state for the
-  // render (ghost mode / chip), a ref for the synchronous release-time claim.
-  // A host-supplied `externalDragHover` prop takes precedence over it.
-  const [resolvedExternalDragHover, setResolvedExternalDragHover] =
-    React.useState<TilingExternalDragHover | null>(null);
+  // Engine-resolved external hover (`resolveExternalDragHover`): a ref for the
+  // synchronous release-time claim. A host-supplied `externalDragHover` prop
+  // takes precedence over it.
   const resolvedExternalDragHoverRef =
     React.useRef<TilingExternalDragHover | null>(null);
-  const externalDragHover: TilingExternalDragHover | null =
-    externalDragHoverProp ?? resolvedExternalDragHover;
   const externalDragHoverPropRef = React.useRef<TilingExternalDragHover | null>(
     externalDragHoverProp ?? null,
   );
@@ -4916,7 +4061,7 @@ const TilingRendererComponent = React.forwardRef<
   onExternalDropRef.current = onExternalDrop;
   /**
    * Run the host resolver for `point` (no-op without one) and publish the
-   * result: ref synchronously (release-time claim), state for the render,
+   * result: ref synchronously (release-time claim), and
    * `onExternalDragHoverChange` only when the target IDENTITY changes.
    */
   const applyResolvedExternalDragHover = React.useCallback(
@@ -4931,7 +4076,6 @@ const TilingRendererComponent = React.forwardRef<
       const previous: TilingExternalDragHover | null =
         resolvedExternalDragHoverRef.current;
       resolvedExternalDragHoverRef.current = next;
-      setResolvedExternalDragHover(next);
       if (!isSameExternalDragTarget(previous, next)) {
         onExternalDragHoverChangeRef.current?.(next);
       }
@@ -5029,23 +4173,11 @@ const TilingRendererComponent = React.forwardRef<
     Math.max(projectedOverlayBackgroundAlpha, 0),
     1,
   );
-  // The ghost transit (hop / pickup / cursor) runs on `ghostTransitSpeedPercent`;
-  // every layout change (open, close, swap, move, maximize, a drag's reflow)
-  // glides on the leaf-motion settle at the tempo `survivorReflowSpeedPercent`
-  // maps to. The master gate collapses the ghost to instant and makes the
-  // leaves snap.
-  const ghostTransitDurationMs: number = dragAnimationEnabled
-    ? resolveDragAnimationDurationMs(ghostTransitSpeedPercent)
-    : INSTANT_DRAG_DURATION_MS;
+  // Every layout change (open, close, swap, move, maximize, a drag's reflow
+  // and drop) glides on the leaf-motion settle at the tempo
+  // `survivorReflowSpeedPercent` maps to; the master gate makes the leaves snap.
   const leafMotionOmega: number = resolveLeafMotionOmega(
     survivorReflowSpeedPercent,
-  );
-  // Consumer-configurable drag easing (HT-ANIM-EASING-CONFIG) for the ghost hop /
-  // pickup / cursor transit. Invalid / empty strings resolve to the
-  // snappy-decel default rather than reaching the compositor broken.
-  const resolvedHopEasing: string = resolveDragEasing(
-    dragHopEasing,
-    DEFAULT_DRAG_HOP_EASING,
   );
   const interactionCapabilities: ResolvedTilingInteractionCapabilities =
     React.useMemo(
@@ -5071,23 +4203,19 @@ const TilingRendererComponent = React.forwardRef<
       isRearrangeEnabled && !rearrangeGatedLeafIds.has(leafId),
     [isRearrangeEnabled, rearrangeGatedLeafIds],
   );
-  // Live drag-mode (Hyprland-style detach-source + frozen tree + cursor-following
-  // ghost + commit-on-release) follows the capability master switch. A static
+  // Live drag-mode (Hyprland-style: the real pane lifted and held under the
+  // pointer + commit-on-release) follows the capability master switch. A static
   // pane can no longer enter live mode for ITSELF (the per-leaf gate refuses its
   // pickup), but flexible panes in the same tree CAN — the per-leaf gate at
   // pickup + target resolution preserves the "no wrong live geometry" invariant.
   const liveDragModeEnabled: boolean =
     isRearrangeEnabled && interactionCapabilities.dragMode === "live";
-  // Drag / transition self-healing recovery knobs. `enable` gates the idle
-  // watchdog (M3) + explicit transient-style teardown (M4) + visibilitychange
-  // reconcile (M5); the rAF-with-timeout animation arming (M1) is always on as a
-  // pure backstop (it cannot alter the happy path). `frameDeadlineMs` feeds M1.
+  // Drag self-healing recovery knobs. `enable` gates the idle watchdog (M3) +
+  // explicit transient-style teardown (M4) + visibilitychange reconcile (M5).
   const isDragRecoveryEnabled: boolean =
     interactionCapabilities.dragRecovery.enable;
   const dragRecoveryMaxIdleMs: number =
     interactionCapabilities.dragRecovery.maxDraggingIdleMs;
-  const dragRecoveryFrameDeadlineMs: number =
-    interactionCapabilities.dragRecovery.frameDeadlineMs;
   const isFocusSelectionEnabled: boolean = interactionCapabilities.focus;
   const isMaximizeEnabled: boolean = interactionCapabilities.maximize.enable;
   const isTitleBarSizingEnabled: boolean =
@@ -5109,8 +4237,7 @@ const TilingRendererComponent = React.forwardRef<
   // Single source of truth for pane-content visibility. When the toggle control
   // is suppressed (`showContentToggle === false`), the embedding owns content
   // and there is no control to flip it, so content is treated as visible by
-  // default — seated tiles AND the drag ghost share this one flag, so the ghost
-  // body matches the in-tree body. When the toggle is shown, the legacy default
+  // default for every pane, the dragged one included. When the toggle is shown, the legacy default
   // (content off until the checkbox is flipped) is preserved.
   const [isPaneContentVisible, setIsPaneContentVisible] =
     React.useState<boolean>(
@@ -5142,28 +4269,6 @@ const TilingRendererComponent = React.forwardRef<
     isMaximizeEnabled &&
     interactionCapabilities.paneSwitching.tabDoubleClickMaximize;
   const keymap: ResolvedTilingKeymap = interactionCapabilities.keymap;
-  // The REAL capability display flags the drag overlays (pickup ghost + cancel
-  // fly-back) carry on their tileArgs, mirroring the in-tree pane so
-  // capability-keyed chrome does not vanish mid-drag (handlers stay inert
-  // no-ops inside `buildGhostTileArgs`).
-  const ghostCapabilityFlags: GhostTileCapabilityFlags = React.useMemo(
-    (): GhostTileCapabilityFlags => ({
-      isRearrangeEnabled,
-      isMaximizeEnabled,
-      isTitleBarSizingEnabled,
-      isTitleBarAcquireSpaceEnabled,
-      isCollapseEnabled,
-      isMultiSelectGroupingEnabled,
-    }),
-    [
-      isRearrangeEnabled,
-      isMaximizeEnabled,
-      isTitleBarSizingEnabled,
-      isTitleBarAcquireSpaceEnabled,
-      isCollapseEnabled,
-      isMultiSelectGroupingEnabled,
-    ],
-  );
   // Any divider resize is enabled unless the resize capability is `"none"`; the
   // per-axis filter (`isResizeAxisEnabled`) still applies to a SPECIFIC split at
   // execution time, so this gate only short-circuits a wholly-disabled resize.
@@ -5263,7 +4368,7 @@ const TilingRendererComponent = React.forwardRef<
     [],
   );
   // DOM-geometry host port. Reads through the stable `rootRef` / `viewportRef` /
-  // `groupTabStripRefs`, so the pointer-target resolution + ghost-seat clamp run
+  // `groupTabStripRefs`, so the pointer-target resolution runs
   // against a single injectable measurement seam (unit-testable with synthetic
   // rects) rather than scattered inline `getBoundingClientRect()` reads.
   const measurementPort: MeasurementPort = React.useMemo(
@@ -5276,7 +4381,6 @@ const TilingRendererComponent = React.forwardRef<
       }),
     [rootRef, viewportRef, groupTabStripRefs, groupDropTargetElementsRef],
   );
-  const clearCancelVisualTimeoutRef = React.useRef<number | null>(null);
   const [viewportSize, setViewportSize] = React.useState<{
     width: number;
     height: number;
@@ -5369,10 +4473,31 @@ const TilingRendererComponent = React.forwardRef<
   // Latest FSM state mirrored to a ref so the window-level pointer listeners read
   // the current phase synchronously without re-subscribing on every move.
   const dragStateRef = React.useRef<DragMachineState>(dragState);
-  // The ghost snapshot is captured once on pickup (the source content rides the
-  // cursor); held in a ref so the cancel fly-back can read it after the FSM has
-  // already advanced past `dragging`.
-  const dragSnapshotRef = React.useRef<TilingDragPaneSnapshot | null>(null);
+  // The drop preview, read by the pointer listeners between renders.
+  const dragPreviewRef = React.useRef<TilingDragPreview>(dragPreview);
+  dragPreviewRef.current = dragPreview;
+  // Snap preview: the drop the lifted pane is snapped into and its landing slot
+  // (viewport px), or `null` while the pane follows the pointer. A ref for the
+  // pointer listeners (enter / leave hysteresis, the target the resolver
+  // keeps while the pointer stays in the slot) and state for the render (the
+  // pane sits in the tree at that slot; the others make room).
+  const snappedRef = React.useRef<{
+    readonly target: TilingDropState;
+    readonly slot: TilingRect;
+  } | null>(null);
+  // The viewport's client origin: viewport px = client px minus this.
+  const viewportClientOrigin = (): DragMachinePoint => {
+    const rect: DOMRect | null =
+      viewportRef.current?.getBoundingClientRect() ?? null;
+    return { x: rect?.left ?? 0, y: rect?.top ?? 0 };
+  };
+  const [snappedTarget, setSnappedTarget] =
+    React.useState<TilingDropState | null>(null);
+  // The pane being dragged, raised above every other pane (and the drop
+  // indicator) from the lift until its drop settle ends. Keyed by TILE id.
+  const [raisedTileId, setRaisedTileId] = React.useState<string | null>(null);
+  const raisedTileIdRef = React.useRef<string | null>(null);
+  raisedTileIdRef.current = raisedTileId;
   // The pointerId the drag captured on the stable root element, for release on settle.
   const capturedPointerIdRef = React.useRef<number | null>(null);
   // N3 — the last window-client point the drag's input layer saw (press
@@ -5388,13 +4513,6 @@ const TilingRendererComponent = React.forwardRef<
   const [pendingSpringLoadRearm, setPendingSpringLoadRearm] =
     React.useState<TilingSpringLoadRearmRequest | null>(null);
   const pendingSpringLoadRearmRef = React.useRef<TilingSpringLoadRearmRequest | null>(null);
-  const [cancelVisualState, setCancelVisualState] =
-    React.useState<TilingDragCancelVisualState | null>(null);
-  // The measured rect (client coords) of the resolved slot's reservation — the
-  // single ghost hops INTO and FILLS this. `null` while free-following the
-  // cursor (no target) or when the slot is off-screen/degenerate (§10 clamp).
-  const [seatFootprint, setSeatFootprint] =
-    React.useState<TilingPaneFootprint | null>(null);
   // The seat/latch cluster (seat anchor, the single authoritative committable
   // seat, the decaying last-committable-seat fallback, and the synchronously
   // latched release commit) is OWNED by the framework-free drag input driver
@@ -5439,12 +4557,6 @@ const TilingRendererComponent = React.forwardRef<
     presentationDragSourceLeafId(dragState);
   const presentationDropState: TilingDropState | null =
     presentationResolvedTarget(dragState);
-  const dragSettlingOutcome: "commit" | "cancel" | null =
-    dragState.phase === "settling"
-      ? dragState.outcome === "claimed"
-        ? "cancel"
-        : dragState.outcome
-      : null;
   // A drag gesture is materially in flight whenever the FSM is NOT idle
   // (`armed` / `dragging` / `settling`). Drives the `select-none` gate on the
   // tiling root so the browser cannot run its native pointer-drag text
@@ -5881,31 +4993,63 @@ const TilingRendererComponent = React.forwardRef<
     presentationDropState?.zone ?? null;
   const resolvedTargetAction: TilingDropState["action"] | null =
     presentationDropState?.action ?? null;
-  // The candidate-tree leaf that CARRIES the dragged content — the slot the
-  // single ghost reserves + hops into. For `swap` this is the resolved TARGET
-  // leaf (tileIds swap in place, so the dragged content lands there and the
-  // source slot shows the displaced pane); for `edge-insert` it is the source
-  // leaf; `null` (gap-close) → no reservation, ghost free-follows. Reserving /
-  // seating on THIS leaf (not blindly the source leaf) is what keeps a swap
-  // preview single-instance + identical to the commit. See drag-machine.ts.
-  const ghostSeatLeafId: string | null = resolveDragGhostSeatLeafId(
+  // The leaf whose slot the dragged pane lands in for the resolved target (the
+  // target leaf for a swap / group-merge, the source leaf for an edge-insert).
+  const landingLeafId: string | null = resolveDragLandingLeafId(
     presentationSourceLeafId,
     presentationDropState,
   );
-  const liveCandidateDisplayLayout: TilingLayoutNode = React.useMemo(
+  // ── The held drag (live mode) ────────────────────────────────────────────
+  // Past the pickup threshold the REAL pane is lifted out of the layout: the
+  // others close the gap (the tree without it) and the pane is drawn where the
+  // pointer holds it, in a wrapper of its own laid out where it was picked up.
+  // The drop preview decides what else moves:
+  // - "indicator": a drop indicator marks the exact rect the pane will land
+  //   in; with `dragPreviewMakesRoom` the others also make room there (the
+  //   tree with the pane in that slot, its place kept empty).
+  // - "snap": once the pointer is well inside a landing slot the pane itself
+  //   settles into it and the others make room; it stays there until the
+  //   pointer leaves that slot.
+  const isLiveDragging: boolean =
+    liveDragModeEnabled && dragState.phase === "dragging";
+  const dragSourceTileId: string | null =
+    dragSourceLeafId == null
+      ? null
+      : (findLeafById(layout, dragSourceLeafId)?.tileId ?? null);
+  const committableDropState: TilingDropState | null =
+    dropState != null &&
+    dragSourceLeafId != null &&
+    isCommittableTarget(dropState, dragSourceLeafId)
+      ? dropState
+      : null;
+  const isSnapPreview: boolean = dragPreview === "snap";
+  const roomTarget: TilingDropState | null = !isLiveDragging
+    ? null
+    : isSnapPreview
+      ? snappedTarget
+      : dragPreviewMakesRoom
+        ? committableDropState
+        : null;
+  const roomTargetKey: string =
+    roomTarget == null
+      ? ""
+      : `${roomTarget.leafId}|${roomTarget.action}|${roomTarget.finalEdge ?? ""}|${roomTarget.selectedSplitZone ?? ""}|${roomTarget.memberInsertIndex ?? ""}`;
+  const liveDragDisplayLayout: TilingLayoutNode = React.useMemo(
     (): TilingLayoutNode =>
-      deriveCandidateTree(layout, dragSourceLeafId, dropState),
-    // dropState identity changes on every pointer move (ghost), so key on the
-    // load-bearing resolve triple instead — identical resolves are free.
+      roomTarget == null
+        ? resolveLiveDisplayLayout(true, dragSourceLeafId, layout)
+        : deriveCandidateTree(layout, dragSourceLeafId, roomTarget),
+    // `roomTarget` identity changes on every pointer move, so key on what
+    // decides the tree instead — identical resolves are free.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      layout,
-      dragSourceLeafId,
-      resolvedTargetLeafId,
-      resolvedTargetZone,
-      resolvedTargetAction,
-    ],
+    [layout, dragSourceLeafId, roomTargetKey],
   );
+  // The pane is held (drawn in its lifted wrapper) for the whole drag except
+  // while the snap preview has it settled into a slot in the tree.
+  const isPaneHeld: boolean =
+    isLiveDragging &&
+    dragSourceTileId != null &&
+    !(isSnapPreview && snappedTarget != null);
   // On a COMMIT settle the FSM has already left `dragging` (so `dragSourceLeafId`
   // is null), but `onLayoutChange(deriveCandidateTree(...))` has not landed yet.
   // Hold the committed candidate for that frame so the display does NOT briefly
@@ -5944,9 +5088,146 @@ const TilingRendererComponent = React.forwardRef<
       ? removeLeafTile(layout, dragState.sourceLeafId)
       : null;
   const displayLayout: TilingLayoutNode =
-    liveDragModeEnabled && dragSourceLeafId != null
-      ? liveCandidateDisplayLayout
+    isLiveDragging && dragSourceLeafId != null
+      ? liveDragDisplayLayout
       : (settlingCommitCandidate ?? settlingClaimedHold ?? layout);
+  // While the pane is held, a leaf of the display tree that carries it (the
+  // slot the others made room around, or a root leaf with nothing to close
+  // over) is its kept place: painted empty, so the pane shows only once.
+  const heldSlotLeafId: string | null =
+    isPaneHeld && dragSourceTileId != null
+      ? (findLeafByTileId(displayLayout, dragSourceTileId)?.id ?? null)
+      : null;
+  const groupTabStripOptions: ResolvedTilingGroupTabStripOptions =
+    interactionCapabilities.grouping.groupTabStrip;
+  const dragLandingGroupStrip: DragLandingGroupStrip = React.useMemo(
+    (): DragLandingGroupStrip => ({
+      visible: interactionCapabilities.grouping.showGroupTabStrip,
+      heightPx: tabStripRenderedHeight(groupTabStripOptions.height, false),
+      placement: groupTabStripOptions.placement,
+    }),
+    [
+      interactionCapabilities.grouping.showGroupTabStrip,
+      groupTabStripOptions.height,
+      groupTabStripOptions.placement,
+    ],
+  );
+  // Where a drop on `target` lands the dragged pane (viewport px), or `null`.
+  // The indicator, the snap slot and the committed layout all come from the
+  // same candidate tree, so they agree by construction.
+  const resolveDropLandingRect = React.useCallback(
+    (sourceLeafId: string, target: TilingDropState | null): TilingRect | null =>
+      resolveDragLandingRect({
+        layout,
+        sourceLeafId,
+        target,
+        container: viewportSize,
+        config,
+        groupStrip: dragLandingGroupStrip,
+      }),
+    [layout, viewportSize, config, dragLandingGroupStrip],
+  );
+  const resolveDropLandingRectRef = React.useRef(resolveDropLandingRect);
+  resolveDropLandingRectRef.current = resolveDropLandingRect;
+  // Indicator mode: the exact rect the pane would land in now.
+  const dropIndicatorRect: TilingRect | null =
+    isPaneHeld && !isSnapPreview && dragSourceLeafId != null
+      ? resolveDropLandingRect(dragSourceLeafId, committableDropState)
+      : null;
+  // Where the lifted wrapper is laid out (viewport px): the pane's place at
+  // the lift, at its lift size; and the grab offset the pointer holds it by.
+  const liftGeometry: {
+    readonly tileId: string;
+    readonly layoutRect: TilingRect;
+    readonly grab: DragMachinePoint;
+    readonly origin: DragMachinePoint;
+  } | null = React.useMemo(() => {
+    if (!isLiveDragging || dragState.phase !== "dragging" || dragSourceTileId == null) {
+      return null;
+    }
+    const origin: DOMRect | null = viewportRef.current?.getBoundingClientRect() ?? null;
+    const originPoint: DragMachinePoint = {
+      x: origin?.left ?? 0,
+      y: origin?.top ?? 0,
+    };
+    return {
+      tileId: dragSourceTileId,
+      layoutRect: {
+        x: dragState.anchorFootprint.left - originPoint.x,
+        y: dragState.anchorFootprint.top - originPoint.y,
+        width: dragState.anchorFootprint.width,
+        height: dragState.anchorFootprint.height,
+      },
+      grab: dragState.pointerAnchorOffset,
+      origin: originPoint,
+    };
+    // Fixed for one lift: keyed on what identifies it, not on every move.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isLiveDragging,
+    dragSourceTileId,
+    dragState.phase === "dragging" ? dragState.anchorFootprint : null,
+    dragState.phase === "dragging" ? dragState.pointerAnchorOffset : null,
+  ]);
+  const liftGeometryRef = React.useRef(liftGeometry);
+  liftGeometryRef.current = liftGeometry;
+  const isPaneHeldRef = React.useRef<boolean>(isPaneHeld);
+  isPaneHeldRef.current = isPaneHeld;
+  /** Where the pointer holds the lifted pane (viewport px), from a client point. */
+  const heldRectAt = React.useCallback(
+    (client: DragMachinePoint): TilingRect | null => {
+      const lift = liftGeometryRef.current;
+      if (lift == null) {
+        return null;
+      }
+      return {
+        x: client.x - lift.grab.x - lift.origin.x,
+        y: client.y - lift.grab.y - lift.origin.y,
+        width: lift.layoutRect.width,
+        height: lift.layoutRect.height,
+      };
+    },
+    [],
+  );
+  /**
+   * Put the lifted pane where the pointer is: held 1:1 (indicator) or settling
+   * toward it (snap, not snapped). Called from the raw pointer listener, so the
+   * pane follows within the same task as the event, and from the layout sync.
+   */
+  const placeHeldPane = React.useCallback(
+    (client: DragMachinePoint, flush: boolean): void => {
+      const lift = liftGeometryRef.current;
+      const motion: LeafMotion | null = leafMotionRef.current;
+      const rect: TilingRect | null = heldRectAt(client);
+      if (lift == null || motion == null || rect == null || !isPaneHeldRef.current) {
+        return;
+      }
+      if (dragPreviewRef.current === "snap") {
+        motion.target(lift.tileId, rect, lift.layoutRect);
+      } else {
+        motion.hold(lift.tileId, rect, lift.layoutRect);
+      }
+      if (flush) {
+        motion.flush();
+      }
+    },
+    [heldRectAt],
+  );
+  // Raise the dragged pane from the lift; it stays raised until its drop
+  // settle ends (cleared by the leaf motion once the pane rests).
+  React.useLayoutEffect((): void => {
+    if (isLiveDragging && dragSourceTileId != null && raisedTileIdRef.current !== dragSourceTileId) {
+      raisedTileIdRef.current = dragSourceTileId;
+      setRaisedTileId(dragSourceTileId);
+    }
+  }, [isLiveDragging, dragSourceTileId]);
+  // A drag that ends (any outcome) leaves no snap behind.
+  React.useEffect((): void => {
+    if (!isLiveDragging && snappedRef.current != null) {
+      snappedRef.current = null;
+      setSnappedTarget(null);
+    }
+  }, [isLiveDragging]);
   // During a live drag the structural layout containers go `overflow-visible`
   // so reflowing leaves are not clipped by their own slot or an ancestor split.
   // Outside a drag, a glide opens them without a render: the leaf motion sets
@@ -5955,42 +5236,18 @@ const TilingRendererComponent = React.forwardRef<
   // keeps its own `overflow-hidden`, so pane content never spills.
   const isLeafMotionOverflowWindow: boolean =
     liveDragModeEnabled && dragState.phase === "dragging";
-  // The cursor-following ghost is derived from the FSM dragging state + the
-  // pickup snapshot ref (no separate ghost useState to keep in sync).
-  const dragVisualState: TilingDragVisualState | null =
-    React.useMemo((): TilingDragVisualState | null => {
-      if (dragState.phase !== "dragging" || dragSnapshotRef.current == null) {
-        return null;
-      }
-      return {
-        sourceLeafId: dragState.sourceLeafId,
-        sourceFootprint: dragState.anchorFootprint,
-        activeFootprint: dragState.ghostFootprint,
-        seatFootprint,
-        pointerAnchorOffsetX: dragState.pointerAnchorOffset.x,
-        pointerAnchorOffsetY: dragState.pointerAnchorOffset.y,
-        snapshot: dragSnapshotRef.current,
-      };
-    }, [dragState, seatFootprint]);
-  const ghostPresentation: DragGhostPresentation = resolveDragGhostPresentation(
-    dragGhostMode,
-    externalDragHover,
-  );
-  const compactGhostPoint: DragMachinePoint | null =
-    dragVisualState == null
-      ? null
-      : (externalDragHover?.point ?? {
-          x:
-            dragVisualState.activeFootprint.left +
-            dragVisualState.pointerAnchorOffsetX,
-          y:
-            dragVisualState.activeFootprint.top +
-            dragVisualState.pointerAnchorOffsetY,
-        });
+  // The pointer while a live drag holds a pane (window-client px).
+  const dragPointer: DragMachinePoint | null =
+    dragState.phase === "dragging"
+      ? {
+          x: dragState.heldFootprint.left + dragState.pointerAnchorOffset.x,
+          y: dragState.heldFootprint.top + dragState.pointerAnchorOffset.y,
+        }
+      : null;
   // Custom drag cursor (tier "c"): a transform-pinned element that REPLACES the
   // OS cursor during a live drag. Gated on the public-API capability flag + live mode;
-  // the presentation is derived from the SAME FSM-resolved target the ghost /
-  // candidate tree read (no second resolution path), so the cursor's
+  // the presentation is derived from the SAME FSM-resolved target the drop
+  // preview reads (no second resolution path), so the cursor's
   // arrow/validity always agrees with the drop the release would commit.
   const dragCursorEnabled: boolean =
     liveDragModeEnabled && interactionCapabilities.customCursor;
@@ -6004,61 +5261,7 @@ const TilingRendererComponent = React.forwardRef<
     [dragState],
   );
   const isCustomCursorActive: boolean =
-    dragCursorEnabled && dragVisualState != null;
-  // Measure the resolved slot's reservation rect (client coords) so the single
-  // ghost can hop INTO and FILL it. Runs after the candidate-tree DOM mutation
-  // (layout effect, before paint), keyed on the resolve triple + viewport (NOT
-  // per cursor move — the slot rect is stable per resolved target). Off-screen /
-  // degenerate slots clear the seat → the ghost stays free-following (§10).
-  React.useLayoutEffect((): void => {
-    const isPresentationDragging: boolean = isDragPresentationActive(
-      dragState.phase,
-      dragSettlingOutcome,
-    );
-    if (
-      !liveDragModeEnabled ||
-      // `slotHopInEnabled: false` deliberately skips the hop-in: the seat is
-      // never measured, so the ghost free-follows the cursor and the in-tree
-      // content-less reservation slot stays shown (the reservation-plus-ghost
-      // duality). `true` (default) measures the seat so the single ghost hops
-      // INTO and FILLS it as the single instance.
-      !interactionCapabilities.slotHopInEnabled ||
-      !isPresentationDragging ||
-      presentationSourceLeafId == null ||
-      ghostSeatLeafId == null ||
-      resolvedTargetLeafId == null
-    ) {
-      setSeatFootprint(null);
-      return;
-    }
-    // SCOPED to the ghost-seat leaf (`cc23956`): `measureReservationRect` resolves
-    // the `dragSourceReservationSelector` only because the reserved-slot wrapper
-    // emits `data-leaf-id={node.id}` below — without that the descendant selector
-    // can never match a `DragSourceSlotReservation` (which carries no
-    // `data-leaf-id`), which is the `cc23956` regression. The clamp itself
-    // (degenerate / off-screen → null) is the pure `resolveSeatFootprint`.
-    setSeatFootprint(
-      resolveSeatFootprint({
-        reservationRect:
-          measurementPort.measureReservationRect(ghostSeatLeafId),
-        viewportRect: measurementPort.measureViewportRect(),
-      }),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    liveDragModeEnabled,
-    interactionCapabilities.slotHopInEnabled,
-    dragState.phase,
-    dragSettlingOutcome,
-    presentationSourceLeafId,
-    ghostSeatLeafId,
-    resolvedTargetLeafId,
-    resolvedTargetZone,
-    resolvedTargetAction,
-    displayLayout,
-    viewportSize.width,
-    viewportSize.height,
-  ]);
+    dragCursorEnabled && dragPointer != null;
   // Leaf motion lifecycle: one motion per renderer on the shared frame loop
   // (created in the browser only; a server render never gets here).
   leafMotionSnapRef.current = !dragAnimationEnabled;
@@ -6078,6 +5281,15 @@ const TilingRendererComponent = React.forwardRef<
             leafWrappersRef.current.get(frame.id);
           if (wrapper != null) {
             writeLeafMotionFrame(wrapper, frame);
+          }
+          // The dropped pane comes down once its drop settle has ended.
+          if (
+            !frame.moving &&
+            frame.id === raisedTileIdRef.current &&
+            controller.getState().drag.phase === "idle"
+          ) {
+            raisedTileIdRef.current = null;
+            setRaisedTileId(null);
           }
         }
         reportLeafMotionProbe(tick, motion.omega);
@@ -6113,11 +5325,10 @@ const TilingRendererComponent = React.forwardRef<
   // paint) each shown leaf's LAYOUT rect — from offset geometry, so a glide in
   // flight never leaks into it — becomes its target: a known leaf launches from
   // where it is drawn, a new one appears there (popping in when it opened into
-  // an existing layout), a leaf under an active divider drag is held 1:1, the
-  // drag seat (reservation) jumps, and a resized container snaps everything.
-  // `flush()` draws the leaves before this paint, so the new layout never shows
-  // for a frame before the glide starts. The ghost is not a leaf (it is portaled
-  // outside the viewport) and keeps its own hop.
+  // an existing layout), a leaf under an active divider drag is held 1:1, a
+  // lifted pane is held where the pointer is, and a resized container snaps
+  // everything. `flush()` draws the leaves before this paint, so the new
+  // layout never shows for a frame before the glide starts.
   React.useLayoutEffect((): void => {
     const motion: LeafMotion | null = leafMotionRef.current;
     const container: HTMLDivElement | null = viewportRef.current;
@@ -6176,8 +5387,16 @@ const TilingRendererComponent = React.forwardRef<
       }
       seen.add(leafId);
       const known: boolean = motion.has(leafId);
-      if (element.hasAttribute("data-drag-source-reservation-slot")) {
-        motion.jump(leafId, rect);
+      if (element.closest("[data-hpt-lifted]") != null) {
+        // The lifted pane: laid out where it was picked up, drawn where the
+        // pointer holds it (or settling toward it in the snap preview).
+        if (!known) {
+          motion.jump(leafId, rect);
+        }
+        const pointer: DragMachinePoint | null = lastDragClientPointRef.current;
+        if (pointer != null) {
+          placeHeldPane(pointer, false);
+        }
       } else if (held) {
         motion.hold(leafId, rect);
       } else if (!known || firstSync || resized) {
@@ -6193,6 +5412,17 @@ const TilingRendererComponent = React.forwardRef<
     }
     motion.retain(seen);
     motion.flush();
+    // A drop that needed no settle (already in place, or snapping under
+    // reduced motion) brings the raised pane down right away.
+    const raised: string | null = raisedTileIdRef.current;
+    if (
+      raised != null &&
+      controller.getState().drag.phase === "idle" &&
+      motion.frame(raised)?.moving !== true
+    ) {
+      raisedTileIdRef.current = null;
+      setRaisedTileId(null);
+    }
   });
   // Hit-test footprints for pointer-capture target resolution. In live mode the
   // displayed base is the gap-closed tree (source detached), so resolve against
@@ -6354,14 +5584,14 @@ const TilingRendererComponent = React.forwardRef<
         dragState,
         dropState,
         dragSourceLeafId,
-        ghostSeatLeafId,
+        landingLeafId,
         leafFootprintsById,
         viewportElement: viewportRef.current,
       }),
     );
   }, [
     dragSourceLeafId,
-    ghostSeatLeafId,
+    landingLeafId,
     dragState,
     dropState,
     leafFootprintsById,
@@ -8001,72 +7231,6 @@ const TilingRendererComponent = React.forwardRef<
     }
   }, [activeMaximizedLeafId]);
 
-  const beginCancelFlyBackAnimation = React.useCallback(
-    (activeState: TilingDragVisualState): void => {
-      if (clearCancelVisualTimeoutRef.current != null) {
-        window.clearTimeout(clearCancelVisualTimeoutRef.current);
-        clearCancelVisualTimeoutRef.current = null;
-      }
-
-      // Hidden-tab guard: when the page is not visible (a BLUR / VISIBILITY_HIDDEN
-      // interrupt) skip the fly-back entirely. Background tabs throttle timers, so
-      // the clearing `setTimeout` could fire arbitrarily late and the fly-back
-      // ghost would be left HANGING on the screen when the user returns. With no
-      // overlay set there is nothing to strand — the layout already reverted.
-      if (typeof document !== "undefined" && document.hidden) {
-        setCancelVisualState(null);
-        return;
-      }
-
-      setCancelVisualState({
-        sourceLeafId: activeState.sourceLeafId,
-        fromFootprint: activeState.activeFootprint,
-        toFootprint: activeState.sourceFootprint,
-        snapshot: activeState.snapshot,
-      });
-
-      clearCancelVisualTimeoutRef.current = window.setTimeout((): void => {
-        setCancelVisualState(null);
-        clearCancelVisualTimeoutRef.current = null;
-      }, DRAG_CANCEL_ANIMATION_MS + 40);
-    },
-    [],
-  );
-
-  React.useEffect((): (() => void) => {
-    return (): void => {
-      if (clearCancelVisualTimeoutRef.current != null) {
-        window.clearTimeout(clearCancelVisualTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Backstop: clear any lingering cancel fly-back ghost when the page becomes
-  // visible / regains focus. If a cancel overlay was set in the same tick the
-  // tab was hidden (its clearing timer then throttled in the background), this
-  // guarantees no hanging ghost survives the return to the foreground.
-  React.useEffect((): (() => void) | void => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const clearStaleCancelVisual = (): void => {
-      if (typeof document !== "undefined" && document.hidden) {
-        return;
-      }
-      if (clearCancelVisualTimeoutRef.current != null) {
-        window.clearTimeout(clearCancelVisualTimeoutRef.current);
-        clearCancelVisualTimeoutRef.current = null;
-      }
-      setCancelVisualState(null);
-    };
-    document.addEventListener("visibilitychange", clearStaleCancelVisual);
-    window.addEventListener("focus", clearStaleCancelVisual);
-    return (): void => {
-      document.removeEventListener("visibilitychange", clearStaleCancelVisual);
-      window.removeEventListener("focus", clearStaleCancelVisual);
-    };
-  }, []);
-
   // Pointer-capture target resolution. With `setPointerCapture`, pointer events
   // route to the captured root regardless of what element is under the cursor —
   // so we hit-test the pointer against STABLE viewport-local footprints (the
@@ -8137,13 +7301,26 @@ const TilingRendererComponent = React.forwardRef<
       clientY: number,
       sourceLeafId: string,
       previousTarget: TilingDropState | null,
-    ): TilingDropState | null =>
-      resolvePointerTargetRef.current(
+    ): TilingDropState | null => {
+      // Snap preview: while the pointer stays in the slot the pane is snapped
+      // into, that drop is the target, whatever lies under the pointer in the
+      // tree the others closed over.
+      const snapped = snappedRef.current;
+      if (snapped != null) {
+        const origin: DragMachinePoint = viewportClientOrigin();
+        if (
+          isInsideRect(snapped.slot, clientX - origin.x, clientY - origin.y, 0)
+        ) {
+          return snapped.target;
+        }
+      }
+      return resolvePointerTargetRef.current(
         clientX,
         clientY,
         sourceLeafId,
         previousTarget,
-      ),
+      );
+    },
     capturePointer: (pointerId: number): void => {
       // Mirror the captured-id bookkeeping only when the (best-effort) root
       // capture actually ran — the port swallows a thrown/absent capture.
@@ -8192,6 +7369,50 @@ const TilingRendererComponent = React.forwardRef<
     // would still be `armed` (or hold a stale target) and POINTER_UP would
     // settle as a click/cancel, reverting the pane to its origin.
 
+    // Snap preview hysteresis, after each processed sample: the pane snaps
+    // into the resolved drop's landing slot once the pointer is well inside it
+    // (min(24 px, a quarter of its smaller side)) and stays until the pointer
+    // leaves that slot; the others make room meanwhile (the render reads
+    // `snappedTarget`).
+    const updateSnap = (client: DragMachinePoint): void => {
+      const current = snappedRef.current;
+      const live: DragMachineState = controller.getState().drag;
+      if (dragPreviewRef.current !== "snap" || live.phase !== "dragging") {
+        if (current != null) {
+          snappedRef.current = null;
+          setSnappedTarget(null);
+        }
+        return;
+      }
+      const origin: DragMachinePoint = viewportClientOrigin();
+      const x: number = client.x - origin.x;
+      const y: number = client.y - origin.y;
+      let next = current != null && isInsideRect(current.slot, x, y, 0) ? current : null;
+      if (next == null && live.leftHome) {
+        const target: TilingDropState | null = live.resolvedTarget;
+        const slot: TilingRect | null = resolveDropLandingRectRef.current(
+          live.sourceLeafId,
+          target,
+        );
+        if (
+          target != null &&
+          slot != null &&
+          isInsideRect(
+            slot,
+            x,
+            y,
+            Math.min(DRAG_SNAP_INSET_PX, Math.min(slot.width, slot.height) / 4),
+          )
+        ) {
+          next = { target, slot };
+        }
+      }
+      if (next !== current) {
+        snappedRef.current = next;
+        setSnappedTarget(next?.target ?? null);
+      }
+    };
+
     // rAF coalescer: raw `pointermove` coords are buffered and processed at most
     // once per frame (latest wins), decoupling the input frame from the render
     // frame so multiple moves cannot trigger multiple target-resolution +
@@ -8201,6 +7422,7 @@ const TilingRendererComponent = React.forwardRef<
       createFrameCoalescer<DragMachinePoint>(
         (payload: DragMachinePoint): void => {
           inputDriver.processPointerSample(payload);
+          updateSnap(payload);
           const phase: DragMachineState = dragStateRef.current;
           applyResolvedExternalDragHover(
             payload,
@@ -8237,8 +7459,8 @@ const TilingRendererComponent = React.forwardRef<
         }
         // Held finger satisfied the long-press → take capture on the stable root
         // (the finger is still down), promote to dragging, and resolve the first
-        // target at the held position (over the source pane → null; the ghost
-        // free-follows until the finger moves onto another pane).
+        // target at the held position (over the source pane → null; the pane
+        // is held under the finger until it moves onto another pane).
         if (pointerCapturePort.capture(owningPointerId)) {
           capturedPointerIdRef.current = owningPointerId;
         }
@@ -8267,6 +7489,9 @@ const TilingRendererComponent = React.forwardRef<
       // stops. Cheap no-op before the watchdog effect has armed (ref null).
       watchdogRef.current?.progress();
       lastDragClientPointRef.current = { x: event.clientX, y: event.clientY };
+      // The lifted pane follows the pointer in the same task as the event
+      // (held 1:1, drawn before the next paint), not on the coalesced frame.
+      placeHeldPane({ x: event.clientX, y: event.clientY }, true);
       coalescer.schedule({ x: event.clientX, y: event.clientY });
     };
     const handlePointerUp = (event: PointerEvent): void => {
@@ -8313,8 +7538,8 @@ const TilingRendererComponent = React.forwardRef<
         );
       }
       // §5.5 claim-before-settle: if the host has an external hover AND a
-      // claim callback, fire it synchronously then settle `claimed` so
-      // `DragCancelOverlay` never mounts. Absent callback → existing cancel.
+      // claim callback, fire it synchronously then settle `claimed` (the pane
+      // leaves this tree; nothing settles home). Absent callback → existing cancel.
       const claimState: DragMachineState = dragStateRef.current;
       applyResolvedExternalDragHover(
         { x: event.clientX, y: event.clientY },
@@ -8432,6 +7657,7 @@ const TilingRendererComponent = React.forwardRef<
     activeDragPointerId,
     applyResolvedExternalDragHover,
     onLiveHitLogChange,
+    placeHeldPane,
     resolvePointerTarget,
   ]);
 
@@ -8440,8 +7666,8 @@ const TilingRendererComponent = React.forwardRef<
   // FSM to `idle`. Commit applies the SAME reducer with the SAME args as the last
   // candidate derivation (no release-time jump). Cancel never calls
   // `onLayoutChange`, so `displayLayout` falls straight back to the untouched
-  // prop `layout` — the dragged pane is restored to its EXACT original position —
-  // and the ghost flies back to its origin.
+  // prop `layout` — the dragged pane is restored to its EXACT original position
+  // and settles back there from where it is drawn.
   React.useEffect((): void => {
     if (dragState.phase !== "settling") {
       return;
@@ -8469,13 +7695,13 @@ const TilingRendererComponent = React.forwardRef<
           )
         : null;
     // Commit-time tree verification: a corrupt candidate (duplicated/orphaned
-    // leaf, NaN ratio, missing split child) is REFUSED — the drag falls through
-    // to the cancel fly-back instead of persisting a broken layout. Structurally
-    // sound candidates commit through the SAME reducer args as the last preview
-    // frame (no release-time jump).
+    // leaf, NaN ratio, missing split child) is REFUSED — the drag falls back to
+    // the untouched layout instead of persisting a broken one. Structurally
+    // sound candidates commit through the SAME reducer args as the drop
+    // preview (no release-time jump).
     // Refuse gap-closed / missing-tile candidates: deriveCandidateTree may
     // return removeLeafTile for non-committable targets, which is structurally
-    // valid but drops a host tile. Prefer cancel fly-back over persisting a void.
+    // valid but drops a host tile.
     const expectedTileIds: ReadonlyArray<string> = expectedTileIdsRef.current;
     const coversHostTiles: boolean =
       committedTree != null &&
@@ -8499,8 +7725,7 @@ const TilingRendererComponent = React.forwardRef<
       // Focus follows the dragged pane through the drop: focus the leaf the
       // dragged content now occupies (the resolved target for a swap, the source
       // leaf for an edge-insert / group-merge). The dragged pane therefore ends
-      // the gesture as the focused pane — the natural continuation of the ghost
-      // having carried the focus frame during the drag.
+      // the gesture as the focused pane.
       const committedFocusLeafId: string | null = resolveDragCommitFocusLeafId(
         dragState.sourceLeafId,
         dragState.resolvedTarget,
@@ -8508,34 +7733,25 @@ const TilingRendererComponent = React.forwardRef<
       if (committedFocusLeafId != null) {
         setFocusedLeaf(committedFocusLeafId);
       }
-    } else if (dragState.outcome === "claimed") {
-      // Host claimed synchronously via `onExternalDrop`; skip the fly-back.
-    } else if (dragSnapshotRef.current != null) {
-      beginCancelFlyBackAnimation({
-        sourceLeafId: dragState.sourceLeafId,
-        sourceFootprint: dragState.toFootprint,
-        activeFootprint: dragState.fromFootprint,
-        seatFootprint: null,
-        pointerAnchorOffsetX: 0,
-        pointerAnchorOffsetY: 0,
-        snapshot: dragSnapshotRef.current,
-      });
     }
-    dragSnapshotRef.current = null;
+    // A cancel (Escape, pointercancel, a release that never left home, a
+    // refused candidate) commits nothing: the display falls back to the
+    // untouched `layout`, the layout as it was at the lift, and every pane —
+    // the dropped one included — settles back from where it is drawn. A host
+    // claim (`onExternalDrop`) took the pane off this tree.
+    snappedRef.current = null;
+    setSnappedTarget(null);
     // Reset the seat/latch cluster (seat anchor, committable seat, decaying
     // fallback, latched release commit) so the next drag starts clean.
     inputDriver.reset();
-    setSeatFootprint(null);
     onLiveHitLogChange?.(null);
     if (resolvedExternalDragHoverRef.current != null) {
       resolvedExternalDragHoverRef.current = null;
-      setResolvedExternalDragHover(null);
       onExternalDragHoverChangeRef.current?.(null);
     }
     dispatchDrag({ type: "SETTLE_DONE" });
   }, [
     armLayoutIdleSettle,
-    beginCancelFlyBackAnimation,
     dragState,
     layout,
     commitLayoutChange,
@@ -8547,13 +7763,13 @@ const TilingRendererComponent = React.forwardRef<
   // queued; acts once (i) the drag machine is `idle` again (the claimed
   // settle above has run its teardown and `SETTLE_DONE`, so nothing of the
   // old tree's drag survives — `canRearmDrag`) and (ii) the destination
-  // workspace's tree is the one rendered. Measures the leaf's NEW seat,
-  // rebuilds the ghost snapshot from its tile, dispatches `REARM`, then runs
+  // workspace's tree is the one rendered. Measures the leaf's NEW seat
+  // (where it is drawn), dispatches `REARM`, then runs
   // the same pickup tail a threshold / long-press promotion runs (root
   // pointer capture + `captureInitialTarget`), so the input layer
   // re-subscribes on the held pointer and the first target / external hover
   // of the NEW tree resolve at the parked point. A layout effect so the
-  // ghost is back before the browser paints the destination tree.
+  // pane is lifted again before the browser paints the destination tree.
   //
   // Drop (never queue) the rearm when the host rendered a THIRD workspace or
   // a destination tree without the leaf (it rewrote the set): pointer capture
@@ -8606,15 +7822,9 @@ const TilingRendererComponent = React.forwardRef<
       dropRearm();
       return;
     }
-    const seatRect: DOMRect = seatElement.getBoundingClientRect();
-    const tile: TilingTile | undefined = resolveTile(tiles, leaf.tileId);
-    dragSnapshotRef.current = buildDragPaneSnapshot(
-      tile ?? {
-        id: `missing-${leaf.tileId}`,
-        title: `missing tile ${leaf.tileId}`,
-        accent: "pink",
-      },
-    );
+    // Where the pane is drawn (mid-glide its box is translated), else its box.
+    const seatRect: TilingClientRectLike =
+      drawnClientRectOf(leaf.tileId) ?? seatElement.getBoundingClientRect();
     if (pointerCapturePort.capture(request.pointerId)) {
       capturedPointerIdRef.current = request.pointerId;
     }
@@ -8641,8 +7851,8 @@ const TilingRendererComponent = React.forwardRef<
     dragState,
     layout,
     paneWorkspaceId,
-    tiles,
     dispatchDrag,
+    drawnClientRectOf,
     inputDriver,
     pointerCapturePort,
   ]);
@@ -8682,7 +7892,7 @@ const TilingRendererComponent = React.forwardRef<
   // in flight (`armed` / `dragging`) — the host swapped the tree under the
   // drag (a workspace switch in set mode, an external removal). The live
   // candidate is derived from `layout` + `sourceLeafId`, so carrying on would
-  // paint a ghost for a leaf that no longer exists; cancel through the
+  // hold a leaf that no longer exists; cancel through the
   // existing `POINTER_CANCEL` edge instead (`_agent/workspace-set-concept.md`
   // §5.3: drag state is cleared on switch). A claimed / committed settle is
   // untouched: the host's synchronous removal lands while the FSM is already
@@ -8985,6 +8195,9 @@ const TilingRendererComponent = React.forwardRef<
       containerWidthPx: number,
       containerHeightPx: number,
       pinPermission: LeafPinPermission = DEFAULT_LEAF_PIN_PERMISSION,
+      // The lifted pane itself (rendered outside the tree): never its own
+      // held-slot reservation.
+      isLiftedPane: boolean = false,
     ): React.ReactElement => {
       if (node.kind === "leaf") {
         const tile: TilingTile | undefined = resolveTile(tiles, node.tileId);
@@ -9002,16 +8215,15 @@ const TilingRendererComponent = React.forwardRef<
             ? moveModeState.placement
             : null;
         // Drag presentation is CONTENT-AGNOSTIC: the resolver decides the
-        // ghost-seat reservation + role flags purely from drag mechanics, with
-        // no reference to the CONTENT toggle. Live mode: ghost-seat slot = the
-        // content-less hop-in reservation the single ghost fills.
+        // held-slot reservation + role flags purely from drag mechanics, with
+        // no reference to the CONTENT toggle. Live mode: the held slot is the
+        // empty place kept for the pane the pointer holds elsewhere.
         const leafPresentation = resolveDragPresentation({
           liveDragModeEnabled,
           dragPhase: dragState.phase,
-          settlingOutcome: dragSettlingOutcome,
           leafId: node.id,
           pickupOriginLeafId: presentationSourceLeafId,
-          ghostSeatLeafId,
+          heldSlotLeafId: isLiftedPane ? null : heldSlotLeafId,
           dropAction:
             dropState?.leafId === node.id ? (dropState.action ?? null) : null,
           dropZone:
@@ -9021,19 +8233,23 @@ const TilingRendererComponent = React.forwardRef<
               ? (dropState.dominantEdge ?? null)
               : null,
         });
+        // Live mode: the pane being dragged (held, or snapped into a slot).
+        // Preview mode: the picked-up pane, still in its own slot.
         const isDragSourceSlot: boolean = liveDragModeEnabled
-          ? leafPresentation.isGhostSeatLeaf
+          ? dragState.phase === "dragging" &&
+            node.tileId === dragSourceTileId &&
+            !leafPresentation.isHeldSlotLeaf
           : leafPresentation.isPickupOriginLeaf &&
             dragState.phase === "dragging";
         const isMaximizedLeaf: boolean = activeMaximizedLeafId === node.id;
-        // The uniform pane-body rule: a ghost-seat reservation is a content-less
-        // seat (drag mechanic); every other slot honors the CONTENT toggle
+        // The uniform pane-body rule: a held-slot reservation is a content-less
+        // place (drag mechanic); every other slot honors the CONTENT toggle
         // identically to a resting pane. Maximizing a collapsed leaf suspends
         // the collapse-empty gate (HT-PANE-COLLAPSE + maximize) so it shows full
         // content instead of a titlebar strip in a full-screen void.
         const paneBodyRenderMode: TilingPaneBodyRenderMode =
           resolvePaneBodyRenderMode(
-            leafPresentation.isGhostSeatReservation,
+            leafPresentation.isHeldSlotReservation,
             isPaneContentVisible,
             node.collapsed === true,
             isMaximizedLeaf,
@@ -9047,7 +8263,6 @@ const TilingRendererComponent = React.forwardRef<
           leafPresentation.dropChromeZone;
 
         const tileArgs: TilingRenderTileProps = {
-          surface: "pane",
           leafId: node.id,
           tile: tileForDisplay,
           paneOrdinal: Math.max(1, leafIds.indexOf(node.id) + 1),
@@ -9194,7 +8409,6 @@ const TilingRendererComponent = React.forwardRef<
             // establishes a single focus — both supersede the multi-selection.
             clearMultiSelection();
             setFocusedLeaf(node.id);
-            setCancelVisualState(null);
             onLiveHitLogChange?.(null);
             const sourcePaneElement: HTMLElement =
               event.currentTarget.closest("article[data-leaf-id]") ??
@@ -9205,7 +8419,6 @@ const TilingRendererComponent = React.forwardRef<
             const sourcePaneRect: TilingClientRectLike =
               drawnClientRectOf(node.tileId) ??
               sourcePaneElement.getBoundingClientRect();
-            dragSnapshotRef.current = buildDragPaneSnapshot(tileForDisplay);
             lastDragClientPointRef.current = { x: event.clientX, y: event.clientY };
             dispatchDrag({
               type: "POINTER_DOWN",
@@ -9323,31 +8536,39 @@ const TilingRendererComponent = React.forwardRef<
             : "w-full min-w-0";
         const showMoveAffordance: boolean =
           isMoveSource || moveTargetPlacement != null;
-        // Single-instance gate: when the picked-up source leaf appears in the
-        // live candidate tree (target resolved → it sits in the destination
-        // slot), paint that slot as a content-less RESERVATION — the slot still
-        // reflows open (survivors make room) but the single ghost
-        // (`DragPaneOverlay`) HOPS INTO and FILLS it, so the slot is never an
-        // empty hole and the source is never painted twice. Renderer-agnostic on
-        // purpose: it overrides any custom `renderTile` too, so no consumer
-        // re-introduces the in-slot source copy.
+        // Single-instance gate: while the pointer holds the dragged pane
+        // elsewhere, a leaf of the tree carrying it is only its kept place — an
+        // empty, unpainted slot the others made room around. Renderer-agnostic
+        // on purpose: it overrides any custom `renderTile` too, so the pane is
+        // never painted twice.
         const renderReservedDragSlot: boolean =
           tileArgs.paneBodyRenderMode === "render-reservation";
         // Whole-pane drag dimming (preview drag mode: the picked-up source stays
         // in its slot) + the optional drop-target highlight are applied HERE, on
         // the leaf wrapper, so they cover a custom `renderTile` and the default
         // tile identically — one opacity over title AND content, never a
-        // per-part dim. A reservation slot is content-less and never dimmed.
+        // per-part dim. The live drag never dims: the pane is lifted.
         const isDimmedDragSource: boolean =
-          isDragSourceSlot && !renderReservedDragSlot;
+          !liveDragModeEnabled && isDragSourceSlot && !renderReservedDragSlot;
+        // The dragged pane stays above every other pane (and the drop
+        // indicator), with the theme's lifted look, from the lift until its
+        // drop settle ends.
+        const isRaisedPane: boolean =
+          !renderReservedDragSlot && node.tileId === raisedTileId;
+        if (isRaisedPane) {
+          leafWrapperStyle.zIndex = RAISED_PANE_Z_INDEX;
+        }
         // Stable pane identity: the pane is rendered ONCE in the tile-keyed pool
         // (see `StablePanePool`) and its DOM node relocates into this wrapper,
-        // which registers itself as the tile's slot. A reserved (seat) slot
-        // registers nothing, so the picked-up pane parks in the pool while the
-        // ghost paints it. The entry is collected for the pool render pass that
-        // follows the tree pass.
+        // which registers itself as the tile's slot. A held-slot reservation
+        // registers nothing (the lifted wrapper does). The entry is collected
+        // for the pool render pass that follows the tree pass.
         const isStablePaneSlot: boolean = paneIdentityMode === "stable";
-        if (isStablePaneSlot && !stablePaneEntriesRef.current.has(node.tileId)) {
+        if (
+          isStablePaneSlot &&
+          !renderReservedDragSlot &&
+          !stablePaneEntriesRef.current.has(node.tileId)
+        ) {
           stablePaneEntriesRef.current.set(node.tileId, {
             tileId: node.tileId,
             tileArgs,
@@ -9358,6 +8579,22 @@ const TilingRendererComponent = React.forwardRef<
           isStablePaneSlot && !renderReservedDragSlot
             ? registerStablePaneSlot(node.tileId)
             : undefined;
+        if (renderReservedDragSlot) {
+          // Not a pane: no `data-hpt-leaf` (the lifted wrapper is the pane's
+          // one wrapper), no stable slot, nothing painted.
+          return (
+            <div
+              className={cn(leafHeightClass, leafWidthClass)}
+              style={leafWrapperStyle}
+              data-drag-held-slot-leaf={node.id}
+            >
+              <HeldSlotReservation
+                observabilityColors={observabilityColors}
+                observabilityColorEnables={observabilityColorEnables}
+              />
+            </div>
+          );
+        }
         return (
           <div
             ref={registerSlot}
@@ -9368,28 +8605,15 @@ const TilingRendererComponent = React.forwardRef<
                 : LEAF_MOTION_OVERFLOW_CLASS,
               leafHeightClass,
               leafWidthClass,
-              showMoveAffordance ? "relative" : "",
+              showMoveAffordance || isRaisedPane ? "relative" : "",
               isDimmedDragSource ? dragChrome.sourcePane : "",
               isDropTargetLeaf ? dragChrome.dropTarget : "",
+              isRaisedPane ? dragChrome.liftedPane : "",
             )}
             style={leafWrapperStyle}
             {...(isDimmedDragSource ? { "data-drag-source-pane": "" } : {})}
             {...(isDropTargetLeaf ? { "data-drop-target-pane": "" } : {})}
-            // A reserved slot renders `DragSourceSlotReservation` (which carries
-            // `data-drag-source-reservation` but no `data-leaf-id`) INSTEAD of
-            // `DefaultTilingTile` (the sole `data-leaf-id` emitter), so the seat
-            // measurement's SCOPED selector (`dragSourceReservationSelector`)
-            // would have no `data-leaf-id` ancestor to resolve against — the
-            // `cc23956` regression. Emit it on the reserved wrapper so the scoped
-            // selector matches and the ghost can hop into the seat. Only on the
-            // reserved leaf, so non-reserved leaves keep their single
-            // article-level `data-leaf-id` (no duplicate-id collection).
-            {...(renderReservedDragSlot
-              ? {
-                  "data-leaf-id": node.id,
-                  "data-drag-source-reservation-slot": "",
-                }
-              : {})}
+            {...(isRaisedPane ? { "data-hpt-leaf-raised": "" } : {})}
             // Leaf motion: the wrapper is the window the motion moves (its
             // layout rect is the target), keyed by TILE id so a swap (which
             // trades tiles between leaves) moves the windows; the frame layer
@@ -9398,16 +8622,7 @@ const TilingRendererComponent = React.forwardRef<
             data-hpt-leaf={node.tileId}
           >
             <div data-hpt-leaf-frame="" aria-hidden style={{ display: "none" }} />
-            {renderReservedDragSlot ? (
-              <DragSourceSlotReservation
-                theme={theme}
-                accent={
-                  dragSnapshotRef.current?.accent ?? tileForDisplay.accent
-                }
-                observabilityColors={observabilityColors}
-                observabilityColorEnables={observabilityColorEnables}
-              />
-            ) : isStablePaneSlot ? null : renderTile == null ? (
+            {isStablePaneSlot ? null : renderTile == null ? (
               <DefaultTilingTile {...defaultTileArgs} />
             ) : (
               renderTile(tileArgs)
@@ -10013,9 +9228,10 @@ const TilingRendererComponent = React.forwardRef<
       activeMaximizedLeafId,
       dragSourceLeafId,
       dragState.phase,
-      dragSettlingOutcome,
       presentationSourceLeafId,
-      ghostSeatLeafId,
+      heldSlotLeafId,
+      dragSourceTileId,
+      raisedTileId,
       dropState,
       interactionCapabilities,
       isLeafMotionOverflowWindow,
@@ -10085,7 +9301,7 @@ const TilingRendererComponent = React.forwardRef<
   // destination physically reflows to the post-drop result); otherwise the prop
   // layout. The projected landing overlays (S' / T' / successor) are the
   // PREVIEW-mode rendering of the pending result — in live mode the real reflow +
-  // the cursor-following ghost replace them entirely, so they are suppressed (no
+  // the held pane and its drop preview replace them entirely, so they are suppressed (no
   // projection-vs-reflow double-preview). This is the render gate that guarantees
   // zero projection/landing-shadow in live mode.
   const showProjectedLandingOverlays: boolean =
@@ -10103,6 +9319,52 @@ const TilingRendererComponent = React.forwardRef<
           viewportSize.height,
         )
       : renderBranch(displayLayout, viewportSize.width, viewportSize.height);
+  // The lifted pane: the REAL pane (same render path, same stable mount),
+  // out of the tree, in a wrapper laid out where it was picked up at its lift
+  // size; the leaf motion draws it where the pointer holds it.
+  const liftedSourceLeaf: TilingLeafNode | null =
+    isPaneHeld && dragSourceLeafId != null && liftGeometry != null
+      ? findLeafById(layout, dragSourceLeafId)
+      : null;
+  const liftedElement: React.ReactElement | null =
+    liftedSourceLeaf != null && liftGeometry != null ? (
+      <div
+        className="pointer-events-none absolute flex"
+        data-hpt-lifted=""
+        style={{
+          left: liftGeometry.layoutRect.x,
+          top: liftGeometry.layoutRect.y,
+          width: liftGeometry.layoutRect.width,
+          height: liftGeometry.layoutRect.height,
+          zIndex: RAISED_PANE_Z_INDEX,
+        }}
+      >
+        {renderBranch(
+          { ...liftedSourceLeaf, sizing: undefined },
+          liftGeometry.layoutRect.width,
+          liftGeometry.layoutRect.height,
+          undefined,
+          true,
+        )}
+      </div>
+    ) : null;
+  // Indicator mode: where the pane will land, drawn above the resting panes
+  // and below the dragged one; it jumps between targets (no animation).
+  const dropIndicatorElement: React.ReactElement | null =
+    dropIndicatorRect != null ? (
+      <div
+        className={cn("pointer-events-none absolute", dragChrome.dropIndicator)}
+        data-hpt-drop-indicator=""
+        aria-hidden
+        style={{
+          left: dropIndicatorRect.x,
+          top: dropIndicatorRect.y,
+          width: dropIndicatorRect.width,
+          height: dropIndicatorRect.height,
+          zIndex: DROP_INDICATOR_Z_INDEX,
+        }}
+      />
+    ) : null;
   const stablePaneEntries: Map<string, StablePaneEntry> =
     stablePaneEntriesRef.current;
   // H6 `inactiveWorkspaces: "keep-mounted"`: a pool tile seated only in an
@@ -10135,12 +9397,11 @@ const TilingRendererComponent = React.forwardRef<
         );
       }
     }
-    // A live drag lifts the source out of the display tree whenever it has no
-    // in-tree candidate — pointer over nothing, or over an external target
-    // such as a workspace tab — and the ghost paints it. Keep the pane parked
-    // in the pool through `dragging` and `settling`, so the release (in-tree,
-    // external claim, or a move into another workspace) reseats the SAME
-    // mount instead of remounting it with fresh local state.
+    // A live drag holds the source in its lifted wrapper; when it is in
+    // neither that nor the tree (a claimed external drop settling, a move
+    // into another workspace) keep the pane parked in the pool through
+    // `dragging` and `settling`, so the release reseats the SAME mount instead
+    // of remounting it with fresh local state.
     const parkedSourceLeafId: string | null =
       dragState.phase === "dragging" || dragState.phase === "settling"
         ? dragState.sourceLeafId
@@ -10243,8 +9504,8 @@ const TilingRendererComponent = React.forwardRef<
           // that just slid under the cursor (belt-and-suspenders with the root's
           // pointer capture). The captured pointer routes to `rootRef` (the
           // ancestor), not via descendant hit-testing, so input is unaffected; the
-          // ghost + cancel overlays are already `pointer-events-none`. Restored the
-          // instant the FSM leaves `dragging`.
+          // lifted pane, the drop indicator and the cursor are
+          // `pointer-events-none` too. Restored the instant the FSM leaves `dragging`.
           style={
             dragState.phase === "dragging"
               ? { pointerEvents: "none" }
@@ -10281,52 +9542,12 @@ const TilingRendererComponent = React.forwardRef<
               }
             />
           ) : null}
-          <DragCancelOverlay
-            cancelVisualState={cancelVisualState}
-            isPaneContentVisible={isPaneContentVisible}
-            renderTile={renderTile}
-            ghostCapabilityFlags={ghostCapabilityFlags}
-            cancelPaneOrdinal={
-              cancelVisualState != null
-                ? Math.max(
-                    1,
-                    leafIds.indexOf(cancelVisualState.sourceLeafId) + 1,
-                  )
-                : 1
-            }
-          />
-          <DragPaneOverlay
-            dragVisualState={dragVisualState}
-            dragHopDurationMs={ghostTransitDurationMs}
-            hopEasing={resolvedHopEasing}
-            pickupScaleFactor={ghostPickupScaleFactor(
-              interactionCapabilities.ghostPickupScalePercent,
-            )}
-            prefersReducedMotion={prefersReducedMotion}
-            isPaneContentVisible={isPaneContentVisible}
-            frameDeadlineMs={dragRecoveryFrameDeadlineMs}
-            renderTile={renderTile}
-            ghostCapabilityFlags={ghostCapabilityFlags}
-            ghostPaneOrdinal={
-              dragVisualState != null
-                ? Math.max(1, leafIds.indexOf(dragVisualState.sourceLeafId) + 1)
-                : 1
-            }
-            ghostPresentation={ghostPresentation}
-            compactPoint={compactGhostPoint}
-            compactTargetId={externalDragHover?.targetId}
-            compactWorkspaceId={
-              externalDragHover?.kind === "workspace-tab"
-                ? externalDragHover.workspaceId
-                : undefined
-            }
-          />
+          {dropIndicatorElement}
+          {liftedElement}
           {dragCursorEnabled ? (
             <DragCursorOverlay
-              dragVisualState={dragVisualState}
+              pointer={dragPointer}
               presentation={dragCursorPresentation}
-              dragHopDurationMs={ghostTransitDurationMs}
-              hopEasing={resolvedHopEasing}
               prefersReducedMotion={prefersReducedMotion}
             />
           ) : null}
@@ -10838,7 +10059,7 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
 
   // Native workspace-tab settle (§5.5 claim-before-settle): the inner renderer
   // fires this synchronously on release BEFORE the FSM settles `claimed`, so
-  // the moved set lands in the same tick and no cancel fly-back paints. Any
+  // the moved set lands in the same tick and nothing settles home. Any
   // other external hover is the host's to claim through its own callback.
   const handleExternalDrop: TilingOnExternalDrop = React.useCallback(
     (
@@ -10849,7 +10070,7 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
     ): boolean => {
       if (hover.kind !== "workspace-tab") {
         // Not a tab: the host's claim (absent host callback → decline, i.e.
-        // the same cancel fly-back single-layout mode shows without one).
+        // the same cancel single-layout mode does without one).
         return (
           onExternalDrop != null &&
           onExternalDrop(leafId, targetId, point, hover) !== false
@@ -10865,7 +10086,7 @@ const TilingWorkspaceSetRendererComponent = React.forwardRef<
       );
       if (moved === current) {
         // Unknown destination workspace (or a no-op re-seat): decline the
-        // claim so the release settles through the ordinary cancel fly-back.
+        // claim so the release settles through the ordinary cancel.
         return false;
       }
       // `followMovedLeaf` lands move + switch in ONE `onWorkspacesChange`, the

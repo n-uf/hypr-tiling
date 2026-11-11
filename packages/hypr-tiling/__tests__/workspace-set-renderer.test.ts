@@ -139,7 +139,7 @@ function ObservedPane({
     {
       "data-leaf-id": args.leafId,
       "data-tile-id": args.tile.id,
-      "data-surface": args.surface,
+      "data-surface": "pane",
       "data-maximized": args.isMaximized ? "true" : "false",
       "data-workspace-id": args.workspaceId,
       "data-seat-count": String(args.seatCount),
@@ -470,7 +470,7 @@ describe("TilingRenderer workspace-set mode — drag in flight across a switch",
     expect(defaultTileLeafIds(view.container)).toEqual(["leaf:a", "leaf:b"]);
     // Drag `b` — a leaf that exists ONLY in `main`.
     await startLiveDrag(view.container, "leaf:b");
-    expect(document.querySelector("[data-drag-ghost]")).not.toBeNull();
+    expect(document.querySelector("[data-hpt-lifted]")).not.toBeNull();
 
     view.rerender(
       React.createElement(Harness, {
@@ -479,8 +479,8 @@ describe("TilingRenderer workspace-set mode — drag in flight across a switch",
       }),
     );
     await flushFrames();
-    // The FSM settled through the cancel edge: no live ghost, no commit.
-    expect(document.querySelector("[data-drag-ghost]")).toBeNull();
+    // The FSM settled through the cancel edge: nothing lifted, no commit.
+    expect(document.querySelector("[data-hpt-lifted]")).toBeNull();
     expect(onWorkspacesChange).not.toHaveBeenCalled();
     expect(defaultTileLeafIds(view.container)).toEqual(["leaf:a", "leaf:c"]);
     // A subsequent release is inert (no stale FSM state).
