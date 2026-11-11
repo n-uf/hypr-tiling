@@ -1,5 +1,7 @@
 # hypr-tiling theme engine
 
+> **Historical in part (2026-11, the held drag):** mentions of the drag ghost, its seat, hop easing, the compact chip and the cancel fly-back describe the renderer before 26.11.4; the pane itself is dragged now (see `packages/hypr-tiling/CHANGELOG.md`).
+
 A generic, typed theming capability for the `hypr-tiling` renderer. Every
 visual surface (pane shells, header chrome, focus frame, drag ghost, split
 dividers, renderer root/background, top-bar/tab-strip) is painted from a single

@@ -1,5 +1,7 @@
 # M3 core-extraction — staged design (`core/` + `react/` split behind host ports)
 
+> **Historical in part (2026-11, the held drag):** mentions of the drag ghost, its seat, hop easing, the compact chip and the cancel fly-back describe the renderer before 26.11.4; the pane itself is dragged now (see `packages/hypr-tiling/CHANGELOG.md`).
+
 Reference design for splitting `@n-uf/hypr-tiling` into a framework-free **core**
 (pure tiling/drag logic) and a thin **React host** (`react/`) that supplies the
 core's runtime capabilities through a small set of **host ports**. This doc is the

@@ -1,5 +1,7 @@
 # Workspace set — `@n-uf/hypr-tiling` native-workspaces design
 
+> **Historical in part (2026-11, the held drag):** mentions of the drag ghost, its seat, hop easing, the compact chip and the cancel fly-back describe the renderer before 26.11.4; the pane itself is dragged now (see `packages/hypr-tiling/CHANGELOG.md`).
+
 Durable reference for the workspace-set design. **Library half shipped** as
 `26.9.3` (`TilingWorkspaceSet`, set ops, renderer set mode, tab drop,
 `useTilingWorkspaceTabs`); navigation shipped as `26.9.4`–`26.9.6` (tile-keyed
