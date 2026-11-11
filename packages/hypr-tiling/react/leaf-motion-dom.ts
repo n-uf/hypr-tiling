@@ -111,10 +111,20 @@ const CONTENT_NEUTRAL_CHROME: ReadonlyArray<readonly [string, string]> = [
   ["clip-path", ""],
 ];
 
+/** One inline property leaf motion overrides on the tile root. */
+interface OverriddenProperty {
+  readonly property: string;
+  /** The root's own inline value and priority before the move ("" when it had none). */
+  readonly savedValue: string;
+  readonly savedPriority: string;
+  /** What leaf motion last wrote, as the browser serialises it. */
+  written: string;
+}
+
 /** A leaf in motion: the tile root it took the chrome from and that root's own inline values. */
 interface MovingLeaf {
   readonly content: HTMLElement;
-  readonly savedInline: ReadonlyArray<readonly [string, string, string]>;
+  readonly overrides: ReadonlyArray<OverriddenProperty>;
   /** Content box inset inside the wrapper (the frame is drawn over the content's box). */
   readonly insetLeft: number;
   readonly insetTop: number;
@@ -157,6 +167,27 @@ export function resolveLeafContent(wrapper: HTMLElement): HTMLElement | null {
   return null;
 }
 
+/**
+ * Run `change` on `element`'s inline style with its transitions off, so the
+ * consumer's own CSS transitions (a `transition: box-shadow …` on the pane) do
+ * not replay when leaf motion swaps the chrome between the pane and the frame
+ * layer: transitions off, the change, a style flush, then the pane's own
+ * `transition` back.
+ */
+function withoutTransitions(element: HTMLElement, change: () => void): void {
+  const value: string = element.style.getPropertyValue("transition");
+  const priority: string = element.style.getPropertyPriority("transition");
+  element.style.setProperty("transition", "none", "important");
+  change();
+  // Reading a computed value applies the change with transitions off.
+  void getComputedStyle(element).getPropertyValue("box-shadow");
+  if (value === "") {
+    element.style.removeProperty("transition");
+  } else {
+    element.style.setProperty("transition", value, priority);
+  }
+}
+
 function beginMove(wrapper: HTMLElement, frame: HTMLElement | null): MovingLeaf | null {
   const content: HTMLElement | null = resolveLeafContent(wrapper);
   if (content == null) {
@@ -178,16 +209,25 @@ function beginMove(wrapper: HTMLElement, frame: HTMLElement | null): MovingLeaf 
   ]
     .map((value: string): string => value.trim().split(" ")[0] || "0px")
     .join(" ");
-  const savedInline: Array<readonly [string, string, string]> = [];
-  for (const [property, value] of CONTENT_NEUTRAL_CHROME) {
-    savedInline.push([property, content.style.getPropertyValue(property), content.style.getPropertyPriority(property)]);
-    if (value !== "") {
-      content.style.setProperty(property, value);
+  const overrides: OverriddenProperty[] = [];
+  withoutTransitions(content, (): void => {
+    for (const [property, value] of CONTENT_NEUTRAL_CHROME) {
+      const override: OverriddenProperty = {
+        property,
+        savedValue: content.style.getPropertyValue(property),
+        savedPriority: content.style.getPropertyPriority(property),
+        written: "",
+      };
+      if (value !== "") {
+        content.style.setProperty(property, value);
+        override.written = content.style.getPropertyValue(property);
+      }
+      overrides.push(override);
     }
-  }
+  });
   const moving: MovingLeaf = {
     content,
-    savedInline,
+    overrides,
     insetLeft: content.offsetLeft,
     insetTop: content.offsetTop,
     insetWidth: wrapper.offsetWidth - content.offsetWidth,
@@ -202,13 +242,21 @@ function endMove(wrapper: HTMLElement): void {
   const moving: MovingLeaf | undefined = movingLeaves.get(wrapper);
   movingLeaves.delete(wrapper);
   if (moving != null) {
-    for (const [property, value, priority] of moving.savedInline) {
-      if (value === "") {
-        moving.content.style.removeProperty(property);
-      } else {
-        moving.content.style.setProperty(property, value, priority);
+    const style: CSSStyleDeclaration = moving.content.style;
+    withoutTransitions(moving.content, (): void => {
+      for (const override of moving.overrides) {
+        // Someone else (React re-rendering the pane's `style`) wrote this
+        // property mid-glide: theirs wins, leave it alone.
+        if (style.getPropertyValue(override.property) !== override.written) {
+          continue;
+        }
+        if (override.savedValue === "") {
+          style.removeProperty(override.property);
+        } else {
+          style.setProperty(override.property, override.savedValue, override.savedPriority);
+        }
       }
-    }
+    });
   }
   const frame: HTMLElement | null = frameLayerOf(wrapper);
   if (frame != null) {
@@ -283,10 +331,16 @@ export function writeLeafMotionFrame(wrapper: HTMLElement, frame: LeafMotionFram
     layer.style.width = px(Math.max(0, r.width - moving.insetWidth));
     layer.style.height = px(Math.max(0, r.height - moving.insetHeight));
   }
+  const clip: OverriddenProperty | undefined = moving.overrides.find(
+    (override: OverriddenProperty): boolean => override.property === "clip-path",
+  );
   moving.content.style.setProperty(
     "clip-path",
     r.clipRight > 0 || r.clipBottom > 0 ? `inset(0 ${px(r.clipRight)} ${px(r.clipBottom)} 0 round ${moving.radius})` : "none",
   );
+  if (clip != null) {
+    clip.written = moving.content.style.getPropertyValue("clip-path");
+  }
 }
 
 /** Clear whatever leaf motion wrote on a wrapper (unmount, reset). */
