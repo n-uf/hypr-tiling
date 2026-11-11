@@ -162,7 +162,16 @@ function groupLiftedGeometry(): void {
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-function Host({ onLayoutReported }: { onLayoutReported: (next: TilingLayoutNode) => void }): React.ReactElement {
+/** The previews that make room for the dragged pane: snap to slot, and the indicator with `dragPreviewMakesRoom`. */
+type RoomPreview = "snap" | "indicator-makes-room";
+
+function Host({
+  onLayoutReported,
+  preview = "snap",
+}: {
+  onLayoutReported: (next: TilingLayoutNode) => void;
+  preview?: RoomPreview;
+}): React.ReactElement {
   const [layout, setLayout] = React.useState<TilingLayoutNode>(LAYOUT);
   return (
     <TilingRenderer
@@ -170,7 +179,8 @@ function Host({ onLayoutReported }: { onLayoutReported: (next: TilingLayoutNode)
       tiles={TILES}
       config={CONFIG}
       paneIdentity="stable"
-      dragPreview="snap"
+      dragPreview={preview === "snap" ? "snap" : "indicator"}
+      dragPreviewMakesRoom={preview === "indicator-makes-room"}
       interaction={{
         dragRecovery: { enable: false },
         customCursor: false,
@@ -241,15 +251,22 @@ async function dragCommit(args: {
   lifted: () => void;
   via: ReadonlyArray<Point>;
   to: Point;
+  preview?: RoomPreview;
+  /** Runs once the pointer has been through `via`: the preview has made room, so stubbed geometry may move. */
+  afterVia?: () => void;
 }): Promise<TilingLayoutNode> {
   restGeometry();
   const changes: TilingLayoutNode[] = [];
-  const { container, unmount } = render(<Host onLayoutReported={(next): void => void changes.push(next)} />);
+  const { container, unmount } = render(
+    <Host onLayoutReported={(next): void => void changes.push(next)} preview={args.preview} />,
+  );
   await pressOn(args.grip(container), args.press);
   args.lifted();
-  for (const point of [...args.via, args.to]) {
+  for (const point of args.via) {
     await moveTo(point);
   }
+  args.afterVia?.();
+  await moveTo(args.to);
   await release(args.to);
   unmount();
   expect(changes).toHaveLength(1);
@@ -313,4 +330,32 @@ describe("snap to slot — the drop depends only on where the pointer is release
     expect([...tileIdsOf(straight)].sort()).toEqual(["a", "b", "c"]);
     expect(detour).toEqual(straight);
   });
+});
+
+describe("a preview that makes room moves the group's strip; a release on the strip's resting place still merges", (): void => {
+  /** Over the group's top edge: the pane takes the top half and the group (strip and all) moves down. */
+  const OVER_TOP_EDGE: Point = { x: 750, y: 60 };
+  /** The strip where it rests, with no room made. */
+  const STRIP_AT_REST: Point = { x: 750, y: 10 };
+  const roomMadeGeometry = (): void => {
+    GEOMETRY.set("strip", { x: 0, y: 300, width: 1000, height: STRIP_PX });
+    GEOMETRY.set("c", { x: 0, y: 300 + STRIP_PX, width: 1000, height: 300 - STRIP_PX });
+  };
+
+  for (const preview of ["snap", "indicator-makes-room"] as const) {
+    it(`${preview}: the strip is hit-tested where it rests, not where the preview moved it`, async (): Promise<void> => {
+      const committed: TilingLayoutNode = await dragCommit({
+        grip: (container) => header(container, "a"),
+        press: { x: 100, y: 20 },
+        lifted: paneLiftedGeometry,
+        via: [OVER_TOP_EDGE],
+        afterVia: roomMadeGeometry,
+        to: STRIP_AT_REST,
+        preview,
+      });
+      const merged: TilingGroupNode | null = findGroupContainingLeaf(committed, "A");
+      expect(merged?.members.map((m: TilingLeafNode): string => m.id).sort()).toEqual(["A", "B", "C"]);
+      expect(merged?.activeMemberId).toBe("A");
+    });
+  }
 });
