@@ -145,7 +145,8 @@ Public API docs and export signatures live in:
 Core tiling:
 
 - **Split tree** — you own a `leaf`, `split`, and `group` layout.
-- **Drag & drop** — live ghost; swap, insert, or group-merge.
+- **Drag & drop** — the real pane, held under the pointer; swap, insert, or
+  group-merge.
 - **Resize** — drag dividers, or pin a pane in pixels.
 - **Tab groups** — stack leaves; only the active tab paints.
 - **Keyboard** — focus, cycle, maximize; remappable commands.
@@ -153,14 +154,21 @@ Core tiling:
 Since 26.9.x:
 
 - **Pane collapse** — titlebar-only pin; chrome resize floor.
-- **Compact ghost** — chip ghost plus host external-drop claim
-  (`dragGhostMode`, `externalDragHover`, `onExternalDrop`).
-- **Drag chrome** — themeable ghost; `overlayPortalContainer` for tokens.
-- **Pane identity** — same React instance through drag and drop.
+- **External drop** — a host target claims the dragged pane
+  (`externalDragHover`, `onExternalDrop`).
+- **Pane identity** — same React instance through drag and drop
+  (`paneIdentity: "stable"`).
 - **Persist layout** — save and heal the tree on load.
 - **Workspaces** — several layout trees over one tile pool
   (`TilingWorkspaceSet`); tab drop, swipe, keymap. See the
   [package README Workspaces section](packages/hypr-tiling/README.md#workspaces).
+
+Since 26.11.4:
+
+- **Drop preview** — a drop indicator at the exact landing rect, or the pane
+  snapping into its slot (`dragPreview`, `dragPreviewMakesRoom`).
+- **Drag chrome** — themeable lift shadow and drop indicator
+  (`dragChrome.liftedPane`, `dragChrome.dropIndicator`).
 
 ## Roadmap
 
