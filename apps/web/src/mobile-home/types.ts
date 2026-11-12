@@ -2,7 +2,7 @@
 // separate from the components so the mode switcher, storage, and the mobile
 // dispatcher (`MobileHome`) all type against the SAME closed union.
 
-export type MobileHomeMode = "master" | "swipe" | "grid";
+export type MobileHomeMode = "read" | "master" | "swipe" | "grid";
 
 export interface MobileHomeModeOption {
   readonly id: MobileHomeMode;
@@ -11,6 +11,11 @@ export interface MobileHomeModeOption {
 }
 
 export const MOBILE_HOME_MODE_OPTIONS: ReadonlyArray<MobileHomeModeOption> = [
+  {
+    id: "read",
+    label: "Read",
+    description: "Read — every section stacked on one page, scroll or tap a section chip",
+  },
   {
     id: "master",
     label: "Master",
@@ -28,5 +33,8 @@ export const MOBILE_HOME_MODE_OPTIONS: ReadonlyArray<MobileHomeModeOption> = [
   },
 ];
 
-// Master + Rail is the default per the concept brief.
-export const DEFAULT_MOBILE_HOME_MODE: MobileHomeMode = "master";
+// Read is the default: it is the only mode that mounts every pane's text in the
+// page (the other three show one pane at a time), which is what a phone reader
+// and a mobile-first crawler both need. Master + Rail, Swipe and Grid stay one
+// tap away in the mode switcher.
+export const DEFAULT_MOBILE_HOME_MODE: MobileHomeMode = "read";

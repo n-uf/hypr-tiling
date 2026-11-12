@@ -48,7 +48,15 @@ export interface MobileHomeSkinTokens {
   readonly schematicRectActive: string;
   /** The Pocket-Grid schematic's outer shell (border/bg) — fills its resizable map tile. */
   readonly schematicShell: string;
+  /** Read mode: one stacked section card around a pane's content. */
+  readonly readSection: string;
+  /** Read mode: a section-anchor chip in the jump row. */
+  readonly readChip: string;
 }
+
+// Shared by every Read-mode chip: a 44px-tall tap target, 14px text.
+const READ_CHIP_BASE: string =
+  "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[3px] border px-3 text-[14px] leading-none transition-colors";
 
 export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
   mosaic: {
@@ -86,6 +94,9 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     schematicRectActive:
       "border border-amber-300/65 bg-amber-300/[0.12] text-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.15)]",
     schematicShell: "border-white/[0.08] bg-[#101114]/70",
+    readSection:
+      "scroll-mt-14 rounded-lg border border-white/[0.07] bg-[#121316] px-4 py-5 shadow-[0_18px_40px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)]",
+    readChip: `${READ_CHIP_BASE} border-white/[0.08] bg-white/[0.02] text-stone-300 hover:border-amber-300/40 hover:text-amber-100`,
   },
   editorial: {
     topStrip:
@@ -122,6 +133,9 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     schematicRectActive:
       "border border-[#241f17]/65 bg-[#f4eedb] text-[#241f17] shadow-[0_0_0_1px_rgba(36,31,23,0.08)]",
     schematicShell: "border-[#e2dac6] bg-[#f4eedb]",
+    readSection:
+      "scroll-mt-14 rounded-[4px] border border-[#e2dac6] bg-[#fbf9f2] px-4 py-5 text-[15px] leading-[1.65] text-[#4b4335] shadow-[0_1px_0_rgba(36,31,23,0.03),0_10px_28px_-22px_rgba(36,31,23,0.4)]",
+    readChip: `${READ_CHIP_BASE} border-[#ddd4bf] bg-[#efe8d6] text-[#6b6250] hover:border-[#241f17] hover:text-[#241f17]`,
   },
   canvas: {
     topStrip:
@@ -158,5 +172,8 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     schematicRectActive:
       "border border-cyan-300 bg-cyan-50 text-cyan-700 shadow-[0_0_0_1px_rgba(6,182,212,0.12)]",
     schematicShell: "border-slate-200 bg-white",
+    readSection:
+      "scroll-mt-14 rounded-lg border border-slate-200/80 bg-white px-5 py-5 text-[15px] leading-[1.6] text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-24px_rgba(15,23,42,0.35)]",
+    readChip: `${READ_CHIP_BASE} border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:text-slate-900`,
   },
 };

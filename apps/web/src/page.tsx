@@ -371,6 +371,7 @@ function HomeTopBar({
         onSkinChange={onSkinChange}
         mode={mobileMode}
         onModeChange={onMobileModeChange}
+        sticky={mobileMode === "read"}
       />
     );
   }
@@ -833,6 +834,7 @@ export function HomePage({
   // slot. The bottom bar toggles it; persisted like the mobile mode.
   const [dragPreview, onDragPreviewChange] = useHomeDragPreview();
   const isMobile: boolean = useIsMobileHomeViewport();
+  const isReadMode: boolean = isMobile && mobileMode === "read";
   const isCoarsePointer: boolean = useIsCoarsePointer();
 
   const docTiles: ReadonlyArray<TilingTile> = DOC_PANES.map(
@@ -946,7 +948,11 @@ export function HomePage({
 
   return (
     <main
-      className={`mosaic-rise flex h-screen max-h-screen min-h-0 w-full flex-col overflow-hidden font-sans ${
+      className={`mosaic-rise flex w-full flex-col font-sans ${
+        // Read mode is a plain scrolling page; every other layout is a
+        // viewport-sized app whose panes scroll inside themselves.
+        isReadMode ? "min-h-screen" : "h-screen max-h-screen min-h-0 overflow-hidden"
+      } ${
         isMobile ? "gap-1.5 p-1.5" : "gap-2 p-3"
       } ${
         skin === "editorial"

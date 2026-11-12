@@ -5,9 +5,11 @@ import { FullscreenSwipeMobile } from "./fullscreen-swipe";
 import { MOBILE_HOME_TILE_IDS } from "./layout-tree";
 import { MasterRailMobile } from "./master-rail";
 import { PocketGridMobile } from "./pocket-grid";
+import { ReadStackMobile } from "./read-stack";
 import type { MobileHomeMode } from "./types";
 
-// Dispatches to the active mobile home concept. Each concept owns its own
+// Dispatches to the active mobile home concept (Read, the default, is a plain
+// stacked page; the other three are tiled). Each tiled concept owns its own
 // independent `TilingRenderer` instance/state (see the per-concept modules) —
 // switching modes remounts the target concept fresh rather than threading one
 // shared layout through three very different presentations. `key={mode}`
@@ -31,6 +33,9 @@ export function MobileHome({
       tiles.filter((tile: TilingTile): boolean => MOBILE_HOME_TILE_IDS.has(tile.id)),
     [tiles],
   );
+  if (mode === "read") {
+    return <ReadStackMobile tiles={seatedTiles} skin={skin} />;
+  }
   if (mode === "swipe") {
     return <FullscreenSwipeMobile tiles={seatedTiles} renderTile={renderTile} skin={skin} />;
   }
