@@ -108,15 +108,18 @@ export function MobileTopStrip({
   onSkinChange,
   mode,
   onModeChange,
+  sticky = false,
 }: {
   skin: HomeSkin;
   onSkinChange: (next: HomeSkin) => void;
   mode: MobileHomeMode;
   onModeChange: (mode: MobileHomeMode) => void;
+  /** Pin the strip to the top while the page scrolls (Read mode). */
+  sticky?: boolean;
 }): React.ReactElement {
   const tokens: MobileHomeSkinTokens = MOBILE_HOME_SKIN_TOKENS[skin];
   return (
-    <div className={tokens.topStrip}>
+    <div className={sticky ? `sticky top-1.5 ${tokens.topStrip}` : tokens.topStrip}>
       <div aria-label="hypr tiling" className={tokens.wordmark}>
         hypr
       </div>

@@ -7,6 +7,7 @@ import { DEFAULT_MOBILE_HOME_MODE, type MobileHomeMode } from "./types";
 const STORAGE_KEY: string = "hypr-tiling-web.home-mobile-mode";
 
 const VALID_MODES: ReadonlySet<string> = new Set<MobileHomeMode>([
+  "read",
   "master",
   "swipe",
   "grid",
@@ -16,7 +17,7 @@ function isMobileHomeMode(value: string): value is MobileHomeMode {
   return VALID_MODES.has(value);
 }
 
-/** Read the persisted mobile home mode, falling back to the default (`"master"`) when unset or invalid. */
+/** Read the persisted mobile home mode, falling back to the default (`"read"`) when unset or invalid. */
 export function readStoredMobileHomeMode(): MobileHomeMode {
   if (typeof window === "undefined") {
     return DEFAULT_MOBILE_HOME_MODE;
