@@ -842,7 +842,7 @@ function DocsNav({
               navigate("/");
             }
           }}
-          className="flex items-center gap-2.5 font-display text-[15px] font-medium text-stone-50 transition-colors hover:text-amber-100"
+          className="flex min-h-11 items-center gap-2.5 font-display text-[15px] font-medium text-stone-50 transition-colors hover:text-amber-100"
         >
           <span
             aria-hidden
@@ -853,7 +853,7 @@ function DocsNav({
             docs
           </span>
         </a>
-        <nav className="flex items-center gap-4 font-mono text-[11px] uppercase tracking-[0.16em] text-stone-400">
+        <nav className="flex items-center gap-4 font-mono text-[11px] uppercase tracking-[0.16em] text-stone-400 max-[760px]:text-[12px] max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center">
           <a
             href="/"
             onClick={(event: React.MouseEvent<HTMLAnchorElement>): void => {
@@ -885,6 +885,40 @@ function DocsNav({
 // tree exposes: Core (Renderer & tiles · Layout & query · Theming · Commands)
 // then Advanced helpers. Every public symbol lands in exactly one group.
 
+const HTML_ATTRIBUTE_ESCAPES: Readonly<Record<string, string>> = {
+  "&": "&amp;",
+  '"': "&quot;",
+  "<": "&lt;",
+  ">": "&gt;",
+};
+
+// The generated tables are plain `<table><thead><tr><th><p>Label</p></th>…`.
+// On a phone the `.ht-api` CSS below stacks each row as a card, so every cell
+// needs its column label: copy it onto the cell as `data-label` (the CSS shows
+// it as a small caption). Pure string work on the generated HTML, so the
+// prerender and the client render the same markup, and the generated file
+// stays untouched.
+function labelReferenceTableCells(html: string): string {
+  return html.replace(/<table>([\s\S]*?)<\/table>/g, (_table: string, inner: string): string => {
+    const labels: string[] = Array.from(
+      inner.matchAll(/<th><p>([\s\S]*?)<\/p>\s*<\/th>/g),
+      (match: RegExpMatchArray): string => match[1].replace(/<[^>]*>/g, "").trim(),
+    );
+    const labelled: string = inner.replace(/<tr>([\s\S]*?)<\/tr>/g, (_row: string, cells: string): string => {
+      let column: number = 0;
+      return `<tr>${cells.replace(/<td>/g, (): string => {
+        const label: string = (labels[column] ?? "").replace(
+          /[&"<>]/g,
+          (char: string): string => HTML_ATTRIBUTE_ESCAPES[char],
+        );
+        column += 1;
+        return `<td data-label="${label}">`;
+      })}</tr>`;
+    });
+    return `<table>${labelled}</table>`;
+  });
+}
+
 function ReferenceCard({
   section,
 }: {
@@ -895,15 +929,17 @@ function ReferenceCard({
       id={section.id}
       className="ht-api scroll-mt-24 rounded-lg border border-white/[0.07] bg-white/[0.015] p-5"
     >
-      <div className="mb-3 flex items-baseline gap-2.5">
-        <h4 className="font-mono text-[15px] font-medium text-stone-50">
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+        <h4 className="min-w-0 break-words font-mono text-[15px] font-medium text-stone-50">
           {section.name}
         </h4>
         <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-500">
           {section.kind}
         </span>
       </div>
-      <div dangerouslySetInnerHTML={{ __html: section.html }} />
+      <div
+        dangerouslySetInnerHTML={{ __html: labelReferenceTableCells(section.html) }}
+      />
     </article>
   );
 }
@@ -1118,6 +1154,19 @@ function ApiReference(): React.ReactElement {
   );
 }
 
+// Phone-only type floor for the docs page chrome and guides (the page's many
+// one-off `text-[Npx]` classes keep their desktop sizes): body-size text goes
+// to 14px, the small mono labels to 12px, and long identifiers wrap instead of
+// pushing the page sideways. Scoped by `.ht-docs`; the live demos use their own
+// styles and are left alone.
+const DOCS_PHONE_STYLES: string = `
+@media (max-width: 760px) {
+  .ht-docs [class*="text-[11px]"], .ht-docs [class*="text-[11.5px]"], .ht-docs [class*="text-[12px]"], .ht-docs [class*="text-[13px]"] { font-size: 14px; }
+  .ht-docs [class*="text-[9px]"], .ht-docs [class*="text-[10px]"] { font-size: 12px; }
+  .ht-docs :not(pre) > code { white-space: normal; overflow-wrap: anywhere; }
+}
+`;
+
 const API_PROSE_STYLES: string = `
 .ht-api p { margin: 0 0 0.75rem; font-size: 13px; line-height: 1.7; color: rgb(214 211 209 / 0.9); }
 .ht-api p:last-child { margin-bottom: 0; }
@@ -1132,6 +1181,19 @@ const API_PROSE_STYLES: string = `
 .ht-api th { color: rgb(214 211 209); font-weight: 500; background: rgb(255 255 255 / 0.02); }
 .ht-api th p, .ht-api td p { margin: 0; font-size: 12px; }
 .ht-api ul, .ht-api ol { margin: 0 0 0.75rem; padding-left: 1.15rem; font-size: 13px; line-height: 1.7; color: rgb(214 211 209 / 0.9); }
+@media (max-width: 760px) {
+  .ht-api p, .ht-api ul, .ht-api ol, .ht-api table, .ht-api th p, .ht-api td p { font-size: 14px; }
+  .ht-api code, .ht-api pre code { font-size: 14px; overflow-wrap: anywhere; }
+  .ht-api pre code { overflow-wrap: normal; }
+  .ht-api table, .ht-api tbody, .ht-api tr, .ht-api td { display: block; width: 100%; }
+  .ht-api thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .ht-api tr { margin: 0 0 0.6rem; padding: 0.25rem 0.75rem; border: 1px solid rgb(255 255 255 / 0.08); border-radius: 0.5rem; }
+  .ht-api td { border: 0; padding: 0.4rem 0; }
+  .ht-api td:empty { display: none; }
+  .ht-api td + td { border-top: 1px solid rgb(255 255 255 / 0.05); }
+  .ht-api td::before { content: attr(data-label); display: block; margin-bottom: 0.15rem; font: 500 12px/1.4 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(168 162 158); }
+  .ht-api a { overflow-wrap: anywhere; }
+}
 `;
 
 // --- Numbered quickstart step ---------------------------------------------
@@ -1212,8 +1274,8 @@ export function DocsPage({
     });
   }, []);
   return (
-    <div className="min-h-screen bg-[#0c0d0f] font-sans text-stone-100">
-      <style dangerouslySetInnerHTML={{ __html: API_PROSE_STYLES }} />
+    <div className="ht-docs min-h-screen bg-[#0c0d0f] font-sans text-stone-100">
+      <style dangerouslySetInnerHTML={{ __html: API_PROSE_STYLES + DOCS_PHONE_STYLES }} />
       <DocsNav navigate={navigate} />
       <div className="mx-auto grid max-w-[92rem] grid-cols-1 gap-10 px-5 py-10 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_200px]">
         <Sidebar activeId={activeId} onNavigate={scrollToAnchor} />
