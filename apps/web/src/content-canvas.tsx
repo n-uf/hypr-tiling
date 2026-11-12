@@ -385,7 +385,7 @@ function WorkspacesContent(): React.ReactElement {
       <CanvasLead>
         <CanvasInline paragraph={WORKSPACES_SHIPPED} />
       </CanvasLead>
-      <p>
+      <p className="max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center">
         <CanvasLink href={WORKSPACES_HOWTO_HREF}>{WORKSPACES_HOWTO_LABEL}</CanvasLink>
       </p>
       <div className="flex flex-col gap-4 border-t border-slate-200 pt-5">

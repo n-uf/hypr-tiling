@@ -363,7 +363,7 @@ function WorkspacesContent(): React.ReactElement {
       <EditorialLead>
         <EditorialInline paragraph={WORKSPACES_SHIPPED} />
       </EditorialLead>
-      <p>
+      <p className="max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center">
         <EditorialLink href={WORKSPACES_HOWTO_HREF}>
           {WORKSPACES_HOWTO_LABEL}
         </EditorialLink>
