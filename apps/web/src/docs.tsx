@@ -149,32 +149,49 @@ export const FEATURE_LATEST: ReadonlyArray<FeatureFact> = FEATURE_FACTS.filter(
   (fact: FeatureFact): boolean => fact.group === "latest",
 );
 
-interface SeoFaqItem {
+export interface SeoFaqItem {
   readonly question: string;
   readonly answer: string;
 }
 
+// The home page's questions: ONE array feeds the visible "Questions" section
+// (every skin, and the phone Read mode) and the FAQPage JSON-LD in
+// `home-head.ts`, so the markup can never drift from the page. Each answer is
+// 40-60 words and opens with the direct answer; plain text only (no markup), so
+// the visible text and the JSON-LD text are the same string. Facts follow the
+// repository README.
 export const SEO_FAQ_ITEMS: ReadonlyArray<SeoFaqItem> = [
   {
-    question: "Does hypr-tiling render semantic HTML for docs pages?",
+    question: "What is hypr-tiling for?",
     answer:
-      "Yes. The docs content is emitted as semantic DOM inside panes and prerendered to static HTML so crawlers can read it without executing JavaScript.",
+      "Dashboards, IDE-like tools and operator consoles. hypr-tiling is a dynamic tiling layout engine for React: a recursive split-tree renderer where users drag, drop, resize, group, maximize and keyboard-control panes at runtime, while your app keeps strict, controlled ownership of the layout state. It also suits trading consoles and content sites.",
   },
   {
     question: "How do I install hypr-tiling in a React app?",
-    answer: "Run: pnpm add @n-uf/hypr-tiling react react-dom",
+    answer:
+      "Run pnpm add @n-uf/hypr-tiling react react-dom. React and react-dom are optional peer dependencies at version 19 or later. The package ships no CSS, so add it to your Tailwind content glob, or the renderer's utility classes are purged and the panes appear unstyled. The quickstart on the docs page has the full setup.",
   },
   {
     question: "Can I control layout state myself?",
     answer:
-      "Yes. TilingRenderer is controlled: your app owns the layout tree and applies updates via onLayoutChange.",
+      "Yes. TilingRenderer is a controlled component: your app owns the layout tree in state, passes it in, and applies every change the renderer reports through onLayoutChange. Nothing about the layout is hidden inside the component, so you can persist, diff and restore the tree yourself, for example in localStorage.",
   },
   {
     question: "Does hypr-tiling support multiple workspaces over one tile pool?",
     answer:
-      "Yes. Pass workspaces + onWorkspacesChange (TilingWorkspaceSet) instead of layout + onLayoutChange. useTilingWorkspaceTabs, useTilingWorkspaceSetController, WORKSPACE_KEY_BINDINGS, swipe, slide/fade transition, and spring-load tab drop ship on the public API (26.9.3–26.9.9).",
+      "Yes. Pass workspaces and onWorkspacesChange (a TilingWorkspaceSet) instead of layout and onLayoutChange, and each workspace keeps its own layout tree over one shared pool of tiles. Users switch with tabs, a swipe or Alt+1..9, or drop a pane onto a tab to move it there. The hooks ship on the public API.",
+  },
+  {
+    question: "Does hypr-tiling render semantic HTML for docs pages?",
+    answer:
+      "Yes. Every pane is real semantic HTML (headings, paragraphs and lists), not canvas, and the pages are prerendered to static HTML. Crawlers and LLM fetchers can read all of the content without executing JavaScript, and a plain-text /llms.txt mirror of the docs ships alongside the site.",
   },
 ];
+
+/** The words of an FAQ answer, split on whitespace (the count the 40-60 rule uses). */
+export function faqAnswerWordCount(item: SeoFaqItem): number {
+  return item.answer.split(/\s+/).filter((word: string): boolean => word !== "").length;
+}
 
 interface UseCase {
   readonly term: string;
@@ -624,6 +641,26 @@ function MosaicIntroLinks(): React.ReactElement {
   );
 }
 
+// The visible "Questions" section: an h2, then one h3 question and one p answer
+// per item of `SEO_FAQ_ITEMS` (the same array the FAQPage JSON-LD is built from).
+function MosaicFaq(): React.ReactElement {
+  return (
+    <div className="flex flex-col gap-4 border-t border-white/[0.08] pt-5">
+      <SectionHeading>Questions</SectionHeading>
+      {SEO_FAQ_ITEMS.map(
+        (item: SeoFaqItem): React.ReactElement => (
+          <div key={item.question} className="flex flex-col gap-1.5">
+            <h3 className="font-display text-[16px] font-medium leading-snug text-stone-100">
+              {item.question}
+            </h3>
+            <SectionLead>{item.answer}</SectionLead>
+          </div>
+        ),
+      )}
+    </div>
+  );
+}
+
 export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
   {
     id: "intro",
@@ -820,6 +857,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
             </SectionLead>
           ),
         )}
+        <MosaicFaq />
       </div>
     ),
   },

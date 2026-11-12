@@ -1,6 +1,7 @@
 import * as React from "react";
 import {
   DISCOVERABILITY_PARAGRAPHS,
+  SEO_FAQ_ITEMS,
   FEATURE_CORE,
   FEATURE_LATEST,
   FEATURE_LATEST_SINCE,
@@ -34,6 +35,7 @@ import {
   type DocInline,
   type DocParagraph,
   type IntroLink,
+  type SeoFaqItem,
 } from "./docs";
 import { useIsMobileHomeViewport } from "./mobile-home/use-viewport";
 
@@ -385,6 +387,27 @@ function DiscoverabilityContent(): React.ReactElement {
           <EditorialLead key={index}>
             <EditorialInline paragraph={paragraph} />
           </EditorialLead>
+        ),
+      )}
+      <EditorialFaq />
+    </div>
+  );
+}
+
+// The visible "Questions" section: an h2, then one h3 question and one p answer
+// per item of `SEO_FAQ_ITEMS` (the same array the FAQPage JSON-LD is built from).
+function EditorialFaq(): React.ReactElement {
+  return (
+    <div className="flex flex-col gap-4 border-t border-[#ddd3bd] pt-5">
+      <EditorialHeading>Questions</EditorialHeading>
+      {SEO_FAQ_ITEMS.map(
+        (item: SeoFaqItem): React.ReactElement => (
+          <div key={item.question} className="flex flex-col gap-1.5">
+            <h3 className="font-display text-[17px] font-normal leading-snug text-[#241f17]">
+              {item.question}
+            </h3>
+            <EditorialLead>{item.answer}</EditorialLead>
+          </div>
         ),
       )}
     </div>
