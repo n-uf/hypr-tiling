@@ -1164,7 +1164,7 @@ const DOCS_PHONE_STYLES: string = `
   .ht-docs [class*="text-[11px]"], .ht-docs [class*="text-[11.5px]"], .ht-docs [class*="text-[12px]"], .ht-docs [class*="text-[13px]"] { font-size: 14px; }
   .ht-docs [class*="text-[9px]"], .ht-docs [class*="text-[10px]"] { font-size: 12px; }
   .ht-docs :not(pre) > code { white-space: normal; overflow-wrap: anywhere; }
-  .ht-docs header nav { font-size: 12px; }
+  .ht-docs header nav a[class] { font-size: 12px; }
 }
 `;
 
