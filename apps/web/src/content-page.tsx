@@ -90,7 +90,7 @@ function TopBar({
         >
           <span aria-hidden="true" className="h-4 w-[3px] rounded-sm bg-amber-400" />
           hypr-tiling
-          <span className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-amber-300/80">
+          <span className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-amber-300/80 max-[560px]:hidden">
             Guides
           </span>
         </a>
@@ -223,6 +223,20 @@ function RightRail({
 
 // --- Shell ---------------------------------------------------------------------
 
+// Phone-only type floor and tap targets for the guide pages (the one-off
+// `text-[Npx]` classes keep their desktop sizes): body-size text goes to 14px,
+// small mono labels to 12px, and nav, breadcrumb and footer links get a
+// 44px-tall hit area. The top bar's links stay at 12px so the row fits 375px.
+const CONTENT_PHONE_STYLES: string = `
+@media (max-width: 760px) {
+  .ht-content [class*="text-[11px]"], .ht-content [class*="text-[11.5px]"], .ht-content [class*="text-[12px]"], .ht-content [class*="text-[12.5px]"], .ht-content [class*="text-[13px]"], .ht-content [class*="text-[13.5px]"] { font-size: 14px; }
+  .ht-content [class*="text-[9px]"], .ht-content [class*="text-[10px]"] { font-size: 12px; }
+  .ht-content header nav a { font-size: 12px; }
+  .ht-content nav[aria-label="Breadcrumb"] { display: flex; flex-wrap: wrap; align-items: center; column-gap: 0.5em; }
+  .ht-content header nav a:not([class*="hidden"]), .ht-content nav[aria-label="Breadcrumb"] a, .ht-content footer a { display: inline-flex; align-items: center; min-height: 44px; }
+}
+`;
+
 function Shell({
   site,
   current,
@@ -237,7 +251,8 @@ function Shell({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <div className="min-h-screen bg-[#0c0d0f] font-sans text-stone-100">
+    <div className="ht-content min-h-screen bg-[#0c0d0f] font-sans text-stone-100">
+      <style dangerouslySetInnerHTML={{ __html: CONTENT_PHONE_STYLES }} />
       <a
         href="#content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-30 focus:rounded focus:bg-[#16171b] focus:px-3 focus:py-2 focus:text-amber-200"
@@ -454,7 +469,10 @@ export function ArticlePage({
             <ul className="m-0 list-none p-0">
               {page.sources.map(
                 (source): React.ReactElement => (
-                  <li key={source.url} className="my-1.5 text-[14px] leading-snug text-stone-300/90">
+                  <li
+                    key={source.url}
+                    className="my-1.5 text-[14px] leading-snug text-stone-300/90 max-[760px]:my-0 max-[760px]:flex max-[760px]:min-h-11 max-[760px]:flex-wrap max-[760px]:items-center max-[760px]:gap-x-2"
+                  >
                     <a href={source.url} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
                       {source.title}
                     </a>{" "}
