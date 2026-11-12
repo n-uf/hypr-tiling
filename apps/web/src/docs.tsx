@@ -258,7 +258,7 @@ interface DocPaneSpec {
 
 export function Eyebrow({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
-    <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-amber-300/80">
+    <span className="font-mono text-[10px] max-[760px]:text-[12px] uppercase tracking-[0.32em] text-amber-300/80">
       {children}
     </span>
   );
@@ -298,7 +298,7 @@ export function SectionLead({
 
 export function Code({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
-    <code className="rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 font-mono text-[12px] text-amber-200/90">
+    <code className="rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 font-mono text-[12px] max-[760px]:text-[14px] text-amber-200/90">
       {children}
     </code>
   );
@@ -336,7 +336,7 @@ export function Link({
 
 export function Pre({ children }: { children: string }): React.ReactElement {
   return (
-    <pre className="overflow-x-auto rounded-md border border-white/[0.08] bg-[#0a0b0d] p-3.5 font-mono text-[12px] leading-relaxed text-stone-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+    <pre className="overflow-x-auto rounded-md border border-white/[0.08] bg-[#0a0b0d] p-3.5 font-mono text-[12px] max-[760px]:text-[14px] leading-relaxed text-stone-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       <code>{children}</code>
     </pre>
   );
@@ -441,8 +441,8 @@ export function MosaicGuideLinks({
     >
       <Eyebrow>{GUIDE_LINKS_HEADING}</Eyebrow>
       <ul
-        className={`flex flex-col gap-1 ${
-          compact ? "text-[12px] leading-[1.4]" : "text-[15px] leading-[1.45]"
+        className={`flex flex-col gap-1 max-[760px]:gap-0 max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center ${
+          compact ? "text-[14px] leading-[1.4]" : "text-[15px] leading-[1.45]"
         }`}
       >
         {links.map(
@@ -588,7 +588,7 @@ function MosaicFactList({
             <dt className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[15px] font-medium text-stone-100">
               {fact.term}
               {sinceMark != null ? (
-                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-amber-200/70">
+                <span className="font-mono text-[9px] max-[760px]:text-[12px] uppercase tracking-[0.14em] text-amber-200/70">
                   since {sinceMark}
                 </span>
               ) : null}
@@ -610,7 +610,7 @@ function MosaicIntroLinks(): React.ReactElement {
   return (
     <nav
       aria-label="Explore hypr-tiling"
-      className="mb-1 flex flex-wrap items-center gap-x-2 text-[12px] leading-[1.4] text-stone-500"
+      className="mb-1 flex flex-wrap items-center gap-x-2 text-[12px] max-[760px]:text-[14px] leading-[1.4] text-stone-500 max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center"
     >
       {links.map(
         (link: IntroLink, index: number): React.ReactElement => (
@@ -651,7 +651,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
         <p className="max-w-[62ch] text-[15px] leading-[1.45] text-stone-300/90">
           {INTRO_REACH_PARAGRAPH}
         </p>
-        <footer className="mt-auto border-t border-white/[0.08] pt-2 text-[11px] leading-[1.4] text-stone-500">
+        <footer className="mt-auto border-t border-white/[0.08] pt-2 text-[11px] max-[760px]:text-[14px] leading-[1.4] text-stone-500">
           <MosaicIntroLinks />
           <MosaicIntroGuides />
           <Link href={LICENSE_URL}>{LICENSE_NAME}</Link>

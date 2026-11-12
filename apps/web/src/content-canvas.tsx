@@ -65,7 +65,7 @@ function CanvasKicker({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-slate-400">
+    <span className="font-mono text-[10px] max-[760px]:text-[12px] uppercase tracking-[0.28em] text-slate-400">
       {children}
     </span>
   );
@@ -143,7 +143,7 @@ function CanvasCode({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <code className="rounded-[1px] border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[12px] text-slate-700">
+    <code className="rounded-[1px] border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[12px] max-[760px]:text-[14px] text-slate-700">
       {children}
     </code>
   );
@@ -151,7 +151,7 @@ function CanvasCode({
 
 function CanvasPre({ children }: { children: string }): React.ReactElement {
   return (
-    <pre className="overflow-x-auto rounded-[1px] border border-slate-200 bg-slate-50 p-4 font-mono text-[12px] leading-relaxed text-slate-700">
+    <pre className="overflow-x-auto rounded-[1px] border border-slate-200 bg-slate-50 p-4 font-mono text-[12px] max-[760px]:text-[14px] leading-relaxed text-slate-700">
       <code>{children}</code>
     </pre>
   );
@@ -212,7 +212,7 @@ function CanvasIndex({
           key={item.term}
           className="grid grid-cols-[1.75rem_0.65rem_1fr] items-baseline gap-x-2.5 gap-y-1 border-t border-slate-200 py-2.5 first:border-t-0 first:pt-0"
         >
-          <span className="font-mono text-[10px] tabular-nums leading-snug text-slate-400">
+          <span className="font-mono text-[10px] max-[760px]:text-[12px] tabular-nums leading-snug text-slate-400">
             {String(index + 1).padStart(2, "0")}
           </span>
           <span
@@ -224,7 +224,7 @@ function CanvasIndex({
           <span className="text-[14px] font-medium leading-snug text-slate-800">
             {item.term}
           </span>
-          <span className="col-start-3 max-w-[60ch] text-[12.5px] leading-[1.7] text-slate-500">
+          <span className="col-start-3 max-w-[60ch] text-[12.5px] max-[760px]:text-[14px] leading-[1.7] text-slate-500">
             {item.detail}
             {item.link != null ? (
               <>
@@ -262,8 +262,10 @@ function CanvasGuideLinks({
     >
       <CanvasKicker>{GUIDE_LINKS_HEADING}</CanvasKicker>
       <ul
-        className={`flex flex-col gap-1 ${
-          compact ? "text-[12px] leading-[1.4]" : "text-[13px] leading-[1.6]"
+        className={`flex flex-col gap-1 max-[760px]:gap-0 max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center ${
+          compact
+            ? "text-[14px] leading-[1.4]"
+            : "text-[13px] max-[760px]:text-[14px] leading-[1.6]"
         }`}
       >
         {links.map(
@@ -308,10 +310,10 @@ function IntroContent(): React.ReactElement {
       <p className="max-w-[64ch] text-[14px] leading-[1.45] text-slate-600">
         {INTRO_REACH_PARAGRAPH}
       </p>
-      <footer className="mt-auto border-t border-slate-200 pt-2 text-[11px] leading-[1.4] text-slate-400">
+      <footer className="mt-auto border-t border-slate-200 pt-2 text-[11px] max-[760px]:text-[14px] leading-[1.4] text-slate-400">
         <nav
           aria-label="Explore hypr-tiling"
-          className="flex flex-wrap items-center gap-x-2 text-[12px] leading-[1.4] text-slate-400"
+          className="flex flex-wrap items-center gap-x-2 text-[12px] max-[760px]:text-[14px] leading-[1.4] text-slate-400 max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center"
         >
           {introLinks().map(
             (link: IntroLink, index: number): React.ReactElement => (
