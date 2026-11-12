@@ -170,7 +170,7 @@ export const SEO_FAQ_ITEMS: ReadonlyArray<SeoFaqItem> = [
   {
     question: "How do I install hypr-tiling in a React app?",
     answer:
-      "Run pnpm add @n-uf/hypr-tiling react react-dom. React and react-dom are optional peer dependencies at version 19 or later. The package ships no CSS, so add it to your Tailwind content glob, or the renderer's utility classes are purged and the panes appear unstyled. The quickstart on the docs page has the full setup.",
+      "Run pnpm add @n-uf/hypr-tiling react react-dom. React and react-dom 19 are peer dependencies (only the ./engine entry works without them). The package ships no CSS, so add it to your Tailwind content glob; otherwise Tailwind does not scan its classes and the renderer renders unstyled. The quickstart on the docs page has the full setup.",
   },
   {
     question: "Can I control layout state myself?",
