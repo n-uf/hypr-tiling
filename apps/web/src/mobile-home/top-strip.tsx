@@ -71,7 +71,7 @@ function MobileSkinMenu({
         onClick={(): void => setOpen((prev: boolean): boolean => !prev)}
         className={tokens.menuButton}
       >
-        <span>{activeLabel}</span>
+        <span>Skin</span>
         <span aria-hidden className="opacity-60">
           {"\u25be"}
         </span>

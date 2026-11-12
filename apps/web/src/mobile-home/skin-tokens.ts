@@ -65,7 +65,7 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     wordmark:
       "shrink-0 px-1 font-mono text-[11px] font-semibold lowercase tracking-[0.24em] text-amber-200/70",
     menuButton:
-      "flex h-11 shrink-0 items-center gap-1 rounded-[4px] border border-white/[0.08] bg-white/[0.015] px-2.5 font-mono text-[12px] uppercase tracking-[0.1em] text-stone-300 transition-colors hover:border-amber-300/40 hover:text-amber-100",
+      "flex h-11 shrink-0 items-center gap-1 rounded-[4px] border border-white/[0.08] bg-white/[0.015] px-2.5 font-mono text-[12px] uppercase tracking-[0.02em] text-stone-300 transition-colors hover:border-amber-300/40 hover:text-amber-100",
     menuPanel:
       "absolute right-0 top-[calc(100%+5px)] z-50 flex min-w-[132px] flex-col gap-0.5 overflow-hidden rounded-[5px] border border-white/[0.1] bg-[#16171a] p-1 shadow-[0_22px_46px_-24px_rgba(0,0,0,0.95)] backdrop-blur",
     menuItem:
@@ -73,7 +73,7 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     menuItemActive:
       "flex min-h-11 items-center justify-between gap-3 rounded-[3px] bg-amber-300/[0.12] px-2.5 py-2.5 text-left font-mono text-[12px] uppercase tracking-[0.12em] text-amber-100",
     switcherGroup:
-      "flex h-11 min-w-0 items-stretch overflow-hidden rounded-[4px] border border-white/[0.08] bg-white/[0.015] font-mono text-[12px] uppercase tracking-[0.1em]",
+      "flex h-11 min-w-0 items-stretch overflow-hidden rounded-[4px] border border-white/[0.08] bg-white/[0.015] font-mono text-[12px] uppercase tracking-[0.02em]",
     switcherActive:
       "flex items-center justify-center bg-amber-300/15 text-amber-100 transition-colors",
     switcherInactive:
@@ -86,9 +86,9 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     dot: "bg-white/25",
     dotActive: "bg-amber-300",
     counterText: "shrink-0 font-mono text-[12px] tabular-nums text-stone-500",
-    chip: "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[3px] border border-white/[0.08] bg-white/[0.02] px-1 text-[12px] font-medium tracking-normal text-stone-300 transition-colors",
+    chip: "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[3px] border border-white/[0.08] bg-white/[0.02] px-0.5 text-[12px] font-medium tracking-tight text-stone-300 transition-colors",
     chipFocused:
-      "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[3px] border border-amber-300/55 bg-amber-300/[0.08] px-1 text-[12px] font-medium tracking-normal text-amber-100 transition-colors",
+      "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[3px] border border-amber-300/55 bg-amber-300/[0.08] px-0.5 text-[12px] font-medium tracking-tight text-amber-100 transition-colors",
     schematicRect:
       "border border-white/[0.12] bg-white/[0.03] text-stone-400 hover:border-white/25",
     schematicRectActive:
@@ -104,7 +104,7 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     wordmark:
       "shrink-0 px-1 font-display text-[13px] tracking-[0.02em] text-[#241f17]",
     menuButton:
-      "flex h-11 shrink-0 items-center gap-1 rounded-[3px] border border-[#ddd4bf] bg-[#fbf9f2] px-2.5 font-mono text-[12px] uppercase tracking-[0.1em] text-[#6b6250] transition-colors hover:border-[#241f17] hover:text-[#241f17]",
+      "flex h-11 shrink-0 items-center gap-1 rounded-[3px] border border-[#ddd4bf] bg-[#fbf9f2] px-2.5 font-mono text-[12px] uppercase tracking-[0.02em] text-[#6b6250] transition-colors hover:border-[#241f17] hover:text-[#241f17]",
     menuPanel:
       "absolute right-0 top-[calc(100%+5px)] z-50 flex min-w-[132px] flex-col gap-0.5 overflow-hidden rounded-[4px] border border-[#d8cfb6] bg-[#fbf9f2] p-1 shadow-[0_18px_38px_-24px_rgba(36,31,23,0.5)]",
     menuItem:
@@ -112,7 +112,7 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     menuItemActive:
       "flex min-h-11 items-center justify-between gap-3 rounded-[2px] bg-[#241f17] px-2.5 py-2.5 text-left font-mono text-[12px] uppercase tracking-[0.12em] text-[#fbf9f2]",
     switcherGroup:
-      "flex h-11 min-w-0 items-stretch overflow-hidden rounded-[3px] border border-[#ddd4bf] bg-[#fbf9f2] font-mono text-[12px] uppercase tracking-[0.1em]",
+      "flex h-11 min-w-0 items-stretch overflow-hidden rounded-[3px] border border-[#ddd4bf] bg-[#fbf9f2] font-mono text-[12px] uppercase tracking-[0.02em]",
     switcherActive:
       "flex items-center justify-center bg-[#241f17] text-[#fbf9f2] transition-colors",
     switcherInactive:
@@ -125,9 +125,9 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     dot: "bg-[#d7ccb2]",
     dotActive: "bg-[#241f17]",
     counterText: "shrink-0 font-mono text-[12px] tabular-nums text-[#a89c83]",
-    chip: "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[2px] border border-[#ddd4bf] bg-[#efe8d6] px-1 text-[12px] font-medium tracking-normal text-[#6b6250] transition-colors",
+    chip: "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[2px] border border-[#ddd4bf] bg-[#efe8d6] px-0.5 text-[12px] font-medium tracking-tight text-[#6b6250] transition-colors",
     chipFocused:
-      "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[2px] border border-[#241f17]/55 bg-[#f4eedb] px-1 text-[12px] font-medium tracking-normal text-[#241f17] transition-colors",
+      "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[2px] border border-[#241f17]/55 bg-[#f4eedb] px-0.5 text-[12px] font-medium tracking-tight text-[#241f17] transition-colors",
     schematicRect:
       "border border-[#ddd4bf] bg-[#efe8d6] text-[#8c8069] hover:border-[#c9bd9f]",
     schematicRectActive:
@@ -143,7 +143,7 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     wordmark:
       "shrink-0 px-1 font-mono text-[11px] font-semibold lowercase tracking-[0.24em] text-slate-500",
     menuButton:
-      "flex h-11 shrink-0 items-center gap-1 rounded-[4px] border border-slate-200 bg-slate-50 px-2.5 font-mono text-[12px] uppercase tracking-[0.1em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900",
+      "flex h-11 shrink-0 items-center gap-1 rounded-[4px] border border-slate-200 bg-slate-50 px-2.5 font-mono text-[12px] uppercase tracking-[0.02em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900",
     menuPanel:
       "absolute right-0 top-[calc(100%+5px)] z-50 flex min-w-[132px] flex-col gap-0.5 overflow-hidden rounded-[5px] border border-slate-200 bg-white p-1 shadow-[0_18px_38px_-24px_rgba(15,23,42,0.35)]",
     menuItem:
@@ -151,7 +151,7 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     menuItemActive:
       "flex min-h-11 items-center justify-between gap-3 rounded-[3px] bg-cyan-50 px-2.5 py-2.5 text-left font-mono text-[12px] uppercase tracking-[0.12em] text-cyan-700",
     switcherGroup:
-      "flex h-11 min-w-0 items-stretch overflow-hidden rounded-md border border-slate-200 bg-slate-50 font-mono text-[12px] uppercase tracking-[0.1em]",
+      "flex h-11 min-w-0 items-stretch overflow-hidden rounded-md border border-slate-200 bg-slate-50 font-mono text-[12px] uppercase tracking-[0.02em]",
     switcherActive:
       "flex items-center justify-center bg-white text-slate-900 shadow-[0_1px_0_rgba(15,23,42,0.06)] transition-colors",
     switcherInactive:
@@ -164,9 +164,9 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     dot: "bg-slate-300",
     dotActive: "bg-cyan-500",
     counterText: "shrink-0 font-mono text-[12px] tabular-nums text-slate-400",
-    chip: "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[3px] border border-slate-200 bg-slate-50 px-1 text-[12px] font-medium tracking-normal text-slate-600 transition-colors",
+    chip: "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[3px] border border-slate-200 bg-slate-50 px-0.5 text-[12px] font-medium tracking-tight text-slate-600 transition-colors",
     chipFocused:
-      "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[3px] border border-cyan-300 bg-cyan-50 px-1 text-[12px] font-medium tracking-normal text-cyan-700 transition-colors",
+      "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[3px] border border-cyan-300 bg-cyan-50 px-0.5 text-[12px] font-medium tracking-tight text-cyan-700 transition-colors",
     schematicRect:
       "border border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300",
     schematicRectActive:
