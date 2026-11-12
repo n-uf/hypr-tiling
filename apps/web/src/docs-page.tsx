@@ -842,7 +842,7 @@ function DocsNav({
               navigate("/");
             }
           }}
-          className="flex min-h-11 items-center gap-2.5 font-display text-[15px] font-medium text-stone-50 transition-colors hover:text-amber-100"
+          className="flex items-center gap-2.5 max-[760px]:min-h-11 font-display text-[15px] font-medium text-stone-50 transition-colors hover:text-amber-100"
         >
           <span
             aria-hidden
