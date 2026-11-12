@@ -69,7 +69,7 @@ function EditorialKicker({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <span className="font-mono text-[10px] uppercase tracking-[0.34em] text-[#8c8069]">
+    <span className="font-mono text-[10px] max-[760px]:text-[12px] uppercase tracking-[0.34em] text-[#8c8069]">
       {children}
     </span>
   );
@@ -127,7 +127,7 @@ function EditorialCode({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <code className="rounded-[3px] border border-[#ddd4bf] bg-[#efe8d6] px-1.5 py-0.5 font-mono text-[12px] text-[#3a3327]">
+    <code className="rounded-[3px] border border-[#ddd4bf] bg-[#efe8d6] px-1.5 py-0.5 font-mono text-[12px] max-[760px]:text-[14px] text-[#3a3327]">
       {children}
     </code>
   );
@@ -135,7 +135,7 @@ function EditorialCode({
 
 function EditorialPre({ children }: { children: string }): React.ReactElement {
   return (
-    <pre className="overflow-x-auto border-l-2 border-[#c9bd9f] bg-[#f3eede] py-3 pl-4 pr-3 font-mono text-[12px] leading-relaxed text-[#3a3327]">
+    <pre className="overflow-x-auto border-l-2 border-[#c9bd9f] bg-[#f3eede] py-3 pl-4 pr-3 font-mono text-[12px] max-[760px]:text-[14px] leading-relaxed text-[#3a3327]">
       <code>{children}</code>
     </pre>
   );
@@ -196,14 +196,14 @@ function EditorialIndex({
         >
           <span
             aria-hidden
-            className="pt-0.5 font-mono text-[11px] tabular-nums tracking-[0.1em] text-[#b0a487]"
+            className="pt-0.5 font-mono text-[11px] max-[760px]:text-[12px] tabular-nums tracking-[0.1em] text-[#b0a487]"
           >
             {String(index + 1).padStart(2, "0")}
           </span>
           <span className="font-display text-[15px] leading-snug text-[#241f17]">
             {item.term}
           </span>
-          <span className="col-start-2 max-w-[60ch] text-[13px] leading-[1.75] text-[#5c5342]">
+          <span className="col-start-2 max-w-[60ch] text-[13px] max-[760px]:text-[14px] leading-[1.75] text-[#5c5342]">
             {item.detail}
             {item.link != null ? (
               <>
@@ -241,8 +241,10 @@ function EditorialGuideLinks({
     >
       <EditorialKicker>{GUIDE_LINKS_HEADING}</EditorialKicker>
       <ul
-        className={`flex flex-col gap-0.5 ${
-          compact ? "text-[12px] leading-[1.4]" : "text-[13px] leading-[1.6] text-[#5c5342]"
+        className={`flex flex-col gap-0.5 max-[760px]:gap-0 max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center ${
+          compact
+            ? "text-[14px] leading-[1.4]"
+            : "text-[13px] max-[760px]:text-[14px] leading-[1.6] text-[#5c5342]"
         }`}
       >
         {links.map(
@@ -286,10 +288,10 @@ function IntroContent(): React.ReactElement {
       <p className="max-w-[64ch] text-[15px] leading-[1.5] text-[#4b4335]">
         {INTRO_REACH_PARAGRAPH}
       </p>
-      <footer className="mt-auto border-t border-[#ddd3bd] pt-2 text-[11px] leading-[1.4] text-[#8c8069]">
+      <footer className="mt-auto border-t border-[#ddd3bd] pt-2 text-[11px] max-[760px]:text-[14px] leading-[1.4] text-[#8c8069]">
         <nav
           aria-label="Explore hypr-tiling"
-          className="mb-1 flex flex-wrap items-center gap-x-2 text-[12px] leading-[1.4] text-[#8c8069]"
+          className="mb-1 flex flex-wrap items-center gap-x-2 text-[12px] max-[760px]:text-[14px] leading-[1.4] text-[#8c8069] max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center"
         >
           {introLinks().map(
             (link: IntroLink, index: number): React.ReactElement => (
