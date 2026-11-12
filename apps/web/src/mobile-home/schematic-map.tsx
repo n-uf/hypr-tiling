@@ -77,7 +77,7 @@ function SchematicNode({
       onClick={(): void => onTapLeaf(leafId)}
       aria-label={`open pane ${ordinal}: ${title}`}
       title={title}
-      className={`flex min-h-0 min-w-0 flex-1 items-center justify-center rounded-[2px] font-mono text-[10px] leading-none tabular-nums transition-colors ${
+      className={`flex min-h-0 min-w-0 flex-1 items-center justify-center rounded-[2px] font-mono text-[12px] leading-none tabular-nums transition-colors ${
         isActive ? tokens.schematicRectActive : tokens.schematicRect
       }`}
     >
