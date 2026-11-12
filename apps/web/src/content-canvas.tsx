@@ -1,6 +1,7 @@
 import * as React from "react";
 import {
   DISCOVERABILITY_PARAGRAPHS,
+  SEO_FAQ_ITEMS,
   FEATURE_CORE,
   FEATURE_LATEST,
   FEATURE_LATEST_SINCE,
@@ -34,6 +35,7 @@ import {
   type DocInline,
   type DocParagraph,
   type IntroLink,
+  type SeoFaqItem,
 } from "./docs";
 import { CANVAS_TICKS } from "./canvas-theme";
 import { useIsMobileHomeViewport } from "./mobile-home/use-viewport";
@@ -405,6 +407,27 @@ function DiscoverabilityContent(): React.ReactElement {
           <CanvasLead key={index}>
             <CanvasInline paragraph={paragraph} />
           </CanvasLead>
+        ),
+      )}
+      <CanvasFaq />
+    </div>
+  );
+}
+
+// The visible "Questions" section: an h2, then one h3 question and one p answer
+// per item of `SEO_FAQ_ITEMS` (the same array the FAQPage JSON-LD is built from).
+function CanvasFaq(): React.ReactElement {
+  return (
+    <div className="flex flex-col gap-4 border-t border-slate-200 pt-5">
+      <CanvasHeading>Questions</CanvasHeading>
+      {SEO_FAQ_ITEMS.map(
+        (item: SeoFaqItem): React.ReactElement => (
+          <div key={item.question} className="flex flex-col gap-1.5">
+            <h3 className="text-[15px] font-semibold leading-snug text-slate-800">
+              {item.question}
+            </h3>
+            <CanvasLead>{item.answer}</CanvasLead>
+          </div>
         ),
       )}
     </div>
