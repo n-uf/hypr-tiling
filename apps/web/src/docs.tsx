@@ -778,7 +778,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
         <SectionLead>
           <MosaicInline paragraph={WORKSPACES_SHIPPED} />
         </SectionLead>
-        <p>
+        <p className="max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center">
           <Link href={WORKSPACES_HOWTO_HREF}>{WORKSPACES_HOWTO_LABEL}</Link>
         </p>
         <div className="flex flex-col gap-3 border-t border-white/[0.08] pt-4">
