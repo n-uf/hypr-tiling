@@ -231,7 +231,7 @@ const CONTENT_PHONE_STYLES: string = `
 @media (max-width: 760px) {
   .ht-content [class*="text-[11px]"], .ht-content [class*="text-[11.5px]"], .ht-content [class*="text-[12px]"], .ht-content [class*="text-[12.5px]"], .ht-content [class*="text-[13px]"], .ht-content [class*="text-[13.5px]"] { font-size: 14px; }
   .ht-content [class*="text-[9px]"], .ht-content [class*="text-[10px]"] { font-size: 12px; }
-  .ht-content header nav a { font-size: 12px; }
+  .ht-content header nav a[class] { font-size: 12px; }
   .ht-content nav[aria-label="Breadcrumb"] { display: flex; flex-wrap: wrap; align-items: center; column-gap: 0.5em; }
   .ht-content header nav a:not([class*="hidden"]), .ht-content nav[aria-label="Breadcrumb"] a, .ht-content footer a { display: inline-flex; align-items: center; min-height: 44px; }
 }
