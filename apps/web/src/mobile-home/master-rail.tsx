@@ -127,9 +127,6 @@ export function MasterRailMobile({
                 title={`promote ${args.tile.title} to master`}
                 className={args.isFocused ? tokens.chipFocused : tokens.chip}
               >
-                <span aria-hidden className="shrink-0 font-semibold tabular-nums opacity-70">
-                  {String(args.paneOrdinal).padStart(2, "0")}
-                </span>
                 <span className="min-w-0 truncate">{args.tile.title}</span>
               </button>
             );
