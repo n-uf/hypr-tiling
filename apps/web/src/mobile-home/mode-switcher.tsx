@@ -43,7 +43,7 @@ export function MobileSegmentedControl<Id extends string>({
             aria-pressed={active}
             title={option.description}
             onClick={(): void => onChange(option.id)}
-            className={`min-w-0 flex-1 px-0.5${isLast ? "" : tokens.switcherDivider} ${
+            className={`min-w-0 flex-1 px-0.5 ${isLast ? "" : tokens.switcherDivider} ${
               active ? tokens.switcherActive : tokens.switcherInactive
             }`}
           >
