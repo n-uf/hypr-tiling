@@ -929,8 +929,8 @@ function ReferenceCard({
       id={section.id}
       className="ht-api scroll-mt-24 rounded-lg border border-white/[0.07] bg-white/[0.015] p-5"
     >
-      <div className="mb-3 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-        <h4 className="min-w-0 break-words font-mono text-[15px] font-medium text-stone-50">
+      <div className="mb-3 flex items-baseline gap-2.5 max-[760px]:flex-wrap max-[760px]:gap-x-2.5 max-[760px]:gap-y-1">
+        <h4 className="max-[760px]:min-w-0 max-[760px]:break-words font-mono text-[15px] font-medium text-stone-50">
           {section.name}
         </h4>
         <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-stone-500">
