@@ -1,5 +1,9 @@
 import * as React from "react";
-import { MOBILE_HOME_QUERY, type HomeLayout } from "./mobile-home/use-viewport";
+import {
+  MOBILE_HOME_QUERY,
+  PrerenderedHomeLayoutContext,
+  type HomeLayout,
+} from "./mobile-home/use-viewport";
 
 // The built `/` carries BOTH home layouts, so a phone's first paint is already
 // the mobile layout it ends up on (the stored mobile mode is client-only, so
@@ -153,6 +157,21 @@ export function keepPrerenderedHomeLayout(container: HTMLElement): HomeLayout | 
 }
 
 const subscribeNever = (): (() => void) => (): void => {};
+
+/**
+ * Whether the home's "Questions" section renders in this copy. The built `/`
+ * carries both home copies, and the FAQPage JSON-LD must match the visible
+ * text exactly once, so the static HTML shows the section in the desktop copy
+ * only: the prerendered mobile copy leaves it out while it renders on the
+ * server and hydrates, then shows it on the next render (it sits at the very
+ * end of the page, below everything, so nothing moves). Everywhere else (the
+ * desktop copy, the dev server, client navigation) it is always shown.
+ */
+export function useShowHomeFaq(): boolean {
+  const layout: HomeLayout | null = React.useContext(PrerenderedHomeLayoutContext);
+  const hydrating: boolean = useIsHydrating();
+  return !(layout === "mobile" && hydrating);
+}
 
 /** True while rendering on the server or hydrating; false on every later (or fresh client) render. */
 export function useIsHydrating(): boolean {

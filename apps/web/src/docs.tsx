@@ -9,6 +9,7 @@ import {
   type ContentIndexEntry,
   type ContentSection,
 } from "./content/constants";
+import { useShowHomeFaq } from "./home-first-paint";
 import { useIsMobileHomeViewport } from "./mobile-home/use-viewport";
 
 // Single source of truth for the homepage's documentation surface. The same
@@ -643,7 +644,10 @@ function MosaicIntroLinks(): React.ReactElement {
 
 // The visible "Questions" section: an h2, then one h3 question and one p answer
 // per item of `SEO_FAQ_ITEMS` (the same array the FAQPage JSON-LD is built from).
-function MosaicFaq(): React.ReactElement {
+function MosaicFaq(): React.ReactElement | null {
+  if (!useShowHomeFaq()) {
+    return null;
+  }
   return (
     <div className="flex flex-col gap-4 border-t border-white/[0.08] pt-5">
       <SectionHeading>Questions</SectionHeading>

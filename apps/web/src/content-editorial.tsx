@@ -37,6 +37,7 @@ import {
   type IntroLink,
   type SeoFaqItem,
 } from "./docs";
+import { useShowHomeFaq } from "./home-first-paint";
 import { useIsMobileHomeViewport } from "./mobile-home/use-viewport";
 
 // The EDITORIAL skin's content presentation — the "paper & ink" counterpart to
@@ -396,7 +397,10 @@ function DiscoverabilityContent(): React.ReactElement {
 
 // The visible "Questions" section: an h2, then one h3 question and one p answer
 // per item of `SEO_FAQ_ITEMS` (the same array the FAQPage JSON-LD is built from).
-function EditorialFaq(): React.ReactElement {
+function EditorialFaq(): React.ReactElement | null {
+  if (!useShowHomeFaq()) {
+    return null;
+  }
   return (
     <div className="flex flex-col gap-4 border-t border-[#ddd3bd] pt-5">
       <EditorialHeading>Questions</EditorialHeading>

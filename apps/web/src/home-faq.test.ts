@@ -5,6 +5,7 @@ import { CanvasPaneContent } from "./content-canvas";
 import { EditorialPaneContent } from "./content-editorial";
 import { DOC_PANES, SEO_FAQ_ITEMS, faqAnswerWordCount } from "./docs";
 import { renderHead } from "./home-head";
+import { PrerenderedHomeLayoutContext, type HomeLayout } from "./mobile-home/use-viewport";
 
 // The home's FAQPage JSON-LD must match visible content: one array feeds both
 // the visible "Questions" section (h2, then an h3 question and one p answer per
@@ -53,6 +54,18 @@ describe("the visible Questions section", (): void => {
         (match) => ({ question: decode(match[1]), answer: decode(match[2]) }),
       );
       expect(pairs).toEqual(SEO_FAQ_ITEMS.map((item) => ({ question: item.question, answer: item.answer })));
+    });
+  }
+});
+
+describe("the prerendered home copies", (): void => {
+  const withLayout = (layout: HomeLayout, node: React.ReactNode): string =>
+    renderToStaticMarkup(React.createElement(PrerenderedHomeLayoutContext.Provider, { value: layout }, node));
+
+  for (const skin of SKINS) {
+    it(`${skin.name}: only the desktop copy carries the section, so the built HTML shows it once`, (): void => {
+      expect(withLayout("desktop", skin.pane())).toContain(">Questions</h2>");
+      expect(withLayout("mobile", skin.pane())).not.toContain(">Questions</h2>");
     });
   }
 });

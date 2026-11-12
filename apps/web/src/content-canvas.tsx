@@ -38,6 +38,7 @@ import {
   type SeoFaqItem,
 } from "./docs";
 import { CANVAS_TICKS } from "./canvas-theme";
+import { useShowHomeFaq } from "./home-first-paint";
 import { useIsMobileHomeViewport } from "./mobile-home/use-viewport";
 
 // The CANVAS skin's content presentation — the ENGINEERING-INSTRUMENT readout
@@ -416,7 +417,10 @@ function DiscoverabilityContent(): React.ReactElement {
 
 // The visible "Questions" section: an h2, then one h3 question and one p answer
 // per item of `SEO_FAQ_ITEMS` (the same array the FAQPage JSON-LD is built from).
-function CanvasFaq(): React.ReactElement {
+function CanvasFaq(): React.ReactElement | null {
+  if (!useShowHomeFaq()) {
+    return null;
+  }
   return (
     <div className="flex flex-col gap-4 border-t border-slate-200 pt-5">
       <CanvasHeading>Questions</CanvasHeading>
