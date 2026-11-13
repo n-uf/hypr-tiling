@@ -68,7 +68,7 @@
     "release:next-version": "node ./scripts/calendar-version-bump.mjs --dry-run"
   },
   "dependencies": {
-    "@n-uf/motion": "26.11.3",
+    "@n-uf/motion": "26.11.6",
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.6.0"
   },
