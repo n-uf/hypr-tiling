@@ -7,6 +7,15 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
+## 26.11.6 — 2026-11-12
+
+### `@n-uf/motion` 26.11.6
+
+The dependency moves from `@n-uf/motion` 26.11.3 to 26.11.6, still pinned
+exactly. The motion APIs hypr-tiling uses (the settle, frame loop, clocks and
+`SETTLE_TEMPO`) are unchanged. Motion versions before 26.11.6 are being
+deprecated, so installs no longer pull one in. No change to hypr-tiling's own API.
+
 ## 26.11.5 — 2026-11-11
 
 ### The drop under snap to slot depends only on where you release
