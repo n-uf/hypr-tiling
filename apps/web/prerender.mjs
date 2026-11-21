@@ -118,9 +118,9 @@ writeFileSync(resolve(distDir, "robots.txt"), robotsTxt, "utf8");
 writeFileSync(resolve(distDir, "sitemap.xml"), sitemapXml(site), "utf8");
 
 // Use-case and blog pages ship no tiling app JavaScript: the template's module
-// script and its modulepreload links are dropped (the stylesheet, fonts and the
-// analytics snippet stay), so they read fully with JavaScript off.
-// Vercel Web Analytics is the one script they keep: the React root mounts
+// script and its modulepreload links are dropped (the stylesheet and fonts
+// stay), so they read fully with JavaScript off.
+// Vercel Web Analytics is the one script they get: the React root mounts
 // <Analytics /> (src/app.tsx) for / and /docs, which these pages never load, so
 // the same two tags go in by hand (what @vercel/analytics injects: the queue
 // stub with the query-stripping `beforeSend`, then the deferred script).
