@@ -381,3 +381,9 @@ describe("springLoadFireAt", () => {
     expect(springLoadReducer(DWELLING_AT_1000, tick(at)).phase).toBe("fired");
   });
 });
+
+describe("spring-load: an event it doesn't know", () => {
+  it("leaves the state as it is", () => {
+    expect(springLoadReducer(DWELLING_AT_1000, { type: "NOPE" } as unknown as TilingSpringLoadEvent)).toBe(DWELLING_AT_1000);
+  });
+});

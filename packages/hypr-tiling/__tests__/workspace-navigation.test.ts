@@ -710,3 +710,30 @@ describe("workspace swipe FSM — totality", (): void => {
     }
   });
 });
+
+describe("workspace swipe: rules kept exactly over the generic paged swipe", () => {
+  const start = (): TilingWorkspaceSwipeState =>
+    workspaceSwipeReducer(TILING_WORKSPACE_SWIPE_INITIAL_STATE, { type: "SET_CONTEXT", hasPrev: true, hasNext: true, widthPx: 800 });
+  const wheel = (dx: number, ts: number): TilingWorkspaceSwipeEvent => ({ type: "WHEEL", dx, dy: 0, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ts });
+
+  it("a wheel sample's speed is its own dx over the time since the last: 0.6 px/ms exactly commits", () => {
+    let state: TilingWorkspaceSwipeState = start();
+    // 31.41 + 0.6 − 31.41 is 0.5999… in floating point; the sample's own dx is 0.6
+    for (const event of [wheel(31.41, 0), wheel(0.6, 1), { type: "IDLE_TICK", ts: 500 } as TilingWorkspaceSwipeEvent]) {
+      state = workspaceSwipeReducer(state, event);
+    }
+    expect(state.phase).toBe("settling");
+    expect(state.phase === "settling" && state.outcome).toBe("commit");
+    expect(state.command).toEqual({ kind: "cycle-workspace", direction: "next" });
+  });
+
+  it("an absent modifier needs no key held, as null does", () => {
+    const config: TilingWorkspaceSwipeConfig = { ...TILING_WORKSPACE_SWIPE_DEFAULTS, modifier: undefined as unknown as null };
+    expect(workspaceSwipeReducer(start(), wheel(40, 0), config).phase).toBe("tracking");
+  });
+
+  it("an event it doesn't know leaves the state as it is", () => {
+    const state: TilingWorkspaceSwipeState = start();
+    expect(workspaceSwipeReducer(state, { type: "NOPE" } as unknown as TilingWorkspaceSwipeEvent)).toBe(state);
+  });
+});
