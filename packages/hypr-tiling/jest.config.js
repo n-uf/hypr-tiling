@@ -11,11 +11,12 @@ module.exports = {
     "/__tests__/engine-entry-react-free\\.test\\.ts$",
     "/__tests__/dist-cjs-require\\.test\\.ts$",
   ],
-  // @n-uf/motion ships ESM only; jest runs CommonJS, so its dist is transformed
-  // like our own sources (everything else in node_modules stays untouched).
-  transformIgnorePatterns: ["/node_modules/(?!(\\.pnpm/@n-uf\\+motion@[^/]+/node_modules/)?@n-uf/motion/)"],
+  // @n-uf/motion and @n-uf/placement ship ESM only; jest runs CommonJS, so
+  // their dist is transformed like our own sources (everything else in
+  // node_modules stays untouched).
+  transformIgnorePatterns: ["/node_modules/(?!(\\.pnpm/@n-uf\\+(motion|placement)@[^/]+/node_modules/)?@n-uf/(motion|placement)/)"],
   transform: {
-    "/node_modules/(\\.pnpm/@n-uf\\+motion@[^/]+/node_modules/)?@n-uf/motion/.+\\.js$": [
+    "/node_modules/(\\.pnpm/@n-uf\\+(motion|placement)@[^/]+/node_modules/)?@n-uf/(motion|placement)/.+\\.js$": [
       "ts-jest",
       {
         tsconfig: { allowJs: true, module: "commonjs", esModuleInterop: true },

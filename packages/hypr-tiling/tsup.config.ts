@@ -22,7 +22,8 @@ const shared: Pick<Options, "format" | "dts" | "outExtension"> = {
  *
  * `engine.ts` is therefore built alone with `splitting: false` — a standalone
  * `dist/engine.{mjs,cjs}` whose only externals are `clsx` / `tailwind-merge`
- * (and `@n-uf/motion` in the ESM file; the CJS file bundles it).
+ * (and `@n-uf/motion` / `@n-uf/placement` in the ESM file; the CJS file
+ * bundles them).
  * `index` / `devtools` keep sharing the renderer chunk between themselves.
  *
  * Both configs run concurrently, so neither uses `clean: true` (one config's
@@ -38,15 +39,16 @@ export default defineConfig([
     external: ["react", "react-dom"],
   },
   {
-    // `@n-uf/motion` ships ESM only. The CJS build bundles it, so
-    // `require("@n-uf/hypr-tiling")` works on every Node and under CJS jest
-    // (no require(esm)); the ESM build keeps it an external dependency.
+    // `@n-uf/motion` and `@n-uf/placement` ship ESM only. The CJS build
+    // bundles them, so `require("@n-uf/hypr-tiling")` works on every Node and
+    // under CJS jest (no require(esm)); the ESM build keeps them external
+    // dependencies.
     ...shared,
     format: ["cjs"],
     entry: ["index.ts", "devtools.ts"],
     clean: false,
     external: ["react", "react-dom"],
-    noExternal: ["@n-uf/motion"],
+    noExternal: ["@n-uf/motion", "@n-uf/placement"],
   },
   {
     // The engine imports `@n-uf/motion/gestures` (the narrowest entry). Same
@@ -59,14 +61,14 @@ export default defineConfig([
     external: ["react", "react-dom"],
   },
   {
-    // The CJS engine bundles `@n-uf/motion` (ESM only), so
-    // `require("@n-uf/hypr-tiling/engine")` works on every Node.
+    // The CJS engine bundles `@n-uf/motion` and `@n-uf/placement` (ESM only),
+    // so `require("@n-uf/hypr-tiling/engine")` works on every Node.
     ...shared,
     format: ["cjs"],
     entry: ["engine.ts"],
     clean: false,
     splitting: false,
     external: ["react", "react-dom"],
-    noExternal: ["@n-uf/motion"],
+    noExternal: ["@n-uf/motion", "@n-uf/placement"],
   },
 ]);
