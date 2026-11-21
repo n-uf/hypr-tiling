@@ -772,9 +772,11 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
       <div className="flex flex-col gap-4">
         <SectionHeading>Install</SectionHeading>
         <Pre>{INSTALL_SNIPPET}</Pre>
-        <SectionLead>
-          <MosaicInline paragraph={INSTALL_NPM_PARAGRAPH} />
-        </SectionLead>
+        <div className="max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center">
+          <SectionLead>
+            <MosaicInline paragraph={INSTALL_NPM_PARAGRAPH} />
+          </SectionLead>
+        </div>
         <SectionHeading>Versioning</SectionHeading>
         <SectionLead>
           <MosaicInline paragraph={INSTALL_VERSIONING_PARAGRAPH} />
