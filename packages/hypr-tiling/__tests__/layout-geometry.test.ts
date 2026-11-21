@@ -148,3 +148,18 @@ describe("resolveLayoutGeometry: groups, and the renderer's math", () => {
     for (const f of theirs) expect(ours.get(f.leafId)).toEqual({ x: f.left, y: f.top, width: f.width, height: f.height });
   });
 });
+
+describe("resolveLayoutGeometry: the memo", () => {
+  it("never reads a config the caller changed in place after an earlier call", () => {
+    const tree = split("r", "horizontal", 0.1, leaf("a"), leaf("b"));
+    const first: TilingLayoutConfig = { gapPx: 8, handleSizePx: 2, minPaneSizePx: 40, resizeFloor: "body" };
+    resolveLayoutGeometry(tree, BOX, first);
+    first.minPaneSizePx = 300;
+    const equal: TilingLayoutConfig = { gapPx: 8, handleSizePx: 2, minPaneSizePx: 40, resizeFloor: "body" };
+    const box: TilingRect = { x: 0, y: 0, width: 1000, height: 500 };
+    const memoised = resolveLayoutGeometry(tree, box, equal);
+    // Floor 40 of 990 px is under the 5% net: the stored 0.1 holds, the first pane is 100 less half the gutter.
+    expect(memoised.leaves.get("a")?.width).toBe(95);
+    expect(memoised).toEqual(resolveLayoutGeometry({ ...tree }, box, equal));
+  });
+});
