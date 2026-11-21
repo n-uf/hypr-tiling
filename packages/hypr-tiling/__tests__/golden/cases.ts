@@ -597,6 +597,68 @@ export function springLoadCases(): Record<string, unknown[]> {
   return out;
 }
 
+/**
+ * Drop room at its boundary, recorded from 26.11.7: edge and center drops judged with fractional gaps, handles and
+ * minimums, on target footprints exactly at, just under and just over two minimums plus the gutter along the split
+ * (and the minimum across it), with and without a source. Then stored ratios that are not plain numbers (±Infinity,
+ * null, a numeric string, true) through the layout, on a binary and on a master split. NaN is left out: it lays out at
+ * 0.5 now, where 26.11.7 drew NaN rects.
+ */
+export function dropBoundaryCases(): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const L = (id: string): TilingLeafNode => ({ kind: "leaf", id, tileId: `t-${id}` });
+  const layout: TilingLayoutNode = {
+    kind: "split",
+    id: "s",
+    axis: "horizontal",
+    ratio: 0.5,
+    first: L("A"),
+    second: { kind: "split", id: "t", axis: "vertical", ratio: 0.5, first: L("B"), second: L("C") },
+  };
+  const values = [0, 0.1, 0.2, 0.3, 1.1, 4, 12.3, 40.1];
+  const deltas = [0, 1e-12, -1e-12, 1e-9, -1e-9];
+  for (const gapPx of values) {
+    for (const handleSizePx of values) {
+      for (const minPaneSizePx of [0.1, 4, 12.3]) {
+        const config: TilingLayoutConfig = { gapPx, handleSizePx, minPaneSizePx };
+        const need = minPaneSizePx * 2 + (gapPx + handleSizePx);
+        const verdicts: unknown[] = [];
+        for (const zone of ["left", "top", "center"] as const) {
+          for (const delta of deltas) {
+            const along = need + delta;
+            const across = minPaneSizePx + delta;
+            const footprints =
+              zone === "top"
+                ? [{ left: 0, top: 0, width: 300, height: along }, { left: 1.5, top: 2.5, width: across, height: along }]
+                : [{ left: 0, top: 0, width: along, height: 300 }, { left: 1.5, top: 2.5, width: along, height: across }];
+            for (const targetFootprint of footprints) {
+              for (const sourceLeafId of ["A", null]) {
+                const ev = evaluateZoneCandidate({ zone, layout, sourceLeafId, targetLeafId: "B", targetFootprint, config, viewportWidth: 1000, viewportHeight: 700 });
+                verdicts.push(ev.isValid ? 1 : ev.rejectionReason);
+              }
+            }
+          }
+        }
+        out[`drop/${gapPx}/${handleSizePx}/${minPaneSizePx}`] = verdicts;
+      }
+    }
+  }
+  const ratios: Record<string, unknown> = { inf: Number.POSITIVE_INFINITY, "-inf": Number.NEGATIVE_INFINITY, null: null, string: "0.3", true: true };
+  for (const [name, ratio] of Object.entries(ratios)) {
+    for (const [cname, config] of Object.entries(CONFIGS)) {
+      for (const master of [false, true]) {
+        const tree = { ...layout, ratio, ...(master ? { layoutMode: "master", masterOrientation: "top" } : {}) } as unknown as TilingLayoutNode;
+        const g = resolveLayoutGeometry(tree, AREAS[0]!, config);
+        out[`ratio/${name}/${cname}/${master ? "master" : "binary"}`] = {
+          leaves: [...g.leaves].map(([id, rect]) => [id, ...rectOf(rect)]),
+          splits: [...g.splits].map(([id, s]) => [id, ...rectOf(s.rect), s.ratio]),
+        };
+      }
+    }
+  }
+  return out;
+}
+
 /** Every section, by fixture file name. */
 export const GOLDEN_SECTIONS: Readonly<Record<string, () => unknown>> = {
   layouts: layoutCases,
@@ -610,4 +672,5 @@ export const GOLDEN_SECTIONS: Readonly<Record<string, () => unknown>> = {
   swipe: () => swipeCases(false),
   "swipe-fractional": () => swipeCases(true),
   "spring-load": springLoadCases,
+  "drop-boundary": dropBoundaryCases,
 };
