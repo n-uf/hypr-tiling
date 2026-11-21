@@ -1,5 +1,5 @@
-import { canDropOnPane, type DropVerdict } from "@n-uf/placement/tiling";
-import { collectLeafFootprints, footprintsByLeafId, type TilingPaneKey } from "./leaf-geometry";
+import { canSplitPane, type DropVerdict, type Rect } from "@n-uf/placement/tiling";
+import { collectLeafFootprints, footprintsByLeafId } from "./leaf-geometry";
 import {
   crossAxisDimension,
   isStaticAlongSplitAxis,
@@ -28,7 +28,7 @@ import type {
  * static drag gate. The renderer hands the resolver a thin `evaluateZone`
  * closure delegating here, so the validity math is pure, headless-consumable,
  * and unit-tested — it is no longer embedded in the React component. The room
- * rule on the measured target is `@n-uf/placement/tiling`'s `canDropOnPane`;
+ * rule on the measured target is `@n-uf/placement/tiling`'s `canSplitPane`;
  * the projected fit lays out hypr-tiling's own projection (with its static
  * normalization) through placement; the rejection reasons stay hypr-tiling's.
  */
@@ -99,27 +99,11 @@ export function evaluateEdgeInsertCandidate({
   const minPaneSizePx: number = config.minPaneSizePx;
   const isHorizontalSplit: boolean = candidateZone === "left" || candidateZone === "right";
 
-  // 1. Room on the target as measured: placement's span rule (two minimums plus the gutter along, one across) over
-  //    the target pane alone, in its own footprint, with a pane from outside dropped on that side. Only its two span
-  //    verdicts count: canDropOnPane then also lays the one-pane drop out at 0.5 and checks the halves, which with a
-  //    fractional gutter can come out an ulp under the minimum for a target exactly two minimums plus the gutter
-  //    wide. That step is not this rule (step 2 below judges the real projection), so it is ignored.
-  //    TEMP until placement ships the span rule alone (`canSplitPane(target, side, { min, gap, handle })`).
-  const room: DropVerdict = canDropOnPane<TilingPaneKey>(
-    { pane: MEASURED_TARGET },
-    INCOMING_PANE,
-    MEASURED_TARGET,
-    candidateZone,
-    { x: targetFootprint.left, y: targetFootprint.top, width: targetFootprint.width, height: targetFootprint.height },
-    { gap: config.gapPx, handle: config.handleSizePx, min: minPaneSizePx },
-  );
-  const spanRejection: "axis" | "cross" | null = room.ok
-    ? null
-    : room.reason?.includes("axis span") === true
-      ? "axis"
-      : room.reason?.includes("cross span") === true
-        ? "cross"
-        : null;
+  // 1. Room on the target as measured: placement's room rule (two minimums plus the gutter along the split, one
+  //    across it) on the footprint the caller measured, where the target sits with the source lifted out.
+  const target: Rect = { x: targetFootprint.left, y: targetFootprint.top, width: targetFootprint.width, height: targetFootprint.height };
+  const room: DropVerdict = canSplitPane(target, candidateZone, { gap: config.gapPx, handle: config.handleSizePx, min: minPaneSizePx });
+  const spanRejection: "axis" | "cross" | null = room.ok ? null : room.reason?.includes("cross span") === true ? "cross" : "axis";
   if (spanRejection === "cross") {
     const crossSpanPx: number = isHorizontalSplit ? targetFootprint.height : targetFootprint.width;
     return {
@@ -144,8 +128,7 @@ export function evaluateEdgeInsertCandidate({
 
   // 2. The tree the commit would apply: hypr-tiling's own projection (`insertLeafAdjacent`), which runs its static
   //    normalization (re-pins collapsed panes to their new axis, demotes the second of two statics along one axis),
-  //    laid out by placement; both panes must keep the minimum. (`canDropOnPane` would also re-measure the target in
-  //    the tree without the source, under that tree's own sizing, instead of the footprint measured here.)
+  //    laid out by placement; both panes must keep the minimum.
   const projectedLayout: TilingLayoutNode = insertLeafAdjacent(
     layout,
     sourceLeafId,
@@ -173,11 +156,6 @@ export function evaluateEdgeInsertCandidate({
       : `${candidateZone} rejected: projected source/target footprint violates min pane ${minPaneSizePx}px`,
   };
 }
-
-/** The pane a span check drops on the measured target: no pane of any tree (pane keys count up from 0). */
-const INCOMING_PANE: TilingPaneKey = -1;
-/** The measured target, the only pane of its span check's tree. */
-const MEASURED_TARGET: TilingPaneKey = 0;
 
 /** @internal */
 export function evaluateZoneCandidate({
