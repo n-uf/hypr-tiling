@@ -83,8 +83,8 @@ export interface LeafRect {
 /** A pane of the mapped split tree: its slot's place in reading order. @internal */
 export type TilingPaneKey = number;
 
-/** A layout as placement's split tree, and what its callbacks read. @internal */
-export interface TilingSplitTree {
+/** A layout as placement's split tree, and what its callbacks read. */
+interface TilingSplitTree {
   readonly tree: Split<TilingPaneKey>;
   /** Each pane's slot (a leaf, or a group), by pane key. */
   readonly slots: ReadonlyArray<TilingLeafNode | TilingGroupNode>;
@@ -121,8 +121,8 @@ function pinPx(node: TilingLayoutNode, dimension: TilingDimension): number | nul
   return px;
 }
 
-/** `layout` as placement's split tree, with the options that read its sizing and floors under `config`. @internal */
-export function toSplitTree(layout: TilingLayoutNode, config: TilingLayoutConfig): TilingSplitTree {
+/** `layout` as placement's split tree, with the options that read its sizing and floors under `config`. */
+function toSplitTree(layout: TilingLayoutNode, config: TilingLayoutConfig): TilingSplitTree {
   const slots: Array<TilingLeafNode | TilingGroupNode> = [];
   const shown: Array<string | null> = [];
   const splits: Map<string, TilingSplitNode> = new Map<string, TilingSplitNode>();
@@ -190,12 +190,6 @@ export function toSplitTree(layout: TilingLayoutNode, config: TilingLayoutConfig
     splits,
     options: { gap: config.gapPx, handle: config.handleSizePx, fixed, fixedAcross, floor },
   };
-}
-
-/** The pane key showing `leafId` (the last one, where a tree repeats it), or undefined. @internal */
-export function paneKeyOf(mapped: TilingSplitTree, leafId: string): TilingPaneKey | undefined {
-  const key: number = mapped.shown.lastIndexOf(leafId);
-  return key < 0 ? undefined : key;
 }
 
 /** The footprints of a laid-out mapped tree, in reading order; a group with no active member shows nothing. */
