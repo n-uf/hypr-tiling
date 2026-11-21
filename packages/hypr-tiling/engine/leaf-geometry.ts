@@ -2,6 +2,7 @@ import {
   layoutSplitTree,
   masterStack,
   type FixedLength,
+  type MasterOptions,
   type MinLength,
   type Split,
   type SplitLayout,
@@ -145,22 +146,22 @@ function toSplitTree(layout: TilingLayoutNode, config: TilingLayoutConfig): Tili
     const id: string = String(splits.size);
     splits.set(id, node);
     const master: boolean = node.layoutMode === "master";
-    return {
+    const split: { id: string; a: Split<TilingPaneKey>; b: Split<TilingPaneKey>; axis: "x" | "y"; ratio: number; gap?: number; master?: MasterOptions } = {
       id,
       a: map(node.first),
       b: map(node.second),
       axis: node.axis === "horizontal" ? "x" : "y",
       ratio: master ? node.ratio : storedRatio(node.ratio),
-      ...(node.gapPx != null && !master ? { gap: node.gapPx } : {}),
-      ...(master
-        ? {
-            master: {
-              ...(node.masterCount !== undefined ? { count: node.masterCount } : {}),
-              ...(node.masterOrientation !== undefined ? { side: node.masterOrientation } : {}),
-            },
-          }
-        : {}),
     };
+    if (master) {
+      const options: { count?: number; side?: TilingMasterOrientation } = {};
+      if (node.masterCount !== undefined) options.count = node.masterCount;
+      if (node.masterOrientation !== undefined) options.side = node.masterOrientation;
+      split.master = options;
+    } else if (node.gapPx != null) {
+      split.gap = node.gapPx;
+    }
+    return split;
   };
   const tree: Split<TilingPaneKey> = map(layout);
 
@@ -192,6 +193,50 @@ function toSplitTree(layout: TilingLayoutNode, config: TilingLayoutConfig): Tili
     splits,
     options: { gap: config.gapPx, handle: config.handleSizePx, fixed, fixedAcross, floor },
   };
+}
+
+// ============================================================================
+// Memo: layout trees are immutable (every reducer returns a new tree), so the
+// mapped tree and its layout in a box are kept per root node, config and box.
+// ============================================================================
+
+/** A tree mapped under one config, and its layout in the last few boxes. */
+interface MemoEntry {
+  readonly configKey: string;
+  readonly mapped: TilingSplitTree;
+  readonly boxes: Array<{ readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly laid: SplitLayout<TilingPaneKey> }>;
+}
+
+const MEMO: WeakMap<TilingLayoutNode, Array<MemoEntry>> = new WeakMap<TilingLayoutNode, Array<MemoEntry>>();
+/** Configs and boxes kept per tree: a drag reads one or two of each. */
+const MEMO_CONFIGS: number = 4;
+const MEMO_BOXES: number = 4;
+
+/** Every config field the geometry reads (the gutter, and the floors `resolveAlongAxisFloor` resolves). */
+const configKeyOf = (config: TilingLayoutConfig): string =>
+  `${config.gapPx}|${config.handleSizePx}|${config.minPaneSizePx}|${config.collapsedExtentPx}|${config.resizeFloor}`;
+
+/** `layout` mapped under `config` and laid out in the box, from the memo when it has them. */
+function layOut(layout: TilingLayoutNode, x: number, y: number, width: number, height: number, config: TilingLayoutConfig): { mapped: TilingSplitTree; laid: SplitLayout<TilingPaneKey> } {
+  const configKey: string = configKeyOf(config);
+  let entries: Array<MemoEntry> | undefined = MEMO.get(layout);
+  if (entries == null) {
+    entries = [];
+    MEMO.set(layout, entries);
+  }
+  let entry: MemoEntry | undefined = entries.find((candidate: MemoEntry): boolean => candidate.configKey === configKey);
+  if (entry == null) {
+    entry = { configKey, mapped: toSplitTree(layout, config), boxes: [] };
+    entries.unshift(entry);
+    if (entries.length > MEMO_CONFIGS) entries.pop();
+  }
+  let box = entry.boxes.find((candidate): boolean => Object.is(candidate.x, x) && Object.is(candidate.y, y) && Object.is(candidate.width, width) && Object.is(candidate.height, height));
+  if (box == null) {
+    box = { x, y, width, height, laid: layoutSplitTree(entry.mapped.tree, { x, y, width, height }, entry.mapped.options) };
+    entry.boxes.unshift(box);
+    if (entry.boxes.length > MEMO_BOXES) entry.boxes.pop();
+  }
+  return { mapped: entry.mapped, laid: box.laid };
 }
 
 /** The footprints of a laid-out mapped tree, in reading order; a group with no active member shows nothing. */
@@ -410,8 +455,8 @@ export function collectLeafFootprints(
   height: number,
   config: TilingLayoutConfig,
 ): ReadonlyArray<TilingLeafFootprint> {
-  const mapped: TilingSplitTree = toSplitTree(node, config);
-  return footprintsOf(mapped, layoutSplitTree(mapped.tree, { x: left, y: top, width, height }, mapped.options));
+  const { mapped, laid } = layOut(node, left, top, width, height, config);
+  return footprintsOf(mapped, laid);
 }
 
 // ============================================================================
@@ -477,8 +522,7 @@ const toRect = (box: TilingPaneFootprint): TilingRect => ({ x: box.left, y: box.
  * ratio of the extent).
  */
 export function resolveLayoutGeometry(layout: TilingLayoutNode, container: TilingRect, config: TilingLayoutConfig): TilingLayoutGeometry {
-  const mapped: TilingSplitTree = toSplitTree(layout, config);
-  const laid: SplitLayout<TilingPaneKey> = layoutSplitTree(mapped.tree, container, mapped.options);
+  const { mapped, laid } = layOut(layout, container.x, container.y, container.width, container.height, config);
   const leaves: Map<string, TilingRect> = new Map<string, TilingRect>(
     footprintsOf(mapped, laid).map((footprint: TilingLeafFootprint): [string, TilingRect] => [footprint.leafId, toRect(footprint)]),
   );
