@@ -21,7 +21,8 @@ const shared: Pick<Options, "format" | "dts" | "outExtension"> = {
  * has no `createContext`.
  *
  * `engine.ts` is therefore built alone with `splitting: false` — a standalone
- * `dist/engine.{mjs,cjs}` whose only externals are `clsx` / `tailwind-merge`.
+ * `dist/engine.{mjs,cjs}` whose only externals are `clsx` / `tailwind-merge`
+ * (and `@n-uf/motion` in the ESM file; the CJS file bundles it).
  * `index` / `devtools` keep sharing the renderer chunk between themselves.
  *
  * Both configs run concurrently, so neither uses `clean: true` (one config's
@@ -48,10 +49,24 @@ export default defineConfig([
     noExternal: ["@n-uf/motion"],
   },
   {
+    // The engine imports `@n-uf/motion/gestures` (the narrowest entry). Same
+    // split as above: ESM keeps it an external dependency.
     ...shared,
+    format: ["esm"],
     entry: ["engine.ts"],
     clean: false,
     splitting: false,
     external: ["react", "react-dom"],
+  },
+  {
+    // The CJS engine bundles `@n-uf/motion` (ESM only), so
+    // `require("@n-uf/hypr-tiling/engine")` works on every Node.
+    ...shared,
+    format: ["cjs"],
+    entry: ["engine.ts"],
+    clean: false,
+    splitting: false,
+    external: ["react", "react-dom"],
+    noExternal: ["@n-uf/motion"],
   },
 ]);
