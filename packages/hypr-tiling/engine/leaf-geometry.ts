@@ -112,6 +112,17 @@ function pinPx(node: TilingLayoutNode, dimension: TilingDimension): number | nul
   return px;
 }
 
+/**
+ * A binary split's stored ratio as the floor clamp has always read it: as a number (`null` is 0, `true` 1, a numeric
+ * string its number) clamped to 0..1, so ±Infinity lands on the floor bound as before; NaN stays NaN, which placement
+ * lays out at 0.5. A master split's ratio goes through as stored: placement's master clamp reads it as the engine's
+ * did (anything not a finite number is 0.5).
+ */
+function storedRatio(raw: unknown): number {
+  const ratio: number = Number(raw);
+  return Number.isNaN(ratio) ? ratio : Math.min(1, Math.max(0, ratio));
+}
+
 /** `layout` as placement's split tree, with the options that read its sizing and floors under `config`. */
 function toSplitTree(layout: TilingLayoutNode, config: TilingLayoutConfig): TilingSplitTree {
   const slots: Array<TilingLeafNode | TilingGroupNode> = [];
@@ -139,7 +150,7 @@ function toSplitTree(layout: TilingLayoutNode, config: TilingLayoutConfig): Tili
       a: map(node.first),
       b: map(node.second),
       axis: node.axis === "horizontal" ? "x" : "y",
-      ratio: node.ratio,
+      ratio: master ? node.ratio : storedRatio(node.ratio),
       ...(node.gapPx != null && !master ? { gap: node.gapPx } : {}),
       ...(master
         ? {
