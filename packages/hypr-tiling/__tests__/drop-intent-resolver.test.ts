@@ -11,7 +11,6 @@ import {
   resolveGroupTabStripHit,
   resolveHostGroupDropTargetHit,
   resolvePaneZoneGeometry,
-  snapToDevicePixel,
   toPaneLocalPoint,
 } from "../engine/drop-intent-resolver";
 import type { TilingPanePoint } from "../engine/drop-intent-resolver";
@@ -234,12 +233,6 @@ describe("coordinate-origin transforms", (): void => {
 });
 
 describe("devicePixelRatio / Retina correctness", (): void => {
-  it("snaps a value to the device-pixel grid", (): void => {
-    expect(snapToDevicePixel(66.3, 2)).toBe(66.5);
-    expect(snapToDevicePixel(66.3, 1)).toBe(66);
-    expect(snapToDevicePixel(66.26, 0)).toBe(66);
-  });
-
   it("snaps every center-rectangle boundary onto the device-pixel grid", (): void => {
     const geometry = resolvePaneZoneGeometry(
       { width: 201, height: 201 },

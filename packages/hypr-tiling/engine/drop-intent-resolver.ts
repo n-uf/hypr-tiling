@@ -1,3 +1,4 @@
+import { paneCenter, paneRegion, type PaneCenter, type PaneRegionOptions } from "@n-uf/placement/tiling";
 import type {
   TilingDropAction,
   TilingDropIntentTuningState,
@@ -26,7 +27,9 @@ export type TilingEdgeZone = Exclude<TilingLeafDropZone, "center">;
  *
  * Both `classifyPaneZone` (resolution) and `paneZoneClipPaths` (overlay drawing)
  * derive from this one geometry, so the resolved zone is exactly the drawn zone
- * under the cursor.
+ * under the cursor. The center rectangle and the classification are
+ * `@n-uf/placement/tiling`'s `paneCenter` and `paneRegion`; this module maps
+ * the hit-zone config onto their options and keeps the diagnostics.
  */
 
 interface TilingDropIntentEvaluation {
@@ -99,6 +102,8 @@ export interface TilingPaneZoneGeometry {
   centerRightPx: number;
   centerBottomPx: number;
   devicePixelRatio: number;
+  /** The placement region options this center was laid out by; `classifyPaneZone` classifies by the same. */
+  regionOptions: PaneRegionOptions;
 }
 
 /**
@@ -217,16 +222,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-/**
- * Snap a pane-local px value to the physical device-pixel grid. The browser
- * rasterizes CSS boundaries to device pixels; snapping the classification
- * boundary to the same grid keeps "measured == rendered" on HiDPI/Retina.
- */
-export function snapToDevicePixel(valuePx: number, devicePixelRatio: number): number {
-  const safeRatio: number = devicePixelRatio > 0 ? devicePixelRatio : 1;
-  return Math.round(valuePx * safeRatio) / safeRatio;
-}
-
 /** Convert a raw client-space point into pane-local coordinates. */
 export function toPaneLocalPoint(
   clientPoint: TilingPanePoint,
@@ -238,25 +233,36 @@ export function toPaneLocalPoint(
   };
 }
 
+/**
+ * The center (swap) rectangle of a pane, placement's `paneCenter`: each axis
+ * spans its center ratio (clamped `[0.05, 0.95]`) of the pane, at least
+ * `centerMinPx` and at most the pane, with every boundary snapped to the
+ * device-pixel grid (the browser rasterizes CSS boundaries to device pixels,
+ * so "measured == rendered" on HiDPI/Retina).
+ */
 export function resolvePaneZoneGeometry(
   size: TilingPaneSize,
   config: TilingZoneGeometryConfig,
 ): TilingPaneZoneGeometry {
-  const width: number = Math.max(0, size.width);
-  const height: number = Math.max(0, size.height);
   const devicePixelRatio: number = config.devicePixelRatio > 0 ? config.devicePixelRatio : 1;
   const ratios: TilingCenterRatios = resolveCenterRatios(config);
-  const centerWidth: number = Math.min(width, Math.max(width * ratios.x, Math.min(config.centerMinPx, width)));
-  const centerHeight: number = Math.min(height, Math.max(height * ratios.y, Math.min(config.centerMinPx, height)));
+  const regionOptions: PaneRegionOptions = {
+    centerX: ratios.x,
+    centerY: ratios.y,
+    centerMin: config.centerMinPx,
+    pixelRatio: devicePixelRatio,
+  };
+  const center: PaneCenter = paneCenter(size, regionOptions);
 
   return {
-    width,
-    height,
-    centerLeftPx: snapToDevicePixel((width - centerWidth) / 2, devicePixelRatio),
-    centerTopPx: snapToDevicePixel((height - centerHeight) / 2, devicePixelRatio),
-    centerRightPx: snapToDevicePixel((width + centerWidth) / 2, devicePixelRatio),
-    centerBottomPx: snapToDevicePixel((height + centerHeight) / 2, devicePixelRatio),
+    width: center.width,
+    height: center.height,
+    centerLeftPx: center.left,
+    centerTopPx: center.top,
+    centerRightPx: center.right,
+    centerBottomPx: center.bottom,
     devicePixelRatio,
+    regionOptions,
   };
 }
 
@@ -300,79 +306,27 @@ export function resolveDominantEdge(point: TilingPanePoint, geometry: TilingPane
   return bestZone;
 }
 
-function classifyRawZone(point: TilingPanePoint, geometry: TilingPaneZoneGeometry): TilingLeafDropZone {
-  const insideCenterX: boolean = point.x >= geometry.centerLeftPx && point.x <= geometry.centerRightPx;
-  const insideCenterY: boolean = point.y >= geometry.centerTopPx && point.y <= geometry.centerBottomPx;
-  if (insideCenterX && insideCenterY) {
-    return "center";
-  }
-
-  let bestZone: TilingLeafDropZone = "center";
-  let bestPenetration: number = 0;
-  for (const entry of edgePenetrations(point, geometry)) {
-    if (entry.penetration > bestPenetration) {
-      bestPenetration = entry.penetration;
-      bestZone = entry.zone;
-    }
-  }
-  return bestZone;
-}
-
-function nudgeTowardZone(
-  point: TilingPanePoint,
-  zone: TilingLeafDropZone,
-  distancePx: number,
-  geometry: TilingPaneZoneGeometry,
-): TilingPanePoint {
-  if (zone === "left") {
-    return { x: point.x - distancePx, y: point.y };
-  }
-  if (zone === "right") {
-    return { x: point.x + distancePx, y: point.y };
-  }
-  if (zone === "top") {
-    return { x: point.x, y: point.y - distancePx };
-  }
-  if (zone === "bottom") {
-    return { x: point.x, y: point.y + distancePx };
-  }
-  const paneCenterX: number = geometry.width / 2;
-  const paneCenterY: number = geometry.height / 2;
-  const deltaX: number = paneCenterX - point.x;
-  const deltaY: number = paneCenterY - point.y;
-  const length: number = Math.hypot(deltaX, deltaY);
-  if (length <= distancePx || length === 0) {
-    return { x: paneCenterX, y: paneCenterY };
-  }
-  return {
-    x: point.x + (deltaX / length) * distancePx,
-    y: point.y + (deltaY / length) * distancePx,
-  };
-}
-
 /**
- * Deterministically classify a pane-local point into a drop zone.
+ * Deterministically classify a pane-local point into a drop zone: placement's
+ * `paneRegion` over the pane, by the region options `geometry` was laid out by.
  *
- * The base partition is a pure function of position (no seed/fallback ordering).
- * The only stabilization is a small geometric hysteresis: once the cursor is in
+ * The base partition is a pure function of position (no seed/fallback ordering):
+ * inside the center rectangle is `center`, else the deepest normalized
+ * penetration toward a side wins (ties top → right → bottom → left). The only
+ * stabilization is a small geometric hysteresis: once the cursor is in
  * `previousZone`, it must cross the boundary by `hysteresisPx` (measured toward
- * that zone) before the classification switches. This prevents corner/divider
- * flicker without time-based debounce.
+ * that zone; default 0, no hold) before the classification switches. This
+ * prevents corner/divider flicker without time-based debounce.
  */
 export function classifyPaneZone(
   point: TilingPanePoint,
   geometry: TilingPaneZoneGeometry,
   options?: { previousZone?: TilingLeafDropZone | null; hysteresisPx?: number },
 ): TilingLeafDropZone {
-  const rawZone: TilingLeafDropZone = classifyRawZone(point, geometry);
-  const previousZone: TilingLeafDropZone | null = options?.previousZone ?? null;
-  const hysteresisPx: number = Math.max(0, options?.hysteresisPx ?? 0);
-  if (previousZone == null || hysteresisPx === 0 || previousZone === rawZone) {
-    return rawZone;
-  }
-
-  const nudgedPoint: TilingPanePoint = nudgeTowardZone(point, previousZone, hysteresisPx, geometry);
-  return classifyRawZone(nudgedPoint, geometry) === previousZone ? previousZone : rawZone;
+  return paneRegion({ x: 0, y: 0, width: geometry.width, height: geometry.height }, point, options?.previousZone ?? null, {
+    ...geometry.regionOptions,
+    hysteresis: Math.max(0, options?.hysteresisPx ?? 0),
+  });
 }
 
 /**
@@ -445,10 +399,10 @@ export function resolveDropIntent(input: TilingDropIntentResolutionInput): Tilin
   // `zone` is the resolved partition after geometric hysteresis may hold the
   // previous zone. `heldByHysteresis` (and the `fallbackReason` it drives) is
   // exactly the divergence between them, so neither call can be dropped without
-  // losing the hold signal. The redundant inner re-run of `classifyRawZone` is
-  // an O(4) micro-cost kept inside `classifyPaneZone` to preserve it as the
-  // single source of truth for the partition rather than inlining the geometry
-  // here.
+  // losing the hold signal. The redundant inner re-run of the raw partition is
+  // an O(4) micro-cost kept inside `classifyPaneZone` (placement's `paneRegion`)
+  // to preserve it as the single source of truth for the partition rather than
+  // inlining the geometry here.
   const rawZone: TilingLeafDropZone = classifyPaneZone(point, geometry);
   const zone: TilingLeafDropZone = classifyPaneZone(point, geometry, {
     previousZone: input.previousZone ?? null,
