@@ -28,6 +28,8 @@ export const PACKAGE_NAME: string = "@n-uf/hypr-tiling";
 // Canonical homepage base. The docs homepage lives at the site root.
 export const SITE_URL: string = "https://hypr-tiling.n-uf.com/";
 export const REPO_URL: string = "https://github.com/n-uf/hypr-tiling";
+// The package page on npmjs.com, in the form the other n-uf sites link to.
+export const NPM_URL: string = `https://www.npmjs.com/package/${PACKAGE_NAME}`;
 // The prerendered documentation route (guides + generated API reference). Its
 // own static HTML lives at `dist/docs/index.html` (see prerender.mjs).
 export const DOCS_URL: string = `${SITE_URL.replace(/\/$/, "")}/docs`;
@@ -503,6 +505,10 @@ export const USECASES_LEAD: string =
   "Any screen with several panes the user rearranges.";
 
 // Install pane prose (snippets are `INSTALL_SNIPPET` / `INTEGRATION_EXAMPLE`).
+// The npm link sits right under the install line.
+export const INSTALL_NPM_PARAGRAPH: DocParagraph = [
+  { link: `${PACKAGE_NAME} on npm`, href: NPM_URL },
+];
 export const INSTALL_INTRO_PARAGRAPH: DocParagraph = [
   "React 19 peers. Full walkthrough in the ",
   { link: "quickstart", href: "/docs#quickstart" },
@@ -766,6 +772,9 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
       <div className="flex flex-col gap-4">
         <SectionHeading>Install</SectionHeading>
         <Pre>{INSTALL_SNIPPET}</Pre>
+        <SectionLead>
+          <MosaicInline paragraph={INSTALL_NPM_PARAGRAPH} />
+        </SectionLead>
         <SectionHeading>Versioning</SectionHeading>
         <SectionLead>
           <MosaicInline paragraph={INSTALL_VERSIONING_PARAGRAPH} />

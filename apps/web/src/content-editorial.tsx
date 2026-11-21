@@ -9,6 +9,7 @@ import {
   FEATURE_RECENT_SINCE,
   INSTALL_CONTROLLED_PARAGRAPH,
   INSTALL_INTRO_PARAGRAPH,
+  INSTALL_NPM_PARAGRAPH,
   INSTALL_SNIPPET,
   INTEGRATION_EXAMPLE,
   INTRO_H1,
@@ -331,6 +332,9 @@ function InstallContent(): React.ReactElement {
     <div className="flex flex-col gap-5">
       <EditorialHeading>Install</EditorialHeading>
       <EditorialPre>{INSTALL_SNIPPET}</EditorialPre>
+      <EditorialLead>
+        <EditorialInline paragraph={INSTALL_NPM_PARAGRAPH} />
+      </EditorialLead>
       <EditorialPre>{INTEGRATION_EXAMPLE}</EditorialPre>
       <EditorialLead>
         <EditorialInline paragraph={INSTALL_INTRO_PARAGRAPH} />
