@@ -1,25 +1,29 @@
 import {
   SETTLE_TEMPO,
-  createSettle,
+  createLayoutMotion,
   popIn,
   reveal,
+  type DrawFrame,
+  type Drawable,
   type FrameInfo,
   type FrameLoop,
+  type LayoutItem,
+  type LayoutMotion,
   type PopIn,
   type Rect,
   type RevealFrame,
-  type Settle,
 } from "@n-uf/motion";
 
 /**
  * Leaf motion: how every pane moves between layouts, DOM-free.
  *
- * One settle per leaf (keyed by leaf id) from `@n-uf/motion`, on the host's
- * frame loop. The renderer reads each leaf's LAYOUT rect after a commit and
- * hands it over as the leaf's target; the leaf launches toward it from where it
- * is DRAWN (never from a re-measured DOM rect), follows `distance · e^(−ω·t)`
- * and never passes it, so a retarget mid-flight carries on from the drawn rect
- * without a jump, an overshoot or a size wobble.
+ * Built on `@n-uf/motion`'s layout motion (`createLayoutMotion`): one item per
+ * leaf (keyed by leaf id) on the host's frame loop. The renderer reads each
+ * leaf's LAYOUT rect after a commit and hands it over as the leaf's target; the
+ * leaf launches toward it from where it is DRAWN (never from a re-measured DOM
+ * rect), follows `distance · e^(−ω·t)` and never passes it, so a retarget
+ * mid-flight carries on from the drawn rect without a jump, an overshoot or a
+ * size wobble.
  *
  * What is written per frame is a {@link LeafMotionFrame}: the drawn rect, the
  * layout rect, and the `reveal` of one into the other (the leaf is moved by
@@ -28,15 +32,19 @@ import {
  * gets a uniform pop-in (scale 0.87 → 1 with opacity). Held leaves (a divider
  * drag, a pointer) sit exactly where they are put.
  *
+ * This module keeps what the layout motion leaves to its host: the leaf frame
+ * the renderer draws, `active` (true only while a leaf moves or pops in, so a
+ * frame that only draws a change never toggles it), and the stepped `time` (the
+ * deltas of the frames that moved something). A change made between frames is
+ * drawn by {@link LeafMotion.flush}, or on the next frame when the host doesn't
+ * flush.
+ *
  * Nothing here touches the DOM: the host passes a frame loop (a browser clock in
  * the app, `createFakeClock()` in tests) and an `onWrite` that draws the frames.
  */
 
 /** Hyprland's `popin 87%`: where an opening leaf's uniform scale starts. */
 export const LEAF_MOTION_POP_IN_FROM: number = 0.87;
-
-/** Rest distance of the pop-in progress settle (a 0..1 number, not pixels). */
-const POP_IN_REST_DELTA: number = 0.001;
 
 /** One leaf's state for a frame, as the host draws it. */
 export interface LeafMotionFrame {
@@ -55,7 +63,7 @@ export interface LeafMotionFrame {
 
 /** What a write sees of the frame it draws. */
 export interface LeafMotionTick {
-  /** The stepped time in ms: the frame loop's deltas summed since the motion was created. */
+  /** The stepped time in ms: the deltas of the frames that moved a leaf, summed since the motion was created. */
   readonly time: number;
   /** The delta this frame was stepped by (0 for a write outside the loop). */
   readonly delta: number;
@@ -63,7 +71,7 @@ export interface LeafMotionTick {
 
 /** Options of {@link createLeafMotion}. */
 export interface LeafMotionOptions {
-  /** The frame loop the leaves step on (`layout` phase) and are drawn on (`write` phase). */
+  /** The frame loop the leaves step and are drawn on (`layout` phase). */
   readonly loop: FrameLoop;
   /** The tempo in 1/s (default `SETTLE_TEMPO.default`, 90 % in 92 ms). */
   readonly omega?: number;
@@ -81,7 +89,7 @@ export interface LeafMotion {
   readonly omega: number;
   /** Whether any leaf is moving or popping in. */
   readonly active: boolean;
-  /** The stepped time in ms (the loop's deltas summed). */
+  /** The stepped time in ms (the deltas of the frames that moved a leaf, summed). */
   readonly time: number;
   /**
    * The leaf's new layout rect. A known leaf glides there from where it is
@@ -126,13 +134,14 @@ export interface LeafMotion {
   dispose(): void;
 }
 
-interface LeafEntry {
-  readonly settle: Settle<Rect>;
-  /** Where the settle is headed (or held). */
+/** What the layout motion doesn't keep of a leaf: where it is headed or held, and where it is laid out. */
+interface LeafState {
+  /** Where the leaf is headed (or held). */
   goal: Rect;
   /** Where the element is laid out (the frame's `target`); usually `goal`. */
   layout: Rect;
-  pop: Settle<number> | null;
+  /** It was opened and its pop-in hasn't finished. */
+  opening: boolean;
 }
 
 function sameRect(a: Rect, b: Rect): boolean {
@@ -143,31 +152,32 @@ function copyRect(rect: Rect): Rect {
   return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 }
 
+/** The leaves draw through `onWrite`, in one batch per write: an item's own drawable has nothing to do. */
+const WRITTEN_IN_BATCHES: Drawable = { layOut: (): void => {}, draw: (_frame: DrawFrame): void => {} };
+
 /** Create the leaf motion on `options.loop`. */
 export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
   const { loop, onWrite, onActiveChange } = options;
   const reducedMotion: () => boolean = options.reducedMotion ?? ((): boolean => false);
   let omega: number = options.omega ?? SETTLE_TEMPO.default;
-  const leaves: Map<string, LeafEntry> = new Map<string, LeafEntry>();
-  const dirty: Set<string> = new Set<string>();
+  const leaves: Map<string, LeafState> = new Map<string, LeafState>();
   let time: number = 0;
-  let stopRepeat: (() => void) | null = null;
+  /** The delta of the frame being drawn; 0 outside the loop (a flush). */
+  let delta: number = 0;
   let active: boolean = false;
+  let stopClock: (() => void) | null = null;
   let disposed: boolean = false;
 
-  const isMoving = (entry: LeafEntry): boolean => !entry.settle.settled || (entry.pop != null && !entry.pop.settled);
-
-  const frameOf = (id: string, entry: LeafEntry): LeafMotionFrame => {
-    const drawn: Rect = copyRect(entry.settle.value as Rect);
-    const target: Rect = entry.layout;
-    return {
-      id,
-      drawn,
-      target,
-      reveal: reveal(drawn, target),
-      pop: entry.pop == null ? null : popIn(entry.pop.value as number, LEAF_MOTION_POP_IN_FROM),
-      moving: isMoving(entry),
-    };
+  const popping = (item: LayoutItem, state: LeafState): boolean => state.opening && !item.shownSettled;
+  const isMoving = (item: LayoutItem, state: LeafState): boolean => !item.settled || popping(item, state);
+  const anyMoving = (): boolean => {
+    for (const [id, state] of leaves) {
+      const item: LayoutItem | undefined = layout.get(id);
+      if (item != null && isMoving(item, state)) {
+        return true;
+      }
+    }
+    return false;
   };
 
   const setActive = (next: boolean): void => {
@@ -178,15 +188,41 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
     onActiveChange?.(next);
   };
 
-  const writeDirty = (delta: number): void => {
+  const frameOf = (id: string, item: LayoutItem, state: LeafState, frame?: DrawFrame): LeafMotionFrame => {
+    const drawn: Rect = copyRect(frame?.drawn ?? item.drawn);
+    const pop: PopIn | null = popping(item, state) ? popIn(frame?.shown ?? item.shown, LEAF_MOTION_POP_IN_FROM) : null;
+    if (state.opening && item.shownSettled) {
+      state.opening = false;
+    }
+    return { id, drawn, target: state.layout, reveal: reveal(drawn, state.layout), pop, moving: isMoving(item, state) };
+  };
+
+  /** Nothing moves any more: the leaves are at rest before the frame that brought them there is written. */
+  const settleIfIdle = (): void => {
+    if (active && !anyMoving()) {
+      setActive(false);
+      stopClock?.();
+      stopClock = null;
+    }
+  };
+
+  /**
+   * The leaves to write: changed since the last write (in change order), then, on a frame, every leaf that moved on
+   * it. The layout motion draws unbatched (each item's own drawable, which does nothing here), so a change between
+   * frames never asks for a frame of its own: it is written by `flush`, or with the next frame that moves a leaf.
+   */
+  const dirty: Set<string> = new Set<string>();
+
+  const writeDirty = (): void => {
     if (dirty.size === 0) {
       return;
     }
     const frames: LeafMotionFrame[] = [];
     for (const id of dirty) {
-      const entry: LeafEntry | undefined = leaves.get(id);
-      if (entry != null) {
-        frames.push(frameOf(id, entry));
+      const item: LayoutItem | undefined = layout.get(id);
+      const state: LeafState | undefined = leaves.get(id);
+      if (item != null && state != null) {
+        frames.push(frameOf(id, item, state));
       }
     }
     dirty.clear();
@@ -195,75 +231,71 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
     }
   };
 
-  const writeTask = (frame: FrameInfo): void => {
-    writeDirty(frame.delta);
-  };
-
-  const stepTask = (frame: FrameInfo): boolean => {
-    time += frame.delta;
-    let anyMoving: boolean = false;
-    for (const [id, entry] of leaves) {
-      if (!isMoving(entry)) {
-        continue;
-      }
-      entry.settle.step(frame.delta);
-      if (entry.pop != null) {
-        entry.pop.step(frame.delta);
-        if (entry.pop.settled) {
-          entry.pop = null;
-        }
-      }
-      dirty.add(id);
-      if (isMoving(entry)) {
-        anyMoving = true;
-      }
-    }
-    loop.schedule("write", writeTask);
-    if (!anyMoving) {
-      stopRepeat = null;
-      setActive(false);
-      return false;
-    }
-    return true;
-  };
-
-  const ensureRunning = (): void => {
-    if (disposed) {
+  const layout: LayoutMotion = createLayoutMotion({ loop, omega, reducedMotion, popFrom: LEAF_MOTION_POP_IN_FROM });
+  // After a frame's leaves have stepped: rest first (nothing moves any more), then write what changed and moved.
+  layout.onFrame((): void => {
+    if (stopClock == null) {
       return;
     }
-    let anyMoving: boolean = false;
-    for (const entry of leaves.values()) {
-      if (isMoving(entry)) {
-        anyMoving = true;
-        break;
-      }
-    }
-    if (!anyMoving) {
+    settleIfIdle();
+    writeDirty();
+    delta = 0;
+  });
+
+  /** Start counting time and mark the motion active once a leaf moves. */
+  const ensureRunning = (): void => {
+    if (disposed || !anyMoving()) {
       return;
     }
     setActive(true);
-    if (stopRepeat == null) {
-      stopRepeat = loop.repeat("layout", stepTask);
+    if (stopClock == null) {
+      // Runs before the leaves step: the frame's delta, and every leaf moving into it is written after it.
+      stopClock = layout.task((frame: FrameInfo): boolean => {
+        time += frame.delta;
+        delta = frame.delta;
+        for (const [id, state] of leaves) {
+          const item: LayoutItem | undefined = layout.get(id);
+          if (item != null && isMoving(item, state)) {
+            dirty.add(id);
+          }
+        }
+        return false;
+      });
     }
   };
 
-  const place = (id: string, rect: Rect): LeafEntry => {
-    const existing: LeafEntry | undefined = leaves.get(id);
-    if (existing != null) {
-      existing.settle.jumpTo(rect);
-      existing.goal = copyRect(rect);
-      existing.layout = existing.goal;
-      return existing;
+  const itemFor = (id: string, rect: Rect): { item: LayoutItem; state: LeafState } => {
+    const known: LayoutItem | undefined = layout.get(id);
+    const state: LeafState | undefined = leaves.get(id);
+    if (known != null && state != null) {
+      return { item: known, state };
     }
     const goal: Rect = copyRect(rect);
-    const entry: LeafEntry = {
-      settle: createSettle<Rect>(copyRect(rect), { omega }),
-      goal,
-      layout: goal,
-      pop: null,
-    };
-    leaves.set(id, entry);
-    return entry;
+    const fresh: LeafState = { goal, layout: goal, opening: false };
+    leaves.set(id, fresh);
+    return { item: layout.add(id, WRITTEN_IN_BATCHES, rect), state: fresh };
+  };
+
+  /** Put the leaf at `rect` at rest, laid out at `at` (default `rect`). */
+  const place = (id: string, rect: Rect, at?: Rect): LeafState => {
+    const { item, state } = itemFor(id, rect);
+    state.goal = copyRect(rect);
+    state.layout = at != null ? copyRect(at) : state.goal;
+    item.jumpTo(state.layout);
+    if (at != null) {
+      item.hold(rect);
+    }
+    dirty.add(id);
+    return state;
+  };
+
+  /** Head for `rect`, laid out at `at`: from where it is drawn, keeping its speed. */
+  const aim = (item: LayoutItem, rect: Rect, at: Rect): void => {
+    item.moveTo(at);
+    // `createLayoutMotion`'s items always have `retarget` (optional only in the item type).
+    if (!sameRect(at, rect) && item.retarget != null) {
+      item.retarget(rect);
+    }
   };
 
   return {
@@ -276,74 +308,65 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
     get time(): number {
       return time;
     },
-    target(id: string, rect: Rect, layout?: Rect): void {
-      const entry: LeafEntry | undefined = leaves.get(id);
-      if (entry == null) {
-        const placed: LeafEntry = place(id, rect);
-        if (layout != null) {
-          placed.layout = copyRect(layout);
+    target(id: string, rect: Rect, at?: Rect): void {
+      const state: LeafState | undefined = leaves.get(id);
+      const item: LayoutItem | undefined = layout.get(id);
+      if (state == null || item == null) {
+        place(id, rect, at);
+        return;
+      }
+      const nextLayout: Rect = at ?? rect;
+      const layoutChanged: boolean = !sameRect(state.layout, nextLayout);
+      if (sameRect(state.goal, rect)) {
+        if (layoutChanged) {
+          state.layout = copyRect(nextLayout);
+          aim(item, rect, state.layout);
+          dirty.add(id);
         }
-        dirty.add(id);
         return;
       }
-      const nextLayout: Rect = layout ?? rect;
-      if (!sameRect(entry.layout, nextLayout)) {
-        entry.layout = copyRect(nextLayout);
-        dirty.add(id);
-      }
-      if (sameRect(entry.goal, rect)) {
-        return;
-      }
-      entry.goal = copyRect(rect);
-      if (layout == null) {
-        entry.layout = entry.goal;
-      }
+      state.goal = copyRect(rect);
+      state.layout = at != null ? copyRect(at) : state.goal;
       if (reducedMotion()) {
-        entry.settle.jumpTo(entry.goal);
-        entry.pop = null;
-      } else {
-        entry.settle.setTarget(entry.goal);
+        state.opening = false;
+        item.show(true, { now: true });
       }
+      aim(item, state.goal, state.layout);
       dirty.add(id);
       ensureRunning();
     },
     jump(id: string, rect: Rect): void {
-      const entry: LeafEntry = place(id, rect);
-      entry.pop = null;
-      dirty.add(id);
+      const state: LeafState = place(id, rect);
+      if (state.opening) {
+        state.opening = false;
+        layout.get(id)?.show(true, { now: true });
+      }
     },
-    hold(id: string, rect: Rect, layout?: Rect): void {
-      const entry: LeafEntry | undefined = leaves.get(id);
-      const nextLayout: Rect = layout ?? rect;
-      if (
-        entry != null &&
-        entry.settle.settled &&
-        sameRect(entry.goal, rect) &&
-        sameRect(entry.layout, nextLayout)
-      ) {
+    hold(id: string, rect: Rect, at?: Rect): void {
+      const state: LeafState | undefined = leaves.get(id);
+      const item: LayoutItem | undefined = layout.get(id);
+      const nextLayout: Rect = at ?? rect;
+      if (state != null && item != null && item.settled && sameRect(state.goal, rect) && sameRect(state.layout, nextLayout)) {
         return;
       }
-      // `place` jumps the settle to `rect`: it sits there, at rest, until the next target.
-      const held: LeafEntry = place(id, rect);
-      if (layout != null) {
-        held.layout = copyRect(layout);
-      }
-      dirty.add(id);
+      place(id, rect, at);
     },
     open(id: string): void {
-      const entry: LeafEntry | undefined = leaves.get(id);
-      if (entry == null || reducedMotion()) {
+      const item: LayoutItem | undefined = layout.get(id);
+      const state: LeafState | undefined = leaves.get(id);
+      if (item == null || state == null || reducedMotion()) {
         return;
       }
-      const pop: Settle<number> = createSettle(0, { omega, restDelta: POP_IN_REST_DELTA });
-      pop.setTarget(1);
-      entry.pop = pop;
+      state.opening = true;
+      item.show(false, { now: true });
+      item.show(true);
       dirty.add(id);
       ensureRunning();
     },
     remove(id: string): void {
       leaves.delete(id);
       dirty.delete(id);
+      layout.remove(id);
     },
     retain(ids: ReadonlySet<string>): void {
       for (const id of [...leaves.keys()]) {
@@ -352,17 +375,19 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
           dirty.delete(id);
         }
       }
+      layout.retain(ids);
     },
     has(id: string): boolean {
       return leaves.has(id);
     },
     drawn(id: string): Rect | null {
-      const entry: LeafEntry | undefined = leaves.get(id);
-      return entry == null ? null : copyRect(entry.settle.value as Rect);
+      const item: LayoutItem | undefined = layout.get(id);
+      return item == null ? null : copyRect(item.drawn);
     },
     frame(id: string): LeafMotionFrame | null {
-      const entry: LeafEntry | undefined = leaves.get(id);
-      return entry == null ? null : frameOf(id, entry);
+      const item: LayoutItem | undefined = layout.get(id);
+      const state: LeafState | undefined = leaves.get(id);
+      return item == null || state == null ? null : frameOf(id, item, state);
     },
     ids(): ReadonlyArray<string> {
       return [...leaves.keys()];
@@ -372,18 +397,16 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
         return;
       }
       omega = next.omega;
-      for (const entry of leaves.values()) {
-        entry.settle.configure({ omega });
-        entry.pop?.configure({ omega });
-      }
+      layout.configure({ omega });
     },
     flush(): void {
-      writeDirty(0);
+      writeDirty();
     },
     dispose(): void {
       disposed = true;
-      stopRepeat?.();
-      stopRepeat = null;
+      stopClock?.();
+      stopClock = null;
+      layout.dispose();
       leaves.clear();
       dirty.clear();
       active = false;

@@ -326,3 +326,24 @@ describe("leaf motion — open (pop-in) and leaving leaves", () => {
     expect(h.loop.active).toBe(false);
   });
 });
+
+describe("leaf motion — a divider drag", () => {
+  it("never toggles active and never asks for a frame: every held move is drawn by its flush", () => {
+    const h: Harness = harness();
+    h.motion.target("a", A);
+    h.motion.target("b", B);
+    h.motion.flush();
+    for (let i = 1; i <= 30; i++) {
+      // the renderer holds both sides of the divider at every pointer move and flushes, as its layout effect does
+      h.motion.hold("a", { ...A, width: A.width + i * 3 });
+      h.motion.hold("b", { ...B, x: B.x + i * 3, width: B.width - i * 3 });
+      h.motion.flush();
+      expect(h.clock.pendingFrames).toBe(0);
+      h.clock.frame();
+    }
+    expect(h.activity).toEqual([]);
+    expect(h.motion.active).toBe(false);
+    expect(h.writes).toHaveLength(31);
+    expect(h.writes.every((w) => w.tick.delta === 0)).toBe(true);
+  });
+});
