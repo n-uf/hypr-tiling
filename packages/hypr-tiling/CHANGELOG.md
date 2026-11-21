@@ -7,6 +7,45 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
+## 26.11.7 — 2026-11-21
+
+### `@n-uf/motion` 26.11.54; pane motion and gestures run on it
+
+- **The dependency** moves from `@n-uf/motion` 26.11.6 to 26.11.54, still
+  pinned exactly.
+- **Pane motion** (every glide, hold and pop-in) now runs on motion's
+  `createLayoutMotion`, one layout item per pane. The frames it draws are
+  unchanged.
+- **Gestures:** the workspace swipe and the spring-loaded workspace-tab drop now
+  run on motion's `pagedSwipeReducer` and `dwellReducer`. Their state shapes,
+  defaults and behaviour are unchanged.
+- **No change to hypr-tiling's own API.**
+- **Bundle size:** the CommonJS `./engine` entry now bundles motion's gesture
+  code (+3.8 kB); the ESM entry imports it from `@n-uf/motion`.
+
+### Fixes
+
+- A pane moved onto a target the move can't reach now stays where it was
+  instead of disappearing. This applies to `insertLeafAdjacent`,
+  `insertGroupAdjacent` and `moveLeafToSplitContainer`. A target can't be
+  reached when it is unknown, is a group's inactive tab, or is the split the
+  move itself removes.
+- `removeMemberFromGroup` no longer throws on a group of one: the member takes
+  the group's slot.
+- A split ratio of exactly 0 or 1, which `updateSplitRatio` can store, is now a
+  valid layout: `isStructurallyValidLayout` takes the closed interval [0, 1].
+  Such a tree is no longer refused by `setWorkspaceLayout` and
+  `createWorkspace`, or rebuilt by workspace repair.
+
+### Regression gate
+
+Two new suites guard the move onto the shared libraries:
+
+- **Golden answers** recorded from 26.11.6 and replayed to 1e-9 px: layouts,
+  drop regions, drops, edits, focus moves, repair, pane-motion frames, and
+  swipe and spring-load states.
+- **Layout, drop and region properties** over seeded trees.
+
 ## 26.11.6 — 2026-11-12
 
 ### `@n-uf/motion` 26.11.6
