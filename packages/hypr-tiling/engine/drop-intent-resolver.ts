@@ -1,4 +1,4 @@
-import { paneCenter, paneRegion, type PaneCenter, type PaneRegionOptions } from "@n-uf/placement/tiling";
+import { paneCenter, paneRegion, type PaneCenter } from "@n-uf/placement/tiling";
 import type {
   TilingDropAction,
   TilingDropIntentTuningState,
@@ -102,8 +102,6 @@ export interface TilingPaneZoneGeometry {
   centerRightPx: number;
   centerBottomPx: number;
   devicePixelRatio: number;
-  /** The placement region options this center was laid out by; `classifyPaneZone` classifies by the same. */
-  regionOptions: PaneRegionOptions;
 }
 
 /**
@@ -246,13 +244,12 @@ export function resolvePaneZoneGeometry(
 ): TilingPaneZoneGeometry {
   const devicePixelRatio: number = config.devicePixelRatio > 0 ? config.devicePixelRatio : 1;
   const ratios: TilingCenterRatios = resolveCenterRatios(config);
-  const regionOptions: PaneRegionOptions = {
+  const center: PaneCenter = paneCenter(size, {
     centerX: ratios.x,
     centerY: ratios.y,
     centerMin: config.centerMinPx,
     pixelRatio: devicePixelRatio,
-  };
-  const center: PaneCenter = paneCenter(size, regionOptions);
+  });
 
   return {
     width: center.width,
@@ -262,7 +259,6 @@ export function resolvePaneZoneGeometry(
     centerRightPx: center.right,
     centerBottomPx: center.bottom,
     devicePixelRatio,
-    regionOptions,
   };
 }
 
@@ -308,7 +304,7 @@ export function resolveDominantEdge(point: TilingPanePoint, geometry: TilingPane
 
 /**
  * Deterministically classify a pane-local point into a drop zone: placement's
- * `paneRegion` over the pane, by the region options `geometry` was laid out by.
+ * `paneRegion` over the pane, with the center rectangle `geometry` already has.
  *
  * The base partition is a pure function of position (no seed/fallback ordering):
  * inside the center rectangle is `center`, else the deepest normalized
@@ -323,8 +319,16 @@ export function classifyPaneZone(
   geometry: TilingPaneZoneGeometry,
   options?: { previousZone?: TilingLeafDropZone | null; hysteresisPx?: number },
 ): TilingLeafDropZone {
+  const center: PaneCenter = {
+    width: geometry.width,
+    height: geometry.height,
+    left: geometry.centerLeftPx,
+    top: geometry.centerTopPx,
+    right: geometry.centerRightPx,
+    bottom: geometry.centerBottomPx,
+  };
   return paneRegion({ x: 0, y: 0, width: geometry.width, height: geometry.height }, point, options?.previousZone ?? null, {
-    ...geometry.regionOptions,
+    paneCenter: center,
     hysteresis: Math.max(0, options?.hysteresisPx ?? 0),
   });
 }
