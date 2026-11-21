@@ -354,6 +354,11 @@ export function Link({
   );
 }
 
+// On phones a standalone link line gets a 44 px tap target: put this on the
+// wrapper of a paragraph that holds only links (every skin and /docs share it).
+export const PHONE_LINK_TAP_CLASS: string =
+  "max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center";
+
 export function Pre({ children }: { children: string }): React.ReactElement {
   return (
     <pre className="overflow-x-auto rounded-md border border-white/[0.08] bg-[#0a0b0d] p-3.5 font-mono text-[12px] max-[760px]:text-[14px] leading-relaxed text-stone-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
@@ -772,7 +777,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
       <div className="flex flex-col gap-4">
         <SectionHeading>Install</SectionHeading>
         <Pre>{INSTALL_SNIPPET}</Pre>
-        <div className="max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center">
+        <div className={PHONE_LINK_TAP_CLASS}>
           <SectionLead>
             <MosaicInline paragraph={INSTALL_NPM_PARAGRAPH} />
           </SectionLead>

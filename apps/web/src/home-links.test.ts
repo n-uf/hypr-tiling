@@ -9,7 +9,7 @@ import { HOME_MAIN_KEYWORD } from "./content/constants";
 import { checkContentFiles } from "./content/site";
 import { toIndexEntry } from "./content/types";
 import type { SiteContext } from "./content/validate";
-import { DOC_PANES, guideLabel, guideLinks } from "./docs";
+import { DOC_PANES, guideLabel, guideLinks, PACKAGE_NAME, PHONE_LINK_TAP_CLASS } from "./docs";
 import { PrerenderedHomeLayoutContext, type HomeLayout } from "./mobile-home/use-viewport";
 
 // The home page links every live content page one by one (the sitelinks Google
@@ -64,6 +64,19 @@ describe("the home's links to the content pages", (): void => {
         expect(hrefs(markup)).toContain(entry.path);
         expect(markup).toContain(`>${guideLabel(entry)}</a>`);
       }
+    });
+
+    it(`${skin.name}: the Install tile links the npm package page once, in a wrapper that gives phones a 44 px tap target`, (): void => {
+      const markup: string = html(skin.pane("install"), "desktop");
+      const npm = "https://www.npmjs.com/package/@n-uf/hypr-tiling";
+      expect(hrefs(markup).filter((href) => href === npm)).toHaveLength(1);
+      expect(markup).toContain(`>${PACKAGE_NAME} on npm</a>`);
+      expect(markup).toContain('target="_blank"');
+      // the wrapper's class string comes before the link, with no other element's class between them
+      const before: string = markup.slice(0, markup.indexOf(`href="${npm}"`));
+      // (the markup escapes the & of the class names)
+      const tapClass: string = PHONE_LINK_TAP_CLASS.replace(/&/g, "&amp;");
+      expect(before.lastIndexOf(tapClass)).toBeGreaterThan(before.lastIndexOf("<pre"));
     });
 
     it(`${skin.name}: the mobile intro tile links the docs, the sections and every page`, (): void => {
