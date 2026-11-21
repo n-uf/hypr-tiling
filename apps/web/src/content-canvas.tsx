@@ -11,6 +11,7 @@ import {
   INSTALL_INTRO_PARAGRAPH,
   INSTALL_NPM_PARAGRAPH,
   INSTALL_SNIPPET,
+  PHONE_LINK_TAP_CLASS,
   INTEGRATION_EXAMPLE,
   INTRO_H1,
   INTRO_HEADLINE_ACCENT,
@@ -354,9 +355,11 @@ function InstallContent(): React.ReactElement {
     <div className="flex flex-col gap-5">
       <CanvasHeading>Install</CanvasHeading>
       <CanvasPre>{INSTALL_SNIPPET}</CanvasPre>
-      <CanvasLead>
-        <CanvasInline paragraph={INSTALL_NPM_PARAGRAPH} />
-      </CanvasLead>
+      <div className={PHONE_LINK_TAP_CLASS}>
+        <CanvasLead>
+          <CanvasInline paragraph={INSTALL_NPM_PARAGRAPH} />
+        </CanvasLead>
+      </div>
       <CanvasPre>{INTEGRATION_EXAMPLE}</CanvasPre>
       <CanvasLead>
         <CanvasInline paragraph={INSTALL_INTRO_PARAGRAPH} />

@@ -11,6 +11,7 @@ import {
   Link,
   NPM_URL,
   PACKAGE_NAME,
+  PHONE_LINK_TAP_CLASS,
   Pre,
   REPO_URL,
   SectionLead,
@@ -1315,7 +1316,7 @@ export function DocsPage({
                 Add the package and its React 19 peers.
               </SectionLead>
               <Pre>{INSTALL_SNIPPET}</Pre>
-              <div className="max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center">
+              <div className={PHONE_LINK_TAP_CLASS}>
                 <SectionLead>
                   <Link href={NPM_URL}>{PACKAGE_NAME} on npm</Link>
                 </SectionLead>
