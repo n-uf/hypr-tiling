@@ -323,8 +323,8 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
       ) {
         return;
       }
+      // `place` jumps the settle to `rect`: it sits there, at rest, until the next target.
       const held: LeafEntry = place(id, rect);
-      held.settle.hold(rect);
       if (layout != null) {
         held.layout = copyRect(layout);
       }
