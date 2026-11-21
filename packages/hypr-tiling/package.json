@@ -23,7 +23,8 @@
   "license": "LicenseRef-PolyForm-Perimeter-1.0.1",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/n-uf/hypr-tiling.git"
+    "url": "git+https://github.com/n-uf/hypr-tiling.git",
+    "directory": "packages/hypr-tiling"
   },
   "homepage": "https://hypr-tiling.n-uf.com/",
   "bugs": {
