@@ -4,7 +4,8 @@ import {
   isStaticAlongSplitAxis,
   splitAxisDimension,
 } from "./pane-sizing";
-import { collectNormalizedLeafRects, type LeafRect } from "./leaf-geometry";
+import { neighbor } from "@n-uf/placement/tiling";
+import { collectNormalizedLeafFootprints, type TilingLeafFootprint, type TilingRect } from "./leaf-geometry";
 import type {
   TilingFocusDirection,
   TilingGroupNode,
@@ -2269,84 +2270,39 @@ export function cycleActiveGroupMember(
   });
 }
 
-function centerX(rect: LeafRect): number {
-  return (rect.left + rect.right) / 2;
-}
-
-function centerY(rect: LeafRect): number {
-  return (rect.top + rect.bottom) / 2;
-}
-
-function overlapAmount(startA: number, endA: number, startB: number, endB: number): number {
-  return Math.max(0, Math.min(endA, endB) - Math.max(startA, startB));
-}
-
-function directionalScore(
-  fromRect: LeafRect,
-  candidateRect: LeafRect,
-  direction: TilingFocusDirection,
-): number | null {
-  if (direction === "left" && centerX(candidateRect) >= centerX(fromRect)) {
-    return null;
-  }
-  if (direction === "right" && centerX(candidateRect) <= centerX(fromRect)) {
-    return null;
-  }
-  if (direction === "up" && centerY(candidateRect) >= centerY(fromRect)) {
-    return null;
-  }
-  if (direction === "down" && centerY(candidateRect) <= centerY(fromRect)) {
-    return null;
-  }
-
-  const primaryDistance: number = direction === "left" || direction === "right"
-    ? Math.abs(centerX(candidateRect) - centerX(fromRect))
-    : Math.abs(centerY(candidateRect) - centerY(fromRect));
-  const secondaryDistance: number = direction === "left" || direction === "right"
-    ? Math.abs(centerY(candidateRect) - centerY(fromRect))
-    : Math.abs(centerX(candidateRect) - centerX(fromRect));
-  const axisOverlap: number = direction === "left" || direction === "right"
-    ? overlapAmount(fromRect.top, fromRect.bottom, candidateRect.top, candidateRect.bottom)
-    : overlapAmount(fromRect.left, fromRect.right, candidateRect.left, candidateRect.right);
-  const overlapBoost: number = axisOverlap > 0 ? 0 : 100;
-
-  return primaryDistance + secondaryDistance * 0.25 + overlapBoost;
-}
-
 /**
  * Id of the nearest focusable leaf from `fromLeafId` in the given spatial
  * `direction` (geometric nearest-neighbour over the laid-out rectangles), or
  * `null` when no leaf lies that way. Powers directional keyboard focus.
+ *
+ * Placement's `neighbor` over the layout in a unit square
+ * (`collectNormalizedLeafFootprints`): a candidate's center must lie strictly
+ * on the asked side; the score is the center distance along the direction plus
+ * a quarter of the distance across it, plus 100 with no overlap across; the
+ * lowest wins, ties to the first in reading order. In the unit square the px
+ * floors cannot fit, so every split lays out at 0.5 and stored ratios do not
+ * steer focus. Panes are keyed by their place in reading order, so a tree that
+ * repeats a leaf id searches from its first occurrence and never lands on
+ * another occurrence of it.
  */
 export function findLeafByDirection(
   layout: TilingLayoutNode,
   fromLeafId: string,
   direction: TilingFocusDirection,
 ): string | null {
-  const rects: ReadonlyArray<LeafRect> = collectNormalizedLeafRects(layout);
-  const fromRect: LeafRect | undefined = rects.find((rect: LeafRect): boolean => rect.leafId === fromLeafId);
-  if (fromRect == null) {
+  const footprints: ReadonlyArray<TilingLeafFootprint> = collectNormalizedLeafFootprints(layout);
+  const from: number = footprints.findIndex((footprint: TilingLeafFootprint): boolean => footprint.leafId === fromLeafId);
+  if (from < 0) {
     return null;
   }
-
-  let bestLeafId: string | null = null;
-  let bestScore: number = Number.POSITIVE_INFINITY;
-
-  for (const candidateRect of rects) {
-    if (candidateRect.leafId === fromLeafId) {
-      continue;
+  const rects: Map<number, TilingRect> = new Map<number, TilingRect>();
+  footprints.forEach((footprint: TilingLeafFootprint, index: number): void => {
+    if (index === from || footprint.leafId !== fromLeafId) {
+      rects.set(index, { x: footprint.left, y: footprint.top, width: footprint.width, height: footprint.height });
     }
-    const candidateScore: number | null = directionalScore(fromRect, candidateRect, direction);
-    if (candidateScore == null) {
-      continue;
-    }
-    if (candidateScore < bestScore) {
-      bestScore = candidateScore;
-      bestLeafId = candidateRect.leafId;
-    }
-  }
-
-  return bestLeafId;
+  });
+  const nearest: number | null = neighbor(rects, from, direction);
+  return nearest == null ? null : (footprints[nearest]?.leafId ?? null);
 }
 
 /**
