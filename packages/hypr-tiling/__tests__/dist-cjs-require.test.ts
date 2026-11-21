@@ -21,6 +21,13 @@ describe("dist CJS entries load without require(esm)", () => {
     }
   });
 
+  it("dist/index.cjs, dist/devtools.cjs and dist/engine.cjs never require @n-uf/placement (it is bundled)", () => {
+    for (const file of ["index.cjs", "devtools.cjs", "engine.cjs"]) {
+      const text: string = readFileSync(resolve(distDir, file), "utf8");
+      expect(text).not.toMatch(/require\(\s*["']@n-uf\/placement/);
+    }
+  });
+
   it("dist/index.mjs keeps @n-uf/motion an external import", () => {
     const files: string[] = ["index.mjs", ...readdirSync(distDir).filter((f: string): boolean => /^chunk-.*\.mjs$/.test(f))];
     const text: string = files.map((file: string): string => readFileSync(resolve(distDir, file), "utf8")).join("\n");
