@@ -347,3 +347,40 @@ describe("leaf motion — a divider drag", () => {
     expect(h.writes.every((w) => w.tick.delta === 0)).toBe(true);
   });
 });
+
+describe("leaf motion — a host callback that throws", () => {
+  it("doesn't stop the motion: the glide carries on and ends, and the error surfaces on its own", async () => {
+    const clock: FakeClock = createFakeClock();
+    const loop: FrameLoop = createFrameLoop({ clock });
+    let calls = 0;
+    const errors: unknown[] = [];
+    const motion: LeafMotion = createLeafMotion({
+      loop,
+      onWrite: (): void => {
+        calls += 1;
+        if (calls === 3) throw new Error("host write failed");
+      },
+    });
+    // The error is rethrown in a microtask of its own: catch it there instead of letting it fail the test run.
+    const realQueue = globalThis.queueMicrotask;
+    globalThis.queueMicrotask = (task: () => void): void => {
+      try {
+        task();
+      } catch (error: unknown) {
+        errors.push(error);
+      }
+    };
+    try {
+      motion.target("a", A);
+      motion.target("a", B);
+      clock.runUntilIdle();
+      await Promise.resolve();
+    } finally {
+      globalThis.queueMicrotask = realQueue;
+    }
+    expect(motion.drawn("a")).toEqual(B);
+    expect(motion.active).toBe(false);
+    expect(calls).toBeGreaterThan(3);
+    expect(errors).toHaveLength(1);
+  });
+});
