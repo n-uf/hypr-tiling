@@ -82,7 +82,7 @@ describe("layout properties", () => {
           if (!laid) continue;
           const extent = split.axis === "horizontal" ? laid.rect.width : laid.rect.height;
           const avail = Math.max(extent - 10, 1);
-          if (96 + 96 > avail) expect(laid.ratio === 0.5 || laid.ratio >= 0.05).toBe(true);
+          if (96 + 96 > avail) expect(laid.ratio).toBe(0.5);
           else {
             expect(laid.ratio * avail).toBeGreaterThanOrEqual(96 - 1e-9);
             expect((1 - laid.ratio) * avail).toBeGreaterThanOrEqual(96 - 1e-9);

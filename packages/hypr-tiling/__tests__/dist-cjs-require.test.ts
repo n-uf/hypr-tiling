@@ -14,8 +14,8 @@ const packageDir: string = resolve(__dirname, "..");
 const distDir: string = resolve(packageDir, "dist");
 
 describe("dist CJS entries load without require(esm)", () => {
-  it("dist/index.cjs and dist/devtools.cjs never require @n-uf/motion (it is bundled)", () => {
-    for (const file of ["index.cjs", "devtools.cjs"]) {
+  it("dist/index.cjs, dist/devtools.cjs and dist/engine.cjs never require @n-uf/motion (it is bundled)", () => {
+    for (const file of ["index.cjs", "devtools.cjs", "engine.cjs"]) {
       const text: string = readFileSync(resolve(distDir, file), "utf8");
       expect(text).not.toMatch(/require\(\s*["']@n-uf\/motion/);
     }
