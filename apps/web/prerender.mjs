@@ -120,11 +120,26 @@ writeFileSync(resolve(distDir, "sitemap.xml"), sitemapXml(site), "utf8");
 // Use-case and blog pages ship no tiling app JavaScript: the template's module
 // script and its modulepreload links are dropped (the stylesheet, fonts and the
 // analytics snippet stay), so they read fully with JavaScript off.
+// Vercel Web Analytics is the one script they keep: the React root mounts
+// <Analytics /> (src/app.tsx) for / and /docs, which these pages never load, so
+// the same two tags go in by hand (what @vercel/analytics injects: the queue
+// stub with the query-stripping `beforeSend`, then the deferred script).
+const analyticsVersion = JSON.parse(
+  readFileSync(resolve(here, "node_modules/@vercel/analytics/package.json"), "utf8"),
+).version;
+const analyticsTags =
+  `<script>window.va=window.va||function(){(window.vaq=window.vaq||[]).push(arguments)};` +
+  `window.va("beforeSend",function(e){var u=new URL(e.url);u.search="";return Object.assign({},e,{url:u.toString()})})</script>` +
+  `<script defer src="/_vercel/insights/script.js" data-sdkn="@vercel/analytics/react" data-sdkv="${analyticsVersion}"></script>`;
 const staticTemplate = template
   .replace(/<script\b[^>]*\btype="module"[^>]*>\s*<\/script>\s*/g, "")
-  .replace(/<link\b[^>]*\brel="modulepreload"[^>]*>\s*/g, "");
+  .replace(/<link\b[^>]*\brel="modulepreload"[^>]*>\s*/g, "")
+  .replace("</head>", () => `${analyticsTags}</head>`);
 if (/type="module"|modulepreload/.test(staticTemplate) || !staticTemplate.includes('rel="stylesheet"')) {
   throw new Error("prerender: could not strip the module script from the template for the content pages");
+}
+if (!staticTemplate.includes("/_vercel/insights/script.js")) {
+  throw new Error("prerender: the analytics tags did not land in the content pages' template");
 }
 
 function writeStaticPage(pathname, headHtml, bodyHtml) {
