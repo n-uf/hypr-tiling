@@ -3,9 +3,7 @@ import {
   collectStaticGatedLeafIds,
   evaluateEdgeInsertCandidate,
   evaluateZoneCandidate,
-  projectedLeafFitsConstraints,
 } from "../engine/drop-validity";
-import { insertLeafAdjacent } from "../engine/state";
 import type {
   TilingLayoutConfig,
   TilingLayoutNode,
@@ -279,23 +277,26 @@ describe("evaluateZoneCandidate — center swap eligibility", (): void => {
   });
 });
 
-describe("projectedLeafFitsConstraints — direct", (): void => {
-  it("returns true for a zero viewport (nothing to validate yet)", (): void => {
-    const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
-    expect(projectedLeafFitsConstraints(layout, "A", "B", 0, 0, 40, CONFIG)).toBe(true);
+describe("evaluateEdgeInsertCandidate — the projected fit", (): void => {
+  const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
+  const roomy: TilingPaneFootprint = { left: 0, top: 0, width: 500, height: 400 };
+  const evaluate = (targetLeafId: string, viewportWidth: number, viewportHeight: number) =>
+    evaluateEdgeInsertCandidate({ candidateZone: "left", layout, sourceLeafId: "A", targetLeafId, targetFootprint: roomy, config: CONFIG, viewportWidth, viewportHeight });
+
+  it("passes with a zero viewport (nothing to validate yet)", (): void => {
+    expect(evaluate("B", 0, 0)).toEqual({ isValid: true, rejectionReason: null });
   });
 
   it("rejects when a projected leaf is missing from the tree", (): void => {
-    const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
-    expect(projectedLeafFitsConstraints(layout, "A", "ghost", VIEWPORT_WIDTH, VIEWPORT_HEIGHT, 40, CONFIG)).toBe(false);
+    expect(evaluate("ghost", VIEWPORT_WIDTH, VIEWPORT_HEIGHT)).toEqual({
+      isValid: false,
+      rejectionReason: "left rejected: projected source/target footprint violates min pane 40px",
+    });
   });
 
-  it("agrees with an actual insertLeafAdjacent projection", (): void => {
-    const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
-    const projected: TilingLayoutNode = insertLeafAdjacent(layout, "A", "B", "left", {
-      preserveParentSplitAxis: false,
-      splitRatio: 0.5,
-    });
-    expect(projectedLeafFitsConstraints(projected, "A", "B", VIEWPORT_WIDTH, VIEWPORT_HEIGHT, 40, CONFIG)).toBe(true);
+  it("judges the insertLeafAdjacent projection in the viewport", (): void => {
+    // A beside B in the whole width: (100 / 2 - 6) = 44 px each fits 40; (90 / 2 - 6) = 39 px does not.
+    expect(evaluate("B", 100, VIEWPORT_HEIGHT).isValid).toBe(true);
+    expect(evaluate("B", 90, VIEWPORT_HEIGHT).isValid).toBe(false);
   });
 });
