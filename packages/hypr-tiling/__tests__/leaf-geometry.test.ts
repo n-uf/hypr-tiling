@@ -1,11 +1,10 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   collectLeafFootprints,
-  collectNormalizedLeafRects,
+  collectNormalizedLeafFootprints,
   footprintsByLeafId,
   isFootprintChanged,
   type TilingLeafFootprint,
-  type LeafRect,
 } from "../engine/leaf-geometry";
 import { insertLeafAdjacent } from "../engine/state";
 import type {
@@ -454,24 +453,21 @@ describe("collectLeafFootprints — both-collapsed siblings void (HT-PANE-COLLAP
   });
 });
 
-describe("collectNormalizedLeafRects — directional-neighbor wrapper", (): void => {
-  it("returns unit 0..1 edge-rects matching pure ratio splits", (): void => {
+describe("collectNormalizedLeafFootprints — directional-neighbor unit square", (): void => {
+  it("returns unit 0..1 footprints matching pure ratio splits", (): void => {
     const layout: TilingLayoutNode = hsplit(0.5, vsplit(0.5, leaf("A"), leaf("B")), leaf("C"));
-    const rects: ReadonlyArray<LeafRect> = collectNormalizedLeafRects(layout);
-    const map = new Map(rects.map((rect: LeafRect): [string, LeafRect] => [rect.leafId, rect]));
-    expect(map.get("A")).toEqual({ leafId: "A", left: 0, top: 0, right: 0.5, bottom: 0.5 });
-    expect(map.get("B")).toEqual({ leafId: "B", left: 0, top: 0.5, right: 0.5, bottom: 1 });
-    expect(map.get("C")).toEqual({ leafId: "C", left: 0.5, top: 0, right: 1, bottom: 1 });
+    const map = byId(collectNormalizedLeafFootprints(layout));
+    expect(map.get("A")).toEqual({ leafId: "A", left: 0, top: 0, width: 0.5, height: 0.5 });
+    expect(map.get("B")).toEqual({ leafId: "B", left: 0, top: 0.5, width: 0.5, height: 0.5 });
+    expect(map.get("C")).toEqual({ leafId: "C", left: 0.5, top: 0, width: 0.5, height: 1 });
   });
 
   it("ignores px pins in unit space (a px pin cannot fit a 1-unit container)", (): void => {
     // The static pin is undefined against a 1-unit container → pure ratio, so
-    // directional focus stays purely topological (identical to the old rects).
+    // directional focus stays purely topological.
     const layout: TilingLayoutNode = hsplit(0.5, leaf("sidebar", { width: "static", widthPx: 200 }), leaf("main"));
-    const map = new Map(
-      collectNormalizedLeafRects(layout).map((rect: LeafRect): [string, LeafRect] => [rect.leafId, rect]),
-    );
-    expect(map.get("sidebar")?.right).toBe(0.5);
+    const map = byId(collectNormalizedLeafFootprints(layout));
+    expect(map.get("sidebar")?.width).toBe(0.5);
     expect(map.get("main")?.left).toBe(0.5);
   });
 });

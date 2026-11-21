@@ -67,15 +67,6 @@ export interface TilingLeafFootprint extends TilingPaneFootprint {
   leafId: string;
 }
 
-/** Edge-rect (`right`/`bottom` instead of `width`/`height`) for directional neighbor search. @internal */
-export interface LeafRect {
-  leafId: string;
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-}
-
 // ============================================================================
 // The mapping onto placement's split tree
 // ============================================================================
@@ -493,24 +484,17 @@ export function resolveLeafRects(layout: TilingLayoutNode, container: TilingRect
 }
 
 /**
- * Normalizing wrapper for topological directional-neighbor search
- * (`findLeafByDirection`): the canonical traversal run in normalized 0..1 unit
- * space with a gap-free config, mapped to edge-rects. Directional focus is
- * purely positional (centers + axis overlap): a px floor or pin cannot fit a
- * 1-unit container, so every split lays out at its floor fallback (0.5) and the
- * static arm falls through to the ratio.
+ * The layout in a unit square, for topological directional-neighbor search
+ * (`findLeafByDirection`): the canonical geometry in normalized 0..1 space with
+ * a gap-free config and the px floors (the 40 px chrome floor by default), in
+ * reading order. Directional focus is purely positional (centers + axis
+ * overlap): a px floor or along-axis pin cannot fit a 1-unit container, so
+ * every split lays out at its floor fallback (0.5) and the static arm falls
+ * through to the ratio.
  * @internal
  */
-export function collectNormalizedLeafRects(node: TilingLayoutNode): ReadonlyArray<LeafRect> {
-  return collectLeafFootprints(node, 0, 0, 1, 1, GAP_FREE_UNIT_CONFIG).map(
-    (footprint: TilingLeafFootprint): LeafRect => ({
-      leafId: footprint.leafId,
-      left: footprint.left,
-      top: footprint.top,
-      right: footprint.left + footprint.width,
-      bottom: footprint.top + footprint.height,
-    }),
-  );
+export function collectNormalizedLeafFootprints(node: TilingLayoutNode): ReadonlyArray<TilingLeafFootprint> {
+  return collectLeafFootprints(node, 0, 0, 1, 1, GAP_FREE_UNIT_CONFIG);
 }
 
 /** @internal */
