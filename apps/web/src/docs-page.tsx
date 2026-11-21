@@ -1315,9 +1315,11 @@ export function DocsPage({
                 Add the package and its React 19 peers.
               </SectionLead>
               <Pre>{INSTALL_SNIPPET}</Pre>
-              <SectionLead>
-                <Link href={NPM_URL}>{PACKAGE_NAME} on npm</Link>
-              </SectionLead>
+              <div className="max-[760px]:[&_a]:inline-flex max-[760px]:[&_a]:min-h-11 max-[760px]:[&_a]:items-center">
+                <SectionLead>
+                  <Link href={NPM_URL}>{PACKAGE_NAME} on npm</Link>
+                </SectionLead>
+              </div>
             </Step>
             <Step n={2} title="Add the Tailwind content glob">
               <SectionLead>
