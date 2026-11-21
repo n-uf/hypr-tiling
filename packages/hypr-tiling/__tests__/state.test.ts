@@ -965,3 +965,30 @@ describe("isStructurallyValidLayout — commit-time tree verification backstop",
     expect(isStructurallyValidLayout(leaf("A", ""))).toBe(false);
   });
 });
+
+describe("a move onto a target it can't reach keeps the pane where it was", (): void => {
+  it("insertLeafAdjacent with an unknown target returns the layout unchanged", (): void => {
+    const layout: TilingSplitNode = baseLayout();
+    expect(insertLeafAdjacent(layout, "A", "missing", "left")).toEqual(baseLayout());
+  });
+
+  it("insertLeafAdjacent onto a group's inactive member returns the layout unchanged", (): void => {
+    const layout: TilingLayoutNode = {
+      kind: "split",
+      id: "root",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: leaf("A", "tile-a"),
+      second: { kind: "group", id: "g", members: [leaf("B", "tile-b"), leaf("C", "tile-c")], activeMemberId: "B" },
+    };
+    expect(insertLeafAdjacent(layout, "A", "C", "left")).toBe(layout);
+  });
+
+  it("moveLeafToSplitContainer with an unknown split returns the layout unchanged", (): void => {
+    expect(moveLeafToSplitContainer(baseLayout(), "A", "missing", "first")).toEqual(baseLayout());
+  });
+
+  it("moveLeafToSplitContainer into the split the move itself removes returns the layout unchanged", (): void => {
+    expect(moveLeafToSplitContainer(baseLayout(), "B", "s2", "first")).toEqual(baseLayout());
+  });
+});

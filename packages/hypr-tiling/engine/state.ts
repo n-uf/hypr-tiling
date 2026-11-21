@@ -1110,6 +1110,22 @@ function buildSplitNodeWithPlacement(
   };
 }
 
+/**
+ * Whether {@link insertLeafAroundTarget} can seat a node beside `targetLeafId`
+ * in `node`: a loose leaf with that id, or a group whose active member it is.
+ * A mover checks this on the tree it extracted from, so a target it can't
+ * reach leaves the layout as it was instead of losing the moved node.
+ */
+function hasSeatBeside(node: TilingLayoutNode, targetLeafId: string): boolean {
+  if (node.kind === "leaf") {
+    return node.id === targetLeafId;
+  }
+  if (node.kind === "group") {
+    return node.activeMemberId === targetLeafId;
+  }
+  return hasSeatBeside(node.first, targetLeafId) || hasSeatBeside(node.second, targetLeafId);
+}
+
 function insertLeafAroundTarget(
   node: TilingLayoutNode,
   targetLeafId: string,
@@ -1212,7 +1228,8 @@ function insertLeafIntoSplitContainer(
 /**
  * Move `sourceLeafId` adjacent to `targetLeafId`, wrapping them in a new split
  * on the resolved axis with the source on the `placement` side. Unchanged when
- * the source and target are the same or the source cannot be extracted.
+ * the source and target are the same, the source cannot be extracted, or the
+ * target is not a loose leaf or a group's active member once the source is out.
  */
 export function insertLeafAdjacent(
   layout: TilingLayoutNode,
@@ -1228,6 +1245,9 @@ export function insertLeafAdjacent(
   const normalizedOptions: TilingInsertionOptions = normalizedInsertionOptions(options);
   const extraction: ExtractedLeafResult = extractLeafNode(layout, sourceLeafId);
   if (extraction.extractedLeaf == null || extraction.nextNode == null) {
+    return layout;
+  }
+  if (!hasSeatBeside(extraction.nextNode, targetLeafId)) {
     return layout;
   }
 
@@ -1319,6 +1339,10 @@ export function moveLeafToSplitContainer(
   const normalizedOptions: TilingInsertionOptions = normalizedInsertionOptions(options);
   const extraction: ExtractedLeafResult = extractLeafNode(layout, sourceLeafId);
   if (extraction.extractedLeaf == null || extraction.nextNode == null) {
+    return layout;
+  }
+  // The container may be unknown, or the split the extraction just collapsed.
+  if (!collectSplitNodes(extraction.nextNode).some((split: TilingSplitNode): boolean => split.id === targetSplitId)) {
     return layout;
   }
 
@@ -2080,6 +2104,9 @@ export function insertGroupAdjacent(
   const normalizedOptions: TilingInsertionOptions = normalizedInsertionOptions(options);
   const extraction = extractSlotNode(layout, group);
   if (!extraction.extracted || extraction.nextNode == null) {
+    return layout;
+  }
+  if (!hasSeatBeside(extraction.nextNode, targetLeafId)) {
     return layout;
   }
   const axis: "horizontal" | "vertical" = resolveInsertionAxis(
