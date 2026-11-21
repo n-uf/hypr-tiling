@@ -6,6 +6,7 @@
 
 import changelogMarkdown from "../../../packages/hypr-tiling/CHANGELOG.md?raw";
 import libraryPackageJson from "../../../packages/hypr-tiling/package.json";
+import { NPM_URL } from "./docs";
 
 export const CHANGELOG_MARKDOWN: string = changelogMarkdown;
 
@@ -287,8 +288,8 @@ export const LIBRARY_REPOSITORY_URL: string = repositoryHttpsUrl(
   LIBRARY_PACKAGE.repository.url,
 );
 
-export const LIBRARY_NPM_URL: string =
-  `https://www.npmjs.com/package/${LIBRARY_PACKAGE_NAME}`;
+// One definition of the package page's URL: docs.tsx (the site's text) owns it.
+export const LIBRARY_NPM_URL: string = NPM_URL;
 
 export function changelogInlinesText(
   inlines: ReadonlyArray<ChangelogInline>,
