@@ -8,7 +8,7 @@ import {
 } from "./content/constants";
 import { formatDate, readingMinutes } from "./content/format";
 import { pagesOf, type ContentPage, type ContentSite } from "./content/types";
-import { PAGE_TITLE, REPO_URL, LICENSE_NAME, LICENSE_URL } from "./docs";
+import { PAGE_TITLE, REPO_URL, LICENSE_NAME, LICENSE_URL, NPM_URL, PACKAGE_NAME } from "./docs";
 
 // Server-rendered chrome for the use-case and blog pages: the /docs frame (top
 // bar, section rail on the left, "On this page" on the right) with the article as
@@ -365,6 +365,14 @@ function InstallBlock(): React.ReactElement {
         </a>
         . It needs React 19, and Tailwind in your app: the package ships no CSS.
       </p>
+      <a
+        href={NPM_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${LINK_CLASS} max-[760px]:inline-flex max-[760px]:min-h-11 max-[760px]:items-center`}
+      >
+        {PACKAGE_NAME} on npm
+      </a>
     </aside>
   );
 }

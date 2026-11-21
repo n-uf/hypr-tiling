@@ -79,6 +79,7 @@ describe("the article page", (): void => {
     expect(html).toContain("<table");
     expect(html).toContain("pnpm add @n-uf/hypr-tiling");
     expect(html.match(/id="install"/g)).toHaveLength(1);
+    expect(html).toContain('href="https://www.npmjs.com/package/@n-uf/hypr-tiling"');
     expect(html.match(/<details/g)).toHaveLength(4);
     expect(html).toContain("checked");
     expect(html).toContain('href="https://example.com/a"');
