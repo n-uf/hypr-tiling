@@ -126,8 +126,26 @@ function storedRatio(raw: unknown): number {
   return Number.isNaN(ratio) ? ratio : Math.min(1, Math.max(0, ratio));
 }
 
-/** `layout` as placement's split tree, with the options that read its sizing and floors under `config`. */
-function toSplitTree(layout: TilingLayoutNode, config: TilingLayoutConfig): TilingSplitTree {
+/**
+ * The config fields the geometry reads (the gutter, and the floors `resolveAlongAxisFloor` resolves), copied: a mapped
+ * tree is memoised, so its callbacks must not read a caller's config object that may change in place later.
+ */
+function geometryConfigOf(config: TilingLayoutConfig): TilingLayoutConfig {
+  return {
+    gapPx: config.gapPx,
+    handleSizePx: config.handleSizePx,
+    minPaneSizePx: config.minPaneSizePx,
+    collapsedExtentPx: config.collapsedExtentPx,
+    resizeFloor: config.resizeFloor,
+  };
+}
+
+/**
+ * `layout` as placement's split tree, with the options that read its sizing and floors under `config` (a snapshot of
+ * the fields it reads, taken here).
+ */
+function toSplitTree(layout: TilingLayoutNode, liveConfig: TilingLayoutConfig): TilingSplitTree {
+  const config: TilingLayoutConfig = geometryConfigOf(liveConfig);
   const slots: Array<TilingLeafNode | TilingGroupNode> = [];
   const shown: Array<string | null> = [];
   const splits: Map<string, TilingSplitNode> = new Map<string, TilingSplitNode>();
