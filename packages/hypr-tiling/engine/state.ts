@@ -2205,6 +2205,10 @@ export function removeMemberFromGroup(
   const remaining: ReadonlyArray<TilingLeafNode> = group.members.filter(
     (member: TilingLeafNode): boolean => member.id !== memberId,
   );
+  // A group of one: the member was all of it, so it takes the group's slot alone.
+  if (remaining.length === 0) {
+    return normalizeStaticAxisFill(replaceNodeById(layout, groupId, removed));
+  }
   // The group's surviving slot: a bare leaf when one member is left, else the
   // group minus the removed member (active follows if it was the removed one).
   const survivingSlot: TilingLayoutNode =
