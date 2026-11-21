@@ -499,16 +499,43 @@ export function workspaceSwipeReducer(
     // go straight to idle here, so this one case is kept out of the mapping.
     return state;
   }
+  const input: PagedSwipeInput | null = toPagedInput(event);
+  if (input == null) {
+    return state;
+  }
   const paged: PagedSwipeState = toPagedState(state);
-  const next: PagedSwipeState = pagedSwipeReducer(
-    paged,
-    toPagedInput(event),
-    toPagedConfig(config),
-  );
+  let next: PagedSwipeState = pagedSwipeReducer(paged, input, toPagedConfig(config));
   if (next === paged) {
     return state;
   }
+  if (event.type === "WHEEL" && state.phase === "tracking" && next.phase === "tracking") {
+    // A wheel sample's speed is its own delta over the time since the last one. The generic machine reads the
+    // difference of two travels, which floating point can make a hair off `dx` (enough to flip a commit at the
+    // velocity threshold), and keeps the origin a wheel run never had.
+    next = {
+      ...next,
+      origin: { x: 0, y: 0 },
+      peak: nextWheelPeak(state, next.travel, event.dx, event.ts - state.lastTs),
+    };
+  }
   return fromPagedState(next, state);
+}
+
+/**
+ * The peak speed after a wheel sample while tracking: the running maximum while the travel keeps heading to the
+ * same side, reset when it crosses zero (a fast swipe out then a pull-back must not commit the way back on the
+ * outbound flick's speed). A sample moving away, or with no time since the last one, has no speed.
+ */
+function nextWheelPeak(
+  state: Extract<TilingWorkspaceSwipeState, { phase: "tracking" }>,
+  travelPx: number,
+  dx: number,
+  dtMs: number,
+): number {
+  const target: TilingWorkspaceSwipeTarget | null = swipeTargetOfTravel(travelPx);
+  const signed: number = target === "next" ? dx : -dx;
+  const speed: number = dtMs <= 0 || target == null || signed <= 0 ? 0 : signed / dtMs;
+  return target === swipeTargetOfTravel(state.travelPx) ? Math.max(state.peakVelocityPxMs, speed) : speed;
 }
 
 function toPagedConfig(config: TilingWorkspaceSwipeConfig): PagedSwipeConfig {
@@ -520,7 +547,8 @@ function toPagedConfig(config: TilingWorkspaceSwipeConfig): PagedSwipeConfig {
     lockout: config.lockoutMs,
     wrap: config.wrap,
     size: config.widthPx,
-    modifier: config.modifier,
+    // An absent modifier means none is needed, as `null` does.
+    modifier: config.modifier ?? null,
     along: "x",
   };
 }
@@ -614,7 +642,8 @@ function toPagedState(state: TilingWorkspaceSwipeState): PagedSwipeState {
   }
 }
 
-function toPagedInput(event: TilingWorkspaceSwipeEvent): PagedSwipeInput {
+/** The generic machine's event, or null for an event this machine doesn't know (the state stays as it is). */
+function toPagedInput(event: TilingWorkspaceSwipeEvent): PagedSwipeInput | null {
   switch (event.type) {
     case "WHEEL":
       return {
@@ -665,6 +694,8 @@ function toPagedInput(event: TilingWorkspaceSwipeEvent): PagedSwipeInput {
         hasNext: event.hasNext,
         size: event.widthPx ?? undefined,
       };
+    default:
+      return null;
   }
 }
 

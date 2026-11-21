@@ -256,10 +256,12 @@ export function springLoadReducer(
   event: TilingSpringLoadEvent,
   config: TilingSpringLoadConfig = TILING_SPRING_LOAD_DEFAULTS,
 ): TilingSpringLoadState {
+  const input: SpringDwellInput | null = toDwellInput(event);
+  if (input == null) {
+    return state;
+  }
   const dwell: SpringDwellState = toDwellState(state);
-  const next: SpringDwellState = dwellReducer(dwell, toDwellInput(event), {
-    dwell: config.dwellMs,
-  });
+  const next: SpringDwellState = dwellReducer(dwell, input, { dwell: config.dwellMs });
   if (next === dwell) {
     return state;
   }
@@ -301,7 +303,8 @@ function toDwellState(state: TilingSpringLoadState): SpringDwellState {
   return { phase: "fired", key, since: state.since, firedAt: state.since, payload };
 }
 
-function toDwellInput(event: TilingSpringLoadEvent): SpringDwellInput {
+/** The dwell machine's event, or null for an event this machine doesn't know (the state stays as it is). */
+function toDwellInput(event: TilingSpringLoadEvent): SpringDwellInput | null {
   switch (event.type) {
     case "HOVER": {
       const hover: TilingExternalDragHover | null = event.hover;
@@ -329,6 +332,8 @@ function toDwellInput(event: TilingSpringLoadEvent): SpringDwellInput {
     case "DRAG_END":
     case "RESET":
       return { type: "reset" };
+    default:
+      return null;
   }
 }
 
