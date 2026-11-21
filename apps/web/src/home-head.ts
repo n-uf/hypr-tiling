@@ -5,6 +5,7 @@ import {
   DOCS_URL,
   FEATURE_FACTS,
   META_DESCRIPTION,
+  NPM_URL,
   PACKAGE_NAME,
   PAGE_TITLE,
   REPO_URL,
@@ -80,6 +81,7 @@ function structuredData(): StructuredDataGraph {
         runtimePlatform: "React",
         url: SITE_URL,
         license: "https://polyformproject.org/licenses/perimeter/1.0.1",
+        sameAs: [NPM_URL],
         author: N_UF_REF,
       },
       {

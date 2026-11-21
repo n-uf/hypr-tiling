@@ -80,6 +80,11 @@ describe("the site name", (): void => {
     expect(graph.filter((node) => node["@type"] === "WebSite")).toHaveLength(1);
   });
 
+  it("the home page's software node names the npm package page in sameAs", (): void => {
+    const software = graphOf(renderHead()).find((node) => node["@type"] === "SoftwareSourceCode");
+    expect(software?.sameAs).toEqual(["https://www.npmjs.com/package/@n-uf/hypr-tiling"]);
+  });
+
   it("og:site_name is hypr-tiling on the home page, /docs, a content page and a section index", (): void => {
     const content = site();
     expect(siteName(renderHead())).toBe("hypr-tiling");
