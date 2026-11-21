@@ -377,11 +377,44 @@ function motionRun(omega?: number): MotionRun {
 
 const R = (x: number, y: number, width: number, height: number): Rect => ({ x, y, width, height });
 
+/**
+ * The motion with a flush after every change, as the renderer drives it (it flushes after each commit and each held
+ * move): what the app draws.
+ */
+function flushingEveryChange(motion: LeafMotion): LeafMotion {
+  const after =
+    <A extends unknown[]>(fn: (...args: A) => void) =>
+    (...args: A): void => {
+      fn(...args);
+      motion.flush();
+    };
+  return {
+    ...motion,
+    get omega() {
+      return motion.omega;
+    },
+    get active() {
+      return motion.active;
+    },
+    get time() {
+      return motion.time;
+    },
+    target: after(motion.target.bind(motion)),
+    jump: after(motion.jump.bind(motion)),
+    hold: after(motion.hold.bind(motion)),
+    open: after(motion.open.bind(motion)),
+    remove: after(motion.remove.bind(motion)),
+    retain: after(motion.retain.bind(motion)),
+    configure: after(motion.configure.bind(motion)),
+  };
+}
+
 /** Pane-motion frames: what the renderer would draw each frame, for scripted layout changes. */
-export function motionCases(): Record<string, unknown[]> {
+export function motionCases(flushEach = false): Record<string, unknown[]> {
   const out: Record<string, unknown[]> = {};
   const scenario = (name: string, fn: (run: MotionRun) => void, omega?: number): void => {
     const run = motionRun(omega);
+    if (flushEach) (run as { motion: LeafMotion }).motion = flushingEveryChange(run.motion);
     fn(run);
     out[name] = run.log;
     run.motion.dispose();
@@ -570,7 +603,8 @@ export const GOLDEN_SECTIONS: Readonly<Record<string, () => unknown>> = {
   edits: editCases,
   focus: focusCases,
   normalize: normalizeCases,
-  motion: motionCases,
+  motion: () => motionCases(false),
+  "motion-flushed": () => motionCases(true),
   swipe: swipeCases,
   "spring-load": springLoadCases,
 };

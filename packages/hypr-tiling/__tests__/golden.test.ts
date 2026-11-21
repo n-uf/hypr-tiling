@@ -10,6 +10,8 @@ import { GOLDEN_SECTIONS } from "./golden/cases";
 
 const DIR = join(__dirname, "golden", "fixtures");
 const WRITE = process.env.HPT_GOLDEN_WRITE === "1";
+/** With `HPT_GOLDEN_WRITE=1`, `HPT_GOLDEN_ONLY=a,b` rewrites only those sections. */
+const ONLY: ReadonlySet<string> | null = process.env.HPT_GOLDEN_ONLY ? new Set(process.env.HPT_GOLDEN_ONLY.split(",")) : null;
 const TOLERANCE = 1e-9;
 
 /** Normalise through JSON, as the fixture is stored (NaN and ±Infinity become null, undefined fields drop). */
@@ -45,7 +47,7 @@ describe("golden answers recorded from 26.11.6", () => {
     it(`${name} unchanged`, () => {
       const file = join(DIR, `${name}.json`);
       const actual = asStored(compute());
-      if (WRITE) {
+      if (WRITE && (ONLY == null || ONLY.has(name))) {
         if (!existsSync(DIR)) mkdirSync(DIR, { recursive: true });
         writeFileSync(file, `${JSON.stringify(actual)}\n`);
         return;
