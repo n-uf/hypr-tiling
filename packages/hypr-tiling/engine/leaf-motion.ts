@@ -155,6 +155,20 @@ function copyRect(rect: Rect): Rect {
 /** The leaves draw through `onWrite`, in one batch per write: an item's own drawable has nothing to do. */
 const WRITTEN_IN_BATCHES: Drawable = { layOut: (): void => {}, draw: (_frame: DrawFrame): void => {} };
 
+/**
+ * Run a host callback (`onWrite`, `onActiveChange`) so that a throw never reaches the frame loop: the loop stops a
+ * repeating task that throws, which would freeze every leaf. The error is rethrown on its own, outside the frame.
+ */
+function hostCallback(fn: () => void): void {
+  try {
+    fn();
+  } catch (error: unknown) {
+    queueMicrotask((): never => {
+      throw error;
+    });
+  }
+}
+
 /** Create the leaf motion on `options.loop`. */
 export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
   const { loop, onWrite, onActiveChange } = options;
@@ -185,7 +199,7 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
       return;
     }
     active = next;
-    onActiveChange?.(next);
+    hostCallback(() => onActiveChange?.(next));
   };
 
   const frameOf = (id: string, item: LayoutItem, state: LeafState, frame?: DrawFrame): LeafMotionFrame => {
@@ -227,7 +241,7 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
     }
     dirty.clear();
     if (frames.length > 0) {
-      onWrite(frames, { time, delta });
+      hostCallback(() => onWrite(frames, { time, delta }));
     }
   };
 
@@ -309,6 +323,9 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
       return time;
     },
     target(id: string, rect: Rect, at?: Rect): void {
+      if (disposed) {
+        return;
+      }
       const state: LeafState | undefined = leaves.get(id);
       const item: LayoutItem | undefined = layout.get(id);
       if (state == null || item == null) {
@@ -336,6 +353,9 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
       ensureRunning();
     },
     jump(id: string, rect: Rect): void {
+      if (disposed) {
+        return;
+      }
       const state: LeafState = place(id, rect);
       if (state.opening) {
         state.opening = false;
@@ -343,6 +363,9 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
       }
     },
     hold(id: string, rect: Rect, at?: Rect): void {
+      if (disposed) {
+        return;
+      }
       const state: LeafState | undefined = leaves.get(id);
       const item: LayoutItem | undefined = layout.get(id);
       const nextLayout: Rect = at ?? rect;
@@ -352,6 +375,9 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
       place(id, rect, at);
     },
     open(id: string): void {
+      if (disposed) {
+        return;
+      }
       const item: LayoutItem | undefined = layout.get(id);
       const state: LeafState | undefined = leaves.get(id);
       if (item == null || state == null || reducedMotion()) {
