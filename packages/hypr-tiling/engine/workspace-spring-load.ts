@@ -1,3 +1,4 @@
+import { DWELL_IDLE, dwellReducer, type DwellInput, type DwellState } from "@n-uf/motion/gestures";
 import type {
   TilingExternalDragHover,
   TilingWorkspacePlacement,
@@ -247,73 +248,111 @@ export function springLoadFireAt(
 /**
  * Pure dwell reducer. Every `(state, event)` pair is defined; unmatched pairs
  * return the state unchanged (same reference), so the host can key effects on
- * identity.
+ * identity. The transitions are `@n-uf/motion`'s generic dwell machine; this
+ * function maps the state and events to and from its shapes.
  */
 export function springLoadReducer(
   state: TilingSpringLoadState,
   event: TilingSpringLoadEvent,
   config: TilingSpringLoadConfig = TILING_SPRING_LOAD_DEFAULTS,
 ): TilingSpringLoadState {
-  switch (event.type) {
-    case "DRAG_END":
-    case "RESET":
-      return state.phase === "idle" ? state : TILING_SPRING_LOAD_INITIAL_STATE;
+  const dwell: SpringDwellState = toDwellState(state);
+  const next: SpringDwellState = dwellReducer(dwell, toDwellInput(event), {
+    dwell: config.dwellMs,
+  });
+  if (next === dwell) {
+    return state;
+  }
+  return fromDwellState(next);
+}
 
+/** What a dwell carries from its first hover to the fire. */
+interface SpringDwellPayload {
+  readonly workspaceId: string;
+  readonly leafId: string;
+  readonly placement: TilingWorkspacePlacement | undefined;
+}
+
+type SpringDwellState = DwellState<string, SpringDwellPayload>;
+type SpringDwellInput = DwellInput<string, SpringDwellPayload>;
+
+/**
+ * The dwell key: one string per (workspace, leaf) pair. A JSON array cannot
+ * collide however the ids are spelled; a dwell continues only on an equal key.
+ */
+function springDwellKey(workspaceId: string, leafId: string): string {
+  return JSON.stringify([workspaceId, leafId]);
+}
+
+function toDwellState(state: TilingSpringLoadState): SpringDwellState {
+  if (state.phase === "idle") {
+    return DWELL_IDLE;
+  }
+  const key: string = springDwellKey(state.workspaceId, state.leafId);
+  const payload: SpringDwellPayload = {
+    workspaceId: state.workspaceId,
+    leafId: state.leafId,
+    placement: state.placement,
+  };
+  if (state.phase === "dwelling") {
+    return { phase: "dwelling", key, since: state.since, payload };
+  }
+  // The dwell machine stamps `firedAt`; this state never kept it (`since` stands in).
+  return { phase: "fired", key, since: state.since, firedAt: state.since, payload };
+}
+
+function toDwellInput(event: TilingSpringLoadEvent): SpringDwellInput {
+  switch (event.type) {
     case "HOVER": {
-      if (state.phase === "fired") {
-        // Absorbing: the host is mid commit-and-rearm; it RESETs when done.
-        return state;
-      }
       const hover: TilingExternalDragHover | null = event.hover;
       if (
         !isWorkspaceTabDragHover(hover) ||
         event.leafId == null ||
         hover.workspaceId === event.activeWorkspaceId
       ) {
-        return state.phase === "idle" ? state : TILING_SPRING_LOAD_INITIAL_STATE;
-      }
-      if (
-        state.phase === "dwelling" &&
-        state.workspaceId === hover.workspaceId &&
-        state.leafId === event.leafId
-      ) {
-        // Same tab, same leaf: the dwell continues; `since` is kept.
-        return state;
-      }
-      // Idle, or a different tab / leaf: (re)start the dwell now.
-      return {
-        phase: "dwelling",
-        workspaceId: hover.workspaceId,
-        since: event.ts,
-        leafId: event.leafId,
-        placement: hover.placement,
-        intent: null,
-      };
-    }
-
-    case "TICK": {
-      if (state.phase !== "dwelling") {
-        return state;
-      }
-      if (event.ts - state.since < config.dwellMs) {
-        return state;
+        // Not a tab to dwell on (the active tab never dwells): back to idle.
+        return { type: "hover", t: event.ts, key: null };
       }
       return {
-        phase: "fired",
-        workspaceId: state.workspaceId,
-        since: state.since,
-        leafId: state.leafId,
-        placement: state.placement,
-        intent: {
-          kind: "commit-and-rearm",
-          leafId: state.leafId,
-          workspaceId: state.workspaceId,
-          placement: state.placement,
+        type: "hover",
+        t: event.ts,
+        key: springDwellKey(hover.workspaceId, event.leafId),
+        payload: {
+          workspaceId: hover.workspaceId,
+          leafId: event.leafId,
+          placement: hover.placement,
         },
       };
     }
-
-    default:
-      return state;
+    case "TICK":
+      return { type: "tick", t: event.ts };
+    case "DRAG_END":
+    case "RESET":
+      return { type: "reset" };
   }
+}
+
+function fromDwellState(dwell: SpringDwellState): TilingSpringLoadState {
+  if (dwell.phase === "idle" || dwell.payload === undefined) {
+    return TILING_SPRING_LOAD_INITIAL_STATE;
+  }
+  const { workspaceId, leafId, placement } = dwell.payload;
+  if (dwell.phase === "dwelling") {
+    return {
+      phase: "dwelling",
+      workspaceId,
+      since: dwell.since,
+      leafId,
+      placement,
+      intent: null,
+    };
+  }
+  return {
+    phase: "fired",
+    workspaceId,
+    since: dwell.since,
+    leafId,
+    placement,
+    intent: { kind: "commit-and-rearm", leafId, workspaceId, placement },
+  };
 }
