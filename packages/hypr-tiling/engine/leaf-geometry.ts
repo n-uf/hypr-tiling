@@ -280,7 +280,10 @@ export function resolveMasterParams(node: TilingSplitNode, slotCount: number): M
  * the rest in a stack, each area divided equally with gaps. Left and right make
  * the areas columns, top and bottom rows; right and bottom put the stack first.
  * With no stack all slots fill the container. Each slot then resolves its own
- * footprint (a group shows its active member).
+ * footprint (a group shows its active member). `masterStack` re-normalises
+ * `params` itself: the count is rounded and kept within `[1, slotCount]` (NaN
+ * is 1) and the ratio clamped to `[0.05, 0.95]` (not finite: 0.5), so params
+ * from `resolveMasterParams` pass through unchanged.
  * @internal
  */
 export function resolveMasterStackFootprints(
