@@ -1,5 +1,5 @@
-import { canSplitPane, type DropVerdict, type Rect } from "@n-uf/placement/tiling";
-import { collectLeafFootprints, footprintsByLeafId } from "./leaf-geometry";
+import { canSplitPane, dropFits, type DropVerdict, type Rect } from "@n-uf/placement/tiling";
+import { resolveLeafRects } from "./leaf-geometry";
 import {
   crossAxisDimension,
   isStaticAlongSplitAxis,
@@ -29,50 +29,15 @@ import type {
  * closure delegating here, so the validity math is pure, headless-consumable,
  * and unit-tested — it is no longer embedded in the React component. The room
  * rule on the measured target is `@n-uf/placement/tiling`'s `canSplitPane`;
- * the projected fit lays out hypr-tiling's own projection (with its static
- * normalization) through placement; the rejection reasons stay hypr-tiling's.
+ * the fit rule is its `dropFits` over hypr-tiling's own projection (with its
+ * static normalization) laid out by placement; the rejection reasons stay
+ * hypr-tiling's.
  */
 
 /** @internal */
 export interface DropZoneEvaluation {
   isValid: boolean;
   rejectionReason: string | null;
-}
-
-/**
- * Does the projected post-insert tree keep both the relocated source and the
- * split target at/above the per-pane minimum? Consumes the canonical
- * static-aware `collectLeafFootprints`, so the projected footprints next to a
- * pinned static pane are correct.
- * @internal
- */
-export function projectedLeafFitsConstraints(
-  projectedLayout: TilingLayoutNode,
-  sourceLeafId: string,
-  targetLeafId: string,
-  viewportWidth: number,
-  viewportHeight: number,
-  minPaneSizePx: number,
-  config: TilingLayoutConfig,
-): boolean {
-  if (viewportWidth <= 0 || viewportHeight <= 0) {
-    return true;
-  }
-
-  const projectedLeafFootprints: ReadonlyMap<string, TilingPaneFootprint> = footprintsByLeafId(
-    collectLeafFootprints(projectedLayout, 0, 0, viewportWidth, viewportHeight, config),
-  );
-  const sourceFootprint: TilingPaneFootprint | undefined = projectedLeafFootprints.get(sourceLeafId);
-  const targetFootprint: TilingPaneFootprint | undefined = projectedLeafFootprints.get(targetLeafId);
-
-  if (sourceFootprint == null || targetFootprint == null) {
-    return false;
-  }
-
-  const footprintRespectsMin = (footprint: TilingPaneFootprint): boolean =>
-    footprint.width >= minPaneSizePx && footprint.height >= minPaneSizePx;
-
-  return footprintRespectsMin(sourceFootprint) && footprintRespectsMin(targetFootprint);
 }
 
 /** @internal */
@@ -128,7 +93,9 @@ export function evaluateEdgeInsertCandidate({
 
   // 2. The tree the commit would apply: hypr-tiling's own projection (`insertLeafAdjacent`), which runs its static
   //    normalization (re-pins collapsed panes to their new axis, demotes the second of two statics along one axis),
-  //    laid out by placement; both panes must keep the minimum.
+  //    laid out by placement; placement's fit rule (`dropFits`) wants both panes there and at least the minimum wide
+  //    and high, and passes when the viewport has no width or height yet (nothing to measure). A drop that moves
+  //    nothing (onto itself, a source the tree can't lift, a target with no seat) is the layout as it stands.
   const projectedLayout: TilingLayoutNode = insertLeafAdjacent(
     layout,
     sourceLeafId,
@@ -139,15 +106,11 @@ export function evaluateEdgeInsertCandidate({
       splitRatio: 0.5,
     },
   );
-  const fitsProjectedConstraints: boolean = projectedLeafFitsConstraints(
-    projectedLayout,
-    sourceLeafId,
-    targetLeafId,
-    viewportWidth,
-    viewportHeight,
-    minPaneSizePx,
-    config,
-  );
+  const viewport: Rect = { x: 0, y: 0, width: viewportWidth, height: viewportHeight };
+  const fitsProjectedConstraints: boolean = dropFits(resolveLeafRects(projectedLayout, viewport, config), sourceLeafId, targetLeafId, viewport, {
+    min: minPaneSizePx,
+    side: candidateZone,
+  }).ok;
 
   return {
     isValid: fitsProjectedConstraints,
