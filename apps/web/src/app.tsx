@@ -1,4 +1,6 @@
 import * as React from "react";
+import { Analytics } from "@vercel/analytics/react";
+import { stripQuery } from "./analytics";
 import {
   DOCS_URL,
   META_DESCRIPTION,
@@ -62,7 +64,21 @@ function upsertMetaTag(spec: MetaTagSpec): void {
   document.head.appendChild(tag);
 }
 
+// The one place Vercel Web Analytics mounts, so the home skins and /docs all
+// count. It renders nothing, so the prerendered markup still hydrates as is;
+// the script loads in production only (the component skips development mode).
+// The article pages ship no app JavaScript: prerender.mjs gives them the same
+// script by hand.
 export function App(): React.ReactElement {
+  return (
+    <>
+      <AppRoutes />
+      <Analytics beforeSend={stripQuery} />
+    </>
+  );
+}
+
+function AppRoutes(): React.ReactElement {
   const [path, setPath] = React.useState<string>((): string =>
     normalizePath(window.location.pathname),
   );
