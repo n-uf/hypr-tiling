@@ -100,7 +100,11 @@ export function evaluateEdgeInsertCandidate({
   const isHorizontalSplit: boolean = candidateZone === "left" || candidateZone === "right";
 
   // 1. Room on the target as measured: placement's span rule (two minimums plus the gutter along, one across) over
-  //    the target pane alone, in its own footprint, with a pane from outside dropped on that side.
+  //    the target pane alone, in its own footprint, with a pane from outside dropped on that side. Only its two span
+  //    verdicts count: canDropOnPane then also lays the one-pane drop out at 0.5 and checks the halves, which with a
+  //    fractional gutter can come out an ulp under the minimum for a target exactly two minimums plus the gutter
+  //    wide. That step is not this rule (step 2 below judges the real projection), so it is ignored.
+  //    TEMP until placement ships the span rule alone (`canSplitPane(target, side, { min, gap, handle })`).
   const room: DropVerdict = canDropOnPane<TilingPaneKey>(
     { pane: MEASURED_TARGET },
     INCOMING_PANE,
@@ -109,14 +113,21 @@ export function evaluateEdgeInsertCandidate({
     { x: targetFootprint.left, y: targetFootprint.top, width: targetFootprint.width, height: targetFootprint.height },
     { gap: config.gapPx, handle: config.handleSizePx, min: minPaneSizePx },
   );
-  if (!room.ok) {
-    if (room.reason?.includes("cross span") === true) {
-      const crossSpanPx: number = isHorizontalSplit ? targetFootprint.height : targetFootprint.width;
-      return {
-        isValid: false,
-        rejectionReason: `${candidateZone} rejected: cross span ${crossSpanPx.toFixed(1)}px < min ${minPaneSizePx}px`,
-      };
-    }
+  const spanRejection: "axis" | "cross" | null = room.ok
+    ? null
+    : room.reason?.includes("axis span") === true
+      ? "axis"
+      : room.reason?.includes("cross span") === true
+        ? "cross"
+        : null;
+  if (spanRejection === "cross") {
+    const crossSpanPx: number = isHorizontalSplit ? targetFootprint.height : targetFootprint.width;
+    return {
+      isValid: false,
+      rejectionReason: `${candidateZone} rejected: cross span ${crossSpanPx.toFixed(1)}px < min ${minPaneSizePx}px`,
+    };
+  }
+  if (spanRejection === "axis") {
     const axisSpanPx: number = isHorizontalSplit ? targetFootprint.width : targetFootprint.height;
     const minimumAxisSpanRequiredPx: number = minPaneSizePx * 2 + splitterCostPx;
     return {

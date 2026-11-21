@@ -215,6 +215,36 @@ describe("evaluateEdgeInsertCandidate — span + min-pane validity", (): void =>
   });
 });
 
+describe("evaluateEdgeInsertCandidate — span boundary and reasons", (): void => {
+  const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), vsplit(0.5, leaf("B"), leaf("C")));
+  // A fractional gutter: 2 × 4 + 0.2 = 8.2 exactly; halving 8.2 and taking half the gutter comes out an ulp under 4.
+  const fractional: TilingLayoutConfig = { gapPx: 0, handleSizePx: 0.2, minPaneSizePx: 4 };
+  const evaluate = (sourceLeafId: string | null, footprint: TilingPaneFootprint, config: TilingLayoutConfig = fractional) =>
+    evaluateEdgeInsertCandidate({ candidateZone: "left", layout, sourceLeafId, targetLeafId: "B", targetFootprint: footprint, config, viewportWidth: 1000, viewportHeight: 700 });
+
+  it("accepts a target exactly two minimums plus the gutter wide, with and without a source", (): void => {
+    for (const sourceLeafId of ["A", null]) {
+      expect(evaluate(sourceLeafId, { left: 0, top: 0, width: 8.2, height: 300 })).toEqual({ isValid: true, rejectionReason: null });
+    }
+  });
+
+  it("refuses a hair under it, with the axis-span reason", (): void => {
+    expect(evaluate("A", { left: 0, top: 0, width: 8.2 - 1e-9, height: 300 })).toEqual({
+      isValid: false,
+      rejectionReason: "left rejected: axis span 8.2px < min 8.2px (2 panes + splitter/gap 0.2px)",
+    });
+  });
+
+  it("reports the axis and cross span reasons word for word", (): void => {
+    expect(evaluate(null, { left: 0, top: 0, width: 50, height: 400 }, CONFIG).rejectionReason).toBe(
+      "left rejected: axis span 50.0px < min 92.0px (2 panes + splitter/gap 12px)",
+    );
+    expect(evaluate(null, { left: 0, top: 0, width: 500, height: 20 }, CONFIG).rejectionReason).toBe(
+      "left rejected: cross span 20.0px < min 40px",
+    );
+  });
+});
+
 describe("evaluateZoneCandidate — center swap eligibility", (): void => {
   const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
   const targetFootprint: TilingPaneFootprint = { left: 0, top: 0, width: 500, height: 400 };
