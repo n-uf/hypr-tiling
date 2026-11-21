@@ -870,7 +870,7 @@ export function findGroupById(
  *
  * - every leaf has a non-empty `id` and `tileId`;
  * - every split has BOTH children present and individually valid, with a finite
- *   `ratio` in the open interval `(0, 1)`;
+ *   `ratio` in the closed interval `[0, 1]` (what `updateSplitRatio` stores);
  * - NO leaf id appears more than once across the whole tree (the single-instance
  *   invariant at the data layer — a duplicated dragged leaf is exactly the BUG-1
  *   class this rejects);
@@ -915,7 +915,8 @@ export function isStructurallyValidLayout(node: TilingLayoutNode): boolean {
     if (current.first == null || current.second == null) {
       return false;
     }
-    if (!Number.isFinite(current.ratio) || current.ratio <= 0 || current.ratio >= 1) {
+    // The closed unit interval `updateSplitRatio` stores (a size-out drag can store 0 or 1).
+    if (!Number.isFinite(current.ratio) || current.ratio < 0 || current.ratio > 1) {
       return false;
     }
     return walk(current.first) && walk(current.second);

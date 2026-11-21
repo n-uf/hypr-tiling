@@ -951,12 +951,12 @@ describe("isStructurallyValidLayout — commit-time tree verification backstop",
     expect(isStructurallyValidLayout(duplicatedTile)).toBe(false);
   });
 
-  it("REJECTS a NaN / out-of-range split ratio", (): void => {
+  it("REJECTS a NaN / out-of-range split ratio (0 and 1 are in range: updateSplitRatio stores them)", (): void => {
     const nanRatio: TilingSplitNode = { ...baseLayout(), ratio: Number.NaN };
-    const zeroRatio: TilingSplitNode = { ...baseLayout(), ratio: 0 };
-    const overRatio: TilingSplitNode = { ...baseLayout(), ratio: 1 };
+    const underRatio: TilingSplitNode = { ...baseLayout(), ratio: -0.001 };
+    const overRatio: TilingSplitNode = { ...baseLayout(), ratio: 1.001 };
     expect(isStructurallyValidLayout(nanRatio)).toBe(false);
-    expect(isStructurallyValidLayout(zeroRatio)).toBe(false);
+    expect(isStructurallyValidLayout(underRatio)).toBe(false);
     expect(isStructurallyValidLayout(overRatio)).toBe(false);
   });
 
@@ -990,5 +990,18 @@ describe("a move onto a target it can't reach keeps the pane where it was", (): 
 
   it("moveLeafToSplitContainer into the split the move itself removes returns the layout unchanged", (): void => {
     expect(moveLeafToSplitContainer(baseLayout(), "B", "s2", "first")).toEqual(baseLayout());
+  });
+});
+
+describe("a stored ratio at either end of the unit interval is valid", (): void => {
+  it("accepts ratio 0 and ratio 1, as updateSplitRatio stores them", (): void => {
+    expect(isStructurallyValidLayout(updateSplitRatio(baseLayout(), "root", 0))).toBe(true);
+    expect(isStructurallyValidLayout(updateSplitRatio(baseLayout(), "root", 5))).toBe(true);
+  });
+
+  it("still rejects a ratio outside it or not finite", (): void => {
+    expect(isStructurallyValidLayout({ ...baseLayout(), ratio: 1.01 })).toBe(false);
+    expect(isStructurallyValidLayout({ ...baseLayout(), ratio: -0.01 })).toBe(false);
+    expect(isStructurallyValidLayout({ ...baseLayout(), ratio: Number.NaN })).toBe(false);
   });
 });
