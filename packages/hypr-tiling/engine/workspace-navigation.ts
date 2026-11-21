@@ -1,3 +1,10 @@
+import {
+  pagedSwipeReducer,
+  type PagedSwipeConfig,
+  type PagedSwipeContext,
+  type PagedSwipeInput,
+  type PagedSwipeState,
+} from "@n-uf/motion/gestures";
 import type { TilingCommand } from "./types";
 
 /**
@@ -330,36 +337,6 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-function idleWith(
-  context: TilingWorkspaceSwipeContext,
-  run?: { lastWheelTs: number | null; runClaimedByScroll: boolean },
-): TilingWorkspaceSwipeState {
-  return {
-    phase: "idle",
-    context,
-    progress: 0,
-    target: null,
-    command: null,
-    lastWheelTs: run?.lastWheelTs ?? null,
-    runClaimedByScroll: run?.runClaimedByScroll ?? false,
-  };
-}
-
-function idleClaimedByScroll(
-  context: TilingWorkspaceSwipeContext,
-  lastWheelTs: number,
-): TilingWorkspaceSwipeState {
-  return idleWith(context, { lastWheelTs, runClaimedByScroll: true });
-}
-
-function isWheelRunFresh(
-  lastWheelTs: number | null,
-  ts: number,
-  wheelIdleMs: number,
-): boolean {
-  return lastWheelTs == null || ts - lastWheelTs >= wheelIdleMs;
-}
-
 function swipeModifierHeld(
   modifier: TilingWorkspaceSwipeModifier,
   keys: { metaKey: boolean; altKey: boolean; shiftKey: boolean },
@@ -374,10 +351,6 @@ function swipeModifierHeld(
     return keys.altKey;
   }
   return keys.shiftKey;
-}
-
-function wholeWindowHorizontalLockHolds(travelPx: number, travelDy: number): boolean {
-  return Math.abs(travelDy) <= Math.abs(travelPx) / 2;
 }
 
 /** The side `travelPx` heads to (`null` at exactly zero). */
@@ -500,150 +473,16 @@ export function swipeCommitCommand(target: TilingWorkspaceSwipeTarget): TilingCo
   return { kind: "cycle-workspace", direction: target === "next" ? "next" : "previous" };
 }
 
-function effectiveWidth(
-  context: TilingWorkspaceSwipeContext,
-  sampleWidth: number | undefined,
-  config: TilingWorkspaceSwipeConfig,
-): number {
-  return sampleWidth ?? context.widthPx ?? config.widthPx;
-}
-
-function withSampleWidth(
-  context: TilingWorkspaceSwipeContext,
-  sampleWidth: number | undefined,
-): TilingWorkspaceSwipeContext {
-  if (sampleWidth == null || sampleWidth === context.widthPx) {
-    return context;
-  }
-  return { ...context, widthPx: sampleWidth };
-}
-
-function trackingFrom(params: {
-  context: TilingWorkspaceSwipeContext;
-  input: TilingWorkspaceSwipeInput;
-  originX: number;
-  originY: number;
-  travelPx: number;
-  ts: number;
-  peakVelocityPxMs: number;
-  widthPx: number;
-  config: TilingWorkspaceSwipeConfig;
-}): TilingWorkspaceSwipeState {
-  const progress: number = swipeProgressOfTravel(
-    params.travelPx,
-    params.widthPx,
-    params.context,
-    params.config.wrap,
-  );
-  return {
-    phase: "tracking",
-    context: params.context,
-    input: params.input,
-    originX: params.originX,
-    originY: params.originY,
-    travelPx: params.travelPx,
-    lastTs: params.ts,
-    peakVelocityPxMs: params.peakVelocityPxMs,
-    progress,
-    target: swipeTargetOfTravel(progress),
-    command: null,
-  };
-}
-
-function settleFrom(
-  state: Extract<TilingWorkspaceSwipeState, { phase: "tracking" }>,
-  ts: number,
-  config: TilingWorkspaceSwipeConfig,
-): TilingWorkspaceSwipeState {
-  const commit: boolean = shouldCommitSwipe({
-    progress: state.progress,
-    target: state.target,
-    peakVelocityPxMs: state.peakVelocityPxMs,
-    config,
-  });
-  if (commit && state.target != null) {
-    return {
-      phase: "settling",
-      context: state.context,
-      input: state.input,
-      outcome: "commit",
-      endedTs: ts,
-      lastWheelTs: ts,
-      progress: state.progress,
-      target: state.target,
-      command: swipeCommitCommand(state.target),
-    };
-  }
-  return {
-    phase: "settling",
-    context: state.context,
-    input: state.input,
-    outcome: "cancel",
-    endedTs: ts,
-    lastWheelTs: ts,
-    progress: state.progress,
-    target: null,
-    command: null,
-  };
-}
-
-function wheelArmingOf(
-  event: Extract<TilingWorkspaceSwipeEvent, { type: "WHEEL" }>,
-  context: TilingWorkspaceSwipeContext,
-  config: TilingWorkspaceSwipeConfig,
-): TilingWorkspaceSwipeTarget | null {
-  return resolveSwipeArming({
-    context,
-    dx: event.dx,
-    dy: event.dy,
-    ctrlKey: event.ctrlKey,
-    canScrollFurther: event.canScrollFurther ?? false,
-    wrap: config.wrap,
-    modifier: config.modifier,
-    metaKey: event.metaKey,
-    altKey: event.altKey,
-    shiftKey: event.shiftKey,
-  });
-}
-
-/** Per-sample velocity towards the target, `0` when the sample moves away or `dt ≤ 0`. */
-function velocityTowards(
-  travelDeltaPx: number,
-  dtMs: number,
-  target: TilingWorkspaceSwipeTarget | null,
-): number {
-  if (dtMs <= 0 || target == null) {
-    return 0;
-  }
-  const signed: number = target === "next" ? travelDeltaPx : -travelDeltaPx;
-  return signed > 0 ? signed / dtMs : 0;
-}
-
-/**
- * The peak velocity after a tracking sample: the running maximum while the
- * travel keeps heading to the same side, RESET when the travel crosses zero
- * (a fast swipe out followed by a pull-back must not commit the way back on
- * the outbound flick's speed).
- */
-function nextPeakVelocity(
-  state: Extract<TilingWorkspaceSwipeState, { phase: "tracking" }>,
-  travelPx: number,
-  travelDeltaPx: number,
-  dtMs: number,
-): number {
-  const target: TilingWorkspaceSwipeTarget | null = swipeTargetOfTravel(travelPx);
-  const velocity: number = velocityTowards(travelDeltaPx, dtMs, target);
-  return target === swipeTargetOfTravel(state.travelPx)
-    ? Math.max(state.peakVelocityPxMs, velocity)
-    : velocity;
-}
-
 /**
  * Pure swipe-lifecycle reducer. No timers and no side effects: the host runs
  * the wheel-idle timer (`IDLE_TICK`), dispatches `state.command` when it sees
  * `settling` with `outcome: "commit"`, and sends `SETTLE_DONE` when its
  * transition (if any) has finished. Every `(state, event)` pair is defined;
- * unmatched pairs return the state unchanged.
+ * unmatched pairs return the state unchanged. The transitions are
+ * `@n-uf/motion`'s generic paged swipe; this function maps the state, config
+ * and events to and from its shapes. `CANCEL` on a `settling` state is the one
+ * pair kept here: it returns the state unchanged (only `SETTLE_DONE` ends a
+ * settle).
  *
  * Sign convention: `WHEEL.dx > 0` (content scrolls right) heads to `next`;
  * a finger moving LEFT (`TOUCH_MOVE.x < origin`) heads to `next`, so touch
@@ -654,351 +493,262 @@ export function workspaceSwipeReducer(
   event: TilingWorkspaceSwipeEvent,
   config: TilingWorkspaceSwipeConfig = TILING_WORKSPACE_SWIPE_DEFAULTS,
 ): TilingWorkspaceSwipeState {
-  // Context updates apply in every phase and never move the phase by
-  // themselves (a tracking gesture keeps tracking; the next sample re-clamps).
-  if (event.type === "SET_CONTEXT") {
-    const context: TilingWorkspaceSwipeContext = {
-      ...state.context,
-      hasPrev: event.hasPrev,
-      hasNext: event.hasNext,
-      widthPx: event.widthPx ?? state.context.widthPx,
-    };
-    return { ...state, context };
+  if (event.type === "CANCEL" && state.phase === "settling") {
+    // This machine's CANCEL leaves a settling swipe alone: only SETTLE_DONE
+    // ends it (a commit then enters its lockout). The generic machine would
+    // go straight to idle here, so this one case is kept out of the mapping.
+    return state;
   }
-  if (event.type === "DRAG_ACTIVE") {
-    const context: TilingWorkspaceSwipeContext =
-      state.context.dragActive === event.active
-        ? state.context
-        : { ...state.context, dragActive: event.active };
-    if (!event.active) {
-      return context === state.context ? state : { ...state, context };
-    }
-    // A drag picked up: an armed or tracking swipe yields to it.
-    if (state.phase === "armed") {
-      return idleWith(context);
-    }
-    if (state.phase === "tracking") {
+  const paged: PagedSwipeState = toPagedState(state);
+  const next: PagedSwipeState = pagedSwipeReducer(
+    paged,
+    toPagedInput(event),
+    toPagedConfig(config),
+  );
+  if (next === paged) {
+    return state;
+  }
+  return fromPagedState(next, state);
+}
+
+function toPagedConfig(config: TilingWorkspaceSwipeConfig): PagedSwipeConfig {
+  return {
+    threshold: config.thresholdPx,
+    commitFraction: config.commitFraction,
+    commitVelocity: config.commitVelocityPxMs,
+    idle: config.wheelIdleMs,
+    lockout: config.lockoutMs,
+    wrap: config.wrap,
+    size: config.widthPx,
+    modifier: config.modifier,
+    along: "x",
+  };
+}
+
+function toPagedContext(context: TilingWorkspaceSwipeContext): PagedSwipeContext {
+  return {
+    hasPrev: context.hasPrev,
+    hasNext: context.hasNext,
+    size: context.widthPx,
+    blocked: context.dragActive,
+  };
+}
+
+/** Back to the context shape; the previous object is kept when nothing in it changed. */
+function fromPagedContext(
+  context: PagedSwipeContext,
+  previous: TilingWorkspaceSwipeContext,
+): TilingWorkspaceSwipeContext {
+  if (
+    previous.hasPrev === context.hasPrev &&
+    previous.hasNext === context.hasNext &&
+    previous.widthPx === context.size &&
+    previous.dragActive === context.blocked
+  ) {
+    return previous;
+  }
+  return {
+    hasPrev: context.hasPrev,
+    hasNext: context.hasNext,
+    widthPx: context.size,
+    dragActive: context.blocked,
+  };
+}
+
+function toPagedState(state: TilingWorkspaceSwipeState): PagedSwipeState {
+  const context: PagedSwipeContext = toPagedContext(state.context);
+  switch (state.phase) {
+    case "idle":
+      return {
+        phase: "idle",
+        context,
+        progress: 0,
+        target: null,
+        lastWheel: state.lastWheelTs,
+        claimed: state.runClaimedByScroll,
+      };
+    case "armed":
+      return {
+        phase: "armed",
+        context,
+        progress: 0,
+        target: null,
+        input: state.input,
+        origin: { x: state.originX, y: state.originY },
+        travel: state.travelPx,
+        cross: state.travelDy,
+        last: state.lastTs,
+      };
+    case "tracking":
+      return {
+        phase: "tracking",
+        context,
+        progress: state.progress,
+        target: state.target,
+        input: state.input,
+        origin: { x: state.originX, y: state.originY },
+        travel: state.travelPx,
+        last: state.lastTs,
+        peak: state.peakVelocityPxMs,
+      };
+    case "settling":
       return {
         phase: "settling",
         context,
-        input: state.input,
-        outcome: "cancel",
-        endedTs: state.lastTs,
-        lastWheelTs: state.lastTs,
         progress: state.progress,
+        target: state.target,
+        input: state.input,
+        outcome: state.outcome,
+        ended: state.endedTs,
+        lastWheel: state.lastWheelTs,
+      };
+    case "lockout":
+      return {
+        phase: "lockout",
+        context,
+        progress: 0,
+        target: null,
+        until: state.until,
+        lastWheel: state.lastWheelTs,
+      };
+  }
+}
+
+function toPagedInput(event: TilingWorkspaceSwipeEvent): PagedSwipeInput {
+  switch (event.type) {
+    case "WHEEL":
+      return {
+        type: "wheel",
+        dx: event.dx,
+        dy: event.dy,
+        t: event.ts,
+        modifiers: {
+          ctrl: event.ctrlKey,
+          meta: event.metaKey,
+          alt: event.altKey,
+          shift: event.shiftKey,
+        },
+        canScrollFurther: event.canScrollFurther,
+        size: event.widthPx ?? undefined,
+      };
+    case "TOUCH_START":
+      return {
+        type: "touch-start",
+        x: event.x,
+        y: event.y,
+        t: event.ts,
+        size: event.widthPx ?? undefined,
+      };
+    case "TOUCH_MOVE":
+      return {
+        type: "touch-move",
+        x: event.x,
+        y: event.y,
+        t: event.ts,
+        canScrollFurther: event.canScrollFurther,
+        size: event.widthPx ?? undefined,
+      };
+    case "TOUCH_END":
+      return { type: "touch-end", t: event.ts };
+    case "IDLE_TICK":
+      return { type: "tick", t: event.ts };
+    case "SETTLE_DONE":
+      return { type: "settled" };
+    case "CANCEL":
+      return { type: "cancel" };
+    case "DRAG_ACTIVE":
+      return { type: "block", on: event.active };
+    case "SET_CONTEXT":
+      return {
+        type: "context",
+        hasPrev: event.hasPrev,
+        hasNext: event.hasNext,
+        size: event.widthPx ?? undefined,
+      };
+  }
+}
+
+/**
+ * Back to this state shape. `command` is derived: the commit command rides on
+ * exactly the `settling` state with `outcome: "commit"` (the previous state's
+ * command object is kept while that state is only updated).
+ */
+function fromPagedState(
+  paged: PagedSwipeState,
+  previous: TilingWorkspaceSwipeState,
+): TilingWorkspaceSwipeState {
+  const context: TilingWorkspaceSwipeContext = fromPagedContext(paged.context, previous.context);
+  switch (paged.phase) {
+    case "idle":
+      return {
+        phase: "idle",
+        context,
+        progress: 0,
+        target: null,
+        command: null,
+        lastWheelTs: paged.lastWheel,
+        runClaimedByScroll: paged.claimed,
+      };
+    case "armed":
+      return {
+        phase: "armed",
+        context,
+        input: paged.input,
+        originX: paged.origin.x,
+        originY: paged.origin.y,
+        travelPx: paged.travel,
+        travelDy: paged.cross,
+        lastTs: paged.last,
+        progress: 0,
         target: null,
         command: null,
       };
-    }
-    return context === state.context ? state : { ...state, context };
-  }
-  if (event.type === "CANCEL") {
-    if (state.phase === "armed" || state.phase === "lockout") {
-      return idleWith(state.context);
-    }
-    if (state.phase === "tracking") {
+    case "tracking":
+      return {
+        phase: "tracking",
+        context,
+        input: paged.input,
+        originX: paged.origin.x,
+        originY: paged.origin.y,
+        travelPx: paged.travel,
+        lastTs: paged.last,
+        peakVelocityPxMs: paged.peak,
+        progress: paged.progress,
+        target: paged.target,
+        command: null,
+      };
+    case "settling": {
+      let command: TilingCommand | null = null;
+      if (paged.outcome === "commit" && paged.target != null) {
+        command =
+          previous.phase === "settling" &&
+          previous.command != null &&
+          previous.target === paged.target
+            ? previous.command
+            : swipeCommitCommand(paged.target);
+      }
       return {
         phase: "settling",
-        context: state.context,
-        input: state.input,
-        outcome: "cancel",
-        endedTs: state.lastTs,
-        lastWheelTs: state.lastTs,
-        progress: state.progress,
+        context,
+        input: paged.input,
+        outcome: paged.outcome,
+        endedTs: paged.ended,
+        lastWheelTs: paged.lastWheel,
+        progress: paged.progress,
+        target: paged.target,
+        command,
+      };
+    }
+    case "lockout":
+      return {
+        phase: "lockout",
+        context,
+        until: paged.until,
+        lastWheelTs: paged.lastWheel,
+        progress: 0,
         target: null,
         command: null,
       };
-    }
-    return state;
-  }
-
-  switch (state.phase) {
-    case "idle": {
-      switch (event.type) {
-        case "WHEEL": {
-          if (state.context.dragActive) {
-            return state;
-          }
-          const fresh: boolean = isWheelRunFresh(state.lastWheelTs, event.ts, config.wheelIdleMs);
-          if (!fresh && state.runClaimedByScroll) {
-            return { ...state, lastWheelTs: event.ts };
-          }
-          const target: TilingWorkspaceSwipeTarget | null = wheelArmingOf(
-            event,
-            state.context,
-            config,
-          );
-          const context: TilingWorkspaceSwipeContext = withSampleWidth(state.context, event.widthPx);
-          if (target == null) {
-            return idleClaimedByScroll(context, event.ts);
-          }
-          if (Math.abs(event.dx) >= config.thresholdPx) {
-            // One large sample crosses the threshold outright: arm and track.
-            return trackingFrom({
-              context,
-              input: "wheel",
-              originX: 0,
-              originY: 0,
-              travelPx: event.dx,
-              ts: event.ts,
-              peakVelocityPxMs: 0,
-              widthPx: effectiveWidth(context, event.widthPx, config),
-              config,
-            });
-          }
-          return {
-            phase: "armed",
-            context,
-            input: "wheel",
-            originX: 0,
-            originY: 0,
-            travelPx: event.dx,
-            travelDy: event.dy,
-            lastTs: event.ts,
-            progress: 0,
-            target: null,
-            command: null,
-          };
-        }
-        case "TOUCH_START": {
-          if (state.context.dragActive) {
-            return state;
-          }
-          return {
-            phase: "armed",
-            context: withSampleWidth(state.context, event.widthPx),
-            input: "touch",
-            originX: event.x,
-            originY: event.y,
-            travelPx: 0,
-            travelDy: 0,
-            lastTs: event.ts,
-            progress: 0,
-            target: null,
-            command: null,
-          };
-        }
-        default:
-          return state;
-      }
-    }
-
-    case "armed": {
-      switch (event.type) {
-        case "WHEEL": {
-          if (state.input !== "wheel") {
-            return state;
-          }
-          // Every pre-threshold sample must keep passing the arming rules; a
-          // breach (vertical-dominant, missing modifier, ctrl, scrollable
-          // chain, reversed into a side with no neighbour, or the whole-window
-          // horizontal lock) claims the run for scroll.
-          const target: TilingWorkspaceSwipeTarget | null = wheelArmingOf(
-            event,
-            state.context,
-            config,
-          );
-          if (target == null) {
-            return idleClaimedByScroll(state.context, event.ts);
-          }
-          const context: TilingWorkspaceSwipeContext = withSampleWidth(state.context, event.widthPx);
-          const travelPx: number = state.travelPx + event.dx;
-          const travelDy: number = state.travelDy + event.dy;
-          if (!wholeWindowHorizontalLockHolds(travelPx, travelDy)) {
-            return idleClaimedByScroll(context, event.ts);
-          }
-          if (Math.abs(travelPx) < config.thresholdPx) {
-            return { ...state, context, travelPx, travelDy, lastTs: event.ts };
-          }
-          return trackingFrom({
-            context,
-            input: "wheel",
-            originX: 0,
-            originY: 0,
-            travelPx,
-            ts: event.ts,
-            peakVelocityPxMs: velocityTowards(
-              event.dx,
-              event.ts - state.lastTs,
-              swipeTargetOfTravel(travelPx),
-            ),
-            widthPx: effectiveWidth(context, event.widthPx, config),
-            config,
-          });
-        }
-        case "TOUCH_MOVE": {
-          if (state.input !== "touch") {
-            return state;
-          }
-          const dx: number = state.originX - event.x;
-          const dy: number = event.y - state.originY;
-          if (Math.hypot(dx, dy) < config.thresholdPx) {
-            // Finger jitter: hold.
-            return { ...state, lastTs: event.ts };
-          }
-          const target: TilingWorkspaceSwipeTarget | null = resolveSwipeArming({
-            context: state.context,
-            dx,
-            dy,
-            ctrlKey: false,
-            canScrollFurther: event.canScrollFurther ?? false,
-            wrap: config.wrap,
-          });
-          if (target == null) {
-            // A vertical pan / scrollable chain / no neighbour: the browser
-            // owns this touch; later moves are ignored until TOUCH_END.
-            return idleWith(state.context);
-          }
-          const context: TilingWorkspaceSwipeContext = withSampleWidth(state.context, event.widthPx);
-          return trackingFrom({
-            context,
-            input: "touch",
-            originX: state.originX,
-            originY: state.originY,
-            travelPx: dx,
-            ts: event.ts,
-            peakVelocityPxMs: velocityTowards(dx, event.ts - state.lastTs, target),
-            widthPx: effectiveWidth(context, event.widthPx, config),
-            config,
-          });
-        }
-        case "IDLE_TICK": {
-          if (state.input === "wheel" && event.ts - state.lastTs >= config.wheelIdleMs) {
-            return idleWith(state.context);
-          }
-          return state;
-        }
-        case "TOUCH_END":
-          return state.input === "touch" ? idleWith(state.context) : state;
-        case "TOUCH_START":
-          // A second finger / re-press restarts the touch gesture.
-          return {
-            phase: "armed",
-            context: withSampleWidth(state.context, event.widthPx),
-            input: "touch",
-            originX: event.x,
-            originY: event.y,
-            travelPx: 0,
-            travelDy: 0,
-            lastTs: event.ts,
-            progress: 0,
-            target: null,
-            command: null,
-          };
-        default:
-          return state;
-      }
-    }
-
-    case "tracking": {
-      switch (event.type) {
-        case "WHEEL": {
-          if (state.input !== "wheel") {
-            return state;
-          }
-          const context: TilingWorkspaceSwipeContext = withSampleWidth(state.context, event.widthPx);
-          const travelPx: number = state.travelPx + event.dx;
-          return trackingFrom({
-            context,
-            input: "wheel",
-            originX: 0,
-            originY: 0,
-            travelPx,
-            ts: event.ts,
-            peakVelocityPxMs: nextPeakVelocity(state, travelPx, event.dx, event.ts - state.lastTs),
-            widthPx: effectiveWidth(context, event.widthPx, config),
-            config,
-          });
-        }
-        case "TOUCH_MOVE": {
-          if (state.input !== "touch") {
-            return state;
-          }
-          const context: TilingWorkspaceSwipeContext = withSampleWidth(state.context, event.widthPx);
-          const travelPx: number = state.originX - event.x;
-          return trackingFrom({
-            context,
-            input: "touch",
-            originX: state.originX,
-            originY: state.originY,
-            travelPx,
-            ts: event.ts,
-            peakVelocityPxMs: nextPeakVelocity(
-              state,
-              travelPx,
-              travelPx - state.travelPx,
-              event.ts - state.lastTs,
-            ),
-            widthPx: effectiveWidth(context, event.widthPx, config),
-            config,
-          });
-        }
-        case "IDLE_TICK": {
-          if (state.input === "wheel" && event.ts - state.lastTs >= config.wheelIdleMs) {
-            return settleFrom(state, event.ts, config);
-          }
-          return state;
-        }
-        case "TOUCH_END":
-          return state.input === "touch" ? settleFrom(state, event.ts, config) : state;
-        default:
-          return state;
-      }
-    }
-
-    case "settling": {
-      switch (event.type) {
-        case "SETTLE_DONE":
-          if (state.outcome === "commit") {
-            return {
-              phase: "lockout",
-              context: state.context,
-              until: state.endedTs + config.lockoutMs,
-              lastWheelTs: state.lastWheelTs,
-              progress: 0,
-              target: null,
-              command: null,
-            };
-          }
-          return idleWith(state.context, {
-            lastWheelTs: state.lastWheelTs,
-            runClaimedByScroll: false,
-          });
-        case "WHEEL":
-          return { ...state, lastWheelTs: event.ts };
-        default:
-          // Stray touch samples during the settle are swallowed.
-          return state;
-      }
-    }
-
-    case "lockout": {
-      switch (event.type) {
-        case "WHEEL":
-          // Trackpad momentum after a commit: swallowed, and the run stays
-          // claimed so a tail after lockout expiry cannot re-arm.
-          if (event.ts >= state.until) {
-            return idleClaimedByScroll(state.context, event.ts);
-          }
-          return { ...state, lastWheelTs: event.ts };
-        case "IDLE_TICK":
-          if (event.ts < state.until) {
-            return state;
-          }
-          if (!isWheelRunFresh(state.lastWheelTs, event.ts, config.wheelIdleMs)) {
-            return idleClaimedByScroll(state.context, state.lastWheelTs);
-          }
-          return idleWith(state.context);
-        case "TOUCH_START":
-          // A deliberate touch is not momentum: it may start a gesture at once.
-          return workspaceSwipeReducer(idleWith(state.context), event, config);
-        default:
-          return state;
-      }
-    }
-
-    default:
-      return state;
   }
 }
 
