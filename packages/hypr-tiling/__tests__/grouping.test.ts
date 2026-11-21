@@ -582,3 +582,12 @@ describe("a group moved onto a target it can't reach stays where it was", (): vo
     expect(insertGroupAdjacent(layout, "g", "missing", "left")).toBe(layout);
   });
 });
+
+describe("a one-member group", (): void => {
+  it("removeMemberFromGroup on a one-member group leaves the bare member in its slot", (): void => {
+    const layout: TilingLayoutNode = hsplit("root", { kind: "group", id: "g", members: [leaf("a")], activeMemberId: "a" }, leaf("c"));
+    const next: TilingLayoutNode = removeMemberFromGroup(layout, "g", "a");
+    expect(next).toEqual(hsplit("root", leaf("a"), leaf("c")));
+    expect(isStructurallyValidLayout(next)).toBe(true);
+  });
+});
