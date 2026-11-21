@@ -14,11 +14,11 @@ module.exports = {
     "^@n-uf/hypr-tiling/engine$": path.join(packageDir, "engine.ts"),
     "^@n-uf/hypr-tiling$": path.join(packageDir, "index.ts"),
   },
-  // @n-uf/motion (a hypr-tiling dependency) ships ESM only; transform its dist
-  // like the package's own jest config does.
-  transformIgnorePatterns: ["/node_modules/(?!(\\.pnpm/@n-uf\\+motion@[^/]+/node_modules/)?@n-uf/motion/)"],
+  // @n-uf/motion and @n-uf/placement (hypr-tiling dependencies) ship ESM only;
+  // transform their dist like the package's own jest config does.
+  transformIgnorePatterns: ["/node_modules/(?!(\\.pnpm/@n-uf\\+(motion|placement)@[^/]+/node_modules/)?@n-uf/(motion|placement)/)"],
   transform: {
-    "/node_modules/(\\.pnpm/@n-uf\\+motion@[^/]+/node_modules/)?@n-uf/motion/.+\\.js$": [
+    "/node_modules/(\\.pnpm/@n-uf\\+(motion|placement)@[^/]+/node_modules/)?@n-uf/(motion|placement)/.+\\.js$": [
       path.join(packageDir, "node_modules/ts-jest"),
       {
         tsconfig: { allowJs: true, module: "commonjs", esModuleInterop: true },
