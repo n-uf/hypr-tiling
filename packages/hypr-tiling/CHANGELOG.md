@@ -21,7 +21,8 @@ the version number alone does not flag them.
   defaults and behaviour are unchanged.
 - **No change to hypr-tiling's own API.**
 - **Bundle size:** the CommonJS `./engine` entry now bundles motion's gesture
-  code (+3.8 kB); the ESM entry imports it from `@n-uf/motion`.
+  code, about 4–5 kB more unminified. The ESM entry imports it from
+  `@n-uf/motion` and gets smaller.
 
 ### Fixes
 
