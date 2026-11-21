@@ -8,6 +8,7 @@ import {
   findGroupContainingLeaf,
   findLeafById,
   groupLeaves,
+  insertGroupAdjacent,
   isStructurallyValidLayout,
   readGroupMemberIds,
   readLeafNodeIds,
@@ -572,5 +573,12 @@ describe("directional annex + group interaction (group-aware — whole-group rel
     expect(groups[0].activeMemberId).toBe("a");
     // The outer layout sees the surviving group (by active member) + c only.
     expect(readLeafNodeIds(next).slice().sort()).toEqual(["a", "c"]);
+  });
+});
+
+describe("a group moved onto a target it can't reach stays where it was", (): void => {
+  it("insertGroupAdjacent with an unknown target returns the layout unchanged", (): void => {
+    const layout: TilingLayoutNode = hsplit("root", { kind: "group", id: "g", members: [leaf("a"), leaf("b")], activeMemberId: "a" }, leaf("c"));
+    expect(insertGroupAdjacent(layout, "g", "missing", "left")).toBe(layout);
   });
 });
