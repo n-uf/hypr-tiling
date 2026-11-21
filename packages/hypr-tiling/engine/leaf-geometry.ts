@@ -1,5 +1,7 @@
 import {
   layoutSplitTree,
+  masterCount,
+  masterRatio,
   masterStack,
   type FixedLength,
   type MasterOptions,
@@ -255,9 +257,6 @@ function footprintsOf(mapped: TilingSplitTree, laid: SplitLayout<TilingPaneKey>)
 // Master / stack
 // ============================================================================
 
-const MASTER_RATIO_MIN: number = 0.05;
-const MASTER_RATIO_MAX: number = 0.95;
-
 /** Resolved master/stack parameters for a `layoutMode: "master"` split. @internal */
 export interface MasterStackParams {
   /** Number of slots in the master area, clamped to `[1, slotCount]`. */
@@ -265,13 +264,6 @@ export interface MasterStackParams {
   orientation: TilingMasterOrientation;
   /** Master-area fraction along the orientation's primary axis, clamped `[0.05, 0.95]`. */
   ratio: number;
-}
-
-function clampMasterRatio(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0.5;
-  }
-  return Math.min(Math.max(value, MASTER_RATIO_MIN), MASTER_RATIO_MAX);
 }
 
 /**
@@ -307,14 +299,17 @@ export function slotRepresentativeLeafId(node: TilingLayoutNode): string {
   return slotRepresentativeLeafId(node.first);
 }
 
-/** Resolve a master split's parameters, clamping count to the available slots. @internal */
+/**
+ * Resolve a master split's parameters by placement's own master clamps: the
+ * count rounded and kept within `[1, slotCount]` (NaN is 1, `masterCount`), the
+ * ratio clamped to `[0.05, 0.95]` (not finite: 0.5, `masterRatio`), so the
+ * params agree with the master layout `layoutSplitTree` draws. @internal
+ */
 export function resolveMasterParams(node: TilingSplitNode, slotCount: number): MasterStackParams {
-  const requestedCount: number = Math.round(node.masterCount ?? 1);
-  const maxCount: number = Math.max(slotCount, 1);
   return {
-    count: Math.min(Math.max(requestedCount, 1), maxCount),
+    count: masterCount(node.masterCount, slotCount),
     orientation: node.masterOrientation ?? "left",
-    ratio: clampMasterRatio(node.ratio),
+    ratio: masterRatio(node.ratio),
   };
 }
 
