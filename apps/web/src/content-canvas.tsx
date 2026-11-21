@@ -9,6 +9,7 @@ import {
   FEATURE_RECENT_SINCE,
   INSTALL_CONTROLLED_PARAGRAPH,
   INSTALL_INTRO_PARAGRAPH,
+  INSTALL_NPM_PARAGRAPH,
   INSTALL_SNIPPET,
   INTEGRATION_EXAMPLE,
   INTRO_H1,
@@ -353,6 +354,9 @@ function InstallContent(): React.ReactElement {
     <div className="flex flex-col gap-5">
       <CanvasHeading>Install</CanvasHeading>
       <CanvasPre>{INSTALL_SNIPPET}</CanvasPre>
+      <CanvasLead>
+        <CanvasInline paragraph={INSTALL_NPM_PARAGRAPH} />
+      </CanvasLead>
       <CanvasPre>{INTEGRATION_EXAMPLE}</CanvasPre>
       <CanvasLead>
         <CanvasInline paragraph={INSTALL_INTRO_PARAGRAPH} />

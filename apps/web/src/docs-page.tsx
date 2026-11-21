@@ -9,6 +9,7 @@ import {
   LICENSE_NAME,
   LICENSE_URL,
   Link,
+  NPM_URL,
   PACKAGE_NAME,
   Pre,
   REPO_URL,
@@ -1314,6 +1315,9 @@ export function DocsPage({
                 Add the package and its React 19 peers.
               </SectionLead>
               <Pre>{INSTALL_SNIPPET}</Pre>
+              <SectionLead>
+                <Link href={NPM_URL}>{PACKAGE_NAME} on npm</Link>
+              </SectionLead>
             </Step>
             <Step n={2} title="Add the Tailwind content glob">
               <SectionLead>
