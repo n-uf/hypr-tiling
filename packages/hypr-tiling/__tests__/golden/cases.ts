@@ -496,16 +496,18 @@ export function motionCases(flushEach = false): Record<string, unknown[]> {
 // ---------------------------------------------------------------- gestures
 
 /** A seeded run of wheel, touch and control events. */
-function swipeScript(r: () => number, length: number): TilingWorkspaceSwipeEvent[] {
+function swipeScript(r: () => number, length: number, fractional = false): TilingWorkspaceSwipeEvent[] {
+  // Whole numbers keep the first fixture as recorded; fractional deltas and times reach floating-point rounding.
+  const round = (v: number): number => (fractional ? v : Math.round(v));
   const events: TilingWorkspaceSwipeEvent[] = [];
   let ts = 0;
   let touching = false;
   let tx = 400;
   for (let i = 0; i < length; i++) {
-    ts += Math.round(r() * 60);
+    ts += round(r() * 60);
     const roll = r();
     if (roll < 0.5) {
-      const dx = Math.round((r() - 0.4) * 60);
+      const dx = round((r() - 0.4) * 60);
       events.push({ type: "WHEEL", dx, dy: Math.round((r() - 0.5) * (r() < 0.2 ? 80 : 10)), ctrlKey: r() < 0.05, metaKey: r() < 0.2, altKey: r() < 0.2, shiftKey: r() < 0.1, ts, canScrollFurther: r() < 0.1, ...(r() < 0.2 ? { widthPx: 600 } : {}) });
     } else if (roll < 0.62) {
       if (!touching) {
@@ -538,8 +540,8 @@ function swipeScript(r: () => number, length: number): TilingWorkspaceSwipeEvent
   return events;
 }
 
-/** Workspace swipe states after every event of seeded scripts, under three configs. */
-export function swipeCases(): Record<string, unknown[]> {
+/** Workspace swipe states after every event of seeded scripts, under three configs (fractional: no rounding). */
+export function swipeCases(fractional = false): Record<string, unknown[]> {
   const out: Record<string, unknown[]> = {};
   const configs: Record<string, TilingWorkspaceSwipeConfig> = {
     default: TILING_WORKSPACE_SWIPE_DEFAULTS,
@@ -551,7 +553,7 @@ export function swipeCases(): Record<string, unknown[]> {
       const r = seeded(9000 + seed);
       let state: TilingWorkspaceSwipeState = workspaceSwipeReducer(TILING_WORKSPACE_SWIPE_INITIAL_STATE, { type: "SET_CONTEXT", hasPrev: true, hasNext: true, widthPx: 800 }, config);
       const trace: unknown[] = [];
-      for (const event of swipeScript(r, 40)) {
+      for (const event of swipeScript(r, 40, fractional)) {
         state = workspaceSwipeReducer(state, event, config);
         trace.push(state);
       }
@@ -605,6 +607,7 @@ export const GOLDEN_SECTIONS: Readonly<Record<string, () => unknown>> = {
   normalize: normalizeCases,
   motion: () => motionCases(false),
   "motion-flushed": () => motionCases(true),
-  swipe: swipeCases,
+  swipe: () => swipeCases(false),
+  "swipe-fractional": () => swipeCases(true),
   "spring-load": springLoadCases,
 };
