@@ -42,8 +42,9 @@ module.exports = {
             "@n-uf/hypr-tiling/engine": ["engine.ts"],
             "@n-uf/hypr-tiling": ["index.ts"],
             // `moduleResolution: "node"` reads no `exports` map: point the
-            // motion subpaths at their declaration files.
+            // motion and placement subpaths at their declaration files.
             "@n-uf/motion/*": ["node_modules/@n-uf/motion/dist/*.d.ts"],
+            "@n-uf/placement/*": ["node_modules/@n-uf/placement/dist/*.d.ts"],
           },
         },
       },
