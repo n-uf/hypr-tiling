@@ -169,6 +169,11 @@ describe("drop region properties", () => {
 
 describe("drag home properties", () => {
   it("while the pointer has stayed inside the lifted pane's home, the layout is unchanged and no target is asked for", () => {
+    // Counted, so the property cannot pass on drags that never lifted.
+    let drags = 0;
+    let lifts = 0;
+    let liftedSamples = 0;
+    let cancels = 0;
     for (const tree of plainTrees().slice(0, 40)) {
       const rects = resolveLayoutGeometry(tree, AREAS[0]!, { gapPx: 6, handleSizePx: 4, minPaneSizePx: 96 }).leaves;
       for (const [leafId, rect] of rects) {
@@ -205,17 +210,27 @@ describe("drag home properties", () => {
           const y = roll > 0.9 ? rect.y + rect.height : rect.y + r() * rect.height;
           driver.processPointerSample({ x, y });
           if (state.phase !== "dragging") continue;
+          liftedSamples++;
           expect(state.leftHome).toBe(false);
           expect(state.resolvedTarget).toBeNull();
           expect(deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: null, homeHeld: !state.leftHome })).toBe(tree);
         }
         expect(asked).toBe(0);
+        drags++;
+        if (state.phase === "dragging") lifts++;
         // A release there restores: it cancels (or, never lifted, was a click).
         driver.latchRelease();
         state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
         expect(state.phase === "idle" || (state.phase === "settling" && state.outcome === "cancel")).toBe(true);
+        if (state.phase === "settling") cancels++;
       }
     }
+    // Every pane here is far larger than the pickup threshold: every drag lifts,
+    // nearly every sample is a held one, and every lifted release cancels.
+    expect(drags).toBeGreaterThan(150);
+    expect(lifts).toBe(drags);
+    expect(cancels).toBe(lifts);
+    expect(liftedSamples).toBeGreaterThanOrEqual(drags * 35);
   });
 });
 
