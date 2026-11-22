@@ -7897,10 +7897,10 @@ const TilingRendererComponent = React.forwardRef<
       coalescer.schedule(pointer);
     };
     // A window resize can move the viewport in client px without resizing
-    // it: the home footprint is stale, so the home hold ends.
+    // it; the home hold ends only if the viewport did move or resize.
     const handleWindowResize = (): void => {
       if (controller.getState().drag.phase === "dragging") {
-        dispatchDrag({ type: "HOME_INVALIDATED" });
+        endHomeHoldIfViewportMoved();
       }
     };
     const handleLostPointerCapture = (event: PointerEvent): void => {
