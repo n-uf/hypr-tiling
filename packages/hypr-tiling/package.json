@@ -70,6 +70,7 @@
   },
   "dependencies": {
     "@n-uf/motion": "26.11.54",
+    "@n-uf/placement": "26.11.55",
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.6.0"
   },

@@ -74,6 +74,9 @@ importers:
       '@n-uf/motion':
         specifier: 26.11.54
         version: 26.11.54
+      '@n-uf/placement':
+        specifier: 26.11.55
+        version: 26.11.55
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -658,6 +661,9 @@ packages:
 
   '@n-uf/motion@26.11.54':
     resolution: {integrity: sha512-EtahqCL2Lklc/FKIRl5X8vf156gFIzq2dt2jzjgM3dt9h+Q3xzcK7M9SOwqC4LBzP6RjD/I/Y6nCP3H3U0YpOw==}
+
+  '@n-uf/placement@26.11.55':
+    resolution: {integrity: sha512-9riT3xK63U6Uh+4Xor+n0ffb4VRb0CpR37eR3OWrL+bZRQLnE+cGfV+JYQ18MfskLuJFfZSsJiTcL97wGBj31w==}
 
   '@napi-rs/wasm-runtime@1.1.6':
     resolution: {integrity: sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg==}
@@ -3445,6 +3451,8 @@ snapshots:
   '@n-uf/motion@26.11.54':
     dependencies:
       alien-signals: 3.2.1
+
+  '@n-uf/placement@26.11.55': {}
 
   '@napi-rs/wasm-runtime@1.1.6(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
