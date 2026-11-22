@@ -292,11 +292,13 @@ describe("held drag — the click threshold", (): void => {
 });
 
 describe("held drag — lift, hold, on top, reflow", (): void => {
-  it("lifts the REAL pane, holds it 1:1 under the pointer, raises it, and the others close the gap", async (): Promise<void> => {
+  it("lifts the REAL pane, holds it 1:1 under the pointer, raises it, keeps its home open until the pointer leaves, then the others close the gap", async (): Promise<void> => {
     restGeometry();
     const { container } = render(<Host onLayoutReported={(): void => undefined} />);
     const article: HTMLElement = wrapperOf(container, "a").querySelector("article")!;
-    await liftA(container, 140, 60);
+    // Lifted over its own place: the layout stays as it is at rest.
+    await press(container, "a", 100, 20);
+    await moveTo(140, 60);
 
     const holder: HTMLElement | null = lifted(container);
     expect(holder).not.toBeNull();
@@ -311,20 +313,25 @@ describe("held drag — lift, hold, on top, reflow", (): void => {
     // On top, with the lifted look.
     expect(a.hasAttribute("data-hpt-leaf-raised")).toBe(true);
     expect(Number(holder!.style.zIndex)).toBeGreaterThan(0);
-    // b closes the gap on the settle curve: drawn where it was, gliding to fill the view.
+    // The pointer is still over a's own place: the home holds, a's place is
+    // kept open and b stays where it was.
     const b: HTMLElement = wrapperOf(container, "b");
     expect(lifted(container)!.contains(b)).toBe(false);
-    expect(b.style.transform).toMatch(/^translate\(\d/);
+    expect(container.querySelector('[data-drag-held-slot-leaf="A"]')).not.toBeNull();
 
     // Every move holds it exactly under the pointer (the same task as the event).
     act((): void => {
       pointer(window, "pointermove", 333, 222);
     });
     expect(a.style.transform).toBe("translate(233px, 202px)");
-    act((): void => {
-      pointer(window, "pointermove", 640, 410);
-    });
+    // The pointer has left home: b closes the gap on the settle curve, drawn
+    // where it was, gliding to fill the view.
+    liftedGeometry();
+    await moveTo(640, 410);
     expect(a.style.transform).toBe("translate(540px, 390px)");
+    expect(container.querySelector("[data-drag-held-slot-leaf]")).toBeNull();
+    expect(lifted(container)!.contains(wrapperOf(container, "b"))).toBe(false);
+    expect(wrapperOf(container, "b").style.transform).toMatch(/^translate\(\d/);
     await release(640, 410);
   });
 });

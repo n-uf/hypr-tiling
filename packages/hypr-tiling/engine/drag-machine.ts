@@ -10,6 +10,7 @@ import {
   swapGroupWithSlot,
   swapLeafTiles,
 } from "./state";
+import { inRect } from "@n-uf/motion/drag";
 import { PLACEMENT_BY_DROP_ZONE } from "./projected-layout";
 import type { TilingDropIntentState, TilingEdgeZone } from "./drop-intent-resolver";
 import type {
@@ -408,14 +409,59 @@ export function heldFootprintAt(
   };
 }
 
-/** Whether `client` is inside `footprint` (edges included): the pointer is still over the pane's home. */
+/**
+ * Whether `client` is inside `footprint` (edges included): the pointer is still over the pane's home. The test is
+ * `@n-uf/motion`'s `inRect` with no margin, the rule its drag intent holds a home by (a release over home lands
+ * nowhere).
+ */
 export function isPointInFootprint(footprint: TilingPaneFootprint, client: DragMachinePoint): boolean {
-  return (
-    client.x >= footprint.left &&
-    client.y >= footprint.top &&
-    client.x <= footprint.left + footprint.width &&
-    client.y <= footprint.top + footprint.height
-  );
+  return inRect({ x: footprint.left, y: footprint.top, width: footprint.width, height: footprint.height }, client);
+}
+
+/** A drag's home: `homeFootprint` (a tab torn off its group: the whole group), else `anchorFootprint`. */
+export function dragHomeFootprint(state: {
+  readonly homeFootprint?: TilingPaneFootprint;
+  readonly anchorFootprint: TilingPaneFootprint;
+}): TilingPaneFootprint {
+  return state.homeFootprint ?? state.anchorFootprint;
+}
+
+/**
+ * Whether the home holds with the pointer at `client`: the pointer has stayed inside the drag's home
+ * ({@link dragHomeFootprint}, edges included) since the lift. It is the negation of `leftHome` after a move to
+ * `client` and, as `leftHome`, never comes back once the pointer has left: from then on the drag is as before.
+ *
+ * While the home holds nothing moves (the layout is the one at the lift, the pane's place kept open), no drop target
+ * is resolved, and a release puts the layout back. That is `@n-uf/motion`'s home rule (its drag intent picks no target
+ * over home and a release there does nothing); hypr-tiling's own drop resolution takes over once the pointer leaves.
+ */
+export function isDragHomeHeld(
+  state: Extract<DragMachineState, { phase: "armed" | "dragging" }>,
+  client: DragMachinePoint,
+): boolean {
+  if (state.phase === "dragging" && state.leftHome) {
+    return false;
+  }
+  return isPointInFootprint(dragHomeFootprint(state), client);
+}
+
+/**
+ * The tree a live drag lays out now. While the home holds (`homeHeld`, see {@link isDragHomeHeld}) it is the layout
+ * at the lift: nothing moves and the pane's own place stays open. After that it is the candidate tree for the room
+ * target ({@link deriveCandidateTree}), which with no target is the tree with the dragged subject taken out and its
+ * gap closed.
+ */
+export function deriveLiveDragTree(params: {
+  readonly layout: TilingLayoutNode;
+  readonly sourceLeafId: string | null;
+  readonly roomTarget: DragResolvedTarget | null;
+  readonly subject?: DragSubject;
+  readonly homeHeld: boolean;
+}): TilingLayoutNode {
+  if (params.homeHeld) {
+    return params.layout;
+  }
+  return deriveCandidateTree(params.layout, params.sourceLeafId, params.roomTarget, params.subject);
 }
 
 /**
@@ -875,7 +921,7 @@ function movedTo(
   return {
     ...state,
     heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, client),
-    leftHome: state.leftHome || !isPointInFootprint(state.homeFootprint ?? state.anchorFootprint, client),
+    leftHome: !isDragHomeHeld(state, client),
   };
 }
 
@@ -955,7 +1001,7 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             pointerAnchorOffset: state.pointerAnchorOffset,
             heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, event.client),
             resolvedTarget: null,
-            leftHome: !isPointInFootprint(state.homeFootprint ?? state.anchorFootprint, event.client),
+            leftHome: !isDragHomeHeld(state, event.client),
           };
         }
         // Touch long-press elapsed while the finger is held within tolerance →

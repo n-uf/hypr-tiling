@@ -11,6 +11,7 @@ import {
   foldCommittableSeatFallback,
   hasCrossedPickupThreshold,
   isCommittableTarget,
+  isDragHomeHeld,
   resolveReleaseCommitSeat,
   resolveTouchArmedMove,
   shouldReresolveSeatedTarget,
@@ -141,12 +142,16 @@ export function createDragInputDriver(host: DragInputDriverHost): DragInputDrive
     client: DragMachinePoint,
     owningPointerId: number,
   ): void => {
-    const firstTarget: DragResolvedTarget | null = host.resolveTarget(
-      client.x,
-      client.y,
-      sourceLeafId,
-      null,
-    );
+    // While the home holds (the pointer has not left the pane's place since
+    // the lift), no drop target is resolved: nothing moves and a release
+    // puts the layout back.
+    const lifted: DragMachineState = host.getState();
+    const homeHeld: boolean =
+      (lifted.phase === "armed" || lifted.phase === "dragging") &&
+      isDragHomeHeld(lifted, client);
+    const firstTarget: DragResolvedTarget | null = homeHeld
+      ? null
+      : host.resolveTarget(client.x, client.y, sourceLeafId, null);
     seatAnchor =
       firstTarget != null && isCommittableTarget(firstTarget, sourceLeafId)
         ? { x: client.x, y: client.y }
@@ -216,12 +221,17 @@ export function createDragInputDriver(host: DragInputDriverHost): DragInputDrive
         return;
       }
       host.dispatch({ type: "POINTER_MOVE", pointerId: owningPointerId, client });
-      const freshTarget: DragResolvedTarget | null = host.resolveTarget(
-        client.x,
-        client.y,
-        current.sourceLeafId,
-        current.resolvedTarget,
-      );
+      // While the home holds, no drop target is resolved (see
+      // `isDragHomeHeld`): the sample clears any seat and the layout stays.
+      const homeHeld: boolean = isDragHomeHeld(current, client);
+      const freshTarget: DragResolvedTarget | null = homeHeld
+        ? null
+        : host.resolveTarget(
+            client.x,
+            client.y,
+            current.sourceLeafId,
+            current.resolvedTarget,
+          );
       const seatedTarget: DragResolvedTarget | null = current.resolvedTarget;
       // Slot-commitment policy: once a committable target is seated,
       // hold it (no retarget) until the policy says re-resolve. The delta gates
@@ -229,6 +239,7 @@ export function createDragInputDriver(host: DragInputDriverHost): DragInputDrive
       // zone hysteresis, so the two dampers never double-count.
       let nextTarget: DragResolvedTarget | null = freshTarget;
       if (
+        !homeHeld &&
         seatedTarget != null &&
         isCommittableTarget(seatedTarget, current.sourceLeafId)
       ) {

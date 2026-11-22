@@ -32,6 +32,7 @@ import {
   canRearmDrag,
   createFrameCoalescer,
   deriveCandidateTree,
+  deriveLiveDragTree,
   detachDragSubject,
   isCommittableTarget,
   presentationDragSourceLeafId,
@@ -5064,10 +5065,11 @@ const TilingRendererComponent = React.forwardRef<
     dragSubject,
   );
   // ── The held drag (live mode) ────────────────────────────────────────────
-  // Past the pickup threshold the REAL pane is lifted out of the layout: the
-  // others close the gap (the tree without it) and the pane is drawn where the
+  // Past the pickup threshold the REAL pane is lifted and drawn where the
   // pointer holds it, in a wrapper of its own laid out where it was picked up.
-  // The drop preview decides what else moves:
+  // While the pointer has not yet left its home, its place stays open and
+  // nothing else moves; once it has, the others close the gap (the tree
+  // without it). The drop preview decides what else moves:
   // - "indicator": a drop indicator marks the exact rect the pane will land
   //   in; with `dragPreviewMakesRoom` the others also make room there (the
   //   tree with the pane in that slot, its place kept empty).
@@ -5095,15 +5097,23 @@ const TilingRendererComponent = React.forwardRef<
         ? committableDropState
         : null;
   const roomTargetKey: string = dropTargetKey(roomTarget);
+  // Until the pointer first leaves the pane's home, the home holds: the
+  // layout stays as it was at the lift, the pane's place kept open.
+  const dragHomeHeld: boolean =
+    isLiveDragging && dragState.phase === "dragging" && !dragState.leftHome;
   const liveDragDisplayLayout: TilingLayoutNode = React.useMemo(
     (): TilingLayoutNode =>
-      roomTarget == null
-        ? resolveLiveDisplayLayout(true, dragSourceLeafId, layout, dragSubject)
-        : deriveCandidateTree(layout, dragSourceLeafId, roomTarget, dragSubject),
+      deriveLiveDragTree({
+        layout,
+        sourceLeafId: dragSourceLeafId,
+        roomTarget,
+        subject: dragSubject,
+        homeHeld: dragHomeHeld,
+      }),
     // `roomTarget` identity changes on every pointer move, so key on what
     // decides the tree instead — identical resolves are free.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [layout, dragSourceLeafId, dragSubject, roomTargetKey],
+    [layout, dragSourceLeafId, dragSubject, roomTargetKey, dragHomeHeld],
   );
   // The pane is held (drawn in its lifted wrapper) for the whole drag except
   // while the snap preview has it settled into a slot in the tree.
