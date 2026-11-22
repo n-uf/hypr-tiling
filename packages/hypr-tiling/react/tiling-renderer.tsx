@@ -22,6 +22,7 @@ import {
   type DragCursorPresentation,
 } from "../engine/drag-cursor";
 import {
+  clampHeldRectToStage,
   findLeafByTileId,
   resolveDragLandingRect,
   type DragLandingGroupStrip,
@@ -5273,8 +5274,10 @@ const TilingRendererComponent = React.forwardRef<
   const isPaneHeldRef = React.useRef<boolean>(isPaneHeld);
   isPaneHeldRef.current = isPaneHeld;
   /**
-   * Where the pointer holds the lifted pane (viewport layout px), from a client
-   * point, through the viewport's frame as it is now (scrolled, scaled).
+   * Where the lifted pane is drawn (viewport layout px), from a client point,
+   * through the viewport's frame as it is now (scrolled, scaled): where the
+   * pointer holds it, kept inside the stage (`clampHeldRectToStage`). The
+   * pointer itself, and the drop it resolves, are not clamped.
    */
   const heldRectAt = React.useCallback(
     (client: DragMachinePoint): TilingRect | null => {
@@ -5286,12 +5289,15 @@ const TilingRendererComponent = React.forwardRef<
         measureViewportClientFrame(viewportRef.current),
         client,
       );
-      return {
-        x: point.x - lift.grab.x,
-        y: point.y - lift.grab.y,
-        width: lift.layoutRect.width,
-        height: lift.layoutRect.height,
-      };
+      return clampHeldRectToStage(
+        {
+          x: point.x - lift.grab.x,
+          y: point.y - lift.grab.y,
+          width: lift.layoutRect.width,
+          height: lift.layoutRect.height,
+        },
+        viewportSizeRef.current,
+      );
     },
     [],
   );

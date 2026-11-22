@@ -1,3 +1,4 @@
+import { clampInto } from "@n-uf/placement";
 import {
   deriveCandidateTree,
   dragSubjectGroupId,
@@ -82,6 +83,22 @@ export function resolveDragLandingRect(params: {
     config,
     isGroup ? NO_DRAG_LANDING_GROUP_STRIP : (params.groupStrip ?? NO_DRAG_LANDING_GROUP_STRIP),
   );
+}
+
+/**
+ * Where the held pane is drawn (container px): `held`, where the pointer holds it, moved (never resized) to lie
+ * inside the stage, the container at `{ x: 0, y: 0 }`. This is `@n-uf/placement`'s `clampInto`, so a pane larger
+ * than the stage keeps its top-left corner on the stage's along that axis. Only the drawing is clamped: the pointer
+ * and the drop it resolves are left as they are. A stage not measured yet (no width or height) leaves `held` as given.
+ */
+export function clampHeldRectToStage(
+  held: TilingRect,
+  stage: { readonly width: number; readonly height: number },
+): TilingRect {
+  if (!(stage.width > 0) || !(stage.height > 0)) {
+    return held;
+  }
+  return clampInto(held, { x: 0, y: 0, width: stage.width, height: stage.height });
 }
 
 /**

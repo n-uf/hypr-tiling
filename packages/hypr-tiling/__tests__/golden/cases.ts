@@ -17,7 +17,7 @@ import {
   type DragMachinePoint,
   type DragMachineState,
 } from "../../engine/drag-machine";
-import { resolveDragLandingRect } from "../../engine/drag-landing";
+import { clampHeldRectToStage, resolveDragLandingRect } from "../../engine/drag-landing";
 import { collectLeafFootprints, footprintsByLeafId, resolveLayoutGeometry } from "../../engine/leaf-geometry";
 import { buildDefaultDwindleLayout, normalizeLayout } from "../../engine/layout-normalize";
 import { createLeafMotion, type LeafMotion, type LeafMotionFrame } from "../../engine/leaf-motion";
@@ -708,6 +708,31 @@ export function dragHomeCases(): Record<string, string[]> {
   return out;
 }
 
+/**
+ * The held pane against the stage, recorded from 26.11.9: for every leaf of every tree, held by its center at seeded
+ * pointer points in and well past each stage, the rect it is drawn at (`clampHeldRectToStage`).
+ */
+export function dragStageCases(): Record<string, number[][]> {
+  const out: Record<string, number[][]> = {};
+  for (const { name, tree } of goldenTrees().slice(0, 12)) {
+    for (const area of AREAS) {
+      const stage = { width: area.width, height: area.height };
+      const rects = resolveLayoutGeometry(tree, { x: 0, y: 0, ...stage }, CONFIGS.default!).leaves;
+      const r = seeded(Math.round(area.width * 3 + area.height));
+      for (const [leafId, leaf] of rects) {
+        const drawn: number[][] = [];
+        for (let i = 0; i < 6; i++) {
+          const pointer = { x: (r() * 3 - 1) * stage.width, y: (r() * 3 - 1) * stage.height };
+          const held = { x: pointer.x - leaf.width / 2, y: pointer.y - leaf.height / 2, width: leaf.width, height: leaf.height };
+          drawn.push(rectOf(clampHeldRectToStage(held, stage)));
+        }
+        out[`${name}/${area.width}x${area.height}/${leafId}`] = drawn;
+      }
+    }
+  }
+  return out;
+}
+
 /** Every section, by fixture file name. */
 export const GOLDEN_SECTIONS: Readonly<Record<string, () => unknown>> = {
   layouts: layoutCases,
@@ -723,4 +748,5 @@ export const GOLDEN_SECTIONS: Readonly<Record<string, () => unknown>> = {
   "spring-load": springLoadCases,
   "drop-boundary": dropBoundaryCases,
   "drag-home": dragHomeCases,
+  "drag-stage": dragStageCases,
 };
