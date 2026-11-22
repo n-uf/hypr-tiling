@@ -1,9 +1,9 @@
 import { describe, expect, it } from "@jest/globals";
 import { readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../engine/state";
-import { resolveLiveDisplayLayout } from "../react/tiling-renderer";
 import {
   DRAG_MACHINE_INITIAL_STATE,
   deriveCandidateTree,
+  deriveLiveDragTree,
   dragMachineReducer,
   type DragMachineEvent,
   type DragMachineState,
@@ -57,10 +57,15 @@ function twoPaneLayout(): TilingSplitNode {
 
 const SOURCE_LEAF_ID = "A";
 
+/** The tree a live drag lays out with no room target, after the pointer left home (the old gap-closed base). */
+function liveTree(sourceLeafId: string | null, layout: TilingLayoutNode, homeHeld = false): TilingLayoutNode {
+  return deriveLiveDragTree({ layout, sourceLeafId, roomTarget: null, homeHeld });
+}
+
 describe("live-drag cleanup — frozen tree is parked ONLY while drag state is held", (): void => {
-  it("in-flight live drag (source held) displays the gap-closed frozen tree (source absent)", (): void => {
+  it("in-flight live drag (source held, home left) displays the gap-closed frozen tree (source absent)", (): void => {
     const layout: TilingSplitNode = baseLayout();
-    const displayed: TilingLayoutNode = resolveLiveDisplayLayout(true, SOURCE_LEAF_ID, layout);
+    const displayed: TilingLayoutNode = liveTree(SOURCE_LEAF_ID, layout);
     // Mid-drag the displayed tree IS the detach tree, NOT the original layout.
     expect(displayed).not.toBe(layout);
     expect(displayed).toEqual(removeLeafTile(layout, SOURCE_LEAF_ID));
@@ -71,14 +76,14 @@ describe("live-drag cleanup — frozen tree is parked ONLY while drag state is h
     const layout: TilingSplitNode = baseLayout();
     // clearDragInteraction() sets dragSourceLeafId = null; the displayed tree must
     // collapse back to the original layout (gap restored), NOT stay frozen.
-    const displayed: TilingLayoutNode = resolveLiveDisplayLayout(true, null, layout);
+    const displayed: TilingLayoutNode = liveTree(null, layout);
     expect(displayed).toBe(layout);
     expect([...readLeafNodeIds(displayed)].sort()).toEqual(["A", "B", "C"]);
   });
 
   it("after cancel/Escape (state cleared) the displayed tree IS the original layout", (): void => {
     const layout: TilingSplitNode = baseLayout();
-    const displayed: TilingLayoutNode = resolveLiveDisplayLayout(true, null, layout);
+    const displayed: TilingLayoutNode = liveTree(null, layout);
     expect(displayed).toBe(layout);
     expect(readLeafNodeIds(displayed)).toContain(SOURCE_LEAF_ID);
   });
@@ -88,24 +93,26 @@ describe("live-drag cleanup — frozen tree is parked ONLY while drag state is h
 
     // Mid-drag: picking up "A" collapses the tree to the survivor "B" full-width —
     // this is the state that, when left uncleared, parked the layout forever.
-    const midDrag: TilingLayoutNode = resolveLiveDisplayLayout(true, "A", layout);
+    const midDrag: TilingLayoutNode = liveTree("A", layout);
     expect(readLeafNodeIds(midDrag)).toEqual(["B"]);
 
     // Drag end / cancel clears the source → both panes restored (gap closes back up).
-    const afterClear: TilingLayoutNode = resolveLiveDisplayLayout(true, null, layout);
+    const afterClear: TilingLayoutNode = liveTree(null, layout);
     expect(afterClear).toBe(layout);
     expect([...readLeafNodeIds(afterClear)].sort()).toEqual(["A", "B"]);
   });
 
-  it("preview (non-live) mode never detaches the source, regardless of the held source id", (): void => {
+  it("while the home holds the source is never detached, whatever the held source id", (): void => {
     const layout: TilingSplitNode = baseLayout();
-    // System A (preview) keeps the source in place; only the live model freezes.
-    expect(resolveLiveDisplayLayout(false, SOURCE_LEAF_ID, layout)).toBe(layout);
+    // (Preview, non-live, mode never reaches the live tree: the renderer lays
+    // out the prop `layout` unless a live drag is in flight.)
+    expect(liveTree(SOURCE_LEAF_ID, layout, true)).toBe(layout);
+    expect(liveTree("B", twoPaneLayout(), true)).toEqual(twoPaneLayout());
   });
 
   it("root-leaf source is a no-op detach (keeps the original tree, never null/collapsed)", (): void => {
     const rootLeaf: TilingLeafNode = leaf("only", "tile-only");
-    expect(resolveLiveDisplayLayout(true, "only", rootLeaf)).toBe(rootLeaf);
+    expect(liveTree("only", rootLeaf)).toBe(rootLeaf);
   });
 });
 
