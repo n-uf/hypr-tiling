@@ -251,7 +251,9 @@ export type DragMachineEvent =
  * `HOME_INVALIDATED` — the page moved under the drag (a scroll, a viewport or window resize, a layout change), so the
  * home footprint, a client-px snapshot taken at the press, no longer marks the pane's place. The home hold ends as if
  * the pointer had left (`leftHome` becomes true) and the drag re-resolves at the pointer as it does once the pointer
- * has left home. Only `dragging` reacts; it is a no-op once the pointer has left.
+ * has left home. Only `dragging` reacts; it is a no-op once the pointer has left. The renderer sends it when the
+ * viewport's client rect differs from the one at the press after a scroll or window resize, when the viewport's size
+ * changes, and when a new `layout` object arrives mid-drag (a change of identity counts, as everywhere in the renderer).
  */
 export interface DragHomeInvalidatedEvent {
   /** Discriminant. */
