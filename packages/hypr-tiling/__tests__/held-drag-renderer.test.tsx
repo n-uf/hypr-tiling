@@ -368,6 +368,23 @@ describe("held drag — the page moves under the lift", (): void => {
     });
   }
 
+  it("a window resize that leaves the viewport's rect as it was keeps the home hold", async (): Promise<void> => {
+    restGeometry();
+    const { container } = render(<Host onLayoutReported={(): void => undefined} />);
+    await press(container, "a", 100, 20);
+    await moveTo(140, 60);
+    await act(async (): Promise<void> => {
+      window.dispatchEvent(new Event("resize"));
+      await wait(20);
+    });
+    await moveTo(150, 70);
+    expect(container.querySelector('[data-drag-held-slot-leaf="A"]')).not.toBeNull();
+    await act(async (): Promise<void> => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      await wait(20);
+    });
+  });
+
   it("a scroll inside a pane (the viewport did not move) keeps the home hold", async (): Promise<void> => {
     restGeometry();
     const { container } = render(<Host onLayoutReported={(): void => undefined} />);
