@@ -5,7 +5,14 @@
  */
 import { describe, expect, it } from "@jest/globals";
 import { classifyPaneZone, resolvePaneZoneGeometry, TILING_DROP_INTENT_CONFIG } from "../engine/drop-intent-resolver";
-import { deriveCandidateTree } from "../engine/drag-machine";
+import {
+  DRAG_MACHINE_INITIAL_STATE,
+  deriveCandidateTree,
+  deriveLiveDragTree,
+  dragMachineReducer,
+  type DragMachineState,
+} from "../engine/drag-machine";
+import { createDragInputDriver } from "../engine/input-driver";
 import { resolveLayoutGeometry } from "../engine/leaf-geometry";
 import { readLeafNodeIds, removeLeafTile, siblingSubtreeForLeaf, tileOrderByLeafId } from "../engine/state";
 import type { TilingLayoutConfig, TilingLayoutNode, TilingSplitNode } from "../engine/types";
@@ -154,6 +161,58 @@ describe("drop region properties", () => {
           expect([raw, previous]).toContain(held);
           if (held !== raw) expect(classifyPaneZone(step(p, previous, 6, size), geometry)).toBe(previous);
         }
+      }
+    }
+  });
+});
+
+describe("drag home properties", () => {
+  it("while the pointer has stayed inside the lifted pane's home, the layout is unchanged and no target is asked for", () => {
+    for (const tree of plainTrees().slice(0, 40)) {
+      const rects = resolveLayoutGeometry(tree, AREAS[0]!, { gapPx: 6, handleSizePx: 4, minPaneSizePx: 96 }).leaves;
+      for (const [leafId, rect] of rects) {
+        const r = seeded(rect.x * 7 + rect.y * 13 + rect.width);
+        const home = { left: rect.x, top: rect.y, width: rect.width, height: rect.height };
+        let state: DragMachineState = DRAG_MACHINE_INITIAL_STATE;
+        let asked = 0;
+        const driver = createDragInputDriver({
+          getState: (): DragMachineState => state,
+          dispatch: (event): void => {
+            state = dragMachineReducer(state, event);
+          },
+          resolveTarget: (): null => {
+            asked++;
+            return null;
+          },
+          capturePointer: (): void => undefined,
+          getSlotCommitment: () => ({ mode: "delta-responsive", reresolveDeltaPx: 24 }),
+        });
+        const press = { x: rect.x + r() * rect.width, y: rect.y + r() * rect.height };
+        state = dragMachineReducer(state, {
+          type: "POINTER_DOWN",
+          pointerId: 1,
+          pointerType: "mouse",
+          sourceLeafId: leafId,
+          anchorFootprint: home,
+          pointerAnchorOffset: { x: press.x - rect.x, y: press.y - rect.y },
+          originClient: press,
+        });
+        for (let i = 0; i < 40; i++) {
+          // Edges included: some samples sit exactly on the home's edges.
+          const roll = r();
+          const x = roll < 0.1 ? rect.x : roll < 0.2 ? rect.x + rect.width : rect.x + r() * rect.width;
+          const y = roll > 0.9 ? rect.y + rect.height : rect.y + r() * rect.height;
+          driver.processPointerSample({ x, y });
+          if (state.phase !== "dragging") continue;
+          expect(state.leftHome).toBe(false);
+          expect(state.resolvedTarget).toBeNull();
+          expect(deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: null, homeHeld: !state.leftHome })).toBe(tree);
+        }
+        expect(asked).toBe(0);
+        // A release there restores: it cancels (or, never lifted, was a click).
+        driver.latchRelease();
+        state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+        expect(state.phase === "idle" || (state.phase === "settling" && state.outcome === "cancel")).toBe(true);
       }
     }
   });

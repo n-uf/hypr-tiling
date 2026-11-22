@@ -9,7 +9,14 @@
 import { createFakeClock, createFrameLoop, type FakeClock, type FrameLoop, type Rect } from "@n-uf/motion";
 import { classifyPaneZone, resolvePaneZoneGeometry, TILING_DROP_INTENT_CONFIG } from "../../engine/drop-intent-resolver";
 import { evaluateZoneCandidate } from "../../engine/drop-validity";
-import { deriveCandidateTree } from "../../engine/drag-machine";
+import {
+  DRAG_MACHINE_INITIAL_STATE,
+  deriveCandidateTree,
+  deriveLiveDragTree,
+  dragMachineReducer,
+  type DragMachinePoint,
+  type DragMachineState,
+} from "../../engine/drag-machine";
 import { resolveDragLandingRect } from "../../engine/drag-landing";
 import { collectLeafFootprints, footprintsByLeafId, resolveLayoutGeometry } from "../../engine/leaf-geometry";
 import { buildDefaultDwindleLayout, normalizeLayout } from "../../engine/layout-normalize";
@@ -659,6 +666,48 @@ export function dropBoundaryCases(): Record<string, unknown> {
   return out;
 }
 
+/**
+ * The lifted pane's home, recorded from 26.11.9: for every leaf of every tree, a drag lifted at the leaf's center and
+ * moved to its far corner (inside home, edges included), 1 px past its right edge, then back to its center. Each step
+ * gives the phase, whether the pointer has left home, and the tree the live drag lays out with no room target:
+ * `home` for the original tree (the pane's place kept open), else its shape (the gap closed).
+ */
+export function dragHomeCases(): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const { name, tree } of goldenTrees()) {
+    const rects = resolveLayoutGeometry(tree, AREAS[0]!, CONFIGS.default!).leaves;
+    for (const [leafId, r] of rects) {
+      const home = { left: r.x, top: r.y, width: r.width, height: r.height };
+      const center: DragMachinePoint = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      let state: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, {
+        type: "POINTER_DOWN",
+        pointerId: 1,
+        pointerType: "mouse",
+        sourceLeafId: leafId,
+        anchorFootprint: home,
+        pointerAnchorOffset: { x: r.width / 2, y: r.height / 2 },
+        originClient: center,
+      });
+      const steps: string[] = [];
+      for (const client of [
+        { x: r.x + r.width, y: r.y + r.height },
+        { x: r.x + r.width + 1, y: center.y },
+        center,
+      ]) {
+        state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client });
+        if (state.phase !== "dragging") {
+          steps.push(state.phase);
+          continue;
+        }
+        const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: null, homeHeld: !state.leftHome });
+        steps.push(`dragging/${state.leftHome ? "left" : "home"}/${laid === tree ? "home" : shape(laid)}`);
+      }
+      out[`${name}/${leafId}`] = steps;
+    }
+  }
+  return out;
+}
+
 /** Every section, by fixture file name. */
 export const GOLDEN_SECTIONS: Readonly<Record<string, () => unknown>> = {
   layouts: layoutCases,
@@ -673,4 +722,5 @@ export const GOLDEN_SECTIONS: Readonly<Record<string, () => unknown>> = {
   "swipe-fractional": () => swipeCases(true),
   "spring-load": springLoadCases,
   "drop-boundary": dropBoundaryCases,
+  "drag-home": dragHomeCases,
 };
