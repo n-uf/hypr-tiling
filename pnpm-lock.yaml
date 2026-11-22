@@ -72,11 +72,11 @@ importers:
   packages/hypr-tiling:
     dependencies:
       '@n-uf/motion':
-        specifier: 26.11.55
-        version: 26.11.55
+        specifier: 26.11.56
+        version: 26.11.56
       '@n-uf/placement':
-        specifier: 26.11.55
-        version: 26.11.55
+        specifier: 26.11.56
+        version: 26.11.56
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -659,11 +659,11 @@ packages:
   '@microsoft/tsdoc@0.16.0':
     resolution: {integrity: sha512-xgAyonlVVS+q7Vc7qLW0UrJU7rSFcETRWsqdXZtjzRU8dF+6CkozTK4V4y1LwOX7j8r/vHphjDeMeGI4tNGeGA==}
 
-  '@n-uf/motion@26.11.55':
-    resolution: {integrity: sha512-bKRtRVVGyhqpbhgg4pBwe3409GjTAxSP5rImXgBc+cbPxsetb2zrKGqQWR+uS1hffNJOoLsKlSDbapyOE9VDUQ==}
+  '@n-uf/motion@26.11.56':
+    resolution: {integrity: sha512-QVfT/8fu93IMQNlQX197rmI3NXV0Q1FuRx195zwResaHrcqu2BPsJ8Am0v3tbLIP8n52pqi2Ua1zgE+Uw9z40g==}
 
-  '@n-uf/placement@26.11.55':
-    resolution: {integrity: sha512-9riT3xK63U6Uh+4Xor+n0ffb4VRb0CpR37eR3OWrL+bZRQLnE+cGfV+JYQ18MfskLuJFfZSsJiTcL97wGBj31w==}
+  '@n-uf/placement@26.11.56':
+    resolution: {integrity: sha512-UkyAMWv0DIXzQZZlOrjw6G0uLDaYxDYylkyTXrhpPZ5Pvikxd5suWcxqwUtSXkgQf+dczdotrEFzwEX2ba0FKg==}
 
   '@napi-rs/wasm-runtime@1.1.6':
     resolution: {integrity: sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg==}
@@ -3448,11 +3448,11 @@ snapshots:
 
   '@microsoft/tsdoc@0.16.0': {}
 
-  '@n-uf/motion@26.11.55':
+  '@n-uf/motion@26.11.56':
     dependencies:
       alien-signals: 3.2.1
 
-  '@n-uf/placement@26.11.55': {}
+  '@n-uf/placement@26.11.56': {}
 
   '@napi-rs/wasm-runtime@1.1.6(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
