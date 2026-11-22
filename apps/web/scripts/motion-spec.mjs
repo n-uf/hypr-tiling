@@ -21,8 +21,9 @@
 // a swap and one at rest.
 //
 // Then it drags panes with real mouse events, in both drop previews: the lifted
-// pane must be held 1:1 under the pointer on every frame (checkHeld on the rect
-// the page draws), stay on top (document.elementFromPoint) from the lift until
+// pane must be held 1:1 under the pointer on every frame, kept inside the stage
+// (checkHeld on the rect the page draws, against pointer − grab moved into the
+// tiling viewport by placement's clampInto), stay on top (document.elementFromPoint) from the lift until
 // its drop settle ends, land exactly in the indicator's rect, settle there with
 // no overshoot or jump; in snap mode the others must make room in the slot it
 // snaps into. A click changes nothing; a release over the pane's own place and
@@ -42,6 +43,10 @@ const motionTesting = pathToFileURL(
   resolve(here, "../../../packages/hypr-tiling/node_modules/@n-uf/motion/dist/testing.js"),
 ).href;
 const { checkContentScale, checkHeld, checkMonotonic, checkNoJumps, checkNoOvershoot, checkTempo } = await import(motionTesting);
+// The held pane is drawn inside the stage: the rule is placement's clampInto.
+const { clampInto } = await import(
+  pathToFileURL(resolve(here, "../../../packages/hypr-tiling/node_modules/@n-uf/placement/dist/index.js")).href
+);
 
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
@@ -182,10 +187,12 @@ function installProbe() {
       });
     }
     const indicator = document.querySelector("[data-hpt-drop-indicator]");
+    const stage = document.querySelector("[data-hpt-viewport]");
     probe.frames.push({
       t: time,
       write: probe.writes,
       pointer: probe.pointer,
+      stage: stage == null ? null : pageRect(stage.getBoundingClientRect()),
       indicator: indicator == null ? null : pageRect(indicator.getBoundingClientRect()),
       onTop: onTop(),
     });
@@ -518,6 +525,15 @@ async function dragScenario(name, { preview, tileId, homeTileId, start: startAt,
   const home = rest[homeTileId ?? tileId];
   const start = startAt != null ? await startAt(rest) : { x: home.x + 60, y: home.y + 14 };
   const grab = { x: start.x - home.x, y: start.y - home.y };
+  // What the pointer holds and the stage keeps inside: the pane, or a group
+  // held by its frame (strip and pane), the pane at its place in it.
+  const heldFrame =
+    expect.groupFrame === true
+      ? await page.evaluate((id) => {
+          const b = document.querySelector(`[data-hpt-leaf="${id}"]`).closest("[data-group-id]").getBoundingClientRect();
+          return { x: b.left + window.scrollX, y: b.top + window.scrollY, width: b.width, height: b.height };
+        }, homeTileId ?? tileId)
+      : home;
   const target = typeof to === "function" ? await to(rest) : to;
   await page.mouse.move(start.x, start.y);
   await page.evaluate(() => {
@@ -553,6 +569,12 @@ async function dragScenario(name, { preview, tileId, homeTileId, start: startAt,
         }, tileId);
   if (during != null) await during();
   const releaseT = await page.evaluate(() => window.__HPT_MOTION_PROBE__.time ?? 0);
+  const indicatorAtRelease = await page.evaluate(() => {
+    const indicator = document.querySelector("[data-hpt-drop-indicator]");
+    if (indicator == null) return null;
+    const b = indicator.getBoundingClientRect();
+    return { x: b.left + window.scrollX, y: b.top + window.scrollY, width: b.width, height: b.height };
+  });
   await page.mouse.up();
   await waitIdle();
   const { samples, frames, omega, rest: left } = await page.evaluate(
@@ -599,8 +621,16 @@ async function dragScenario(name, { preview, tileId, homeTileId, start: startAt,
     // Lifted: the pane left the tree for the pointer.
     if (liftedSamples.length === 0) add("lift", ["the pane was never lifted"]);
     if (frameCheck != null) add("held as a group", frameCheck);
-    // Held 1:1 (indicator): the drawn rect is pointer − grab, at the lift size, on every frame it is held.
+    // Held 1:1 (indicator): the drawn rect is pointer − grab, at the lift size,
+    // moved into the stage (what is held, the pane or its group's frame, never
+    // drawn outside the tiling viewport), on every frame it is held.
     if (preview === "indicator") {
+      const expectedAt = (p, stage) => {
+        const at = { x: p.x - grab.x, y: p.y - grab.y, width: home.width, height: home.height };
+        if (stage == null) return at;
+        const frame = clampInto({ ...heldFrame, x: at.x - (home.x - heldFrame.x), y: at.y - (home.y - heldFrame.y) }, stage);
+        return { ...at, x: frame.x + (home.x - heldFrame.x), y: frame.y + (home.y - heldFrame.y) };
+      };
       const held = [];
       for (let i = 0; i < samples.length; i++) {
         const s = samples[i];
@@ -610,7 +640,7 @@ async function dragScenario(name, { preview, tileId, homeTileId, start: startAt,
         const frame = frames.find((f) => f.write === s.write) ?? null;
         const p = frame?.pointer;
         if (p == null) continue;
-        held.push({ t: s.t, rect: s.rect, expected: { x: p.x - grab.x, y: p.y - grab.y, width: home.width, height: home.height } });
+        held.push({ t: s.t, rect: s.rect, expected: expectedAt(p, frame.stage) });
       }
       const result = checkHeld(held, 1.5);
       add("held 1:1", held.length < 5 ? [`only ${held.length} held frames sampled`] : result.failures, `${held.length} frames`);
@@ -681,7 +711,12 @@ async function dragScenario(name, { preview, tileId, homeTileId, start: startAt,
         add("layout", expect.after(JSON.parse(after)));
       }
       if (preview === "indicator") {
-        const indicated = [...frames].reverse().find((f) => f.indicator != null && f.t <= releaseT)?.indicator ?? null;
+        // The indicator as the page showed it right before the release. Frames
+        // are sampled on pane-motion writes only, and a held pane pinned at the
+        // stage's edge is not redrawn as the pointer moves on, so the last
+        // sampled frame can predate the drop the pointer is over.
+        const indicated =
+          indicatorAtRelease ?? [...frames].reverse().find((f) => f.indicator != null && f.t <= releaseT)?.indicator ?? null;
         const landed = expect.landing === "group" ? (finalGroupRect ?? finalRects[tileId]) : finalRects[tileId];
         add(
           "indicator == landing",
