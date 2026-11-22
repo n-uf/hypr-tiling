@@ -34,6 +34,13 @@ describe("dist CJS entries load without require(esm)", () => {
     expect(text).toMatch(/from\s*["']@n-uf\/motion/);
   });
 
+  it("dist/index.mjs and dist/engine.mjs keep @n-uf/placement an external import", () => {
+    const files: string[] = ["index.mjs", ...readdirSync(distDir).filter((f: string): boolean => /^chunk-.*\.mjs$/.test(f))];
+    const text: string = files.map((file: string): string => readFileSync(resolve(distDir, file), "utf8")).join("\n");
+    expect(text).toMatch(/from\s*["']@n-uf\/placement\/tiling["']/);
+    expect(readFileSync(resolve(distDir, "engine.mjs"), "utf8")).toMatch(/from\s*["']@n-uf\/placement\/tiling["']/);
+  });
+
   it("require()s and server-renders through dist/index.cjs with require(esm) disabled", () => {
     const stdout: string = execFileSync(
       process.execPath,
