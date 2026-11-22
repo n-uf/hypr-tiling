@@ -21,24 +21,21 @@ the version number alone does not flag them.
   imported; and the float and stack additions in `./stack`. It imports
   `clampInto` from the placement root, `inRect` from motion's `./drag`, and
   the motion, `./gestures`, `./browser`, `./testing` and placement `./tiling`
-  entries; the declarations of every one of them are byte for byte what they
-  were. (The earlier 26.11.55 motion release changed the landing model's float
-  lift zone and its one-layout rework, and removed the `SNAP_DISTANCE` export,
-  none of which hypr-tiling uses either.)
+  entries; what it imports from them is declared byte for byte as before (the
+  motion root only re-exports the new `./drag` names, and `./tiling`'s
+  `PaneTarget` and `OrderTarget`, which it doesn't use, take the slimmer
+  `Target`). (The earlier 26.11.55 motion release changed the landing
+  model's float lift zone and its one-layout rework, and removed the
+  `SNAP_DISTANCE` export, none of which hypr-tiling uses either.)
 - **No change to the public API** (the API reports are unchanged) **or to
   behavior.** The one change in code hypr-tiling does run is placement's
   `./tiling`: `layoutSplitTree`, which lays out every tree, now makes a pane's
   rect and a split's box once instead of copying them, and builds a divider
-  only for a split with an `id`. Its output is the same (20,000 random trees,
-  with fixed and floored panes and master stacks, lay out identically under
-  26.11.55 and 26.11.56); at the home's five panes it takes about 0.6 µs
-  against 0.7 µs, too little to show in a page. Pane rects at first layout, the
-  drop previews, a lift and release over a pane's own place and a tab torn off
-  a group are the same as before.
+  only for a split with an `id`. Its output is the same.
 - **Bundle size:** the ESM entries and every `.d.ts` are byte for byte what
   they were. The CommonJS entries, which bundle motion and placement, grow by
   a few hundred bytes: `index.cjs` and `devtools.cjs` by 617 bytes (gzip
-  +227 and +244), `engine.cjs` by 165 bytes (gzip +23).
+  about +230 and +245), `engine.cjs` by 165 bytes (gzip +23).
 
 ## 26.11.9 — 2026-11-22
 
