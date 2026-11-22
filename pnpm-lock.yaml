@@ -72,8 +72,8 @@ importers:
   packages/hypr-tiling:
     dependencies:
       '@n-uf/motion':
-        specifier: 26.11.54
-        version: 26.11.54
+        specifier: 26.11.55
+        version: 26.11.55
       '@n-uf/placement':
         specifier: 26.11.55
         version: 26.11.55
@@ -659,8 +659,8 @@ packages:
   '@microsoft/tsdoc@0.16.0':
     resolution: {integrity: sha512-xgAyonlVVS+q7Vc7qLW0UrJU7rSFcETRWsqdXZtjzRU8dF+6CkozTK4V4y1LwOX7j8r/vHphjDeMeGI4tNGeGA==}
 
-  '@n-uf/motion@26.11.54':
-    resolution: {integrity: sha512-EtahqCL2Lklc/FKIRl5X8vf156gFIzq2dt2jzjgM3dt9h+Q3xzcK7M9SOwqC4LBzP6RjD/I/Y6nCP3H3U0YpOw==}
+  '@n-uf/motion@26.11.55':
+    resolution: {integrity: sha512-bKRtRVVGyhqpbhgg4pBwe3409GjTAxSP5rImXgBc+cbPxsetb2zrKGqQWR+uS1hffNJOoLsKlSDbapyOE9VDUQ==}
 
   '@n-uf/placement@26.11.55':
     resolution: {integrity: sha512-9riT3xK63U6Uh+4Xor+n0ffb4VRb0CpR37eR3OWrL+bZRQLnE+cGfV+JYQ18MfskLuJFfZSsJiTcL97wGBj31w==}
@@ -3448,7 +3448,7 @@ snapshots:
 
   '@microsoft/tsdoc@0.16.0': {}
 
-  '@n-uf/motion@26.11.54':
+  '@n-uf/motion@26.11.55':
     dependencies:
       alien-signals: 3.2.1
 
