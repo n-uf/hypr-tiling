@@ -7,6 +7,22 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
+## Unreleased
+
+### `@n-uf/motion` 26.11.55
+
+- **The dependency** moves from `@n-uf/motion` 26.11.54 to 26.11.55, still
+  pinned exactly. `@n-uf/placement` stays at 26.11.55.
+- **No code change.** hypr-tiling uses none of the API that release changes
+  (its landing model, the float lift zone and the one-layout options are
+  docking's); pane motion, gestures and drag run on the same motion calls as
+  before.
+- **No change to the public API** (the API reports are unchanged) **or to
+  behavior.**
+- **Bundle size:** unchanged. The ESM entries are byte for byte what they
+  were; the CommonJS entries, which bundle motion, are the same size to the
+  byte.
+
 ## 26.11.9 — 2026-11-22
 
 ### Dragging a pane
