@@ -1001,7 +1001,9 @@ interaction={{
   inside the tiling viewport; a drop indicator at the exact landing rect or
   snap-to-slot (`dragPreview`, `dragPreviewMakesRoom`). Until the pointer
   first leaves the pane's own place, that place stays open and nothing
-  moves; a release there puts the layout back.
+  moves; a release there puts the layout back. A scroll or resize that moves
+  the viewport, or a new `layout` object mid-drag (a change of identity, as
+  everywhere in the renderer), also ends that hold.
 - **External drop** — host-reported `externalDragHover`, and `onExternalDrop`
   claim-before-settle.
   In set mode a `kind: "workspace-tab"` hover is an engine-owned drop target.
