@@ -1185,31 +1185,6 @@ export function resolveSplitDividerRenderMode(
 }
 
 /**
- * Pure resolver for the DISPLAYED layout tree under the live (Hyprland) drag
- * model. While a live drag is in flight — `liveDragModeEnabled` AND a
- * `dragSourceLeafId` is held — the source leaf is detached once and the tree
- * reflows to close the gap (`removeLeafTile`). Otherwise — and CRUCIALLY once the
- * drag state is cleared on drag-end / cancel / aborted drop — this returns the
- * original `layout`, so the gap restores instead of parking the frozen
- * gap-closed tree. A root-leaf source has no parent to collapse, so the original
- * tree is kept (the detach is a no-op). Extracted as a pure function so the
- * "cleared drag state ⇒ original tree" invariant is unit-testable without a DOM.
- */
-export function resolveLiveDisplayLayout(
-  liveDragModeEnabled: boolean,
-  dragSourceLeafId: string | null,
-  layout: TilingLayoutNode,
-  subject?: DragSubject,
-): TilingLayoutNode {
-  if (!liveDragModeEnabled || dragSourceLeafId == null) {
-    return layout;
-  }
-  // A whole tab group (`subject: "group"`) leaves as one: the gap it closes is its slot.
-  const frozen: TilingLayoutNode = detachDragSubject(layout, dragSourceLeafId, subject);
-  return frozen === layout ? layout : frozen;
-}
-
-/**
  * STABLE-REFERENCE hit-test geometry for live-drag target resolution. Drop
  * targets are resolved against THIS frozen pane geometry, NEVER against the
  * displayed candidate tree's reflowing rects. The result is a pure function of
