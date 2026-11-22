@@ -5333,10 +5333,11 @@ const TilingRendererComponent = React.forwardRef<
     },
     [heldRectAt],
   );
-  // The lifted wrapper is `position: fixed`, so the viewport's
-  // `overflow: hidden` does not clip the pane over the workspace tab strip or
-  // a host drop target. Its left / top are written here (not by React): its
-  // containing block is measured, and a scroll moves the viewport under it.
+  // The lifted wrapper is `position: fixed`, laid out at the pane's place at
+  // the lift; the pane in it is drawn inside the viewport (`heldRectAt`), so
+  // nothing past the viewport's edge needs it unclipped. Its left / top are
+  // written here (not by React): its containing block is measured, and a
+  // scroll moves the viewport under it.
   const liftedLayerRef = React.useRef<HTMLDivElement | null>(null);
   const placeLiftedLayer = React.useCallback((): void => {
     const layer: HTMLDivElement | null = liftedLayerRef.current;

@@ -434,6 +434,9 @@ export function dragHomeFootprint(state: {
  * While the home holds nothing moves (the layout is the one at the lift, the pane's place kept open), no drop target
  * is resolved, and a release puts the layout back. That is `@n-uf/motion`'s home rule (its drag intent picks no target
  * over home and a release there does nothing); hypr-tiling's own drop resolution takes over once the pointer leaves.
+ *
+ * The hold is about the tree's own drops only: a host hover or claim at the release (`POINTER_UP` with
+ * `claimed: true`, a host `onExternalDrop` or a workspace tab) still wins over it, inside home too.
  */
 export function isDragHomeHeld(
   state: Extract<DragMachineState, { phase: "armed" | "dragging" }>,
