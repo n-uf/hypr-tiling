@@ -7,6 +7,48 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
+## 26.11.8 — 2026-11-22
+
+### Geometry, drop regions, drop validity and focus run on `@n-uf/placement`
+
+- **New dependency:** `@n-uf/placement` 26.11.55, pinned exactly.
+- **Layout geometry** (`resolveLayoutGeometry`, `resolveLeafRects` and the
+  renderer's own footprints, master layouts included) now maps the layout tree
+  onto placement's split tree and lets it do the arithmetic. hypr-tiling keeps
+  its own floors, pins, collapse and groups and answers placement's questions
+  from them.
+- **Faster repeated calls:** geometry for a layout tree, config and size is
+  cached per tree object. Layout trees are never changed in place (every
+  reducer returns a new one), so nothing changes for normal use.
+- **Drop regions** use placement's `paneCenter` and `paneRegion`.
+- **Drop validity** uses placement's `canSplitPane` (room on the target) and
+  `dropFits` (the projected drop), on hypr-tiling's own projection.
+- **Directional focus** uses placement's `neighbor`, still over the unit
+  square, so stored ratios still don't steer it.
+- **No change in behaviour** for any valid layout or config: every recorded
+  answer is the same. No change to hypr-tiling's own API.
+- **Bundle size:** the ESM `./engine` entry imports placement and is smaller
+  (153.7 → 147.4 kB, 30.9 → 30.3 kB gzipped). The CommonJS entries bundle it
+  and grow a little (`./engine` 172.9 → 174.7 kB, `.` 635.0 → 639.5 kB).
+
+### Malformed values
+
+Some values that no valid stored layout or default config can hold used to give
+NaN rects, zero-size or overlapping panes, or an even split. They are now read
+as follows:
+
+- A gap, handle or minimum pane size (or collapsed extent) that is NaN or
+  Infinity counts as 0, and so does a negative gap on a master split.
+- A NaN master count is 1.
+- A binary split whose ratio is NaN or missing splits at 0.5.
+- A NaN viewport counts as not measured yet when a drop is judged.
+
+### Regression gate
+
+- A new golden section, recorded from 26.11.7: drops judged at the exact
+  boundary of the room rule with fractional gaps, handles and minimums, and
+  stored ratios that are not plain numbers.
+
 ## 26.11.7 — 2026-11-21
 
 ### `@n-uf/motion` 26.11.54; pane motion and gestures run on it
