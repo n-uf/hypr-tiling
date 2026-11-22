@@ -395,6 +395,36 @@ describe("held drag — indicator preview and drop", (): void => {
     expect(a.hasAttribute("data-hpt-leaf-raised")).toBe(false);
   });
 
+  it("a drop whose slot is not where the pane is drawn settles it from the clamped rect, raised until it rests", async (): Promise<void> => {
+    restGeometry();
+    const changes: TilingLayoutNode[] = [];
+    const { container } = render(<Host onLayoutReported={(next): void => void changes.push(next)} />);
+    await liftA(container, 140, 60);
+    // Over b's bottom edge: a lands across the bottom half, while it is drawn
+    // at the top of the stage (as tall as the stage, it cannot move down).
+    await moveTo(700, 590);
+    const a: HTMLElement = wrapperOf(container, "a");
+    expect(a.style.transform).toBe("translate(500px, 0px)");
+    const indicator: Box | null = indicatorRect(container);
+    expect(indicator).toEqual({ x: 0, y: 300, width: 1000, height: 300 });
+
+    GEOMETRY.set("a", indicator!);
+    GEOMETRY.set("b", { x: 0, y: 0, width: 1000, height: 300 });
+    await release(700, 590);
+    expect(changes).toHaveLength(1);
+    expect(resolveTileRect(changes[0]!, "a", CONTAINER, CONFIG)).toEqual(indicator);
+    expect(lifted(container)).toBeNull();
+    // It settles into the slot from where it was drawn, still on top.
+    const landed: HTMLElement = wrapperOf(container, "a");
+    expect(landed.style.transform).not.toBe("");
+    expect(landed.hasAttribute("data-hpt-leaf-raised")).toBe(true);
+    await act(async (): Promise<void> => {
+      await wait(700);
+    });
+    expectAtRest(landed);
+    expect(landed.hasAttribute("data-hpt-leaf-raised")).toBe(false);
+  });
+
   it("with dragPreviewMakesRoom the others make room at the indicated slot, kept empty for the pane", async (): Promise<void> => {
     restGeometry();
     const { container } = render(<Host onLayoutReported={(): void => undefined} dragPreviewMakesRoom />);
