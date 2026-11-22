@@ -352,8 +352,12 @@ containing-block ancestor offsets it from the pointer.
 ### External drop targets
 
 When a tile is dragged over host chrome outside the tiling tree (a
-workspace tab strip, a chat panel), the host reports that hover; the held
-pane stays visible over it (it is not clipped by the viewport). On release
+workspace tab strip, a chat panel), the host reports that hover. The held
+pane itself is always drawn inside the tiling viewport (it stops at the
+viewport's edge), but the pointer is not held back: hovers, spring-loading
+onto workspace tabs and claims follow the pointer outside the viewport. A
+claim wins even when the pointer has not left the pane's own place, where
+a plain release would put the layout back. On release
 the host claims the leaf **before** the drag FSM settles: the pane leaves
 the tree and fades out where it was drawn. This is the standalone subset of
 the WorkspaceSet drag scope — see
@@ -993,9 +997,11 @@ interaction={{
   (`TilingWorkspaceSet`): set ops, `useTilingWorkspaceSetController`,
   `useTilingWorkspaceTabs` + native tab drop, `WORKSPACE_KEY_BINDINGS`,
   swipe / slide-fade transition / spring-load. See Workspaces above.
-- **Held drag** — the real pane is lifted and held under the pointer; a drop
-  indicator at the exact landing rect or snap-to-slot (`dragPreview`,
-  `dragPreviewMakesRoom`).
+- **Held drag** — the real pane is lifted and held under the pointer, drawn
+  inside the tiling viewport; a drop indicator at the exact landing rect or
+  snap-to-slot (`dragPreview`, `dragPreviewMakesRoom`). Until the pointer
+  first leaves the pane's own place, that place stays open and nothing
+  moves; a release there puts the layout back.
 - **External drop** — host-reported `externalDragHover`, and `onExternalDrop`
   claim-before-settle.
   In set mode a `kind: "workspace-tab"` hover is an engine-owned drop target.
