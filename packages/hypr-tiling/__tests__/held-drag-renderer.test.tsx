@@ -339,6 +339,30 @@ describe("held drag — lift, hold, on top, reflow", (): void => {
   });
 });
 
+describe("held drag — the page moves under the lift", (): void => {
+  for (const kind of ["scroll", "resize"] as const) {
+    it(`a ${kind} mid-drag ends the home hold: the others close the gap with the pointer still over the old place`, async (): Promise<void> => {
+      restGeometry();
+      const { container } = render(<Host onLayoutReported={(): void => undefined} />);
+      await press(container, "a", 100, 20);
+      await moveTo(140, 60);
+      expect(container.querySelector('[data-drag-held-slot-leaf="A"]')).not.toBeNull();
+      liftedGeometry();
+      await act(async (): Promise<void> => {
+        window.dispatchEvent(new Event(kind));
+        await wait(20);
+      });
+      await moveTo(150, 70);
+      expect(container.querySelector("[data-drag-held-slot-leaf]")).toBeNull();
+      expect(lifted(container)).not.toBeNull();
+      await act(async (): Promise<void> => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+        await wait(20);
+      });
+    });
+  }
+});
+
 describe("held drag — indicator preview and drop", (): void => {
   it("the indicator marks the exact rect the pane lands in, and the drop lands it there", async (): Promise<void> => {
     restGeometry();

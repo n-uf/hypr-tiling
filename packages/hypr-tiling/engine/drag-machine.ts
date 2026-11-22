@@ -244,7 +244,19 @@ export type DragMachineEvent =
   | { type: "BLUR" }
   | { type: "VISIBILITY_HIDDEN" }
   | { type: "SETTLE_DONE" }
+  | DragHomeInvalidatedEvent
   | DragRearmEvent;
+
+/**
+ * `HOME_INVALIDATED` — the page moved under the drag (a scroll, a viewport or window resize, a layout change), so the
+ * home footprint, a client-px snapshot taken at the press, no longer marks the pane's place. The home hold ends as if
+ * the pointer had left (`leftHome` becomes true) and the drag re-resolves at the pointer as it does once the pointer
+ * has left home. Only `dragging` reacts; it is a no-op once the pointer has left.
+ */
+export interface DragHomeInvalidatedEvent {
+  /** Discriminant. */
+  type: "HOME_INVALIDATED";
+}
 
 /**
  * `REARM` — start a NEW drag on `sourceLeafId` at the CURRENT pointer position
@@ -1052,6 +1064,8 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
           return movedTo(state, event.client);
         case "TARGET_RESOLVED":
           return { ...state, resolvedTarget: event.resolvedTarget };
+        case "HOME_INVALIDATED":
+          return state.leftHome ? state : { ...state, leftHome: true };
         case "POINTER_UP":
           if (event.claimed === true) {
             return settleFrom(state, "claimed");
