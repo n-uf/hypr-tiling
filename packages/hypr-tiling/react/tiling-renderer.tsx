@@ -1229,6 +1229,23 @@ export function resolveStableDragHitFootprints(
   );
 }
 
+/** The viewport's client rect (window-client px), as the drag compares it. */
+interface ViewportClientRect {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** The viewport element's client rect now, or `null` with no viewport. */
+function readViewportClientRect(viewport: HTMLElement | null): ViewportClientRect | null {
+  if (viewport == null) {
+    return null;
+  }
+  const rect: DOMRect = viewport.getBoundingClientRect();
+  return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+}
+
 /**
  * The place a lifted pane keeps in the tree while the pointer holds it
  * elsewhere (indicator mode with `dragPreviewMakesRoom`: the others make room
@@ -7580,6 +7597,13 @@ const TilingRendererComponent = React.forwardRef<
     dragState.phase === "armed" || dragState.phase === "dragging"
       ? dragState.pointerId
       : null;
+  // The viewport's client rect at the press, beside the home footprint the
+  // press measured; kept for the whole press, whatever re-runs below.
+  const viewportAtPressRef = React.useRef<ViewportClientRect | null>(null);
+  React.useLayoutEffect((): void => {
+    viewportAtPressRef.current =
+      activeDragPointerId == null ? null : readViewportClientRect(viewportRef.current);
+  }, [activeDragPointerId]);
   React.useEffect((): (() => void) | void => {
     if (activeDragPointerId == null) {
       return;
@@ -7692,6 +7716,24 @@ const TilingRendererComponent = React.forwardRef<
     // already promoted to `dragging` (same owning pointer, no re-subscribe) does
     // not double-fire.
     const armedAtSetup: DragMachineState = dragStateRef.current;
+
+    // The home hold ends only once the viewport has moved or resized in
+    // client px since the press (see `HOME_INVALIDATED`).
+    const endHomeHoldIfViewportMoved = (): void => {
+      const viewportAtPress: ViewportClientRect | null = viewportAtPressRef.current;
+      const now: ViewportClientRect | null = readViewportClientRect(viewportRef.current);
+      if (viewportAtPress == null || now == null) {
+        return;
+      }
+      if (
+        Math.abs(now.left - viewportAtPress.left) > 0.01 ||
+        Math.abs(now.top - viewportAtPress.top) > 0.01 ||
+        Math.abs(now.width - viewportAtPress.width) > 0.01 ||
+        Math.abs(now.height - viewportAtPress.height) > 0.01
+      ) {
+        dispatchDrag({ type: "HOME_INVALIDATED" });
+      }
+    };
     let longPressTimerId: number | null = null;
     if (armedAtSetup.phase === "armed" && armedAtSetup.touchDrag) {
       longPressTimerId = window.setTimeout((): void => {
@@ -7846,9 +7888,10 @@ const TilingRendererComponent = React.forwardRef<
       if (pointer == null || controller.getState().drag.phase !== "dragging") {
         return;
       }
-      // The home footprint is client px from the press: a scroll moves the
-      // pane's place under it, so the home hold ends here.
-      dispatchDrag({ type: "HOME_INVALIDATED" });
+      // The home footprint is client px from the press: a scroll that moved
+      // the viewport moves the pane's place under it, so the home hold ends.
+      // A scroll inside a pane (or one that moved nothing) keeps it.
+      endHomeHoldIfViewportMoved();
       placeLiftedLayer();
       placeHeldPane(pointer, true);
       coalescer.schedule(pointer);

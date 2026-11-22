@@ -35,6 +35,8 @@ interface Box {
 
 const GEOMETRY: Map<string, Box> = new Map<string, Box>();
 const CONTAINER: { width: number; height: number } = { width: 1000, height: 600 };
+/** Where the viewport element reports itself in client px (a page scroll moves it). */
+const VIEWPORT_CLIENT: { x: number; y: number } = { x: 0, y: 0 };
 
 function boxOf(element: HTMLElement): Box | null {
   const id: string | null = element.getAttribute("data-hpt-leaf");
@@ -64,8 +66,9 @@ beforeAll((): void => {
     configurable: true,
     value(this: Element): DOMRect {
       const box: Box | null = this instanceof HTMLElement ? enclosingBox(this) : null;
-      const x: number = box?.x ?? 0;
-      const y: number = box?.y ?? 0;
+      const isViewport: boolean = box == null && this.hasAttribute("data-hpt-viewport");
+      const x: number = box?.x ?? (isViewport ? VIEWPORT_CLIENT.x : 0);
+      const y: number = box?.y ?? (isViewport ? VIEWPORT_CLIENT.y : 0);
       const width: number = box?.width ?? CONTAINER.width;
       const height: number = box?.height ?? CONTAINER.height;
       return { x, y, left: x, top: y, width, height, right: x + width, bottom: y + height, toJSON: (): void => undefined } as DOMRect;
@@ -128,6 +131,8 @@ afterAll((): void => {
 afterEach((): void => {
   cleanup();
   GEOMETRY.clear();
+  VIEWPORT_CLIENT.x = 0;
+  VIEWPORT_CLIENT.y = 0;
 });
 
 const leaf = (id: string, tileId: string): TilingLeafNode => ({ kind: "leaf", id, tileId });
@@ -341,13 +346,14 @@ describe("held drag — lift, hold, on top, reflow", (): void => {
 
 describe("held drag — the page moves under the lift", (): void => {
   for (const kind of ["scroll", "resize"] as const) {
-    it(`a ${kind} mid-drag ends the home hold: the others close the gap with the pointer still over the old place`, async (): Promise<void> => {
+    it(`a ${kind} that moves the viewport mid-drag ends the home hold: the others close the gap with the pointer still over the old place`, async (): Promise<void> => {
       restGeometry();
       const { container } = render(<Host onLayoutReported={(): void => undefined} />);
       await press(container, "a", 100, 20);
       await moveTo(140, 60);
       expect(container.querySelector('[data-drag-held-slot-leaf="A"]')).not.toBeNull();
       liftedGeometry();
+      VIEWPORT_CLIENT.y = -30;
       await act(async (): Promise<void> => {
         window.dispatchEvent(new Event(kind));
         await wait(20);
@@ -361,6 +367,25 @@ describe("held drag — the page moves under the lift", (): void => {
       });
     });
   }
+
+  it("a scroll inside a pane (the viewport did not move) keeps the home hold", async (): Promise<void> => {
+    restGeometry();
+    const { container } = render(<Host onLayoutReported={(): void => undefined} />);
+    await press(container, "a", 100, 20);
+    await moveTo(140, 60);
+    const inner: HTMLElement = wrapperOf(container, "b").querySelector("article")!;
+    await act(async (): Promise<void> => {
+      // Scroll does not bubble; the renderer listens in the capture phase.
+      inner.dispatchEvent(new Event("scroll"));
+      await wait(20);
+    });
+    await moveTo(150, 70);
+    expect(container.querySelector('[data-drag-held-slot-leaf="A"]')).not.toBeNull();
+    await act(async (): Promise<void> => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      await wait(20);
+    });
+  });
 });
 
 describe("held drag — indicator preview and drop", (): void => {
