@@ -14,8 +14,8 @@ the version number alone does not flag them.
 - **The dependency** moves from `@n-uf/motion` 26.11.54 to 26.11.55, still
   pinned exactly. `@n-uf/placement` stays at 26.11.55.
 - **No code change.** hypr-tiling uses none of the API that release changes
-  (its landing model, the float lift zone and the one-layout options are
-  docking's); pane motion, gestures and drag run on the same motion calls as
+  (the landing model's float lift zone and its one-layout rework, which
+  `@n-uf/docking` uses, and the removed `SNAP_DISTANCE` export); pane motion, gestures and drag run on the same motion calls as
   before.
 - **No change to the public API** (the API reports are unchanged) **or to
   behavior.**
