@@ -5116,6 +5116,40 @@ const TilingRendererComponent = React.forwardRef<
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [layout, dragSourceLeafId, dragSubject, roomTargetKey, dragHomeHeld],
   );
+  // The home footprint is client px measured at the press. A layout change or
+  // a viewport resize mid-drag moves the pane's place under it, so the home
+  // hold ends then (a scroll or a window resize ends it in the input layer).
+  const homeBasisRef = React.useRef<{
+    readonly layout: TilingLayoutNode;
+    readonly width: number;
+    readonly height: number;
+  } | null>(null);
+  React.useEffect((): void => {
+    if (dragState.phase !== "dragging") {
+      homeBasisRef.current = null;
+      return;
+    }
+    const basis = homeBasisRef.current;
+    if (basis == null) {
+      homeBasisRef.current = { layout, width: viewportSize.width, height: viewportSize.height };
+      return;
+    }
+    if (
+      !dragState.leftHome &&
+      (basis.layout !== layout ||
+        basis.width !== viewportSize.width ||
+        basis.height !== viewportSize.height)
+    ) {
+      dispatchDrag({ type: "HOME_INVALIDATED" });
+    }
+  }, [
+    dispatchDrag,
+    dragState.phase,
+    dragState.phase === "dragging" && dragState.leftHome,
+    layout,
+    viewportSize.height,
+    viewportSize.width,
+  ]);
   // The pane is held (drawn in its lifted wrapper) for the whole drag except
   // while the snap preview has it settled into a slot in the tree.
   const isPaneHeld: boolean =
@@ -7837,9 +7871,19 @@ const TilingRendererComponent = React.forwardRef<
       if (pointer == null || controller.getState().drag.phase !== "dragging") {
         return;
       }
+      // The home footprint is client px from the press: a scroll moves the
+      // pane's place under it, so the home hold ends here.
+      dispatchDrag({ type: "HOME_INVALIDATED" });
       placeLiftedLayer();
       placeHeldPane(pointer, true);
       coalescer.schedule(pointer);
+    };
+    // A window resize can move the viewport in client px without resizing
+    // it: the home footprint is stale, so the home hold ends.
+    const handleWindowResize = (): void => {
+      if (controller.getState().drag.phase === "dragging") {
+        dispatchDrag({ type: "HOME_INVALIDATED" });
+      }
     };
     const handleLostPointerCapture = (event: PointerEvent): void => {
       if (event.pointerId !== owningPointerId) {
@@ -7895,6 +7939,7 @@ const TilingRendererComponent = React.forwardRef<
     document.addEventListener("visibilitychange", handleVisibilityChange);
     // Capture phase: scroll does not bubble, and any scrolling ancestor counts.
     window.addEventListener("scroll", handleScroll, { capture: true, passive: true });
+    window.addEventListener("resize", handleWindowResize);
 
     return (): void => {
       // Drop any pending long-press timer so a released/scrolled gesture never
@@ -7917,6 +7962,7 @@ const TilingRendererComponent = React.forwardRef<
       window.removeEventListener("blur", handleBlur);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("scroll", handleScroll, { capture: true });
+      window.removeEventListener("resize", handleWindowResize);
     };
   }, [
     activeDragPointerId,

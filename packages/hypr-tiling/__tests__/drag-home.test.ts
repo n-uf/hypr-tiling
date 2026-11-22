@@ -140,6 +140,38 @@ describe("drag home — the rule", (): void => {
   });
 });
 
+describe("drag home — the page moved under the drag", (): void => {
+  it("HOME_INVALIDATED ends the hold for good: targets resolve again and the gap closes, inside the old rect too", (): void => {
+    const h = harness(() => target("B", "center", "swap"));
+    h.press({ x: 150, y: 110 });
+    h.driver.processPointerSample({ x: 150, y: 120 });
+    expect(h.tree()).toBe(LAYOUT);
+    h.dispatch({ type: "HOME_INVALIDATED" });
+    const state = h.state();
+    expect(state.phase === "dragging" && state.leftHome).toBe(true);
+    expect(h.tree()).toEqual(removeLeafTile(LAYOUT, "A"));
+    // Still inside the stale rect: resolved as once the pointer has left.
+    h.driver.processPointerSample({ x: 160, y: 130 });
+    expect(h.asked).toEqual([{ x: 160, y: 130 }]);
+    expect(h.driver.latchRelease()?.leafId).toBe("B");
+    h.driver.processPointerSample({ x: 160, y: 130 }, true);
+    h.dispatch({ type: "POINTER_UP", pointerId: 1 });
+    const settled = h.state();
+    expect(settled.phase === "settling" && settled.outcome).toBe("commit");
+  });
+
+  it("is a no-op outside dragging and once the pointer has left", (): void => {
+    expect(dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, { type: "HOME_INVALIDATED" })).toBe(DRAG_MACHINE_INITIAL_STATE);
+    const h = harness(() => null);
+    h.press({ x: 150, y: 110 });
+    const armed = h.state();
+    expect(dragMachineReducer(armed, { type: "HOME_INVALIDATED" })).toBe(armed);
+    h.driver.processPointerSample({ x: 150, y: 251 });
+    const left = h.state();
+    expect(dragMachineReducer(left, { type: "HOME_INVALIDATED" })).toBe(left);
+  });
+});
+
 describe("drag home — the candidate tree", (): void => {
   it("while inside home the tree is the original (the same object): the pane's place stays open", (): void => {
     const h = harness(() => target("B", "center", "swap"));
