@@ -292,7 +292,7 @@ describe("held drag — the click threshold", (): void => {
 });
 
 describe("held drag — lift, hold, on top, reflow", (): void => {
-  it("lifts the REAL pane, holds it 1:1 under the pointer, raises it, keeps its home open until the pointer leaves, then the others close the gap", async (): Promise<void> => {
+  it("lifts the REAL pane, holds it 1:1 under the pointer inside the stage, raises it, keeps its home open until the pointer leaves, then the others close the gap", async (): Promise<void> => {
     restGeometry();
     const { container } = render(<Host onLayoutReported={(): void => undefined} />);
     const article: HTMLElement = wrapperOf(container, "a").querySelector("article")!;
@@ -308,8 +308,10 @@ describe("held drag — lift, hold, on top, reflow", (): void => {
     expect(a.querySelector("article")).toBe(article);
     expect(holder!.style.left).toBe("0px");
     expect(holder!.style.width).toBe("500px");
-    // Held exactly where the pointer put it: moved by the pointer's travel, never scaled.
-    expect(a.style.transform).toBe("translate(40px, 40px)");
+    // Held where the pointer put it, moved by the pointer's travel, never
+    // scaled, and kept inside the stage: a is as tall as the stage, so it
+    // moves across only.
+    expect(a.style.transform).toBe("translate(40px, 0px)");
     // On top, with the lifted look.
     expect(a.hasAttribute("data-hpt-leaf-raised")).toBe(true);
     expect(Number(holder!.style.zIndex)).toBeGreaterThan(0);
@@ -319,16 +321,17 @@ describe("held drag — lift, hold, on top, reflow", (): void => {
     expect(lifted(container)!.contains(b)).toBe(false);
     expect(container.querySelector('[data-drag-held-slot-leaf="A"]')).not.toBeNull();
 
-    // Every move holds it exactly under the pointer (the same task as the event).
+    // Every move holds it under the pointer (the same task as the event).
     act((): void => {
       pointer(window, "pointermove", 333, 222);
     });
-    expect(a.style.transform).toBe("translate(233px, 202px)");
-    // The pointer has left home: b closes the gap on the settle curve, drawn
-    // where it was, gliding to fill the view.
+    expect(a.style.transform).toBe("translate(233px, 0px)");
+    // Past the stage's right edge the pane stops at it. The pointer has left
+    // home: b closes the gap on the settle curve, drawn where it was, gliding
+    // to fill the view.
     liftedGeometry();
     await moveTo(640, 410);
-    expect(a.style.transform).toBe("translate(540px, 390px)");
+    expect(a.style.transform).toBe("translate(500px, 0px)");
     expect(container.querySelector("[data-drag-held-slot-leaf]")).toBeNull();
     expect(lifted(container)!.contains(wrapperOf(container, "b"))).toBe(false);
     expect(wrapperOf(container, "b").style.transform).toMatch(/^translate\(\d/);
@@ -357,10 +360,9 @@ describe("held drag — indicator preview and drop", (): void => {
     expect(resolveTileRect(changes[0]!, "a", CONTAINER, CONFIG)).toEqual(indicator);
     expect(lifted(container)).toBeNull();
     expect(container.querySelector("[data-hpt-drop-indicator]")).toBeNull();
-    // The pane settles into its slot from where it was drawn, still on top.
+    // The pane settles into its slot from where it was drawn. Drawn inside the
+    // stage, held against its right edge it is already in that slot.
     const a: HTMLElement = wrapperOf(container, "a");
-    expect(a.style.transform).not.toBe("");
-    expect(a.hasAttribute("data-hpt-leaf-raised")).toBe(true);
     await act(async (): Promise<void> => {
       await wait(700);
     });
@@ -478,9 +480,9 @@ describe('held drag — paneIdentity "slot"', (): void => {
     expect(holder).not.toBeNull();
     const a: HTMLElement = wrapperOf(container, "a");
     expect(holder!.contains(a)).toBe(true);
-    // One copy of a on screen, held 1:1 and on top, as in stable mode.
+    // One copy of a on screen, held 1:1 inside the stage and on top, as in stable mode.
     expect(container.querySelectorAll('[data-hpt-leaf="a"]')).toHaveLength(1);
-    expect(a.style.transform).toBe("translate(40px, 40px)");
+    expect(a.style.transform).toBe("translate(40px, 0px)");
     expect(a.hasAttribute("data-hpt-leaf-raised")).toBe(true);
     // Slot mode renders each pane where its slot is, so the lifted pane is
     // mounted afresh (state inside the tile does not carry over); only

@@ -12,6 +12,7 @@ import {
   dragMachineReducer,
   type DragMachineState,
 } from "../engine/drag-machine";
+import { clampHeldRectToStage } from "../engine/drag-landing";
 import { createDragInputDriver } from "../engine/input-driver";
 import { resolveLayoutGeometry } from "../engine/leaf-geometry";
 import { readLeafNodeIds, removeLeafTile, siblingSubtreeForLeaf, tileOrderByLeafId } from "../engine/state";
@@ -214,6 +215,25 @@ describe("drag home properties", () => {
         state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
         expect(state.phase === "idle" || (state.phase === "settling" && state.outcome === "cancel")).toBe(true);
       }
+    }
+  });
+});
+
+describe("held pane properties", () => {
+  it("the drawn rect keeps the held size, lies within the stage when it fits, keeps the stage's top-left along an axis it does not fit, and is the held rect when that is inside", () => {
+    const r = seeded(7_777);
+    for (let i = 0; i < 5000; i++) {
+      const stage = { width: 50 + r() * 2000, height: 50 + r() * 1400 };
+      const size = { width: r() * stage.width * 1.4, height: r() * stage.height * 1.4 };
+      const held = { x: (r() * 4 - 2) * stage.width, y: (r() * 4 - 2) * stage.height, ...size };
+      const drawn = clampHeldRectToStage(held, stage);
+      expect([drawn.width, drawn.height]).toEqual([held.width, held.height]);
+      if (size.width <= stage.width) expect(drawn.x >= 0 && drawn.x + drawn.width <= stage.width + 1e-9).toBe(true);
+      else expect(drawn.x).toBe(0);
+      if (size.height <= stage.height) expect(drawn.y >= 0 && drawn.y + drawn.height <= stage.height + 1e-9).toBe(true);
+      else expect(drawn.y).toBe(0);
+      const inside = held.x >= 0 && held.y >= 0 && held.x + held.width <= stage.width && held.y + held.height <= stage.height;
+      if (inside) expect(drawn).toEqual(held);
     }
   });
 });
