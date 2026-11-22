@@ -7,6 +7,31 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
+## 26.11.9 — 2026-11-22
+
+### Dragging a pane
+
+- **Its place stays open at the lift.** While the pointer is still over the
+  pane's own place (for a tab torn off its group, the whole group), nothing
+  moves: the others no longer close the gap at once, the cursor no longer
+  shows "can't drop here" over the pane's own spot, and a release there puts
+  the layout back. A host claim at the release still wins there.
+- **The hold ends for good once the pointer leaves the pane's place**; from
+  then on dragging works as before, including dropping on the group's own
+  strip. A page scroll, a resize or a layout change of the viewport mid-drag
+  also ends it.
+- **The pane stays inside the tiling viewport**; spring-loading onto
+  workspace tabs and host drop targets still follow the pointer outside it.
+  At an edge the pane stops while the pointer moves on, and a pane larger
+  than the viewport keeps its top-left corner on the viewport's. The drop
+  under the pointer is unchanged.
+- **No change to the public API.** `@n-uf/motion` and `@n-uf/placement` stay
+  pinned at 26.11.54 and 26.11.55.
+- **Bundle size:** the ESM `./engine` entry is 147.4 → 147.5 kB (30.3 kB
+  gzipped, unchanged); the CommonJS `./engine` entry is unchanged
+  (174.7 kB); the CommonJS `.` entry grows a little (639.5 → 643.0 kB,
+  132.1 → 133.0 kB gzipped).
+
 ## 26.11.8 — 2026-11-22
 
 ### Geometry, drop regions, drop validity and focus run on `@n-uf/placement`
