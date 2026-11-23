@@ -16,6 +16,7 @@ import {
 import { deriveCandidateTree, type DragResolvedTarget, type DragSubject } from "./drag-machine";
 import type { TilingDropIntentState, TilingEdgeZone } from "./drop-intent-resolver";
 import { mapLayoutToSplit, sizingSplitOptions } from "./leaf-geometry";
+import { resolveProjectedDropLayout } from "./projected-layout";
 import {
   extractLeafNode,
   findGroupById,
@@ -579,4 +580,20 @@ export function deriveDropCommitTree(params: {
     }
   }
   return deriveCandidateTree(layout, sourceLeafId, target, subject);
+}
+
+/**
+ * The layout tree `dragMode: "preview"`'s overlays draw for `target`: the tree a release on it commits. A held place
+ * draws {@link deriveDropCommitTree}'s `after(place).tree`, from the same drag; a drop with no place (or home, or the
+ * pane itself) draws the reducers' projection.
+ * @internal
+ */
+export function deriveDropPreviewTree(
+  params: Omit<Parameters<typeof deriveDropCommitTree>[0], "sourceLeafId"> & { readonly sourceLeafId: string | null },
+): TilingLayoutNode | null {
+  const { layout, sourceLeafId, target, subject } = params;
+  if (sourceLeafId == null || target?.place == null || target.place.kind === "home" || target.leafId === sourceLeafId) {
+    return resolveProjectedDropLayout(layout, sourceLeafId, target ?? null, subject);
+  }
+  return deriveDropCommitTree({ ...params, sourceLeafId });
 }

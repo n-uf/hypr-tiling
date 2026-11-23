@@ -16,6 +16,7 @@ import {
   createLayoutTilingDrag,
   createTilingDragOps,
   deriveDropCommitTree,
+  deriveDropPreviewTree,
   resolveTilingSwapPreview,
   tilingDragParts,
   tilingDragSplitOptions,
@@ -298,6 +299,35 @@ describe("deriveDropCommitTree: a release commits what the frame drew", () => {
       expect(deriveDropCommitTree({ ...base, drag: shown })).toBe(after.tree.layout);
       expect(deriveDropCommitTree(base)).toEqual(after.tree.layout);
     }
+  });
+});
+
+describe("deriveDropPreviewTree: dragMode preview draws the tree a release commits", () => {
+  it("is after(place).tree, from the shown drag, for every held swap and beside", () => {
+    let checked = 0;
+    for (const { tree } of goldenTrees()) {
+      const leaves = readLeafNodeIds(tree);
+      if (leaves.length < 2) continue;
+      const source = leaves[0]!;
+      const shown = createLayoutTilingDrag({ layout: tree, sourceLeafId: source, container: AREA, config: CONFIG, min: CONFIG.minPaneSizePx });
+      if (shown == null) continue;
+      for (const other of leaves.slice(1)) {
+        const tile = (findLeafByIdIn(tree, other) as TilingLeafNode).tileId;
+        const places = [
+          { place: { kind: "swap", at: tile }, action: "swap", finalEdge: null },
+          ...(["left", "right", "top", "bottom"] as const).map((side) => ({ place: { kind: "beside" as const, at: tile, side }, action: "edge-insert", finalEdge: side })),
+        ] as const;
+        for (const { place, action, finalEdge } of places) {
+          const after = shown.after(place);
+          if (after.refusal != null || after.tree.layout == null) continue;
+          const target = { leafId: other, zone: finalEdge ?? "center", action, finalEdge, selectedSplitZone: null, blockedReason: null, place } as unknown as DragResolvedTarget;
+          const params = { layout: tree, sourceLeafId: source, target, container: AREA, config: CONFIG, drag: shown };
+          expect(deriveDropPreviewTree(params)).toBe(deriveDropCommitTree(params));
+          checked += 1;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(20);
   });
 });
 
