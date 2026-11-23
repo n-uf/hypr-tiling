@@ -20,8 +20,8 @@ import type {
 
 /**
  * Pickup threshold in CSS px — the pointer must travel this far from the
- * pickup origin before a press becomes a drag. Mirrors the geometric
- * `hysteresisPx = 6` family and the Hyprland `binds:drag_threshold` analog, so a
+ * pickup origin before a press becomes a drag. As the drag hit's 6 px edge
+ * measure and the Hyprland `binds:drag_threshold` analog, so a
  * tap/click on the title bar is never stolen by the drag layer.
  */
 export const DRAG_PICKUP_THRESHOLD_PX: number = 6;
