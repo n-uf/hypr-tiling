@@ -2037,6 +2037,7 @@ function PaneHitZoneOverlay({
         )}
         <div
           className="rounded-md border"
+          data-hpt-hit-zone-center={paneHitZoneDebug.leafId}
           style={{
             ...centerZoneInsetStyle(centerRatioX, centerRatioY, paneHitZoneDebug.centerInsetPercent),
             borderColor: rgbaFromHex(
@@ -2841,6 +2842,8 @@ function ProjectedLandingOverlays({
           return (
             <div
               key={`${overlay.subject}:${overlay.leafId}`}
+              data-hpt-projected-landing={overlay.subject}
+              data-hpt-projected-leaf={overlay.leafId}
               className={cn(
                 "absolute rounded-md",
                 borderEnabled ? "border" : "",

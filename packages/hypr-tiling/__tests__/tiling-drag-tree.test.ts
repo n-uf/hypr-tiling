@@ -301,6 +301,26 @@ describe("deriveDropCommitTree: a release commits what the frame drew", () => {
       expect(deriveDropCommitTree(base)).toEqual(after.tree.layout);
     }
   });
+
+  it("a shown drag with parts and still panes is the one used, the same tree as a new object included; without it the still panes still refuse", () => {
+    const leaf = (id: string, tileId: string): TilingLeafNode => ({ kind: "leaf", id, tileId }) as TilingLeafNode;
+    const tree = { kind: "split", id: "r", axis: "horizontal", ratio: 0.5, first: leaf("A", "ta"), second: { kind: "split", id: "s", axis: "vertical", ratio: 0.5, first: leaf("B", "tb"), second: leaf("C", "tc") } } as TilingLayoutNode;
+    const still = (tile: string): boolean => tile === "tc";
+    const parts = tilingDragParts({ bands: new Map([["tb", [{ left: 0, top: 0, right: 0, height: 30 }]]]) });
+    const shown = createLayoutTilingDrag({ layout: tree, sourceLeafId: "A", container: AREA, config: CONFIG, min: CONFIG.minPaneSizePx, still, parts })!;
+    const after = shown.after({ kind: "swap", at: "tb" });
+    expect(after.refusal).toBeNull();
+    const onB = { leafId: "B", place: { kind: "swap", at: "tb" } } as unknown as DragResolvedTarget;
+    const base = { layout: tree, sourceLeafId: "A", container: AREA, config: CONFIG };
+    expect(deriveDropCommitTree({ ...base, target: onB, drag: shown })).toBe(after.tree.layout);
+    expect(deriveDropCommitTree({ ...base, layout: JSON.parse(JSON.stringify(tree)) as TilingLayoutNode, target: onB, drag: shown })).toBe(after.tree.layout);
+    // A place on a still pane: the frame's drag refuses it, and so does a drag made here with the same still panes.
+    expect(shown.after({ kind: "swap", at: "tc" }).refusal).not.toBeNull();
+    const onC = { leafId: "C", place: { kind: "swap", at: "tc" } } as unknown as DragResolvedTarget;
+    const free = createLayoutTilingDrag({ layout: tree, sourceLeafId: "A", container: AREA, config: CONFIG, min: CONFIG.minPaneSizePx })!.after({ kind: "swap", at: "tc" });
+    expect(deriveDropCommitTree({ ...base, target: onC })).toEqual(free.tree.layout);
+    expect(deriveDropCommitTree({ ...base, target: onC, still })).not.toEqual(free.tree.layout);
+  });
 });
 
 describe("deriveDropPreviewTree: dragMode preview draws the tree a release commits", () => {
