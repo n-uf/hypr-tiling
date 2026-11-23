@@ -434,15 +434,14 @@ function HomeTopBar({
         activeClassName={tokens.switchActive}
         inactiveClassName={tokens.switchInactive}
       />
-      {/* The held look's five pills need the widest bar: from xl up (the drag keeps the stored or
-          default look either way). */}
+      {/* The held look's menu leaves the workspace tabs their room from 2xl up (the drag keeps the
+          stored or default look either way). */}
       <HeldLookSwitch
         look={heldLook}
         onChange={onHeldLookChange}
-        className={`${tokens.switchGroup} max-xl:hidden`}
+        className={`${tokens.switchGroup} max-2xl:hidden`}
         labelClassName={tokens.switchLabel}
-        activeClassName={tokens.switchActive}
-        inactiveClassName={tokens.switchInactive}
+        selectClassName={`${tokens.switchActive} cursor-pointer appearance-none border-0 pr-3 outline-none`}
       />
       <div
         role="group"

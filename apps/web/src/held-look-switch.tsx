@@ -97,45 +97,48 @@ export function useHomeHeldLook(): readonly [
 }
 
 /**
- * The top bar's held-look switch, the same segmented pills as the drop and
- * skin switches beside it: "held" then one pill per look, the active one
- * pressed.
+ * The top bar's held-look switch, in the drop and skin switches' group style:
+ * "held" then a menu of the five looks (five pills would take the room the
+ * workspace tabs need).
  */
 export function HeldLookSwitch({
   look,
   onChange,
   className,
   labelClassName,
-  activeClassName,
-  inactiveClassName,
+  selectClassName,
 }: {
   look: TilingHeldOverTarget;
   onChange: (next: TilingHeldOverTarget) => void;
   className: string;
   labelClassName: string;
-  activeClassName: string;
-  inactiveClassName: string;
+  selectClassName: string;
 }): React.ReactElement {
+  const current = HELD_LOOK_OPTIONS.find((option): boolean => option.id === look);
   return (
     <div role="group" aria-label="Dragged pane over a target" className={className} data-held-look={look}>
       <span aria-hidden className={labelClassName}>
         held
       </span>
-      {HELD_LOOK_OPTIONS.map((option): React.ReactElement => {
-        const active: boolean = option.id === look;
-        return (
-          <button
-            key={option.id}
-            type="button"
-            aria-pressed={active}
-            title={option.hint}
-            onClick={(): void => onChange(option.id)}
-            className={active ? activeClassName : inactiveClassName}
-          >
-            {option.label}
-          </button>
-        );
-      })}
+      <select
+        aria-label="Dragged pane over a target"
+        title={current?.hint}
+        value={look}
+        onChange={(event: React.ChangeEvent<HTMLSelectElement>): void => {
+          if (isHeldLook(event.target.value)) {
+            onChange(event.target.value);
+          }
+        }}
+        className={selectClassName}
+      >
+        {HELD_LOOK_OPTIONS.map(
+          (option): React.ReactElement => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ),
+        )}
+      </select>
     </div>
   );
 }
