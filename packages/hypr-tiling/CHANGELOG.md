@@ -103,9 +103,12 @@ the version number alone does not flag them.
   is read from the page again and the drag goes on; its hold starts afresh.
   Switching between snap and indicator mid-drag changes nothing until the
   next drag: the drag keeps the preview it was lifted with.
-- **A tab torn off a group is refused over its own group.** Held over the
-  group it came from, the place is refused (`"self"`) and the cursor shows
-  not-allowed; a release there puts the layout back.
+- **A tab torn off a group goes back where it was.** Held over its own cell
+  in the group's tab strip, it is home: the group is drawn as at the lift and
+  a release there puts the layout back, for a group of two as for a larger
+  one (a group of two keeps standing with its other tab while the tab is
+  out). Held over the group's body, the place is refused (`"self"`) and the
+  cursor shows not-allowed; a release there puts the layout back too.
 - **`dragMode: "preview"` draws what a release commits.** Its projected
   overlays draw the held place's `after(place)` tree from the drag's own hit,
   the tree the release commits; before, they were projected with the old

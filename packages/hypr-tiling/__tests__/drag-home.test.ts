@@ -19,6 +19,8 @@ import { resolveDragCursorPresentation } from "../engine/drag-cursor";
 import { createDragInputDriver, type DragInputDriver } from "../engine/input-driver";
 import { resolveLayoutGeometry } from "../engine/leaf-geometry";
 import { removeLeafTile } from "../engine/state";
+import { deriveDropCommitTree } from "../engine/tiling-drag-tree";
+import type { TilingHeld } from "@n-uf/placement/tiling";
 import type {
   TilingDropAction,
   TilingLayoutConfig,
@@ -402,6 +404,55 @@ describe("drag home — a tab torn off its group", (): void => {
     // Over the group's own body, where the tab came from: it is not home.
     expect(run.at({ x: g.x + g.width / 2, y: g.y + g.height / 2 }).held).not.toEqual({ kind: "home" });
   });
+});
+
+describe("drag home — a torn tab released over its own tab cell or its group's body puts the layout back", (): void => {
+  const STRIP_PX = 28;
+  const TAB_PX = 40;
+  for (const size of [2, 3] as const) {
+    const members = ["B", "C", "D"].slice(0, size).map((id: string) => ({ kind: "leaf" as const, id, tileId: id.toLowerCase() }));
+    for (const torn of ["first", "last"] as const) {
+      const index: number = torn === "first" ? 0 : size - 1;
+      const tab: string = members[index]!.id;
+      it(`a group of ${size}, the ${torn} tab torn: its own cell is home and commits nothing; the body is refused (self) and commits nothing`, (): void => {
+        const layout: TilingLayoutNode = {
+          kind: "split",
+          id: "root",
+          axis: "horizontal",
+          ratio: 0.5,
+          first: { kind: "leaf", id: "A", tileId: "a" },
+          second: { kind: "group", id: "g", members, activeMemberId: tab },
+        };
+        const widths = new Map(members.map((m): [string, number] => [m.tileId, TAB_PX]));
+        const drag = layoutDrag(layout, tab, AREA, CONFIG, undefined, { strip: { top: 0, height: STRIP_PX, left: 0, gap: 0, widths } })!;
+        const slot = resolveLayoutGeometry(layout, AREA, CONFIG).leaves.get(tab)!;
+        const commitOf = (place: TilingHeld<string> | null): TilingLayoutNode | null =>
+          deriveDropCommitTree({
+            layout,
+            sourceLeafId: tab,
+            target: place == null ? null : ({ leafId: tab, place } as unknown as DragResolvedTarget),
+            container: AREA,
+            config: CONFIG,
+            drag,
+          });
+
+        // Over its own tab cell: the join back at its own index gives the lift's tree back, so it is home.
+        const cell = hitRun(drag, "lift").at({ x: slot.x + TAB_PX * index + TAB_PX / 2, y: slot.y + STRIP_PX / 2 });
+        expect(cell.held).toEqual({ kind: "home" });
+        // The pane the group draws once the tab is out: the other tab of two, else the middle one of three.
+        const drawn: string = members[size === 2 ? 1 - index : 1]!.tileId;
+        expect(drag.after({ kind: "join", at: drawn, index }).tree.layout).toEqual(layout);
+        expect(commitOf(cell.held)).toBeNull();
+
+        // Over the group's body: a swap with its own stack, refused `self`; a release there commits nothing.
+        const body = hitRun(drag, "lift").at({ x: slot.x + slot.width / 2, y: slot.y + slot.height / 2 });
+        expect(body.held).toBeNull();
+        expect(body.refused?.kind).toBe("swap");
+        expect(drag.after(body.refused!).refusal?.code).toBe("self");
+        expect(commitOf(body.refused)).toBeNull();
+      });
+    }
+  }
 });
 
 

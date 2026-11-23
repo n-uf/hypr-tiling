@@ -157,8 +157,9 @@ function withLoose(released: TilingDragTree): { readonly tree: TilingLayoutNode;
 /** What {@link createTilingDragOps} takes. */
 export interface TilingDragOpsOptions {
   /**
-   * Commit-time reconciliation, part of every held place's tree but home's. Default: none, so a swap's tree is
-   * exactly the swap reducer's. The renderer still reconciles a committed tree (`normalizeLayout`) when it stores it.
+   * Commit-time reconciliation, part of every held place's tree but home's, after the adapter's own (a group of one,
+   * which only a release leaves, becomes its bare leaf). Default: none more, so a swap's tree is exactly the swap
+   * reducer's. The renderer still reconciles a committed tree (`normalizeLayout`) when it stores it.
    */
   readonly normalize?: (layout: TilingLayoutNode) => TilingLayoutNode;
   /**
@@ -172,16 +173,18 @@ export interface TilingDragOpsOptions {
  * hypr-tiling's `TilingTree` adapter over {@link TilingDragTree}, keyed by tile id:
  * - `split`: the layout as the renderer maps it, a group standing in it as its active member's tile;
  * - `stackOf`: the group a tile is a member of;
- * - `release`: a pane leaves its slot or its group (`extractLeafNode`, the group collapsing to its last member), a
- *   whole group leaves its slot (`removeGroupNode`); both close the gap as `detachDragSubject` does, and the node
- *   taken out is kept loose;
+ * - `release`: a pane leaves its slot or its group (`extractLeafNode`), a whole group leaves its slot
+ *   (`removeGroupNode`); both close the gap as `detachDragSubject` does, and the node taken out is kept loose. A tab
+ *   torn off a group of two leaves the group standing with its last member (a group of one, as placement's reference
+ *   adapter keeps a stack of one), so a join back at the tab's own index gives the lift's tree back, which the drag
+ *   reads as home;
  * - `swap`: `swapLeafTiles` for a pane (the two tiles trade leaves, in a group or not), `swapGroupWithSlot` for a
  *   whole group (it trades slots with the slot `at` is drawn in);
  * - `beside`: `insertLeafAdjacent` / `insertGroupAdjacent` of the loose node on `at`'s side, half and half, the axis
  *   the side's;
  * - `join`: `mergeDraggedLeafIntoTarget` / `mergeGroupIntoTarget` of the loose node into `at`'s group (made one
  *   when `at` is alone), at `index`;
- * - `normalize`: the option's, or none.
+ * - `normalize`: a group of one becomes its bare leaf, then the option's.
  *
  * @internal
  */
@@ -216,6 +219,14 @@ export function createTilingDragOps(options: TilingDragOpsOptions = {}): TilingT
       const leaf: TilingLeafNode | null = leafOfTile(layout, subject.pane);
       if (leaf == null) {
         return tree;
+      }
+      const group: TilingGroupNode | null = groupOfTile(layout, subject.pane);
+      const rest: TilingLeafNode | undefined =
+        group != null && group.members.length === 2 ? group.members.find((member: TilingLeafNode): boolean => member.id !== leaf.id) : undefined;
+      if (group != null && rest != null) {
+        // A group of two keeps standing with its last member until normalize (see the adapter's doc).
+        const kept: TilingGroupNode = { ...group, members: [rest], activeMemberId: rest.id };
+        return { layout: normalizeStaticAxisFill(replaceNode(layout, group, kept)), loose: leaf };
       }
       const extraction = extractLeafNode(layout, leaf.id);
       if (extraction.extractedLeaf == null) {
@@ -263,16 +274,41 @@ export function createTilingDragOps(options: TilingDragOpsOptions = {}): TilingT
       return layout === back.tree ? released : { layout };
     },
   };
-  if (normalize != null) {
-    ops.normalize = (tree: TilingDragTree): TilingDragTree => {
-      if (tree.layout == null) {
-        return tree;
-      }
-      const layout: TilingLayoutNode = normalize(tree.layout);
-      return layout === tree.layout ? tree : { ...tree, layout };
-    };
-  }
+  ops.normalize = (tree: TilingDragTree): TilingDragTree => {
+    if (tree.layout == null) {
+      return tree;
+    }
+    const single: TilingLayoutNode = collapseGroupsOfOne(tree.layout);
+    const layout: TilingLayoutNode = normalize != null ? normalize(single) : single;
+    return layout === tree.layout ? tree : { ...tree, layout };
+  };
   return ops;
+}
+
+/** `layout` with the node `from` (by identity) replaced by `to`; the same object when `from` is not in it. */
+function replaceNode(layout: TilingLayoutNode, from: TilingLayoutNode, to: TilingLayoutNode): TilingLayoutNode {
+  if (layout === from) {
+    return to;
+  }
+  if (layout.kind !== "split") {
+    return layout;
+  }
+  const first: TilingLayoutNode = replaceNode(layout.first, from, to);
+  const second: TilingLayoutNode = replaceNode(layout.second, from, to);
+  return first === layout.first && second === layout.second ? layout : { ...layout, first, second };
+}
+
+/** `layout` with every group of one member replaced by that member; the same object when it has none. */
+function collapseGroupsOfOne(layout: TilingLayoutNode): TilingLayoutNode {
+  if (layout.kind === "group") {
+    return layout.members.length === 1 ? layout.members[0]! : layout;
+  }
+  if (layout.kind !== "split") {
+    return layout;
+  }
+  const first: TilingLayoutNode = collapseGroupsOfOne(layout.first);
+  const second: TilingLayoutNode = collapseGroupsOfOne(layout.second);
+  return first === layout.first && second === layout.second ? layout : { ...layout, first, second };
 }
 
 /**
