@@ -11,14 +11,21 @@ the version number alone does not flag them.
 
 ### Dragging a pane
 
-- **Its own place is a drop target for the whole drag.** Drag a pane away
-  and back over the spot it came from (for a tab group dragged whole or a
-  tab torn off it, the whole group): the panes that grew into that spot give
-  the room back, the cursor no longer shows "can't drop here", and a release
-  there puts the layout back exactly as it was. Before, once the pointer had
-  left, coming back met the neighbour's grown pane instead: a refused drop
-  over a tall tab group's old place, a new split or a merge into the
-  neighbour's title bar elsewhere.
+- **Its own place is a drop target for the whole drag.** Drag a pane, or a
+  tab group by its strip or title bar, away and back over the spot it came
+  from: the panes that grew into that spot give the room back, the cursor no
+  longer shows "can't drop here", and a release there puts the layout back
+  exactly as it was. Before, once the pointer had left, coming back met the
+  neighbour's grown pane instead: a refused drop over a tall tab group's old
+  place, a new split or a merge into the neighbour's title bar elsewhere.
+  The pointer comes back over the spot only 6 px inside its edge and leaves
+  it only past the edge, so a wobble there doesn't slide the panes back and
+  forth.
+- **A tab torn off its group is unchanged.** The group stays where it was,
+  so there is no empty spot to come back to: the group holds still until the
+  pointer first leaves it, and from then on the group's own strip (to put
+  the tab back at another position), the edges of its remaining pane and a
+  swap with that pane are ordinary drops, as in 26.11.9.
 - **A page scroll, a resize or a layout change of the viewport mid-drag**
   still ends it, now for the rest of the drag even after the pointer has
   left; from then on the old place is resolved like any other.
@@ -30,16 +37,22 @@ the version number alone does not flag them.
   it fits at the new place, exactly as the release commits it. Before, it
   counted only the dragged tab as moving and left the rest of the group in
   its old space, so a tall group "had no room" (the ⊘ cursor, and the pane
-  below never made room). Single panes were already judged this way.
+  below never made room). Single panes were already judged this way. The
+  drop indicator of a whole group's swap or merge (the "Indicator" preview
+  without live reflow) now shows the group moving as one, as it lands.
 - **Known limit: merging into the pane below by its title bar.** While a pane
   is away from its place at the top of a column, the pane below grows into
   that place, so its title bar lies inside the pane's own place, where a
   release puts the layout back. To group the two, drag the pane below onto
   the dragged pane's title bar instead. Side by side, or with the dragged
   pane below, nothing changes.
-- **Engine API:** the `dragging` state of `DragMachineState` gains `atHome`
-  (the pane's place is the target now) and `homeLost` (the page moved under
-  the drag). `leftHome` keeps its meaning and decides nothing any more.
+- **Engine API:** the `dragging` state of `DragMachineState` gains three
+  optional fields, so code that builds that state keeps compiling: `atHome`
+  (the pane's place is the target now; absent: false), `homeLost` (the page
+  moved under the drag; absent: false) and, on `armed` and `dragging` and the
+  `POINTER_DOWN` event, `liftLeavesGap` (whether lifting the subject empties
+  its place; absent: true). `leftHome` keeps its meaning; it decides only for
+  a torn tab.
 
 ## 26.11.10 — 2026-11-22
 
