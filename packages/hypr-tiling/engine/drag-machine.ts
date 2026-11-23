@@ -332,6 +332,12 @@ export interface DragRearmEvent {
    * `anchorFootprint` is the group's frame, strip and pane together.
    */
   subject?: DragSubject;
+  /**
+   * Whether lifting the subject from its NEW seat empties that seat (absent:
+   * true): false when the continued drag carries just a pane that a placement
+   * merged into a group of two or more. See {@link dragLiftLeavesGap}.
+   */
+  liftLeavesGap?: boolean;
   /** The tile the leaf carries — informational; unused by the reducer. */
   tileId?: string;
   /** The leaf's footprint measured on the NEW tree (its seat after the move). */
@@ -1033,6 +1039,7 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
           touchDrag: event.pointerType === "touch",
           sourceLeafId: event.sourceLeafId,
           ...(event.subject != null ? { subject: event.subject } : {}),
+          ...(event.liftLeavesGap != null ? { liftLeavesGap: event.liftLeavesGap } : {}),
           anchorFootprint: event.anchorFootprint,
           pointerAnchorOffset,
           heldFootprint: heldFootprintAt(event.anchorFootprint, pointerAnchorOffset, event.client),

@@ -8220,6 +8220,11 @@ const TilingRendererComponent = React.forwardRef<
       pointerType: request.pointerType,
       sourceLeafId: request.leafId,
       ...(rearmGroup != null ? { subject: "group" as const } : {}),
+      liftLeavesGap: dragLiftLeavesGap(
+        layout,
+        request.leafId,
+        rearmGroup != null ? "group" : "pane",
+      ),
       tileId: leaf.tileId,
       anchorFootprint: {
         left: rearmFrame.left,

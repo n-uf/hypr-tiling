@@ -1441,6 +1441,24 @@ describe("drag-machine — REARM (spring-load commit-and-rearm continuation drag
     expect(dragMachineReducer(cancel, rearm())).toBe(cancel);
   });
 
+  it("after rearm carrying just a pane that joined a group of 2+ (liftLeavesGap false), its seat is no target once left", (): void => {
+    // The pointer starts outside the new seat (over the tab strip): the seat never holds.
+    let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm({ liftLeavesGap: false }));
+    expect(state.phase === "dragging" && state.liftLeavesGap).toBe(false);
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 700, y: 500 } });
+    expect(state.phase === "dragging" && state.atHome === true).toBe(false);
+    // Over the group's remaining pane, a committable target commits there.
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("B", "center", "swap") });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase === "settling" && state.outcome).toBe("commit");
+    // Starting inside the seat, it holds until the pointer first leaves, then never again.
+    let inside: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm({ liftLeavesGap: false, client: { x: 700, y: 500 } }));
+    expect(inside.phase === "dragging" && inside.atHome === true).toBe(true);
+    inside = dragMachineReducer(inside, { type: "POINTER_MOVE", pointerId: 1, client: { x: 900, y: 500 } });
+    inside = dragMachineReducer(inside, { type: "POINTER_MOVE", pointerId: 1, client: { x: 700, y: 500 } });
+    expect(inside.phase === "dragging" && inside.atHome === true).toBe(false);
+  });
+
   it("after rearm, the NEW seat is the home: back over it, a release cancels (the pane stays on its new seat)", (): void => {
     let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm());
     expect(state.phase === "dragging" && state.atHome).toBe(false);
