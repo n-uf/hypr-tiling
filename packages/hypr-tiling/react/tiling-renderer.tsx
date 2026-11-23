@@ -68,7 +68,6 @@ import {
   resolvePaneCenterGeometry,
   toPaneLocalPoint,
 } from "../engine/drop-intent-resolver";
-import { collectStaticGatedLeafIds } from "../engine/drop-validity";
 import { createDragIntent, type DragIntent } from "@n-uf/motion/drag";
 import {
   paneRegion,
@@ -173,18 +172,18 @@ import {
   resolveMaximizeToggle,
 } from "../engine/pane-switching";
 import type { PointerCapturePort } from "../engine/pointer-capture-port";
-import type {
-  TilingProjectedLandingOverlay,
-  TilingProjectedLandingSubject,
-} from "../engine/projected-layout";
-import { resolveProjectedLandingOverlays } from "../engine/projected-layout";
+import { resolveProjectedLandingOverlays } from "../engine/drag-landing";
 import type { SchedulerPort } from "../engine/scheduler-port";
 import {
+  collectStaticGatedLeafIds,
   createLayoutTilingDrag,
   deriveDropCommitTree,
   deriveDropPreviewTree,
+  resolveTilingMove,
   resolveTilingSwapPreview,
   sameLayoutTree,
+  tilingStillTiles,
+  type TilingKeyboardMove,
   tilingDragParts,
   tilingDragZoneRefusals,
   tilingHitPaneCenter,
@@ -212,8 +211,6 @@ import {
   findLeafByDirection,
   findLeafById,
   groupLeaves,
-  insertGroupAdjacent,
-  insertLeafAdjacent,
   isStructurallyValidLayout,
   readLeafNodeIds,
   removeMemberFromGroup,
@@ -224,7 +221,6 @@ import {
   setSplitLayoutMode,
   setSplitMasterCount,
   setSplitMasterOrientation,
-  swapLeafTiles,
   toggleSplitAxis,
   ungroupNode,
   updateSplitRatio,
@@ -304,6 +300,8 @@ import type {
   TilingPaneHitZoneOverlayDebugState,
   TilingPaneSizing,
   TilingPaneSwitcherState,
+  TilingProjectedLandingOverlay,
+  TilingProjectedLandingSubject,
   TilingRenderTileGroupContext,
   TilingRenderTileProps,
   TilingOverlayPortalContainer,
@@ -825,17 +823,6 @@ function dragHitOptions(geometry: ResolvedTilingDropHitZoneGeometryCapability): 
   return { regions: { centerX: g.centerRatioX ?? g.centerRatio, centerY: g.centerRatioY ?? g.centerRatio, centerMin: g.centerMinPx, pixelRatio: g.devicePixelRatio } };
 }
 
-/** The drag's still panes (they take no drop): the tiles of the statically gated leaves of `layout`. */
-function stillTilesOf(layout: TilingLayoutNode, gated: ReadonlySet<string>): (tile: string) => boolean {
-  const tiles: Set<string> = new Set<string>();
-  for (const id of gated) {
-    const tile: string | undefined = findLeafById(layout, id)?.tileId;
-    if (tile != null) {
-      tiles.add(tile);
-    }
-  }
-  return (tile: string): boolean => tiles.has(tile);
-}
 
 function createDragHitSession(
   inputs: DragHitInputs,
@@ -850,7 +837,7 @@ function createDragHitSession(
     container: { width: inputs.width, height: inputs.height },
     config: inputs.config,
     min: inputs.config.minPaneSizePx,
-    still: stillTilesOf(inputs.layout, inputs.gated),
+    still: tilingStillTiles(inputs.layout, inputs.gated),
     parts: tilingDragParts(parts),
   });
   if (drag == null) {
@@ -5190,7 +5177,7 @@ const TilingRendererComponent = React.forwardRef<
       ? ensureDragHit(dragSourceLeafId, dragSubject)
       : dragHitRef.current;
   // The still panes, for a commit tree made without the drag's own drag.
-  const dragStill: (tile: string) => boolean = stillTilesOf(layout, rearrangeGatedLeafIds);
+  const dragStill: (tile: string) => boolean = tilingStillTiles(layout, rearrangeGatedLeafIds);
   // The preview overlays draw the tree a release commits: for a held place, the
   // hit's `after(place).tree` from the very drag the commit takes it from.
   const projectedDropLayout: TilingLayoutNode | null = React.useMemo(
@@ -5275,7 +5262,7 @@ const TilingRendererComponent = React.forwardRef<
     dragSourceTileId != null &&
     !(shownSnap && snappedTarget != null);
   // On a COMMIT settle the FSM has already left `dragging` (so `dragSourceLeafId`
-  // is null), but `onLayoutChange(deriveCandidateTree(...))` has not landed yet.
+  // is null), but `onLayoutChange(after(place).tree)` has not landed yet.
   // Hold the committed candidate for that frame so the display does NOT briefly
   // revert to the original (pre-drag) layout before the commit prop arrives —
   // that revert would otherwise make the survivors snap back then forward (a
@@ -6735,13 +6722,51 @@ const TilingRendererComponent = React.forwardRef<
     paneElement?.focus({ preventScroll: true });
   }, []);
 
+  // --- One move rule ---------------------------------------------------------
+  // A keyboard move (move mode's commit) or a move command (`swap-panes`,
+  // `insert-adjacent`) is the drag of its subject to one place: it commits what
+  // a drag's release there commits (placement's `after(place).tree`, on the
+  // same stage, minimum size and still panes), reconciled as a drop's commit
+  // is, and it is refused wherever that drag is (under the minimum, a still
+  // pane, no room).
+  const resolveMove = React.useCallback(
+    (move: TilingKeyboardMove) =>
+      resolveTilingMove({
+        layout,
+        move,
+        container: viewportSizeRef.current,
+        config: configRef.current,
+        gated: rearrangeGatedLeafIds,
+      }),
+    [layout, rearrangeGatedLeafIds],
+  );
+  const commitMove = React.useCallback(
+    (move: TilingKeyboardMove): boolean => {
+      const moved: TilingLayoutNode | null = resolveMove(move).layout;
+      if (moved == null) {
+        return false;
+      }
+      commitLayoutChange(
+        normalizeLayout(moved, {
+          containerWidthPx: viewportSizeRef.current.width,
+          containerHeightPx: viewportSizeRef.current.height,
+          config: configRef.current,
+          expectedTileIds: expectedTileIdsRef.current,
+        }),
+      );
+      armLayoutIdleSettle();
+      return true;
+    },
+    [armLayoutIdleSettle, commitLayoutChange, resolveMove],
+  );
+
   // --- Keyboard move mode (accessible drag analog) -------------------------
   // Enter move mode on a source pane; arrow keys then pick a destination
-  // neighbor (focusDirection), Enter commits via the SAME `insertLeafAdjacent`
-  // reducer drag uses (no parallel mutation path), Escape cancels. Gated per-leaf
-  // (`isLeafRearrangeEligible`): a statically-gated source cannot enter move mode
-  // and a gated neighbor is never aimed, so `insertLeafAdjacent` never runs
-  // against an unresolvable-geometry pane.
+  // neighbor (focusDirection), Enter commits through the one move rule above,
+  // Escape cancels. A still source cannot enter move mode
+  // (`isLeafRearrangeEligible`), an arrow never aims a place the move rule
+  // refuses, and a commit the rule refuses (the layout changed since the aim)
+  // leaves move mode without a change, as a drag released there does.
   const enterMoveMode = React.useCallback(
     (sourceLeafId: string): void => {
       controller.setMoveMode({
@@ -6769,18 +6794,21 @@ const TilingRendererComponent = React.forwardRef<
             current.sourceLeafId,
             direction,
           );
-          if (targetLeafId == null || rearrangeGatedLeafIds.has(targetLeafId)) {
+          if (targetLeafId == null) {
             return current;
           }
-          return {
-            ...current,
+          const placement: TilingMovePlacement = directionToPlacement(direction);
+          const verdict = resolveMove({
+            kind: "move-mode",
+            sourceLeafId: current.sourceLeafId,
             targetLeafId,
-            placement: directionToPlacement(direction),
-          };
+            placement,
+          });
+          return verdict.refusal != null ? current : { ...current, targetLeafId, placement };
         },
       );
     },
-    [controller, layout, rearrangeGatedLeafIds],
+    [controller, layout, resolveMove],
   );
 
   const commitMoveMode = React.useCallback((): void => {
@@ -6794,35 +6822,16 @@ const TilingRendererComponent = React.forwardRef<
       return;
     }
     // A pane in a tab group moves the whole group, as its title bar drags it.
-    const sourceGroup: TilingGroupNode | null = findGroupContainingLeaf(
-      layout,
-      current.sourceLeafId,
-    );
-    const nextLayout: TilingLayoutNode =
-      sourceGroup != null && sourceGroup.members.length >= 2
-        ? insertGroupAdjacent(
-            layout,
-            sourceGroup.id,
-            current.targetLeafId,
-            current.placement,
-          )
-        : insertLeafAdjacent(
-            layout,
-            current.sourceLeafId,
-            current.targetLeafId,
-            current.placement,
-          );
-    commitLayoutChange(
-      normalizeLayout(nextLayout, {
-        containerWidthPx: viewportSizeRef.current.width,
-        containerHeightPx: viewportSizeRef.current.height,
-        config: configRef.current,
-        expectedTileIds: expectedTileIdsRef.current,
-      }),
-    );
-    armLayoutIdleSettle();
-    setFocusedLeaf(current.sourceLeafId);
-  }, [armLayoutIdleSettle, controller, layout, commitLayoutChange, setFocusedLeaf]);
+    const committed: boolean = commitMove({
+      kind: "move-mode",
+      sourceLeafId: current.sourceLeafId,
+      targetLeafId: current.targetLeafId,
+      placement: current.placement,
+    });
+    if (committed) {
+      setFocusedLeaf(current.sourceLeafId);
+    }
+  }, [commitMove, controller, setFocusedLeaf]);
 
   // The ONE effectful command router (HT-API-COMMAND-KEYBOARD-SURFACE §7). Both
   // the keyboard layer and the imperative `dispatch` handle funnel a
@@ -6958,33 +6967,24 @@ const TilingRendererComponent = React.forwardRef<
           return true;
         }
         case "swap-panes": {
-          if (
-            findLeafById(layout, command.sourceLeafId) == null ||
-            findLeafById(layout, command.targetLeafId) == null ||
-            command.sourceLeafId === command.targetLeafId
-          ) {
-            return false;
-          }
-          commitLayoutChange(
-            swapLeafTiles(layout, command.sourceLeafId, command.targetLeafId),
-          );
-          return true;
+          // The one move rule: refused (no effect) where a drag would be.
+          return commitMove({
+            kind: "swap-panes",
+            sourceLeafId: command.sourceLeafId,
+            targetLeafId: command.targetLeafId,
+          });
         }
         case "insert-adjacent": {
           if (
-            findLeafById(layout, command.sourceLeafId) == null ||
-            findLeafById(layout, command.targetLeafId) == null
+            !commitMove({
+              kind: "insert-adjacent",
+              sourceLeafId: command.sourceLeafId,
+              targetLeafId: command.targetLeafId,
+              placement: command.placement,
+            })
           ) {
             return false;
           }
-          commitLayoutChange(
-            insertLeafAdjacent(
-              layout,
-              command.sourceLeafId,
-              command.targetLeafId,
-              command.placement,
-            ),
-          );
           setFocusedLeaf(command.sourceLeafId);
           return true;
         }
@@ -7259,6 +7259,7 @@ const TilingRendererComponent = React.forwardRef<
       aimMoveMode,
       cancelMoveMode,
       commandGates,
+      commitMove,
       commitMoveMode,
       controller,
       enterMoveMode,
@@ -7377,7 +7378,7 @@ const TilingRendererComponent = React.forwardRef<
         return;
       }
       // Move mode is modal: while it is open, Escape cancels, bare Enter commits
-      // (`insertLeafAdjacent`), the focus-direction bindings aim the destination,
+      // (the one move rule), the focus-direction bindings aim the destination,
       // and every other key is swallowed so the move stays predictable.
       if (controller.getState().moveMode != null) {
         if (event.code === "Escape") {
@@ -8194,9 +8195,8 @@ const TilingRendererComponent = React.forwardRef<
     // the untouched layout instead of persisting a broken one. Structurally
     // sound candidates commit through the SAME reducer args as the drop
     // preview (no release-time jump).
-    // Refuse gap-closed / missing-tile candidates: deriveCandidateTree may
-    // return removeLeafTile for non-committable targets, which is structurally
-    // valid but drops a host tile.
+    // A release with no held place, or on a refused one, has no tree (null):
+    // it commits nothing. A tree that drops a host tile is refused too.
     const expectedTileIds: ReadonlyArray<string> = expectedTileIdsRef.current;
     const coversHostTiles: boolean =
       committedTree != null &&
@@ -9999,7 +9999,7 @@ const TilingRendererComponent = React.forwardRef<
     maximizedGroup != null && activeMaximizedLeafId != null
       ? { ...maximizedGroup, activeMemberId: activeMaximizedLeafId }
       : maximizedLeaf;
-  // In live mode the displayed tree is the derived candidate tree (the
+  // In live mode the displayed tree is the held place's `after(place).tree` (the
   // destination physically reflows to the post-drop result); otherwise the prop
   // layout. The projected landing overlays (S' / T' / successor) are the
   // PREVIEW-mode rendering of the pending result — in live mode the real reflow +

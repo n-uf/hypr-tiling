@@ -9,17 +9,24 @@ import {
   type TilingHeld,
   type TilingMark,
   type TilingPart,
+  type TilingRefusal,
   type TilingStack,
   type TilingSubject,
   type TilingTree,
 } from "@n-uf/placement/tiling";
-import { deriveCandidateTree, type DragResolvedTarget, type DragSubject } from "./drag-machine";
+import type { DragResolvedTarget, DragSubject } from "./drag-machine";
 import type { TilingDropIntentState, TilingEdgeZone } from "./drop-intent-resolver";
 import { mapLayoutToSplit, sizingSplitOptions } from "./leaf-geometry";
-import { resolveProjectedDropLayout } from "./projected-layout";
+import {
+  crossAxisDimension,
+  isStaticAlongSplitAxis,
+  isStaticInDimension,
+  splitAxisDimension,
+} from "./pane-sizing";
 import {
   extractLeafNode,
   findGroupById,
+  findGroupContainingLeaf,
   insertGroupAdjacent,
   insertLeafAdjacent,
   mergeDraggedLeafIntoTarget,
@@ -29,7 +36,16 @@ import {
   swapGroupWithSlot,
   swapLeafTiles,
 } from "./state";
-import type { TilingGroupNode, TilingLayoutConfig, TilingLayoutNode, TilingLeafNode, TilingSplitNode } from "./types";
+import type {
+  TilingDimension,
+  TilingGroupNode,
+  TilingLayoutConfig,
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingMovePlacement,
+  TilingSplitAxis,
+  TilingSplitNode,
+} from "./types";
 
 /**
  * hypr-tiling's tree as `@n-uf/placement/tiling`'s drag reads and changes it: the layout tree and its own reducers,
@@ -162,7 +178,7 @@ export interface TilingDragOpsOptions {
  * - `swap`: `swapLeafTiles` for a pane (the two tiles trade leaves, in a group or not), `swapGroupWithSlot` for a
  *   whole group (it trades slots with the slot `at` is drawn in);
  * - `beside`: `insertLeafAdjacent` / `insertGroupAdjacent` of the loose node on `at`'s side, half and half, the axis
- *   the side's (as `insertDragSubjectAdjacent` places a drop);
+ *   the side's;
  * - `join`: `mergeDraggedLeafIntoTarget` / `mergeGroupIntoTarget` of the loose node into `at`'s group (made one
  *   when `at` is alone), at `index`;
  * - `normalize`: the option's, or none.
@@ -583,8 +599,8 @@ export function resolveTilingSwapPreview(
 /**
  * The layout tree a release on `target` commits: the drag hit's held place's `after(place).tree` (what its frame drew),
  * from the very drag the frame drew it with (`drag`, with its `min`, still panes and parts) when it is this drag's;
- * else from a drag made here on the same options (`min`, `still`). A drop with no place (not made by the drag's hit)
- * is `deriveCandidateTree`'s.
+ * else from a drag made here on the same options (`min`, `still`). Null when the release commits nothing: no held
+ * place, home, the pane's own place, or a place `after(place)` refuses.
  * @internal
  */
 export function deriveDropCommitTree(params: {
@@ -597,28 +613,26 @@ export function deriveDropCommitTree(params: {
   /** The drag the frame drew the held place with: used when it lifted `layout` itself. */
   readonly drag?: TilingDrag<TilingDragTree, string> | null;
   readonly still?: (tile: string) => boolean;
-}): TilingLayoutNode {
+}): TilingLayoutNode | null {
   const { layout, sourceLeafId, target, subject } = params;
   const place: TilingHeld<string> | undefined = target?.place;
-  if (target != null && place != null && place.kind !== "home" && target.leafId !== sourceLeafId) {
-    const drag =
-      params.drag != null && params.drag.lift.tree.layout != null && sameLayoutTree(params.drag.lift.tree.layout, layout)
-        ? params.drag
-        : createLayoutTilingDrag({
-            layout,
-            sourceLeafId,
-            subject,
-            container: params.container,
-            config: params.config,
-            min: params.config.minPaneSizePx,
-            ...(params.still != null ? { still: params.still } : {}),
-          });
-    const after: TilingAfter<TilingDragTree, string> | null = drag?.after(place) ?? null;
-    if (after != null && after.refusal == null && after.tree.layout != null) {
-      return after.tree.layout;
-    }
+  if (target == null || place == null || place.kind === "home" || target.leafId === sourceLeafId) {
+    return null;
   }
-  return deriveCandidateTree(layout, sourceLeafId, target, subject);
+  const drag =
+    params.drag != null && params.drag.lift.tree.layout != null && sameLayoutTree(params.drag.lift.tree.layout, layout)
+      ? params.drag
+      : createLayoutTilingDrag({
+          layout,
+          sourceLeafId,
+          subject,
+          container: params.container,
+          config: params.config,
+          min: params.config.minPaneSizePx,
+          ...(params.still != null ? { still: params.still } : {}),
+        });
+  const after: TilingAfter<TilingDragTree, string> | null = drag?.after(place) ?? null;
+  return after != null && after.refusal == null ? after.tree.layout : null;
 }
 
 /**
@@ -631,17 +645,186 @@ export function sameLayoutTree(a: TilingLayoutNode, b: TilingLayoutNode): boolea
 }
 
 /**
- * The layout tree `dragMode: "preview"`'s overlays draw for `target`: the tree a release on it commits. A held place
- * draws {@link deriveDropCommitTree}'s `after(place).tree`, from the same drag; a drop with no place (or home, or the
- * pane itself) draws the reducers' projection.
+ * The layout tree `dragMode: "preview"`'s overlays draw for `target`: the tree a release on it commits
+ * ({@link deriveDropCommitTree}'s `after(place).tree`, from the same drag), or null when a release there commits
+ * nothing, so nothing is drawn.
  * @internal
  */
 export function deriveDropPreviewTree(
   params: Omit<Parameters<typeof deriveDropCommitTree>[0], "sourceLeafId"> & { readonly sourceLeafId: string | null },
 ): TilingLayoutNode | null {
-  const { layout, sourceLeafId, target, subject } = params;
-  if (sourceLeafId == null || target?.place == null || target.place.kind === "home" || target.leafId === sourceLeafId) {
-    return resolveProjectedDropLayout(layout, sourceLeafId, target ?? null, subject);
+  const sourceLeafId: string | null = params.sourceLeafId;
+  return sourceLeafId == null ? null : deriveDropCommitTree({ ...params, sourceLeafId });
+}
+
+/**
+ * The along-axis pixel pin for a node static ALONG `axis`, or `null` for no usable (finite, strictly-positive) pin.
+ * Mirrors `leaf-geometry`'s `alongAxisPinPx`: a split with a fitting along-axis pin is geometry-resolvable
+ * (static-aware footprints handle it), so it does NOT gate its flexible sibling.
+ */
+function alongAxisPinPx(node: TilingLayoutNode, axis: TilingSplitAxis): number | null {
+  const dimension: TilingDimension = splitAxisDimension(axis);
+  const pinPx: number | undefined = dimension === "width" ? node.sizing?.widthPx : node.sizing?.heightPx;
+  if (pinPx == null || !Number.isFinite(pinPx) || pinPx <= 0) {
+    return null;
   }
-  return deriveDropCommitTree({ ...params, sourceLeafId });
+  return pinPx;
+}
+
+/** True when a child static-along-axis lacks a usable pin, so its split's space distribution is unknowable. */
+function childMakesSplitUnresolvable(node: TilingLayoutNode, axis: TilingSplitAxis): boolean {
+  return isStaticAlongSplitAxis(node, axis) && alongAxisPinPx(node, axis) == null;
+}
+
+/**
+ * The still panes of `layout`: the leaf ids that take part in no move (neither a moved subject nor a place's target),
+ * by a drag, the keyboard or a command. The drag takes their tiles as its `still` panes ({@link tilingStillTiles}).
+ *
+ * A leaf is still iff:
+ *   1. it is static in either dimension (a content-sized pane has no ratio footprint to relocate or split), or
+ *   2. it lies under a split that has a child static along its axis without a usable pin: that split's space
+ *      distribution is content-determined and unknowable to pure geometry, so the whole subtree is still.
+ *
+ * A split whose static-along-axis child is pinned is geometry-resolvable, so rule 2 does not fire there: only the
+ * static leaf itself (rule 1) is still, and its flexible sibling stays movable. A collapsed leaf's collapse-forced
+ * along-axis pin is a known extent, not a content size, so only its cross dimension counts for rule 1. A group is
+ * judged as one slot, keyed by its active member.
+ * @internal
+ */
+export function collectStaticGatedLeafIds(layout: TilingLayoutNode): ReadonlySet<string> {
+  const gated = new Set<string>();
+
+  function walk(node: TilingLayoutNode, inUnresolvableRegion: boolean, parentAxis: TilingSplitAxis | undefined): void {
+    if (node.kind === "leaf") {
+      const selfStatic: boolean =
+        node.collapsed === true && parentAxis != null
+          ? isStaticInDimension(node, crossAxisDimension(parentAxis))
+          : isStaticInDimension(node, "width") || isStaticInDimension(node, "height");
+      if (inUnresolvableRegion || selfStatic) {
+        gated.add(node.id);
+      }
+      return;
+    }
+    if (node.kind === "group") {
+      const groupStatic: boolean = isStaticInDimension(node, "width") || isStaticInDimension(node, "height");
+      if (inUnresolvableRegion || groupStatic) {
+        gated.add(node.activeMemberId);
+      }
+      return;
+    }
+    const splitUnresolvable: boolean =
+      childMakesSplitUnresolvable(node.first, node.axis) || childMakesSplitUnresolvable(node.second, node.axis);
+    const childRegionGated: boolean = inUnresolvableRegion || splitUnresolvable;
+    walk(node.first, childRegionGated, node.axis);
+    walk(node.second, childRegionGated, node.axis);
+  }
+
+  walk(layout, false, undefined);
+  return gated;
+}
+
+/** The drag's still panes (they take no drop): the tiles of the still leaves `gated` of `layout`. @internal */
+export function tilingStillTiles(layout: TilingLayoutNode, gated: ReadonlySet<string>): (tile: string) => boolean {
+  const tiles: Set<string> = new Set<string>();
+  for (const id of gated) {
+    const tile: string | undefined = leafOfLeafId(layout, id)?.tileId;
+    if (tile != null) {
+      tiles.add(tile);
+    }
+  }
+  return (tile: string): boolean => tiles.has(tile);
+}
+
+/**
+ * A user move that is not a pointer drag, by leaf ids. Each is the drag of a subject to one place, and commits what
+ * that drag's release there commits ({@link resolveTilingMove}):
+ * - `swap-panes`: the source pane swaps with the target (the drag's swap onto the target);
+ * - `insert-adjacent`: the source pane goes beside the target on `placement`'s side;
+ * - `move-mode`: keyboard move mode's commit, beside the target on `placement`'s side; a pane of a tab group of two or
+ *   more moves its whole group, as its title bar drags it.
+ * @internal
+ */
+export type TilingKeyboardMove =
+  | { readonly kind: "swap-panes"; readonly sourceLeafId: string; readonly targetLeafId: string }
+  | {
+      readonly kind: "insert-adjacent" | "move-mode";
+      readonly sourceLeafId: string;
+      readonly targetLeafId: string;
+      readonly placement: TilingMovePlacement;
+    };
+
+/** The drag a {@link TilingKeyboardMove} is: its source, its subject and its place (keyed by tile id). @internal */
+export interface TilingMovePlace {
+  readonly sourceLeafId: string;
+  readonly subject?: "group";
+  readonly place: Exclude<TilingHeld<string>, { kind: "home" }>;
+}
+
+/**
+ * The drag a keyboard or command move is: the subject (a pane, or for move mode a pane's group of two or more) and the
+ * place on the target leaf's tile. Null when the source or the target is not in `layout`.
+ * @internal
+ */
+export function tilingMovePlaceOf(layout: TilingLayoutNode, move: TilingKeyboardMove): TilingMovePlace | null {
+  const source: TilingLeafNode | null = leafOfLeafId(layout, move.sourceLeafId);
+  const target: TilingLeafNode | null = leafOfLeafId(layout, move.targetLeafId);
+  if (source == null || target == null) {
+    return null;
+  }
+  const at: string = target.tileId;
+  const place: Exclude<TilingHeld<string>, { kind: "home" }> =
+    move.kind === "swap-panes" ? { kind: "swap", at } : { kind: "beside", at, side: move.placement };
+  const group: TilingGroupNode | null = move.kind === "move-mode" ? findGroupContainingLeaf(layout, source.id) : null;
+  return group != null && group.members.length >= 2
+    ? { sourceLeafId: source.id, subject: "group", place }
+    : { sourceLeafId: source.id, place };
+}
+
+/** A keyboard or command move's verdict: the tree it commits, or why it commits nothing. @internal */
+export type TilingMoveResult =
+  | { readonly layout: TilingLayoutNode; readonly refusal: null }
+  | { readonly layout: null; readonly refusal: TilingRefusal<string> };
+
+/**
+ * The one move rule for a keyboard or command move: the tree a pointer drag of the same subject to the same place
+ * commits (`after(place).tree` of placement's `tilingDrag`, on the same stage, `min` and still panes), and its
+ * refusal when that place is refused (`room-along`, `room-across`, `fit`, `still`, `self`, `missing`). A still source
+ * is refused `still`, as a drag never lifts it; a source or target not in `layout` is refused `missing`. The caller
+ * reconciles the tree as a drop's commit does (`normalizeLayout`).
+ * @internal
+ */
+export function resolveTilingMove(params: {
+  readonly layout: TilingLayoutNode;
+  readonly move: TilingKeyboardMove;
+  readonly container: { readonly width: number; readonly height: number };
+  readonly config: TilingLayoutConfig;
+  /** The still leaves ({@link collectStaticGatedLeafIds}); computed from `layout` when left out. */
+  readonly gated?: ReadonlySet<string>;
+}): TilingMoveResult {
+  const { layout, move } = params;
+  const gated: ReadonlySet<string> = params.gated ?? collectStaticGatedLeafIds(layout);
+  const found: TilingMovePlace | null = tilingMovePlaceOf(layout, move);
+  if (found == null) {
+    return { layout: null, refusal: { code: "missing" } };
+  }
+  if (gated.has(found.sourceLeafId)) {
+    return { layout: null, refusal: { code: "still" } };
+  }
+  const drag: TilingDrag<TilingDragTree, string> | null = createLayoutTilingDrag({
+    layout,
+    sourceLeafId: found.sourceLeafId,
+    ...(found.subject != null ? { subject: found.subject } : {}),
+    container: params.container,
+    config: params.config,
+    min: params.config.minPaneSizePx,
+    still: tilingStillTiles(layout, gated),
+  });
+  if (drag == null) {
+    return { layout: null, refusal: { code: "missing" } };
+  }
+  const after: TilingAfter<TilingDragTree, string> = drag.after(found.place);
+  if (after.refusal != null) {
+    return { layout: null, refusal: after.refusal };
+  }
+  return after.tree.layout == null ? { layout: null, refusal: { code: "missing" } } : { layout: after.tree.layout, refusal: null };
 }

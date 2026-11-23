@@ -1,14 +1,4 @@
-import {
-  findGroupContainingLeaf,
-  findLeafById,
-  mergeDraggedLeafIntoTarget,
-  mergeGroupIntoTarget,
-  removeGroupNode,
-  removeLeafTile,
-  swapGroupWithSlot,
-  swapLeafTiles,
-} from "./state";
-import { insertDragSubjectAdjacent } from "./projected-layout";
+import { findGroupContainingLeaf, findLeafById, removeGroupNode, removeLeafTile } from "./state";
 import type { TilingDropIntentState, TilingEdgeZone } from "./drop-intent-resolver";
 import type {
   TilingExternalDropSubject,
@@ -69,8 +59,8 @@ export interface DragMachinePoint {
 /**
  * The resolved hover target the FSM tracks. Structurally a `TilingDropIntentState`
  * (the resolver output the renderer already produces), so the renderer can store
- * the full resolved intent verbatim and the candidate-tree derivation / commit
- * both read the SAME object the preview render reads — no second resolution path.
+ * the full resolved intent verbatim and the commit reads the SAME object (its
+ * held `place`) the preview render reads — no second resolution path.
  */
 export type DragResolvedTarget = TilingDropIntentState;
 
@@ -441,104 +431,9 @@ export function isCommittableTarget(
 }
 
 /**
- * TRUE live-reflow candidate tree. The rendered tree in live mode IS this — the
- * destination physically reflows to the post-drop result; there is NO projection
- * or result-shadow. Always derived from the ORIGINAL `layout` (never the previous
- * candidate) so zone jitter cannot accumulate, and it goes through the SAME pure
- * reducers the commit uses, so the committed tree equals the last candidate
- * (no release-time jump).
- *
- * - no target / self-target / non-committable → `removeLeafTile` (gap-closed
- *   base; the lifted source is held above the closed gap).
- * - `swap` → `swapLeafTiles`.
- * - `group-merge` → `mergeDraggedLeafIntoTarget` (insert into the target's
- *   group at `memberInsertIndex`, or append when that index is omitted;
- *   create `{target, source}` with the source active when the target is a
- *   loose leaf). Same reference when the source is already a member. A
- *   missing target leaf gap-closes.
- * - `edge-insert` → `insertDragSubjectAdjacent` at the resolved edge (the
- *   pane released, then placed beside the target), the same projection drop
- *   validity judges.
- */
-export function deriveCandidateTree(
-  layout: TilingLayoutNode,
-  sourceLeafId: string | null,
-  resolvedTarget: DragResolvedTarget | null,
-  subject?: DragSubject,
-): TilingLayoutNode {
-  if (sourceLeafId == null) {
-    return layout;
-  }
-  const groupId: string | null = dragSubjectGroupId(layout, sourceLeafId, subject);
-  if (groupId != null) {
-    return deriveGroupCandidateTree(layout, groupId, sourceLeafId, resolvedTarget);
-  }
-  if (resolvedTarget == null || resolvedTarget.leafId === sourceLeafId) {
-    return removeLeafTile(layout, sourceLeafId);
-  }
-  if (resolvedTarget.action === "swap") {
-    return swapLeafTiles(layout, sourceLeafId, resolvedTarget.leafId);
-  }
-  if (resolvedTarget.action === "group-merge") {
-    if (findLeafById(layout, resolvedTarget.leafId) == null) {
-      return removeLeafTile(layout, sourceLeafId);
-    }
-    return mergeDraggedLeafIntoTarget(
-      layout,
-      sourceLeafId,
-      resolvedTarget.leafId,
-      resolvedTarget.memberInsertIndex,
-    );
-  }
-  if (resolvedTarget.action === "edge-insert") {
-    const edgeZone: TilingEdgeZone | null = resolveCommitEdgeZone(resolvedTarget);
-    if (edgeZone == null) {
-      return removeLeafTile(layout, sourceLeafId);
-    }
-    return insertDragSubjectAdjacent(layout, sourceLeafId, resolvedTarget.leafId, edgeZone);
-  }
-  return removeLeafTile(layout, sourceLeafId);
-}
-
-/**
- * {@link deriveCandidateTree} for a whole tab group (`subject: "group"`): the
- * group node itself moves — swapped with the target's slot, inserted beside
- * it, or merged into it (every member joins as a tab, the dragged active tab
- * active) — and with no committable target the group is taken out.
- */
-function deriveGroupCandidateTree(
-  layout: TilingLayoutNode,
-  groupId: string,
-  sourceLeafId: string,
-  resolvedTarget: DragResolvedTarget | null,
-): TilingLayoutNode {
-  if (resolvedTarget == null || resolvedTarget.leafId === sourceLeafId) {
-    return removeGroupNode(layout, groupId);
-  }
-  if (findLeafById(layout, resolvedTarget.leafId) == null) {
-    return removeGroupNode(layout, groupId);
-  }
-  if (resolvedTarget.action === "swap") {
-    return swapGroupWithSlot(layout, groupId, resolvedTarget.leafId);
-  }
-  if (resolvedTarget.action === "group-merge") {
-    return mergeGroupIntoTarget(layout, groupId, resolvedTarget.leafId, resolvedTarget.memberInsertIndex);
-  }
-  if (resolvedTarget.action === "edge-insert") {
-    const edgeZone: TilingEdgeZone | null = resolveCommitEdgeZone(resolvedTarget);
-    if (edgeZone == null) {
-      return removeGroupNode(layout, groupId);
-    }
-    return insertDragSubjectAdjacent(layout, sourceLeafId, resolvedTarget.leafId, edgeZone, "group");
-  }
-  return removeGroupNode(layout, groupId);
-}
-
-/**
- * The candidate-tree leaf whose SLOT the dragged pane lands in — the slot the
- * drop indicator marks, the snap preview settles the pane into, and the others
- * make room around. Where the dragged pane lands in `deriveCandidateTree`
- * differs by action:
+ * The leaf whose SLOT the dragged pane lands in once the drop commits
+ * (`after(place).tree`) — the slot the drop indicator marks, the snap preview
+ * settles the pane into, and the others make room around. It differs by action:
  *
  * - `swap` (`swapLeafTiles` swaps tileIds IN PLACE) → the dragged pane moves
  *   onto the RESOLVED TARGET leaf; the source leaf now carries the displaced

@@ -9,22 +9,31 @@
  * The drag sections (`regions`, `drops`, `drop-boundary`, `drag-home`, `drag-home-return`, `drag-home-column`,
  * `drag-forward-column`) were re-recorded for the drag's place coming from placement's `tilingDrag` hit: they read
  * the hit and `after(place)` where they once read hypr-tiling's own zone classifier, validity and home rules.
+ *
+ * The one move rule (every move commits `after(place)` and shares its refusals) re-recorded `drops`,
+ * `drag-forward-column` and the keyboard rows of `edits` (`move/…`): a refused place commits nothing there now,
+ * where the reducers' tree used to be recorded, and a keyboard move is the drag's `after(beside)`.
  */
 import { createFakeClock, createFrameLoop, type FakeClock, type FrameLoop, type Rect } from "@n-uf/motion";
 import { createDragIntent } from "@n-uf/motion/drag";
 import { paneRegion, type TilingBasis, type TilingDrag, type TilingHeld, type TilingHit, type TilingHitRead, type TilingHitTarget } from "@n-uf/placement/tiling";
 import { resolvePaneCenterGeometry, TILING_DROP_INTENT_CONFIG } from "../../engine/drop-intent-resolver";
-import { collectStaticGatedLeafIds } from "../../engine/drop-validity";
-import { deriveCandidateTree, type DragMachinePoint, type DragResolvedTarget } from "../../engine/drag-machine";
-import { clampHeldRectToStage, resolveDragLandingRect } from "../../engine/drag-landing";
-import { createLayoutTilingDrag, deriveDropCommitTree, tilingDragParts, type TilingDragTree } from "../../engine/tiling-drag-tree";
+import type { DragMachinePoint, DragResolvedTarget } from "../../engine/drag-machine";
+import { clampHeldRectToStage, resolveTileRect } from "../../engine/drag-landing";
+import {
+  collectStaticGatedLeafIds,
+  createLayoutTilingDrag,
+  deriveDropCommitTree,
+  resolveTilingMove,
+  tilingDragParts,
+  type TilingDragTree,
+} from "../../engine/tiling-drag-tree";
 import { collectLeafFootprints, footprintsByLeafId, resolveLayoutGeometry } from "../../engine/leaf-geometry";
 import { buildDefaultDwindleLayout, normalizeLayout } from "../../engine/layout-normalize";
 import { createLeafMotion, type LeafMotion, type LeafMotionFrame } from "../../engine/leaf-motion";
 import {
   findLeafByDirection,
   growLeafToward,
-  insertLeafAdjacent,
   insertLeafInto,
   readLeafNodeIds,
   removeLeafTile,
@@ -355,9 +364,10 @@ export function dropCases(): Record<string, unknown> {
             finalEdge: zone === "center" ? null : zone,
             selectedSplitZone: zone === "center" ? null : zone,
             place,
-          } as unknown as Parameters<typeof deriveCandidateTree>[2];
+          } as unknown as DragResolvedTarget;
+          // A refused place commits nothing (null): no tree, no landing.
           const committed = deriveDropCommitTree({ layout: tree, sourceLeafId: s, target, container: { width: 1280, height: 800 }, config: CONFIGS.default! });
-          const landing = resolveDragLandingRect({ layout: tree, sourceLeafId: s, target, container: { width: 1280, height: 800 }, config: CONFIGS.default! });
+          const landing = committed == null ? null : resolveTileRect(committed, tileOfLeaf(tree, s)!, { width: 1280, height: 800 }, CONFIGS.default!);
           const valid: number[] = [];
           for (const config of [CONFIGS.default!, CONFIGS.body!]) {
             for (const area of [AREAS[0]!, AREAS[2]!]) {
@@ -377,7 +387,11 @@ export function dropCases(): Record<string, unknown> {
   return out;
 }
 
-/** Closing a pane, opening one, the keyboard's edge inserts and growth. */
+/**
+ * Closing a pane, opening one, the keyboard's edge inserts and growth. A keyboard edge insert (move mode's commit) is
+ * the one move rule's (`resolveTilingMove`): the drag's `after(beside)` on a 1280×800 stage under the default config,
+ * or `refused <code>` where that drag place is refused.
+ */
 export function editCases(): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const { name, tree } of goldenTrees()) {
@@ -387,7 +401,13 @@ export function editCases(): Record<string, unknown> {
     out[`open-first/${name}`] = shape(insertLeafInto(tree, { kind: "leaf", id: "L-new", tileId: "new" }, { kind: "root", side: "first" }));
     if (ids.length >= 2) {
       for (const side of ["left", "right", "top", "bottom"] as const) {
-        out[`move/${name}/${side}`] = shape(insertLeafAdjacent(tree, ids[0]!, ids[ids.length - 1]!, side));
+        const moved = resolveTilingMove({
+          layout: tree,
+          move: { kind: "move-mode", sourceLeafId: ids[0]!, targetLeafId: ids[ids.length - 1]!, placement: side },
+          container: { width: 1280, height: 800 },
+          config: CONFIGS.default!,
+        });
+        out[`move/${name}/${side}`] = moved.refusal != null ? `refused ${moved.refusal.code}` : shape(moved.layout);
       }
       for (const dir of ["left", "right", "up", "down"] as const) {
         out[`grow/${name}/${dir}`] = shape(growLeafToward(tree, ids[0]!, dir, { containerSizePx: 1280, gapPx: 10, minPaneSizePx: 96 }));
@@ -969,20 +989,17 @@ export function dragForwardColumnCases(): Record<string, unknown> {
         out[`${subject}/${ratio}`] = null;
         continue;
       }
+      // The same drag with no minimum: its `after` is the tree each side's change makes, refused or not.
+      const open = layoutDrag(layout, "A", area, { ...config, minPaneSizePx: 0 }, subject === "group" ? "group" : undefined)!;
       const edges: Record<string, unknown> = {};
       for (const zone of ["top", "bottom", "left", "right"] as const) {
         const after = drag.after({ kind: "beside", at: "b", side: zone });
-        const committed = deriveCandidateTree(
-          layout,
-          "A",
-          { leafId: "B", zone, action: "edge-insert", finalEdge: zone, selectedSplitZone: zone } as unknown as DragResolvedTarget,
-          subject,
-        );
+        const committed = open.after({ kind: "beside", at: "b", side: zone }).tree.layout!;
         edges[zone] = {
           verdict: after.refusal == null ? "valid" : after.refusal.code,
           committed: shape(committed),
           rects: [...resolveLayoutGeometry(committed, area, config).leaves].map(([id, r]) => [id, ...rectOf(r)]),
-          // What the drag's hit stores for the place, when it takes it: the reducers' tree, or the difference.
+          // What the drag's hit stores for the place, when it takes it: the change's tree, or the difference.
           hit: after.refusal != null ? "refused" : shape(after.tree.layout) === shape(committed) ? "same" : shape(after.tree.layout),
         };
       }

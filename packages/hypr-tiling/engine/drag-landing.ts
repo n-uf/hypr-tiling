@@ -1,21 +1,20 @@
 import { clampInto } from "@n-uf/placement";
-import {
-  deriveCandidateTree,
-  dragSubjectGroupId,
-  isCommittableTarget,
-  type DragResolvedTarget,
-  type DragSubject,
-} from "./drag-machine";
-import { resolveLeafRects, type TilingRect } from "./leaf-geometry";
-import { findGroupContainingLeaf, findLeafById } from "./state";
-import type { TilingLayoutConfig, TilingLayoutNode, TilingLeafNode } from "./types";
+import type { TilingDropIntentState } from "./drop-intent-resolver";
+import { collectLeafFootprints, footprintsByLeafId, resolveLeafRects, type TilingRect } from "./leaf-geometry";
+import { findGroupContainingLeaf, readLeafNodeIds, siblingSubtreeForLeaf } from "./state";
+import type {
+  TilingLayoutConfig,
+  TilingLayoutNode,
+  TilingLeafNode,
+  TilingPaneFootprint,
+  TilingProjectedLandingOverlay,
+} from "./types";
 
 /**
- * Where a dragged pane lands, DOM-free: the drop indicator's rect, the slot the
- * snap preview settles the pane into, and (by construction) the rect the pane
- * is laid out at once the drop commits, since all three come from the same
- * candidate tree (`deriveCandidateTree`, the tree the commit applies) laid out
- * by the renderer's own leaf geometry.
+ * Where a dragged pane lands, DOM-free, drawn from the tree the drop commits
+ * (placement's `after(place).tree`, see `tiling-drag-tree.ts`) laid out by the
+ * renderer's own leaf geometry: the rect of a tile in a tree, the held pane
+ * kept on the stage, and `dragMode: "preview"`'s landing overlays.
  */
 
 /** The built-in group tab strip, as the renderer draws it: a group member's pane sits beside it. */
@@ -44,45 +43,6 @@ export function findLeafByTileId(node: TilingLayoutNode, tileId: string): Tiling
     return node.members.find((member: TilingLeafNode): boolean => member.tileId === tileId) ?? null;
   }
   return findLeafByTileId(node.first, tileId) ?? findLeafByTileId(node.second, tileId);
-}
-
-/**
- * The rect (container px, origin at the container's top-left) the pane on
- * `sourceLeafId` lands at if the drag drops on `target`, or `null` when the
- * target does not commit (no target, the source itself, a non-committable
- * zone) or the pane would not be shown (an inactive group member).
- *
- * A pane that joins a group sits beside the group's tab strip, so the strip is
- * taken off its slot when it is shown (`groupStrip`). A whole group
- * (`subject: "group"`) is held as its frame, strip and pane together, so it
- * lands in the whole slot of the group it ends up in.
- */
-export function resolveDragLandingRect(params: {
-  readonly layout: TilingLayoutNode;
-  readonly sourceLeafId: string;
-  readonly target: DragResolvedTarget | null;
-  readonly container: { readonly width: number; readonly height: number };
-  readonly config: TilingLayoutConfig;
-  readonly groupStrip?: DragLandingGroupStrip;
-  readonly subject?: DragSubject;
-}): TilingRect | null {
-  const { layout, sourceLeafId, target, container, config } = params;
-  if (!isCommittableTarget(target, sourceLeafId)) {
-    return null;
-  }
-  const source: TilingLeafNode | null = findLeafById(layout, sourceLeafId);
-  if (source == null) {
-    return null;
-  }
-  const isGroup: boolean = dragSubjectGroupId(layout, sourceLeafId, params.subject) != null;
-  const landed: TilingLayoutNode = deriveCandidateTree(layout, sourceLeafId, target, params.subject);
-  return resolveTileRect(
-    landed,
-    source.tileId,
-    container,
-    config,
-    isGroup ? NO_DRAG_LANDING_GROUP_STRIP : (params.groupStrip ?? NO_DRAG_LANDING_GROUP_STRIP),
-  );
 }
 
 /**
@@ -134,4 +94,101 @@ export function resolveTileRect(
   return groupStrip.placement === "top"
     ? { x: rect.x, y: rect.y + (rect.height - height), width: rect.width, height }
     : { x: rect.x, y: rect.y, width: rect.width, height };
+}
+
+function unionFootprints(footprints: ReadonlyArray<TilingPaneFootprint>): TilingPaneFootprint | null {
+  if (footprints.length === 0) {
+    return null;
+  }
+  let minLeft: number = Number.POSITIVE_INFINITY;
+  let minTop: number = Number.POSITIVE_INFINITY;
+  let maxRight: number = Number.NEGATIVE_INFINITY;
+  let maxBottom: number = Number.NEGATIVE_INFINITY;
+  for (const footprint of footprints) {
+    minLeft = Math.min(minLeft, footprint.left);
+    minTop = Math.min(minTop, footprint.top);
+    maxRight = Math.max(maxRight, footprint.left + footprint.width);
+    maxBottom = Math.max(maxBottom, footprint.top + footprint.height);
+  }
+  return { left: minLeft, top: minTop, width: maxRight - minLeft, height: maxBottom - minTop };
+}
+
+/**
+ * A swap's overlays: the dragged source lands in the target's cell, and the target lands in the source's old cell.
+ * The swap keeps both leaves where they are and trades their tiles, so the two footprints are the current cells,
+ * with the subject that lands in each inverted relative to leaf identity.
+ */
+function resolveSwapLandingOverlays(
+  sourceLeafId: string,
+  targetLeafId: string,
+  projectedFootprints: ReadonlyMap<string, TilingPaneFootprint>,
+): ReadonlyArray<TilingProjectedLandingOverlay> {
+  const overlays: Array<TilingProjectedLandingOverlay> = [];
+  const sourceLandingFootprint: TilingPaneFootprint | undefined = projectedFootprints.get(targetLeafId);
+  if (sourceLandingFootprint != null) {
+    overlays.push({ subject: "source", leafId: targetLeafId, footprint: sourceLandingFootprint });
+  }
+  const targetLandingFootprint: TilingPaneFootprint | undefined = projectedFootprints.get(sourceLeafId);
+  if (targetLandingFootprint != null) {
+    overlays.push({ subject: "target", leafId: sourceLeafId, footprint: targetLandingFootprint });
+  }
+  return overlays;
+}
+
+/**
+ * A side's overlays: the source relocates next to the target, and the source's former sibling subtree takes the
+ * vacated cell as the `successor`. No `target` overlay: an insert does not displace the target.
+ */
+function resolveInsertLandingOverlays(
+  layout: TilingLayoutNode,
+  sourceLeafId: string,
+  projectedFootprints: ReadonlyMap<string, TilingPaneFootprint>,
+): ReadonlyArray<TilingProjectedLandingOverlay> {
+  const overlays: Array<TilingProjectedLandingOverlay> = [];
+  const sourceLandingFootprint: TilingPaneFootprint | undefined = projectedFootprints.get(sourceLeafId);
+  if (sourceLandingFootprint != null) {
+    overlays.push({ subject: "source", leafId: sourceLeafId, footprint: sourceLandingFootprint });
+  }
+  const siblingSubtree: TilingLayoutNode | null = siblingSubtreeForLeaf(layout, sourceLeafId);
+  if (siblingSubtree != null) {
+    const successorLeafIds: ReadonlyArray<string> = readLeafNodeIds(siblingSubtree);
+    const successorFootprints: ReadonlyArray<TilingPaneFootprint> = successorLeafIds
+      .map((leafId: string): TilingPaneFootprint | undefined => projectedFootprints.get(leafId))
+      .filter((footprint: TilingPaneFootprint | undefined): footprint is TilingPaneFootprint => footprint != null);
+    const successorFootprint: TilingPaneFootprint | null = unionFootprints(successorFootprints);
+    if (successorFootprint != null && successorLeafIds.length > 0) {
+      overlays.push({ subject: "successor", leafId: successorLeafIds[0]!, footprint: successorFootprint });
+    }
+  }
+  return overlays;
+}
+
+/**
+ * `dragMode: "preview"`'s landing overlays for the held drop, keyed by the subject taxonomy (`source`, `target`,
+ * `successor`). Footprints are laid out from `projectedLayout`, the tree the release commits (`after(place).tree`), so
+ * what is drawn equals what commits. None when nothing commits (`projectedLayout` null) or the stage is not measured.
+ * @internal
+ */
+export function resolveProjectedLandingOverlays(
+  layout: TilingLayoutNode,
+  projectedLayout: TilingLayoutNode | null,
+  sourceLeafId: string | null,
+  dropState: TilingDropIntentState | null,
+  viewportWidth: number,
+  viewportHeight: number,
+  config: TilingLayoutConfig,
+): ReadonlyArray<TilingProjectedLandingOverlay> {
+  if (projectedLayout == null || sourceLeafId == null || dropState == null || viewportWidth <= 0 || viewportHeight <= 0) {
+    return [];
+  }
+  const projectedFootprints: ReadonlyMap<string, TilingPaneFootprint> = footprintsByLeafId(
+    collectLeafFootprints(projectedLayout, 0, 0, viewportWidth, viewportHeight, config),
+  );
+  if (dropState.action === "swap") {
+    return resolveSwapLandingOverlays(sourceLeafId, dropState.leafId, projectedFootprints);
+  }
+  if (dropState.action === "edge-insert") {
+    return resolveInsertLandingOverlays(layout, sourceLeafId, projectedFootprints);
+  }
+  return [];
 }

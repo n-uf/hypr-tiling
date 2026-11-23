@@ -7,7 +7,6 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   DRAG_MACHINE_INITIAL_STATE,
-  deriveCandidateTree,
   detachDragSubject,
   dragMachineReducer,
   resolveDragCommitFocusLeafId,
@@ -15,7 +14,7 @@ import {
   type DragMachineState,
   type DragResolvedTarget,
 } from "../engine/drag-machine";
-import { resolveDragLandingRect } from "../engine/drag-landing";
+import { createLayoutTilingDrag } from "../engine/tiling-drag-tree";
 import {
   insertGroupAdjacent,
   mergeGroupIntoTarget,
@@ -96,14 +95,20 @@ describe("whole-group tree moves", (): void => {
   });
 });
 
-describe("deriveCandidateTree with a group subject", (): void => {
-  it("moves the group node for every committable drop, and takes it out otherwise", (): void => {
-    expect(deriveCandidateTree(LAYOUT, "C", null, "group")).toEqual(removeGroupNode(LAYOUT, "g"));
-    expect(deriveCandidateTree(LAYOUT, "C", target("A", "swap"), "group")).toEqual(swapGroupWithSlot(LAYOUT, "g", "A"));
-    expect(deriveCandidateTree(LAYOUT, "C", target("A", "group-merge"), "group")).toEqual(mergeGroupIntoTarget(LAYOUT, "g", "A"));
-    expect(deriveCandidateTree(LAYOUT, "C", target("A", "edge-insert", { finalEdge: "left" }), "group")).toEqual(
-      insertGroupAdjacent(LAYOUT, "g", "A", "left", { preserveParentSplitAxis: false, splitRatio: 0.5 }),
-    );
+describe("a drag with a group subject", (): void => {
+  it("moves the group node: after(swap) is the slot swap, a side keeps the group whole, and the base takes it out", (): void => {
+    const drag = createLayoutTilingDrag({
+      layout: LAYOUT,
+      sourceLeafId: "C",
+      subject: "group",
+      container: { width: 1000, height: 600 },
+      config: { gapPx: 0, minPaneSizePx: 40, handleSizePx: 0 },
+    })!;
+    expect(drag.base.tree.layout).toEqual(removeGroupNode(LAYOUT, "g"));
+    expect(drag.after({ kind: "swap", at: "a" }).tree.layout).toEqual(swapGroupWithSlot(LAYOUT, "g", "A"));
+    const beside = drag.after({ kind: "beside", at: "a", side: "left" });
+    expect(beside.refusal).toBeNull();
+    expect(groupOf(beside.tree.layout!, "g")?.members.map((m) => m.id)).toEqual(["B", "C"]);
   });
 
   it("a pane subject (or no group) moves the one pane, as before", (): void => {
@@ -119,16 +124,14 @@ describe("deriveCandidateTree with a group subject", (): void => {
   });
 
   it("the landing rect of a group is its whole slot (strip included), the rect of the group it lands as", (): void => {
-    const rect = resolveDragLandingRect({
+    const drag = createLayoutTilingDrag({
       layout: LAYOUT,
       sourceLeafId: "C",
-      target: target("A", "swap"),
+      subject: "group",
       container: { width: 1000, height: 600 },
       config: { gapPx: 0, minPaneSizePx: 40, handleSizePx: 0 },
-      groupStrip: { visible: true, heightPx: 28, placement: "top" },
-      subject: "group",
-    });
-    expect(rect).toEqual({ x: 0, y: 0, width: 500, height: 600 });
+    })!;
+    expect(drag.after({ kind: "swap", at: "a" }).landing).toEqual({ x: 0, y: 0, width: 500, height: 600 });
   });
 });
 

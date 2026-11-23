@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import { collectStaticGatedLeafIds } from "../engine/drop-validity";
+import { collectStaticGatedLeafIds } from "../engine/tiling-drag-tree";
 import type {
   TilingLayoutConfig,
   TilingLayoutNode,

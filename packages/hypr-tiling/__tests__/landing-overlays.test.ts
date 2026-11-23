@@ -1,11 +1,13 @@
+/**
+ * `dragMode: "preview"`'s landing overlays (S' / T' / successor), laid out from the tree the release commits: the
+ * drag's `after(place).tree` (`deriveDropPreviewTree`), so what is drawn is what commits.
+ */
 import { describe, expect, it } from "@jest/globals";
-import {
-  resolveProjectedDropLayout,
-  resolveProjectedLandingOverlays,
-} from "../engine/projected-layout";
+import type { TilingHeld } from "@n-uf/placement/tiling";
+import { resolveProjectedLandingOverlays } from "../engine/drag-landing";
 import { collectLeafFootprints, footprintsByLeafId } from "../engine/leaf-geometry";
-import type { TilingProjectedLandingOverlay } from "../engine/projected-layout";
-import { insertLeafAdjacent, swapLeafTiles } from "../engine/state";
+import { findLeafById } from "../engine/state";
+import { createLayoutTilingDrag, deriveDropPreviewTree } from "../engine/tiling-drag-tree";
 import type { TilingDropIntentState, TilingEdgeZone } from "../engine/drop-intent-resolver";
 import type {
   TilingDropAction,
@@ -13,6 +15,7 @@ import type {
   TilingLayoutNode,
   TilingLeafNode,
   TilingPaneFootprint,
+  TilingProjectedLandingOverlay,
   TilingSplitNode,
 } from "../engine/types";
 
@@ -92,6 +95,41 @@ function makeDropState(overrides: {
       devicePixelRatio: 1,
     },
   };
+}
+
+/** The drag's held place for a drop state: a swap, or a side (`finalEdge`) of the target's tile. */
+function placeOf(layout: TilingLayoutNode, dropState: TilingDropIntentState): Exclude<TilingHeld<string>, { kind: "home" }> | undefined {
+  const at: string | undefined = findLeafById(layout, dropState.leafId)?.tileId;
+  if (at == null) {
+    return undefined;
+  }
+  if (dropState.action === "swap") {
+    return { kind: "swap", at };
+  }
+  return dropState.action === "edge-insert" && dropState.finalEdge != null ? { kind: "beside", at, side: dropState.finalEdge } : undefined;
+}
+
+/** The tree the preview overlays draw for a drag of A: the release's `after(place).tree`, or null. */
+function resolveProjectedDropLayout(layout: TilingLayoutNode, sourceLeafId: string, dropState: TilingDropIntentState): TilingLayoutNode | null {
+  const place = placeOf(layout, dropState);
+  return deriveDropPreviewTree({
+    layout,
+    sourceLeafId,
+    target: place == null ? dropState : { ...dropState, place },
+    container: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+    config: GAP_FREE_CONFIG,
+  });
+}
+
+/** `after(place).tree` of a drag of `sourceLeafId`, made here. */
+function afterTree(layout: TilingLayoutNode, sourceLeafId: string, place: Exclude<TilingHeld<string>, { kind: "home" }>): TilingLayoutNode | null {
+  const drag = createLayoutTilingDrag({
+    layout,
+    sourceLeafId,
+    container: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+    config: GAP_FREE_CONFIG,
+  });
+  return drag?.after(place).tree.layout ?? null;
 }
 
 function projectedFootprintFor(layout: TilingLayoutNode, leafId: string): TilingPaneFootprint | undefined {
@@ -208,24 +246,16 @@ describe("resolveProjectedLandingOverlays — INSERT/MOVE successor subject", ()
   });
 });
 
-describe("projected drop layout == committed layout (preview-overlay single source of truth)", (): void => {
-  // `resolveProjectedDropLayout(...)` backs the PREVIEW-mode projected landing
-  // overlays (S' / T' / successor), and the drop commits via the SAME reducers
-  // (`swapLeafTiles` / `insertLeafAdjacent`). These assertions prove the two are
-  // identical, so the preview overlay geometry is byte-for-byte what commits.
-  // (Live detach mode commits through the same reducers on the original layout —
-  // see state.test.ts "live detach drag" for the live == preview convergence.)
-
-  it("swap: projected drop tree equals the committed swap reducer output", (): void => {
+describe("the preview overlays' tree is the drag's after(place).tree (preview-overlay single source of truth)", (): void => {
+  it("swap: the drawn tree is after(swap).tree", (): void => {
     const layout: TilingSplitNode = baseLayout();
     const dropState: TilingDropIntentState = makeDropState({ leafId: "C", action: "swap", zone: "center" });
     const provisional: TilingLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
-    const committed: TilingLayoutNode = swapLeafTiles(layout, "A", "C");
     expect(provisional).not.toBeNull();
-    expect(provisional).toEqual(committed);
+    expect(provisional).toEqual(afterTree(layout, "A", { kind: "swap", at: "tile-c" }));
   });
 
-  it("edge-insert: projected drop tree equals the committed insert reducer output", (): void => {
+  it("a side: the drawn tree is after(beside).tree", (): void => {
     const layout: TilingSplitNode = baseLayout();
     const dropState: TilingDropIntentState = makeDropState({
       leafId: "C",
@@ -234,37 +264,22 @@ describe("projected drop layout == committed layout (preview-overlay single sour
       finalEdge: "right",
     });
     const provisional: TilingLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
-    const committed: TilingLayoutNode = insertLeafAdjacent(layout, "A", "C", "right", {
-      preserveParentSplitAxis: false,
-      splitRatio: 0.5,
-    });
     expect(provisional).not.toBeNull();
-    expect(provisional).toEqual(committed);
+    expect(provisional).toEqual(afterTree(layout, "A", { kind: "beside", at: "tile-c", side: "right" }));
   });
 
-  it("edge-insert via selectedSplitZone fallback also matches the committed insert", (): void => {
+  it("draws nothing for a drop with no held place (the old zone classifier's edge has no tree)", (): void => {
     const layout: TilingSplitNode = baseLayout();
-    // finalEdge null → resolveProjectedDropLayout falls back to selectedSplitZone.
-    const dropState: TilingDropIntentState = makeDropState({
+    const classified: TilingDropIntentState = makeDropState({
       leafId: "C",
       action: "edge-insert",
       zone: "top",
       finalEdge: null,
       selectedSplitZone: "top",
     });
-    const provisional: TilingLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
-    const committed: TilingLayoutNode = insertLeafAdjacent(layout, "A", "C", "top", {
-      preserveParentSplitAxis: false,
-      splitRatio: 0.5,
-    });
-    expect(provisional).not.toBeNull();
-    expect(provisional).toEqual(committed);
-  });
-
-  it("returns null (no reflow) when the resolved action is not a move", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    const dropState: TilingDropIntentState = makeDropState({ leafId: "C", action: "none", zone: "center" });
-    expect(resolveProjectedDropLayout(layout, "A", dropState)).toBeNull();
+    expect(resolveProjectedDropLayout(layout, "A", classified)).toBeNull();
+    const none: TilingDropIntentState = makeDropState({ leafId: "C", action: "none", zone: "center" });
+    expect(resolveProjectedDropLayout(layout, "A", none)).toBeNull();
   });
 });
 

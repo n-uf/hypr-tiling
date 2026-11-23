@@ -13,7 +13,6 @@ import {
   type FrameScheduler,
   type TouchArmedMoveResolution,
   createFrameCoalescer,
-  deriveCandidateTree,
   dragMachineReducer,
   heldFootprintAt,
   hasCrossedPickupThreshold,
@@ -29,11 +28,10 @@ import {
   type DragRearmEvent,
 } from "../engine/drag-machine";
 import { createDragWatchdog } from "../engine/drag-recovery";
-import { collectGroups, findGroupContainingLeaf, findLeafById, groupLeaves, insertLeafAdjacent, readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../engine/state";
+import { findLeafById, readLeafNodeIds, swapLeafTiles } from "../engine/state";
 import type {
   TilingDropAction,
   TilingLayoutNode,
-  TilingGroupNode,
   TilingLeafDropZone,
   TilingLeafNode,
   TilingPaneFootprint,
@@ -42,10 +40,6 @@ import type {
 
 function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };
-}
-
-function memberIdsFromGroup(group: TilingGroupNode): ReadonlyArray<string> {
-  return group.members.map((member: TilingLeafNode): string => member.id);
 }
 
 /**
@@ -442,76 +436,6 @@ describe("drag-machine — commit eligibility (mirrors handleLeafDrop)", (): voi
   });
 });
 
-describe("drag-machine — derived candidate tree IS the live reflow (== commit, never a projection)", (): void => {
-  it("null target → removeLeafTile(layout, source) (gap-closed base; the pane is held above it)", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    expect(deriveCandidateTree(layout, "A", null)).toEqual(removeLeafTile(layout, "A"));
-    expect(readLeafNodeIds(deriveCandidateTree(layout, "A", null))).not.toContain("A");
-  });
-
-  it("self-target → removeLeafTile(layout, source) (no double image at the source)", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    expect(deriveCandidateTree(layout, "A", makeTarget("A", "center", "swap"))).toEqual(removeLeafTile(layout, "A"));
-  });
-
-  it("swap candidate === swapLeafTiles commit (release never jumps)", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    const candidate = deriveCandidateTree(layout, "A", makeTarget("C", "center", "swap"));
-    expect(candidate).toEqual(swapLeafTiles(layout, "A", "C"));
-    // The candidate is a REAL reflowed tree (every leaf present), not a projection.
-    expect([...readLeafNodeIds(candidate)].sort()).toEqual(["A", "B", "C"]);
-  });
-
-  it("edge-insert candidate === insertLeafAdjacent commit (the destination physically reflows)", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    const target: DragResolvedTarget = makeTarget("C", "left", "edge-insert"); // finalEdge "right"
-    const candidate = deriveCandidateTree(layout, "A", target);
-    const commit = insertLeafAdjacent(layout, "A", "C", "right", { preserveParentSplitAxis: false, splitRatio: 0.5 });
-    expect(candidate).toEqual(commit);
-    expect([...readLeafNodeIds(candidate)].sort()).toEqual(["A", "B", "C"]);
-  });
-
-  it("null source → original layout untouched", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    expect(deriveCandidateTree(layout, null, null)).toBe(layout);
-  });
-
-  it("group-merge candidate === addLeafToGroup commit", (): void => {
-    const layout: TilingLayoutNode = groupLeaves(baseLayout(), ["A", "B"]);
-    const target: DragResolvedTarget = makeTarget("A", "center", "group-merge");
-    const candidate: TilingLayoutNode = deriveCandidateTree(layout, "C", target);
-    const groups = collectGroups(candidate);
-    expect(groups).toHaveLength(1);
-    expect([...memberIdsFromGroup(groups[0])].sort()).toEqual(["A", "B", "C"]);
-    expect(findGroupContainingLeaf(candidate, "C")?.id).toBe(groups[0].id);
-  });
-
-  it("group-merge onto a loose leaf creates a group with the source active", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    const candidate: TilingLayoutNode = deriveCandidateTree(
-      layout,
-      "C",
-      makeTarget("B", "center", "group-merge"),
-    );
-    const group: TilingGroupNode | null = findGroupContainingLeaf(candidate, "C");
-    expect(group).not.toBeNull();
-    expect(group?.id).toBe("group-B");
-    expect(group == null ? [] : [...memberIdsFromGroup(group)].sort()).toEqual(["B", "C"]);
-    expect(group?.activeMemberId).toBe("C");
-    expect(findLeafById(candidate, "A")).not.toBeNull();
-  });
-
-  it("group-merge of a leaf already in the target group is a no-op", (): void => {
-    const layout: TilingLayoutNode = groupLeaves(baseLayout(), ["A", "B"]);
-    const candidate: TilingLayoutNode = deriveCandidateTree(
-      layout,
-      "A",
-      makeTarget("B", "center", "group-merge"),
-    );
-    expect(candidate).toBe(layout);
-  });
-});
-
 describe("drag-machine — landing leaf (swap lands in the TARGET slot, not the source slot)", (): void => {
   // `swapLeafTiles` swaps tileIds IN PLACE, so the dragged pane lands on the
   // resolved TARGET leaf; the drop indicator / snap slot must follow it there.
@@ -535,30 +459,16 @@ describe("drag-machine — landing leaf (swap lands in the TARGET slot, not the 
     expect(resolveDragLandingLeafId("A", makeTarget("B", "center", "swap"))).toBe("B");
   });
 
-  it("no target gap-closes the source OUT of the tree (the others close over it)", (): void => {
-    const gapClosed = deriveCandidateTree(baseLayout(), "A", null);
-    expect(readLeafNodeIds(gapClosed)).not.toContain("A");
-  });
-
-  it("SWAP preview == commit: candidate exchanges the two tiles, dragged pane lives ONCE at the landing (target) leaf", (): void => {
+  it("SWAP: the swap reducer trades the two tiles, so the dragged pane lives ONCE at the landing (target) leaf", (): void => {
     const layout: TilingSplitNode = baseLayout();
     const target: DragResolvedTarget = makeTarget("C", "center", "swap");
-    const candidate = deriveCandidateTree(layout, "A", target);
-    const landingLeafId: string | null = resolveDragLandingLeafId("A", target);
-    expect(landingLeafId).toBe("C");
-
-    // The dragged pane (tile-a) sits exactly once, at the landing/target leaf.
-    const allLeafIds: ReadonlyArray<string> = readLeafNodeIds(candidate);
-    const tileAHolders: ReadonlyArray<string> = allLeafIds.filter(
-      (id: string): boolean => findLeafById(candidate, id)?.tileId === "tile-a",
+    const swapped: TilingLayoutNode = swapLeafTiles(layout, "A", "C");
+    expect(resolveDragLandingLeafId("A", target)).toBe("C");
+    const tileAHolders: ReadonlyArray<string> = readLeafNodeIds(swapped).filter(
+      (id: string): boolean => findLeafById(swapped, id)?.tileId === "tile-a",
     );
     expect(tileAHolders).toEqual(["C"]);
-
-    // The displaced target content (tile-c) reflows into the vacated source slot
-    // (leaf "A"); both panes are present, exchanged — identical to the commit.
-    expect(findLeafById(candidate, "A")?.tileId).toBe("tile-c");
-    expect(findLeafById(candidate, "C")?.tileId).toBe("tile-a");
-    expect(candidate).toEqual(swapLeafTiles(layout, "A", "C"));
+    expect(findLeafById(swapped, "A")?.tileId).toBe("tile-c");
   });
 });
 

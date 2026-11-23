@@ -1,9 +1,8 @@
 import { describe, expect, it } from "@jest/globals";
-import { readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../engine/state";
+import { readLeafNodeIds, removeLeafTile } from "../engine/state";
 import {
   DRAG_MACHINE_INITIAL_STATE,
   activeDragSourceLeafId,
-  deriveCandidateTree,
   dragMachineReducer,
   type DragMachineEvent,
   type DragMachineState,
@@ -214,24 +213,14 @@ describe("live-drag cleanup — FSM cancel edges restore the ORIGINAL layout (ne
     expect([...readLeafNodeIds(layout)].sort()).toEqual(["A", "B", "C"]);
   });
 
-  it("pointerup over a valid swap commits the SAME tree the candidate render showed (no release-time jump)", (): void => {
-    const layout: TilingSplitNode = baseLayout();
+  it("pointerup over a valid swap commits the SAME target the render showed (no release-time jump)", (): void => {
     const dragging: DragMachineState = dragMachineDraggingOver("C");
-    // The candidate the render showed mid-drag:
-    const candidate: TilingLayoutNode =
-      dragging.phase === "dragging" ? deriveCandidateTree(layout, dragging.sourceLeafId, dragging.resolvedTarget) : layout;
-
     const settling: DragMachineState = dragMachineReducer(dragging, { type: "POINTER_UP", pointerId: 1 });
     expect(settling.phase).toBe("settling");
-    // The committed tree (settling.outcome === commit, same resolvedTarget):
-    const committed: TilingLayoutNode =
-      settling.phase === "settling"
-        ? deriveCandidateTree(layout, settling.sourceLeafId, settling.resolvedTarget)
-        : layout;
-    if (settling.phase === "settling") {
+    // The commit reads the very target the last frame drew from (its held place's `after(place).tree`).
+    if (settling.phase === "settling" && dragging.phase === "dragging") {
       expect(settling.outcome).toBe("commit");
+      expect(settling.resolvedTarget).toBe(dragging.resolvedTarget);
     }
-    expect(committed).toEqual(candidate);
-    expect(committed).toEqual(swapLeafTiles(layout, SOURCE_LEAF_ID, "C"));
   });
 });

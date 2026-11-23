@@ -3,15 +3,15 @@
  * - the library's conformance properties hold on it, over the golden trees (plain, and with every node feature);
  * - every held place's layout is what the renderer lays out for that tree (`resolveLeafRects`), so a frame that draws
  *   `after(held).layout` draws the renderer's own geometry;
- * - a swap's tree is the tree the existing swap reducers make (`deriveCandidateTree`), for a pane and a whole group;
- * - the operator's case: a swap reopens the subject's old place and the partner lands there.
+ * - a swap's tree is the tree the swap reducers make (`swapLeafTiles`, `swapGroupWithSlot`), for a pane and a whole group;
+ * - the case of a held swap: a swap reopens the subject's old place and the partner lands there.
  */
 import { describe, expect, it } from "@jest/globals";
 import { splitTreeOps, tilingConformance, tilingDrag, type Rect, type TilingDragOptions } from "@n-uf/placement/tiling";
-import { deriveCandidateTree, type DragResolvedTarget } from "../engine/drag-machine";
+import type { DragResolvedTarget, DragSubject } from "../engine/drag-machine";
 import { resolveLeafRects } from "../engine/leaf-geometry";
 import { normalizeLayout } from "../engine/layout-normalize";
-import { findGroupContainingLeaf, readLeafNodeIds } from "../engine/state";
+import { findGroupContainingLeaf, readLeafNodeIds, swapGroupWithSlot, swapLeafTiles } from "../engine/state";
 import {
   createLayoutTilingDrag,
   createTilingDragOps,
@@ -48,16 +48,11 @@ const treesFor = (config: TilingLayoutConfig): TilingDragTree[] =>
     .filter(({ tree }) => !overlaps(tree, AREA, config))
     .map(({ tree }) => ({ layout: tree }));
 
-/** A swap as the drop resolver reports it (only the fields the reducers read matter). */
-const swapOnto = (leafId: string): DragResolvedTarget =>
-  ({
-    leafId,
-    zone: "center",
-    action: "swap",
-    finalEdge: null,
-    selectedSplitZone: null,
-    blockedReason: null,
-  }) as unknown as DragResolvedTarget;
+/** The swap reducers' tree for a swap of `source` onto `target`: the whole group's slot swap for a group subject. */
+function reducerSwap(tree: TilingLayoutNode, source: string, target: string, subject: DragSubject): TilingLayoutNode {
+  const group = subject === "group" ? findGroupContainingLeaf(tree, source) : null;
+  return group == null ? swapLeafTiles(tree, source, target) : swapGroupWithSlot(tree, group.id, target);
+}
 
 /** Every leaf of `node` with its tile. */
 function leavesOf(node: TilingLayoutNode): TilingLeafNode[] {
@@ -150,7 +145,7 @@ describe("a held place's layout is the renderer's geometry of its tree", () => {
 });
 
 describe("a swap commits the tree the swap reducers make", () => {
-  it("after(swap).tree is deriveCandidateTree's swap, for a pane and a whole group, onto every drawn pane", () => {
+  it("after(swap).tree is the swap reducers' tree, for a pane and a whole group, onto every drawn pane", () => {
     let checked = 0;
     for (const { tree } of goldenTrees()) {
       for (const source of readLeafNodeIds(tree)) {
@@ -160,7 +155,7 @@ describe("a swap commits the tree the swap reducers make", () => {
             if (target === source) continue;
             const preview = resolveTilingSwapPreview(drag, target);
             if (preview == null) continue;
-            expect(preview.layout).toEqual(deriveCandidateTree(tree, source, swapOnto(target), subject));
+            expect(preview.layout).toEqual(reducerSwap(tree, source, target, subject));
             checked++;
           }
         }
@@ -268,7 +263,7 @@ describe("the operator's case: 02 held over 03 Install", () => {
 
   it("the release commits exactly what was shown", () => {
     const preview = resolveTilingSwapPreview(drag, "leaf-03")!;
-    const committed = deriveCandidateTree(layout, "leaf-02", swapOnto("leaf-03"));
+    const committed = swapLeafTiles(layout, "leaf-02", "leaf-03");
     expect(preview.layout).toEqual(committed);
     const drawn = rendererRectsByTile(committed, area, CONFIG);
     for (const [tile, rect] of preview.after.layout) expect(near(rect, drawn.get(tile))).toBe(true);
@@ -319,7 +314,23 @@ describe("deriveDropCommitTree: a release commits what the frame drew", () => {
     const onC = { leafId: "C", place: { kind: "swap", at: "tc" } } as unknown as DragResolvedTarget;
     const free = createLayoutTilingDrag({ layout: tree, sourceLeafId: "A", container: AREA, config: CONFIG, min: CONFIG.minPaneSizePx })!.after({ kind: "swap", at: "tc" });
     expect(deriveDropCommitTree({ ...base, target: onC })).toEqual(free.tree.layout);
-    expect(deriveDropCommitTree({ ...base, target: onC, still })).not.toEqual(free.tree.layout);
+    expect(deriveDropCommitTree({ ...base, target: onC, still })).toBeNull();
+  });
+
+  it("commits nothing (null) without a held place, at home, on the pane itself, or on a refused place: no fallback", () => {
+    const leaf = (id: string, tileId: string): TilingLeafNode => ({ kind: "leaf", id, tileId }) as TilingLeafNode;
+    const tree = { kind: "split", id: "r", axis: "horizontal", ratio: 0.5, first: leaf("A", "ta"), second: leaf("B", "tb") } as TilingLayoutNode;
+    const base = { layout: tree, sourceLeafId: "A", container: AREA, config: CONFIG };
+    const classified = { leafId: "B", action: "edge-insert", finalEdge: "left", selectedSplitZone: "left" } as unknown as DragResolvedTarget;
+    expect(deriveDropCommitTree({ ...base, target: null })).toBeNull();
+    expect(deriveDropCommitTree({ ...base, target: classified })).toBeNull();
+    expect(deriveDropCommitTree({ ...base, target: { ...classified, place: { kind: "home" } } as DragResolvedTarget })).toBeNull();
+    expect(deriveDropCommitTree({ ...base, target: { ...classified, leafId: "A", place: { kind: "swap", at: "ta" } } as DragResolvedTarget })).toBeNull();
+    // No room: with A released B fills the 1280 px stage, too narrow for two panes of a 700 px minimum.
+    const tight = { ...base, config: { ...CONFIG, minPaneSizePx: 700 } };
+    const side = { ...classified, place: { kind: "beside", at: "tb", side: "left" } } as DragResolvedTarget;
+    expect(createLayoutTilingDrag({ ...tight, min: 700 })!.after(side.place!).refusal).not.toBeNull();
+    expect(deriveDropCommitTree({ ...tight, target: side })).toBeNull();
   });
 });
 

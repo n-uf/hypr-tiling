@@ -1,8 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
-import { insertLeafAdjacent, readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../engine/state";
+import { readLeafNodeIds, removeLeafTile } from "../engine/state";
 import { resolveLeafDropPreview, resolveLeafDropPreviewForMode } from "../react/tiling-renderer";
-import { deriveCandidateTree } from "../engine/drag-machine";
-import { PLACEMENT_BY_DROP_ZONE } from "../engine/projected-layout";
 import type { TilingDropIntentState } from "../engine/drop-intent-resolver";
 import type {
   TilingLayoutConfig,
@@ -186,60 +184,6 @@ describe("live-mode render invariant — frozen gap-closed tree, no result-shado
     const liveShadow = resolveLeafDropPreviewForMode(true, TARGET_LEAF_ID, SOURCE_LEAF_ID, dropState);
     expect(previewShadow).not.toBeNull();
     expect(liveShadow).toBeNull();
-  });
-});
-
-describe("live-mode render invariant — the rendered tree IS the derived candidate tree (true reflow)", (): void => {
-  // These bind the render-path contract: while dragging in live mode the
-  // displayed `displayLayout` is `deriveCandidateTree(originalLayout, source,
-  // resolvedTarget)` — the destination physically reflows to the post-drop
-  // result. It is NEVER a frozen-source-only tree with a projected shadow, and
-  // the committed tree equals the last candidate (no release-time jump).
-  const SOURCE_LEAF_ID = "A";
-  const TARGET_LEAF_ID = "C";
-
-  it("no resolved target → candidate is the gap-closed base (source detached, riding the ghost)", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    const candidate = deriveCandidateTree(layout, SOURCE_LEAF_ID, null);
-    expect(candidate).toEqual(removeLeafTile(layout, SOURCE_LEAF_ID));
-    expect(readLeafNodeIds(candidate)).not.toContain(SOURCE_LEAF_ID);
-  });
-
-  it("swap intent → candidate equals swapLeafTiles (both panes still present, positions exchanged)", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    const dropState: TilingDropIntentState = makeDropState(TARGET_LEAF_ID, "center", "swap");
-    const candidate = deriveCandidateTree(layout, SOURCE_LEAF_ID, dropState);
-    expect(candidate).toEqual(swapLeafTiles(layout, SOURCE_LEAF_ID, TARGET_LEAF_ID));
-    expect([...readLeafNodeIds(candidate)].sort()).toEqual(["A", "B", "C"]);
-  });
-
-  it("edge-insert intent → candidate equals insertLeafAdjacent at the resolved edge (destination reflows)", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    // The fixture carries finalEdge "right" for non-center zones, and
-    // deriveCandidateTree resolves the commit edge as `finalEdge ?? selectedSplitZone`.
-    const dropState: TilingDropIntentState = makeDropState(TARGET_LEAF_ID, "right", "edge-insert");
-    const candidate = deriveCandidateTree(layout, SOURCE_LEAF_ID, dropState);
-    expect(candidate).toEqual(
-      insertLeafAdjacent(layout, SOURCE_LEAF_ID, TARGET_LEAF_ID, PLACEMENT_BY_DROP_ZONE["right"], {
-        preserveParentSplitAxis: false,
-        splitRatio: 0.5,
-      }),
-    );
-    expect([...readLeafNodeIds(candidate)].sort()).toEqual(["A", "B", "C"]);
-  });
-
-  it("candidate is always derived from the ORIGINAL layout — re-deriving on a moved target cannot accumulate drift", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    // Hover C (swap), then re-hover B (swap): each derivation starts from the
-    // pristine `layout`, so the second result is independent of the first.
-    const firstHover: TilingDropIntentState = makeDropState("C", "center", "swap");
-    const secondHover: TilingDropIntentState = makeDropState("B", "center", "swap");
-    const afterFirst = deriveCandidateTree(layout, SOURCE_LEAF_ID, firstHover);
-    const afterSecond = deriveCandidateTree(layout, SOURCE_LEAF_ID, secondHover);
-    expect(afterFirst).toEqual(swapLeafTiles(layout, SOURCE_LEAF_ID, "C"));
-    expect(afterSecond).toEqual(swapLeafTiles(layout, SOURCE_LEAF_ID, "B"));
-    // The original layout is never mutated by candidate derivation.
-    expect([...readLeafNodeIds(layout)].sort()).toEqual(["A", "B", "C"]);
   });
 });
 
