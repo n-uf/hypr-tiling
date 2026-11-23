@@ -26,6 +26,7 @@ import {
   deriveDropCommitTree,
   resolveTilingMove,
   tilingDragParts,
+  tilingStillTiles,
   type TilingDragTree,
 } from "../../engine/tiling-drag-tree";
 import { collectLeafFootprints, footprintsByLeafId, resolveLayoutGeometry } from "../../engine/leaf-geometry";
@@ -365,8 +366,15 @@ export function dropCases(): Record<string, unknown> {
             selectedSplitZone: zone === "center" ? null : zone,
             place,
           } as unknown as DragResolvedTarget;
-          // A refused place commits nothing (null): no tree, no landing.
-          const committed = deriveDropCommitTree({ layout: tree, sourceLeafId: s, target, container: { width: 1280, height: 800 }, config: CONFIGS.default! });
+          // A refused place commits nothing (null): no tree, no landing. The still panes are the renderer's.
+          const committed = deriveDropCommitTree({
+            layout: tree,
+            sourceLeafId: s,
+            target,
+            container: { width: 1280, height: 800 },
+            config: CONFIGS.default!,
+            still: tilingStillTiles(tree, collectStaticGatedLeafIds(tree)),
+          });
           const landing = committed == null ? null : resolveTileRect(committed, tileOfLeaf(tree, s)!, { width: 1280, height: 800 }, CONFIGS.default!);
           const valid: number[] = [];
           for (const config of [CONFIGS.default!, CONFIGS.body!]) {
