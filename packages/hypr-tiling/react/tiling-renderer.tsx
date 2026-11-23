@@ -5099,7 +5099,9 @@ const TilingRendererComponent = React.forwardRef<
     footprints: leafFootprintsById,
   };
   const dragHitRef = React.useRef<DragHitSession | null>(null);
-  const ensureDragHit = (sourceLeafId: string, subject: DragSubject | undefined): DragHitSession | null => {
+  const ensureDragHit = (sourceLeafId: string, given: DragSubject | undefined): DragHitSession | null => {
+    // One key for "the pane": the machine leaves it out, the render names it.
+    const subject: DragSubject | undefined = given === "group" ? "group" : undefined;
     const inputs: DragHitInputs | null = dragHitInputsRef.current;
     if (inputs == null) {
       return null;
