@@ -5,7 +5,13 @@ import {
 } from "../engine/projected-layout";
 import { collectLeafFootprints, footprintsByLeafId } from "../engine/leaf-geometry";
 import type { TilingProjectedLandingOverlay } from "../engine/projected-layout";
-import { insertLeafAdjacent, swapLeafTiles } from "../engine/state";
+import {
+  insertGroupAdjacent,
+  insertLeafAdjacent,
+  mergeGroupIntoTarget,
+  swapGroupWithSlot,
+  swapLeafTiles,
+} from "../engine/state";
 import { deriveCandidateTree } from "../engine/drag-machine";
 import type { TilingDropIntentState, TilingEdgeZone } from "../engine/drop-intent-resolver";
 import type {
@@ -318,6 +324,24 @@ describe("resolveProjectedDropLayout — a whole group's drop previews what its 
       expect(findGroupOf(projected as TilingLayoutNode, "A")).toEqual(expect.arrayContaining(["A", "P"]));
     });
   }
+
+  // Not circular: the preview against the raw group reducers of state.ts, which no drag helper wraps here.
+  it("swap: the raw group reducer's tree (swapGroupWithSlot)", (): void => {
+    const dropState = makeDropState({ leafId: "C", action: "swap", zone: "center" });
+    expect(resolveProjectedDropLayout(layout, "A", dropState, "group")).toEqual(swapGroupWithSlot(layout, "g", "C"));
+  });
+
+  it("merge: the raw group reducer's tree (mergeGroupIntoTarget)", (): void => {
+    const dropState = makeDropState({ leafId: "C", action: "group-merge", zone: "center" });
+    expect(resolveProjectedDropLayout(layout, "A", dropState, "group")).toEqual(mergeGroupIntoTarget(layout, "g", "C", undefined));
+  });
+
+  it("edge insert: the raw group reducer's tree (insertGroupAdjacent)", (): void => {
+    const dropState = makeDropState({ leafId: "C", action: "edge-insert", zone: "bottom", finalEdge: "bottom" });
+    expect(resolveProjectedDropLayout(layout, "A", dropState, "group")).toEqual(
+      insertGroupAdjacent(layout, "g", "C", "bottom", { preserveParentSplitAxis: false, splitRatio: 0.5 }),
+    );
+  });
 
   it("a pane's drop is unchanged: the single-pane reducers", (): void => {
     const dropState = makeDropState({ leafId: "C", action: "swap", zone: "center" });

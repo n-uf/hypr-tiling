@@ -835,7 +835,7 @@ export function dragHomeColumnCases(): Record<string, unknown> {
         viewportHeight: area.height,
         subject,
       });
-      const answer =(point: DragMachinePoint): DragResolvedTarget | null => {
+      const answer = (point: DragMachinePoint): DragResolvedTarget | null => {
         if (point.y > area.y + area.height) return null;
         if (point.y <= grownB.top + titleBarPx) {
           return { ...resolvedSwap, leafId: "B", action: "group-merge", fallbackReason: "host-group-drop-target" } as DragResolvedTarget;
