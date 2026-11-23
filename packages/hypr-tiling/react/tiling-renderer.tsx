@@ -747,6 +747,7 @@ function measureDragPartGeometry(
   frame: ViewportClientFrame,
 ): TilingDragPartGeometry {
   let strip: TilingDragPartGeometry["strip"];
+  const strips: Map<string, NonNullable<TilingDragPartGeometry["strip"]>> = new Map();
   const widths: Map<string, number> = new Map<string, number>();
   for (const group of collectGroups(inputs.layout)) {
     const slot: TilingPaneFootprint | undefined = inputs.footprints.get(group.activeMemberId);
@@ -765,16 +766,17 @@ function measureDragPartGeometry(
         widths.set(member.tileId, t.width);
       }
     });
-    if (strip == null) {
-      const gaps: number[] = tabs.slice(1).map((t: TilingRect, i: number): number => t.x - (tabs[i]!.x + tabs[i]!.width));
-      strip = {
-        top: band.y - slot.top,
-        height: band.height,
-        left: tabs.length > 0 ? tabs[0]!.x - band.x : 0,
-        gap: gaps.length > 0 ? Math.max(0, gaps.reduce((s: number, g: number): number => s + g, 0) / gaps.length) : 0,
-        widths,
-      };
-    }
+    // Each group's own strip; the first one measured stands for a group that has none (made by a drop).
+    const gaps: number[] = tabs.slice(1).map((t: TilingRect, i: number): number => t.x - (tabs[i]!.x + tabs[i]!.width));
+    const own: NonNullable<TilingDragPartGeometry["strip"]> = {
+      top: band.y - slot.top,
+      height: band.height,
+      left: tabs.length > 0 ? tabs[0]!.x - band.x : 0,
+      gap: gaps.length > 0 ? Math.max(0, gaps.reduce((s: number, g: number): number => s + g, 0) / gaps.length) : 0,
+      widths,
+    };
+    strips.set(group.id, own);
+    strip ??= own;
   }
   const bands: Map<string, Array<{ left: number; top: number; right: number; height: number }>> = new Map();
   const tileOfLeaf = (id: string): string | null => findLeafById(inputs.layout, id)?.tileId ?? null;
@@ -797,9 +799,15 @@ function measureDragPartGeometry(
           : { left: v.x - slot.left, top, right: slot.left + slot.width - (v.x + v.width), height: v.height },
       );
       bands.set(tile, list);
+      // A group's drawn member's element stands for the group, so whichever member it draws later (after a torn
+      // tab, the next one) keeps the title bar.
+      const group: TilingGroupNode | null = findGroupContainingLeaf(inputs.layout, leafId);
+      if (group != null && group.activeMemberId === leafId) {
+        bands.set(group.id, list);
+      }
     }
   }
-  return { ...(strip != null ? { strip } : {}), bands };
+  return { ...(strip != null ? { strip } : {}), strips, bands };
 }
 
 /** The drag of `sourceLeafId` with its hit on the inputs' basis, and the drag intent the pointer goes through. */

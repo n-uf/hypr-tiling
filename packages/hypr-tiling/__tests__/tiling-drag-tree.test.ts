@@ -17,6 +17,7 @@ import {
   createTilingDragOps,
   deriveDropCommitTree,
   resolveTilingSwapPreview,
+  tilingDragParts,
   tilingDragSplitOptions,
   tilingDragSubjectOf,
   type TilingDragTree,
@@ -297,6 +298,29 @@ describe("deriveDropCommitTree: a release commits what the frame drew", () => {
       expect(deriveDropCommitTree({ ...base, drag: shown })).toBe(after.tree.layout);
       expect(deriveDropCommitTree(base)).toEqual(after.tree.layout);
     }
+  });
+});
+
+describe("tilingDragParts: each group its own strip; a group's title bar for whichever member it draws", () => {
+  const leaf = (id: string, tileId: string): TilingLeafNode => ({ kind: "leaf", id, tileId }) as TilingLeafNode;
+  const group = (id: string, members: TilingLeafNode[], active: string): TilingLayoutNode => ({ kind: "group", id, members, activeMemberId: active }) as TilingLayoutNode;
+  const layout: TilingLayoutNode = { kind: "split", id: "r", axis: "horizontal", ratio: 0.5, first: group("g1", [leaf("a", "ta"), leaf("b", "tb")], "a"), second: group("g2", [leaf("c", "tc"), leaf("d", "td")], "c") } as TilingLayoutNode;
+  const rect: Rect = { x: 0, y: 0, width: 400, height: 300 };
+  const strip = (top: number, height: number) => ({ top, height, left: 4, gap: 4, widths: new Map([["ta", 100], ["tb", 100], ["tc", 100], ["td", 100]]) });
+  const parts = tilingDragParts({
+    strip: strip(0, 30),
+    strips: new Map([["g1", strip(0, 30)], ["g2", strip(10, 44)]]),
+    bands: new Map([["g1", [{ left: 0, top: 0, right: 0, height: 60 }]]]),
+  });
+
+  it("measures per group", () => {
+    expect(parts(layout, "ta", rect).find((p) => p.key === "strip")!.rect.height).toBe(30);
+    expect(parts(layout, "tc", rect).find((p) => p.key === "strip")!.rect).toEqual({ x: 0, y: 10, width: 400, height: 44 });
+  });
+
+  it("a group drawn as another member (after a torn tab) keeps its title bar", () => {
+    const torn: TilingLayoutNode = { ...(layout as Extract<TilingLayoutNode, { kind: "split" }>), first: group("g1", [leaf("b", "tb"), leaf("e", "te")], "b") } as TilingLayoutNode;
+    expect(parts(torn, "tb", rect).some((p) => p.key === "band")).toBe(true);
   });
 });
 
