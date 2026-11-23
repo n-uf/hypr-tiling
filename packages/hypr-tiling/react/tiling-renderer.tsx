@@ -90,6 +90,17 @@ import {
   type LeafMotionTick,
 } from "../engine/leaf-motion";
 import {
+  createHeldLookMotion,
+  fullHeldLookFrame,
+  heldLookFrame,
+  measureHeldTitleBar,
+  resolveHeldLook,
+  type HeldLook,
+  type HeldLookFrame,
+  type HeldLookGeometry,
+  type HeldLookMotion,
+} from "../engine/held-look";
+import {
   pruneFocusHistory,
   pushFocusHistory,
   resolveFocusCurrentOrLast,
@@ -567,6 +578,51 @@ const DRAG_CURSOR_ENTRANCE_EASING: string = "cubic-bezier(0.2, 0.8, 0.2, 1)";
  */
 const DROP_INDICATOR_Z_INDEX: number = 40;
 const RAISED_PANE_Z_INDEX: number = 50;
+/** The held look `"fade"`: the drop indicator draws above the faded pane. */
+const DROP_INDICATOR_OVER_FADED_PANE_Z_INDEX: number = RAISED_PANE_Z_INDEX + 1;
+
+/** What the held look reads of a lift: the frame, the pane in it, the grab point, the title bar. */
+function heldLookGeometryOf(lift: {
+  readonly layoutRect: TilingRect;
+  readonly leafRect: TilingRect;
+  readonly grab: DragMachinePoint;
+  readonly titleBottom: number | null;
+}): HeldLookGeometry {
+  return {
+    frame: { width: lift.layoutRect.width, height: lift.layoutRect.height },
+    leafTop: lift.leafRect.y - lift.layoutRect.y,
+    leafHeight: lift.leafRect.height,
+    grab: lift.grab,
+    titleBottom: lift.titleBottom,
+  };
+}
+
+/**
+ * Draw the held look's scale (about `origin`, the grab point in the layer's
+ * px) and opacity on the lifted pane's look layer; the full look writes
+ * nothing.
+ */
+function writeHeldLookLayer(
+  layer: HTMLElement | null,
+  look: HeldLookFrame,
+  origin: DragMachinePoint,
+): void {
+  if (layer == null) {
+    return;
+  }
+  if (look.scale === 1) {
+    layer.style.removeProperty("transform");
+    layer.style.removeProperty("transform-origin");
+  } else {
+    layer.style.transformOrigin = `${Math.round(origin.x * 100) / 100}px ${Math.round(origin.y * 100) / 100}px`;
+    layer.style.transform = `scale(${look.scale})`;
+  }
+  if (look.opacity === 1) {
+    layer.style.removeProperty("opacity");
+  } else {
+    layer.style.opacity = String(look.opacity);
+  }
+}
 /**
  * Snap preview: the pointer must be this far inside a landing slot (CSS px,
  * at most a quarter of the slot's smaller side) before the pane snaps into it;
@@ -4050,6 +4106,7 @@ const TilingRendererComponent = React.forwardRef<
     dragAnimationEnabled = true,
     dragPreview = "indicator",
     dragPreviewMakesRoom = false,
+    heldOverTarget = "auto",
     survivorReflowSpeedPercent = DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
     chromeFocusOutline = "suppress",
     showDropBorderHints = true,
@@ -4555,6 +4612,9 @@ const TilingRendererComponent = React.forwardRef<
   // continuation drag from here: the pointer is parked over a tab and may not
   // move again before the dwell fires.
   const lastDragClientPointRef = React.useRef<DragMachinePoint | null>(null);
+  // The drag handle the last press picked a pane up by (window-client px): the
+  // one source of whether the held pane draws a title bar (`measureHeldTitleBar`).
+  const pressHandleClientRectRef = React.useRef<TilingClientRectLike | null>(null);
   // N3 — a spring-load rearm waiting for the destination tree. Set when the
   // wrapper ends the live drag as a claimed commit (step 3c); consumed by the
   // rearm layout effect once the machine is `idle` again and the destination
@@ -5260,6 +5320,8 @@ const TilingRendererComponent = React.forwardRef<
     readonly layoutRect: TilingRect;
     readonly leafRect: TilingRect;
     readonly grab: DragMachinePoint;
+    /** Where the held frame's title bar ends (layout px from its top), or `null`: no title bar. */
+    readonly titleBottom: number | null;
   } | null = React.useMemo(() => {
     if (!isLiveDragging || dragState.phase !== "dragging" || dragSourceTileId == null) {
       return null;
@@ -5285,6 +5347,21 @@ const TilingRendererComponent = React.forwardRef<
             width: layoutRect.width,
             height: layoutRect.height - stripPx,
           };
+    // The handle the press picked it up by, against what is held, both in
+    // client px as measured at the press.
+    const handle: TilingClientRectLike | null = pressHandleClientRectRef.current;
+    const titleBottomClient: number | null =
+      handle == null
+        ? null
+        : measureHeldTitleBar(
+            {
+              x: dragState.anchorFootprint.left,
+              y: dragState.anchorFootprint.top,
+              width: dragState.anchorFootprint.width,
+              height: dragState.anchorFootprint.height,
+            },
+            { x: handle.left, y: handle.top, width: handle.width, height: handle.height },
+          );
     return {
       tileId: dragSourceTileId,
       layoutRect,
@@ -5293,6 +5370,8 @@ const TilingRendererComponent = React.forwardRef<
         x: clientToViewportLength(frame, dragState.pointerAnchorOffset.x),
         y: clientToViewportLength(frame, dragState.pointerAnchorOffset.y),
       },
+      titleBottom:
+        titleBottomClient == null ? null : clientToViewportLength(frame, titleBottomClient),
     };
     // Fixed for one lift: keyed on what identifies it, not on every move.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5307,16 +5386,62 @@ const TilingRendererComponent = React.forwardRef<
   liftGeometryRef.current = liftGeometry;
   const isPaneHeldRef = React.useRef<boolean>(isPaneHeld);
   isPaneHeldRef.current = isPaneHeld;
+  // ── The held pane's look over a target ───────────────────────────────────
+  // While the drag has a drop it would commit, the held pane changes look so
+  // it never hides the target or the indicator (`heldOverTarget`, the tile's
+  // own choice first); over its home, a refused place or free space it is
+  // drawn in full. The look is one amount (0 full, 1 the look) on the leaf
+  // motion's settle; every look keeps the grab point on the pointer. Drawing
+  // only: the targets and the drop never read it.
+  const dragSourceTile: TilingTile | undefined =
+    dragSourceTileId == null ? undefined : resolveTile(tiles, dragSourceTileId);
+  const heldLook: HeldLook | null =
+    liftGeometry == null
+      ? null
+      : resolveHeldLook({
+          renderer: heldOverTarget,
+          tile: dragSourceTile?.heldOverTarget,
+          hasTitleBar: liftGeometry.titleBottom != null,
+        });
+  const heldLookRef = React.useRef<HeldLook | null>(heldLook);
+  heldLookRef.current = heldLook;
+  const isHeldOverTarget: boolean = isPaneHeld && committableDropState != null;
+  const heldLookMotionRef = React.useRef<HeldLookMotion | null>(null);
+  // The inner layer of the lifted wrapper the thumbnail scale and the fade are
+  // written on (the wrapper's own box is measured to place it, so it carries
+  // no transform).
+  const heldLookLayerRef = React.useRef<HTMLDivElement | null>(null);
+  // A thumbnail the pane leaves the lifted wrapper as (a drop, a snap into a
+  // slot): the box it is drawn at then (viewport px), so its glide into the
+  // tree starts there instead of at its full size.
+  const heldLookHandoverRef = React.useRef<{
+    readonly tileId: string;
+    readonly box: TilingRect;
+  } | null>(null);
+  /** What the held look draws now, or `null` with nothing lifted. */
+  const currentHeldLookFrame = React.useCallback((): HeldLookFrame | null => {
+    const lift = liftGeometryRef.current;
+    if (lift == null) {
+      return null;
+    }
+    const geometry: HeldLookGeometry = heldLookGeometryOf(lift);
+    const look: HeldLook | null = heldLookRef.current;
+    return look == null
+      ? fullHeldLookFrame(geometry)
+      : heldLookFrame(look, heldLookMotionRef.current?.amount ?? 0, geometry);
+  }, []);
   /**
    * Where the lifted pane is drawn (viewport layout px), from a client point,
    * through the viewport's frame as it is now (scrolled, scaled): where the
-   * pointer holds it, kept inside the stage (`clampHeldRectToStage`). The
-   * pointer itself, and the drop it resolves, are not clamped.
+   * pointer holds it, in its held look, kept inside the stage
+   * (`clampHeldRectToStage`). The pointer itself, and the drop it resolves,
+   * are not clamped.
    */
   const heldRectAt = React.useCallback(
     (client: DragMachinePoint): TilingRect | null => {
       const lift = liftGeometryRef.current;
-      if (lift == null) {
+      const look: HeldLookFrame | null = currentHeldLookFrame();
+      if (lift == null || look == null) {
         return null;
       }
       const point: DragMachinePoint = clientToViewportPoint(
@@ -5326,47 +5451,126 @@ const TilingRendererComponent = React.forwardRef<
       return clampHeldRectToStage(
         {
           x: point.x - lift.grab.x,
-          y: point.y - lift.grab.y,
+          y: point.y - look.anchorY,
           width: lift.layoutRect.width,
-          height: lift.layoutRect.height,
+          height: look.height,
         },
         viewportSizeRef.current,
       );
     },
-    [],
+    [currentHeldLookFrame],
   );
   /**
    * Put the lifted pane where the pointer is: held 1:1 (indicator) or settling
-   * toward it (snap, not snapped). Called from the raw pointer listener, so the
-   * pane follows within the same task as the event, and from the layout sync.
+   * toward it (snap, not snapped), in its held look. Called from the raw
+   * pointer listener, so the pane follows within the same task as the event,
+   * from the layout sync, and on every step of the look.
    */
   const placeHeldPane = React.useCallback(
     (client: DragMachinePoint, flush: boolean): void => {
       const lift = liftGeometryRef.current;
       const motion: LeafMotion | null = leafMotionRef.current;
       const frameRect: TilingRect | null = heldRectAt(client);
-      if (lift == null || motion == null || frameRect == null || !isPaneHeldRef.current) {
+      const look: HeldLookFrame | null = currentHeldLookFrame();
+      if (
+        lift == null ||
+        motion == null ||
+        frameRect == null ||
+        look == null ||
+        !isPaneHeldRef.current
+      ) {
         return;
       }
       // The motion moves the (active) pane: held where the frame is, offset
-      // by its place in the frame (a group's pane sits beside its strip).
+      // by its place in the frame (a group's pane sits beside its strip), at
+      // the height its look leaves it (a fold to the title bar).
       const rect: TilingRect = {
         x: frameRect.x + (lift.leafRect.x - lift.layoutRect.x),
         y: frameRect.y + (lift.leafRect.y - lift.layoutRect.y),
         width: lift.leafRect.width,
-        height: lift.leafRect.height,
+        height: look.leafHeight,
       };
       if (dragPreviewRef.current === "snap") {
         motion.target(lift.tileId, rect, lift.leafRect);
       } else {
         motion.hold(lift.tileId, rect, lift.leafRect);
       }
+      // The thumbnail scales about the grab point and the fade sits on the
+      // whole lifted pane (a group's strip included).
+      const origin: DragMachinePoint = {
+        x: frameRect.x + lift.grab.x,
+        y: frameRect.y + look.anchorY,
+      };
+      writeHeldLookLayer(heldLookLayerRef.current, look, {
+        x: origin.x - lift.layoutRect.x,
+        y: origin.y - lift.layoutRect.y,
+      });
+      heldLookHandoverRef.current =
+        look.scale < 1
+          ? {
+              tileId: lift.tileId,
+              box: {
+                x: origin.x + (rect.x - origin.x) * look.scale,
+                y: origin.y + (rect.y - origin.y) * look.scale,
+                width: rect.width * look.scale,
+                height: rect.height * look.scale,
+              },
+            }
+          : null;
       if (flush) {
         motion.flush();
       }
     },
-    [heldRectAt],
+    [currentHeldLookFrame, heldRectAt],
   );
+  // The look's amount: one settle on the leaf motion's frame loop, at its
+  // tempo (snapping when the leaves snap); every step re-places the held pane.
+  React.useLayoutEffect((): (() => void) => {
+    const readReducedMotion: () => boolean = readPrefersReducedMotion();
+    const look: HeldLookMotion = createHeldLookMotion({
+      loop: leafMotionFrameLoop(),
+      omega: leafMotionOmega,
+      reducedMotion: (): boolean => leafMotionSnapRef.current || readReducedMotion(),
+      onChange: (): void => {
+        const pointer: DragMachinePoint | null = lastDragClientPointRef.current;
+        if (pointer != null) {
+          placeHeldPane(pointer, true);
+        }
+      },
+    });
+    heldLookMotionRef.current = look;
+    return (): void => {
+      look.dispose();
+      if (heldLookMotionRef.current === look) {
+        heldLookMotionRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  React.useLayoutEffect((): void => {
+    heldLookMotionRef.current?.configure({ omega: leafMotionOmega });
+  }, [leafMotionOmega]);
+  // A new lift starts in full; then the look heads for the target look while
+  // the drag is over a target and back to full when it is not.
+  const heldLookLiftRef = React.useRef<typeof liftGeometry>(null);
+  React.useLayoutEffect((): void => {
+    const look: HeldLookMotion | null = heldLookMotionRef.current;
+    if (look == null) {
+      return;
+    }
+    if (heldLookLiftRef.current !== liftGeometry) {
+      heldLookLiftRef.current = liftGeometry;
+      if (liftGeometry != null) {
+        look.jumpTo(false);
+        heldLookHandoverRef.current = null;
+      }
+    }
+    if (liftGeometry != null) {
+      look.to(isHeldOverTarget);
+    } else {
+      look.jumpTo(false);
+    }
+  }, [isHeldOverTarget, liftGeometry]);
   // The lifted wrapper is `position: fixed`, laid out at the pane's place at
   // the lift; the pane in it is drawn inside the viewport (`heldRectAt`), so
   // nothing past the viewport's edge needs it unclipped. Its left / top are
@@ -5592,6 +5796,14 @@ const TilingRendererComponent = React.forwardRef<
           motion.open(leafId);
         }
       } else {
+        // A pane that leaves the lifted wrapper as a thumbnail (a drop, a snap
+        // into a slot) is drawn at that box from now on: its glide into the
+        // tree starts there, not at its full size.
+        const handover = heldLookHandoverRef.current;
+        if (handover != null && handover.tileId === leafId) {
+          heldLookHandoverRef.current = null;
+          motion.hold(leafId, handover.box);
+        }
         motion.target(leafId, rect);
       }
     }
@@ -8635,6 +8847,7 @@ const TilingRendererComponent = React.forwardRef<
       onLiveHitLogChange?.(null);
       const anchor: TilingClientRectLike = tabMemberId == null ? frameRect : paneRect;
       lastDragClientPointRef.current = { x: event.clientX, y: event.clientY };
+      pressHandleClientRectRef.current = event.currentTarget.getBoundingClientRect();
       dispatchDrag({
         type: "POINTER_DOWN",
         pointerId: event.nativeEvent.pointerId,
@@ -8915,6 +9128,7 @@ const TilingRendererComponent = React.forwardRef<
               ? groupFrameClientRect(paneRect)
               : paneRect;
             lastDragClientPointRef.current = { x: event.clientX, y: event.clientY };
+            pressHandleClientRectRef.current = event.currentTarget.getBoundingClientRect();
             dispatchDrag({
               type: "POINTER_DOWN",
               pointerId: event.nativeEvent.pointerId,
@@ -9897,17 +10111,25 @@ const TilingRendererComponent = React.forwardRef<
           zIndex: RAISED_PANE_Z_INDEX,
         }}
       >
-        {renderBranch(
-          // A dragged group is lifted whole: it renders as a group (strip and
-          // active pane), the same members, order and active tab.
-          dragSubjectGroup != null
-            ? { ...dragSubjectGroup, sizing: undefined }
-            : { ...liftedSourceLeaf, sizing: undefined },
-          liftGeometry.layoutRect.width,
-          liftGeometry.layoutRect.height,
-          undefined,
-          true,
-        )}
+        {/* The held look's scale and fade are written here (`writeHeldLookLayer`). */}
+        <div
+          ref={heldLookLayerRef}
+          className="flex h-full w-full"
+          data-hpt-held-look={heldLook ?? undefined}
+          data-hpt-held-over-target={isHeldOverTarget ? "" : undefined}
+        >
+          {renderBranch(
+            // A dragged group is lifted whole: it renders as a group (strip and
+            // active pane), the same members, order and active tab.
+            dragSubjectGroup != null
+              ? { ...dragSubjectGroup, sizing: undefined }
+              : { ...liftedSourceLeaf, sizing: undefined },
+            liftGeometry.layoutRect.width,
+            liftGeometry.layoutRect.height,
+            undefined,
+            true,
+          )}
+        </div>
       </div>
     ) : null;
   // Indicator mode: where the pane will land, drawn above the resting panes
@@ -9923,7 +10145,10 @@ const TilingRendererComponent = React.forwardRef<
           top: dropIndicatorRect.y,
           width: dropIndicatorRect.width,
           height: dropIndicatorRect.height,
-          zIndex: DROP_INDICATOR_Z_INDEX,
+          zIndex:
+            heldLook === "fade"
+              ? DROP_INDICATOR_OVER_FADED_PANE_Z_INDEX
+              : DROP_INDICATOR_Z_INDEX,
         }}
       />
     ) : null;
