@@ -23,9 +23,10 @@ the version number alone does not flag them.
   forth.
 - **A tab torn off its group is unchanged.** The group stays where it was,
   so there is no empty spot to come back to: the group holds still until the
-  pointer first leaves it, and from then on the group's own strip (to put
-  the tab back at another position), the edges of its remaining pane and a
-  swap with that pane are ordinary drops, as in 26.11.9.
+  pointer first leaves it, and from then on the group's own strip (which
+  puts the tab back in its group as it was), the edges of its remaining pane
+  and the remaining pane itself (a swap of the group's tiles) are ordinary
+  drops, as in 26.11.9.
 - **A page scroll, a resize or a layout change of the viewport mid-drag**
   still ends it, now for the rest of the drag even after the pointer has
   left; from then on the old place is resolved like any other.
@@ -51,9 +52,9 @@ the version number alone does not flag them.
   optional fields, so code that builds that state keeps compiling: `atHome`
   (the pane's place is the target now; absent: false), `homeLost` (the page
   moved under the drag; absent: false) and, on `armed` and `dragging` and the
-  `POINTER_DOWN` and `REARM` events, `liftLeavesGap` (whether lifting the subject empties
-  its place; absent: true). `leftHome` keeps its meaning; it decides only for
-  a torn tab.
+  `REARM` event (`DragRearmEvent`), `liftLeavesGap` (whether lifting the
+  subject empties its place; absent: true). `leftHome` keeps its meaning; it
+  decides only for a torn tab.
 
 ## 26.11.10 — 2026-11-22
 
