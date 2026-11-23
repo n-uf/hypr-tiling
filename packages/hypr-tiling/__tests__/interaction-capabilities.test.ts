@@ -23,7 +23,6 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
   resizeHandlesVisible: true,
   rearrange: true,
   dragMode: "live",
-  slotCommitment: { mode: "delta-responsive", reresolveDeltaPx: 24 },
   touchDrag: { enable: true, longPressMs: 220 },
   dragRecovery: {
     enable: true,
@@ -47,7 +46,6 @@ const RESOLVED_DEFAULTS: ResolvedTilingInteractionCapabilities = {
     centerRatioX: 0.34,
     centerRatioY: 0.34,
     centerMinPx: 24,
-    hysteresisPx: 6,
   },
   keymap: TILING_KEYMAP_DEFAULTS,
   keyBindings: { bindings: [], replaceDefaults: false },
@@ -476,28 +474,6 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
     });
   });
 
-  it("defaults slotCommitment to delta-responsive / 24px when undefined", (): void => {
-    expect(resolveInteractionCapabilities(undefined).slotCommitment).toEqual({
-      mode: "delta-responsive",
-      reresolveDeltaPx: 24,
-    });
-    expect(resolveInteractionCapabilities({}).slotCommitment).toEqual({
-      mode: "delta-responsive",
-      reresolveDeltaPx: 24,
-    });
-  });
-
-  it("preserves an explicit slotCommitment mode + delta (field-by-field nullish merge)", (): void => {
-    expect(resolveInteractionCapabilities({ slotCommitment: { mode: "zone-exit-hold" } })).toEqual({
-      ...RESOLVED_DEFAULTS,
-      slotCommitment: { mode: "zone-exit-hold", reresolveDeltaPx: 24 },
-    });
-    expect(resolveInteractionCapabilities({ slotCommitment: { reresolveDeltaPx: 12 } })).toEqual({
-      ...RESOLVED_DEFAULTS,
-      slotCommitment: { mode: "delta-responsive", reresolveDeltaPx: 12 },
-    });
-  });
-
   it("resolves TILING_DASHBOARD_PRESET with both title-bar control groups disabled", (): void => {
     expect(resolveInteractionCapabilities(TILING_DASHBOARD_PRESET).paneTitleBarControls).toEqual({
       sizing: false,
@@ -512,25 +488,23 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       centerRatioX: 0.34,
       centerRatioY: 0.34,
       centerMinPx: 24,
-      hysteresisPx: 6,
     });
     expect(resolveInteractionCapabilities({}).dropHitZoneGeometry).toEqual({
       centerRatio: 0.34,
       centerRatioX: 0.34,
       centerRatioY: 0.34,
       centerMinPx: 24,
-      hysteresisPx: 6,
     });
   });
 
   it("merges a partial dropHitZoneGeometry override field-by-field over the defaults", (): void => {
     expect(resolveInteractionCapabilities({ dropHitZoneGeometry: { centerRatio: 0.5 } })).toEqual({
       ...RESOLVED_DEFAULTS,
-      dropHitZoneGeometry: { centerRatio: 0.5, centerRatioX: 0.5, centerRatioY: 0.5, centerMinPx: 24, hysteresisPx: 6 },
+      dropHitZoneGeometry: { centerRatio: 0.5, centerRatioX: 0.5, centerRatioY: 0.5, centerMinPx: 24 },
     });
     expect(resolveInteractionCapabilities({ dropHitZoneGeometry: { centerMinPx: 40 } })).toEqual({
       ...RESOLVED_DEFAULTS,
-      dropHitZoneGeometry: { centerRatio: 0.34, centerRatioX: 0.34, centerRatioY: 0.34, centerMinPx: 40, hysteresisPx: 6 },
+      dropHitZoneGeometry: { centerRatio: 0.34, centerRatioX: 0.34, centerRatioY: 0.34, centerMinPx: 40 },
     });
   });
 
@@ -548,14 +522,12 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       centerRatioX: 0.2,
       centerRatioY: 0.34,
       centerMinPx: 24,
-      hysteresisPx: 6,
     });
     expect(resolveInteractionCapabilities({ dropHitZoneGeometry: { centerRatioY: 0.7 } }).dropHitZoneGeometry).toEqual({
       centerRatio: 0.34,
       centerRatioX: 0.34,
       centerRatioY: 0.7,
       centerMinPx: 24,
-      hysteresisPx: 6,
     });
   });
 
@@ -569,14 +541,13 @@ describe("resolveInteractionCapabilities (defaulting)", (): void => {
       centerRatioX: 0.4,
       centerRatioY: 0.8,
       centerMinPx: 24,
-      hysteresisPx: 6,
     });
   });
 
-  it("preserves an explicit hysteresisPx of 0 (nullish merge does not override the falsy zero)", (): void => {
-    expect(resolveInteractionCapabilities({ dropHitZoneGeometry: { hysteresisPx: 0 } })).toEqual({
+  it("preserves an explicit centerMinPx of 0 (nullish merge does not override the falsy zero)", (): void => {
+    expect(resolveInteractionCapabilities({ dropHitZoneGeometry: { centerMinPx: 0 } })).toEqual({
       ...RESOLVED_DEFAULTS,
-      dropHitZoneGeometry: { centerRatio: 0.34, centerRatioX: 0.34, centerRatioY: 0.34, centerMinPx: 24, hysteresisPx: 0 },
+      dropHitZoneGeometry: { centerRatio: 0.34, centerRatioX: 0.34, centerRatioY: 0.34, centerMinPx: 0 },
     });
   });
 

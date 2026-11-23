@@ -6,7 +6,6 @@ import {
   type DragMachineState,
   type DragResolvedTarget,
 } from "../engine/drag-machine";
-import type { DragInputDriverSlotCommitment } from "../engine/input-driver";
 import type { ElementRef } from "../engine/element-ref";
 import type { SchedulerPort } from "../engine/scheduler-port";
 import type { MeasurementPort } from "../engine/measurement-port";
@@ -185,10 +184,6 @@ describe("vanilla DOM adapter — the four ports run headlessly with no React", 
         h.pointerCapture.capture(pointerId);
         captured.push(pointerId);
       },
-      getSlotCommitment: (): DragInputDriverSlotCommitment => ({
-        mode: "delta-responsive",
-        reresolveDeltaPx: 24,
-      }),
     };
     const controller: TilingController = createTilingController({ host });
 

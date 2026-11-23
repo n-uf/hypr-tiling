@@ -6,7 +6,6 @@ import {
   type TilingControllerState,
   createTilingController,
 } from "../engine/controller";
-import type { DragInputDriverSlotCommitment } from "../engine/input-driver";
 import {
   EMPTY_FOCUS_HISTORY,
   type FocusHistory,
@@ -57,10 +56,6 @@ function createStubHost(): TilingControllerHost {
   return {
     resolveTarget: (): DragResolvedTarget | null => null,
     capturePointer: (): void => undefined,
-    getSlotCommitment: (): DragInputDriverSlotCommitment => ({
-      mode: "delta-responsive",
-      reresolveDeltaPx: 24,
-    }),
   };
 }
 

@@ -300,7 +300,7 @@ describe("held drag — the click threshold", (): void => {
 });
 
 describe("held drag — lift, hold, on top, reflow", (): void => {
-  it("lifts the REAL pane, holds it 1:1 under the pointer inside the stage, raises it, keeps its home open until the pointer leaves, then the others close the gap", async (): Promise<void> => {
+  it("lifts the REAL pane, holds it 1:1 under the pointer inside the stage, raises it, keeps its place open for the whole drag (Indicator marks over the layout at the lift: the others never move)", async (): Promise<void> => {
     restGeometry();
     const { container } = render(<Host onLayoutReported={(): void => undefined} />);
     const article: HTMLElement = wrapperOf(container, "a").querySelector("article")!;
@@ -335,34 +335,33 @@ describe("held drag — lift, hold, on top, reflow", (): void => {
     });
     expect(a.style.transform).toBe("translate(233px, 0px)");
     // Past the stage's right edge the pane stops at it. The pointer has left
-    // home: b closes the gap on the settle curve, drawn where it was, gliding
-    // to fill the view.
-    liftedGeometry();
+    // home, over b (a swap): Indicator marks over the layout at the lift, so
+    // a's place stays open and b stays exactly where it was: nothing glides.
     await moveTo(640, 410);
     expect(a.style.transform).toBe("translate(500px, 0px)");
-    expect(container.querySelector("[data-drag-held-slot-leaf]")).toBeNull();
+    expect(container.querySelector('[data-drag-held-slot-leaf="A"]')).not.toBeNull();
     expect(lifted(container)!.contains(wrapperOf(container, "b"))).toBe(false);
-    expect(wrapperOf(container, "b").style.transform).toMatch(/^translate\(\d/);
+    expect(wrapperOf(container, "b").style.transform).toBe("");
     await release(640, 410);
   });
 });
 
 describe("held drag — the page moves under the lift", (): void => {
   for (const kind of ["scroll", "resize"] as const) {
-    it(`a ${kind} that moves the viewport mid-drag ends the home hold: the others close the gap with the pointer still over the old place`, async (): Promise<void> => {
+    it(`a ${kind} that moves the viewport mid-drag keeps the home: the hit reads the pointer in the viewport's own px, which moved with the page`, async (): Promise<void> => {
       restGeometry();
       const { container } = render(<Host onLayoutReported={(): void => undefined} />);
       await press(container, "a", 100, 20);
       await moveTo(140, 60);
       expect(container.querySelector('[data-drag-held-slot-leaf="A"]')).not.toBeNull();
-      liftedGeometry();
       VIEWPORT_CLIENT.y = -30;
       await act(async (): Promise<void> => {
         window.dispatchEvent(new Event(kind));
         await wait(20);
       });
+      // Client (150, 70) is now viewport (150, 100): still over a's own place, so the home holds.
       await moveTo(150, 70);
-      expect(container.querySelector("[data-drag-held-slot-leaf]")).toBeNull();
+      expect(container.querySelector('[data-drag-held-slot-leaf="A"]')).not.toBeNull();
       expect(lifted(container)).not.toBeNull();
       await act(async (): Promise<void> => {
         window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
@@ -414,12 +413,13 @@ describe("held drag — indicator preview and drop", (): void => {
     const changes: TilingLayoutNode[] = [];
     const { container } = render(<Host onLayoutReported={(next): void => void changes.push(next)} />);
     await liftA(container, 140, 60);
-    // Over b's right edge (b fills the view now): drop to the right of b.
+    // Over b's right edge. b is next to a in one run, so it has no side along it: the whole of b across its middle is
+    // the swap, and the indicator outlines b.
     await moveTo(960, 300);
     const indicator: Box | null = indicatorRect(container);
     expect(indicator).toEqual({ x: 500, y: 0, width: 500, height: 600 });
-    // No room made by default: b stays laid out across the view.
-    expect(container.querySelector("[data-drag-held-slot-leaf]")).toBeNull();
+    // No room made by default: the layout stays as it is at the lift, a's place kept open.
+    expect(container.querySelector('[data-drag-held-slot-leaf="A"]')).not.toBeNull();
 
     GEOMETRY.set("a", { x: 500, y: 0, width: 500, height: 600 });
     GEOMETRY.set("b", { x: 0, y: 0, width: 500, height: 600 });
@@ -450,14 +450,18 @@ describe("held drag — indicator preview and drop", (): void => {
     await moveTo(700, 590);
     const a: HTMLElement = wrapperOf(container, "a");
     expect(a.style.transform).toBe("translate(500px, 0px)");
+    // The indicator marks the bottom half of b as the layout at the lift draws it: a region of that layout, not the
+    // rect the pane lands in once the others have made room.
     const indicator: Box | null = indicatorRect(container);
-    expect(indicator).toEqual({ x: 0, y: 300, width: 1000, height: 300 });
+    expect(indicator).toEqual({ x: 500, y: 300, width: 500, height: 300 });
 
-    GEOMETRY.set("a", indicator!);
+    const landing: Box = { x: 0, y: 300, width: 1000, height: 300 };
+    GEOMETRY.set("a", landing);
     GEOMETRY.set("b", { x: 0, y: 0, width: 1000, height: 300 });
     await release(700, 590);
     expect(changes).toHaveLength(1);
-    expect(resolveTileRect(changes[0]!, "a", CONTAINER, CONFIG)).toEqual(indicator);
+    // The release commits the place's own layout: b above a, a across the bottom half.
+    expect(resolveTileRect(changes[0]!, "a", CONTAINER, CONFIG)).toEqual(landing);
     expect(lifted(container)).toBeNull();
     // It settles into the slot from where it was drawn, still on top.
     const landed: HTMLElement = wrapperOf(container, "a");

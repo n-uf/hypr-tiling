@@ -9,8 +9,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jes
 import * as React from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { TilingRenderer } from "../react/tiling-renderer";
-import { buildGroupTabStripMergeIntent } from "../engine/drop-intent-resolver";
+import { tilingDropStateOf } from "../engine/tiling-drag-tree";
 import { collectGroups } from "../engine/state";
+import { hitRun, layoutDrag } from "./golden/cases";
 import { resolveTileRect } from "../engine/drag-landing";
 import type {
   TilingGroupNode,
@@ -246,7 +247,8 @@ describe("host groupDropTargetRef — renderer commit", (): void => {
       dispatchPointer(window, "pointermove", { clientX: 560, clientY: 55 });
     });
     await flushFrames();
-    // The drop indicator marks where the pane lands: b's slot, which it joins.
+    // The drop indicator marks the join: b's outline in the layout at the lift (the group it makes lands in the
+    // whole slot, which the mark is not).
     const indicator: HTMLElement | null = view.container.querySelector<HTMLElement>("[data-hpt-drop-indicator]");
     expect(indicator).not.toBeNull();
     const indicated = {
@@ -264,10 +266,11 @@ describe("host groupDropTargetRef — renderer commit", (): void => {
       .slice(baseline)
       .map((call: ReadonlyArray<unknown>): TilingLayoutNode => call[0] as TilingLayoutNode);
     expect(commits).toHaveLength(1);
-    // Indicator rect == the rect the committed layout gives the pane.
-    expect(
-      resolveTileRect(commits[0], "a", { width: 800, height: 600 }, { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 }),
-    ).toEqual(indicated);
+    const stage = { width: 800, height: 600 };
+    const config = { gapPx: 8, minPaneSizePx: 100, handleSizePx: 6 };
+    expect(indicated).toEqual(resolveTileRect(LAYOUT, "b", stage, config));
+    // The committed layout puts a in the group with b, which fills the whole stage.
+    expect(resolveTileRect(commits[0], "a", stage, config)).toEqual({ x: 0, y: 0, width: 800, height: 600 });
     const groups: ReadonlyArray<TilingGroupNode> = collectGroups(commits[0]);
     expect(groups).toHaveLength(1);
     const memberIds: ReadonlyArray<string> = groups[0].members.map(
@@ -281,16 +284,19 @@ describe("host groupDropTargetRef — renderer commit", (): void => {
 
 describe("host group-drop target stays append-only", (): void => {
   it("omits memberInsertIndex so the merge appends", (): void => {
-    const intent = buildGroupTabStripMergeIntent({
-      activeMemberLeafId: "leaf:b",
-      fallbackReason: "host-group-drop-target",
-      evaluateCenter: (): { isValid: boolean; rejectionReason: string | null } => ({
-        isValid: true,
-        rejectionReason: null,
-      }),
-    });
-    expect(intent.action).toBe("group-merge");
-    expect(intent.fallbackReason).toBe("host-group-drop-target");
-    expect(intent.memberInsertIndex).toBeUndefined();
+    // The host element is declared on pane b as a pane part (a band from its top, 37 px high): the drag's hit reads
+    // a join there with no slot, so no index.
+    const drag = layoutDrag(LAYOUT, "leaf:a", { width: 1000, height: 600 }, { gapPx: 6, handleSizePx: 4, minPaneSizePx: 96 }, undefined, {
+      bands: new Map([["b", [{ left: 0, top: 0, right: 0, height: 37 }]]]),
+    })!;
+    const b = drag.lift.layout.get("b")!;
+    const read = hitRun(drag, "lift").at({ x: b.x + b.width / 2, y: b.y + 10 });
+    expect(read.held).toEqual({ kind: "join", at: "b" });
+    if (read.held == null || read.held.kind === "home") throw new Error("nothing held");
+    const intent = tilingDropStateOf(LAYOUT, read.held, read.mark, 1);
+    expect(intent?.action).toBe("group-merge");
+    expect(intent?.leafId).toBe("leaf:b");
+    expect(intent?.fallbackReason).toBe("pane-part");
+    expect(intent?.memberInsertIndex).toBeUndefined();
   });
 });

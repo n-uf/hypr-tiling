@@ -1,66 +1,16 @@
 import { describe, expect, it } from "@jest/globals";
-import {
-  DEFAULT_TILING_LAYOUT_CONFIG,
-  resolvePointerTargetFromMeasurement,
-} from "../react/tiling-renderer";
-import { resolveInteractionCapabilities } from "../engine/interaction-capabilities";
-import type { MeasurementPort } from "../engine/measurement-port";
-import type {
-  ResolvedTilingInteractionCapabilities,
-  TilingGroupNode,
-  TilingLayoutConfig,
-  TilingLeafNode,
-  TilingPaneFootprint,
-  TilingSplitNode,
-} from "../engine/types";
+import { createLayoutTilingDrag, tilingDragParts } from "../engine/tiling-drag-tree";
+import type { TilingGroupNode, TilingLayoutConfig, TilingLayoutNode, TilingLeafNode, TilingSplitNode } from "../engine/types";
+import { hitRun, layoutDrag } from "./golden/cases";
 
 /**
- * Stage-3 measurement-port characterization tests. These pin the observable
- * behavior of the pure core the `MeasurementPort` feeds —
- * `resolvePointerTargetFromMeasurement` (the pointer→drop-target hit
- * resolution) — driven entirely against INJECTED synthetic rects, with no live
- * DOM. They are the behavior-preservation gate for the Stage-3 inline-read →
- * port-call lift.
+ * The drag hit on synthetic pane geometry, characterized without a DOM. What the pointer holds comes from the drag's
+ * hit, built once at the lift over the layout and the pane parts the renderer measured then (the parts are declared
+ * geometry: `tilingDragParts` over insets of the pane's slot, as `measureDragPartGeometry` reads them off the
+ * `MeasurementPort`). These pin the observable behavior the old pointer-to-target resolution had against injected
+ * rects: a hit on another pane, the source's own place, gaps, gated panes, host drop elements and a group the source
+ * is already in.
  */
-
-/** A DOMRect-shaped fixture (only the rect fields the ports read are populated). */
-function rect(
-  left: number,
-  top: number,
-  width: number,
-  height: number,
-): DOMRect {
-  return {
-    x: left,
-    y: top,
-    width,
-    height,
-    left,
-    top,
-    right: left + width,
-    bottom: top + height,
-    toJSON: (): unknown => ({}),
-  } as DOMRect;
-}
-
-/** A MeasurementPort whose methods all return `null` unless overridden. */
-function fakePort(overrides: Partial<MeasurementPort>): MeasurementPort {
-  return {
-    measureViewportRect: (): DOMRect | null => null,
-    measureLeafRect: (): DOMRect | null => null,
-    measureGroupTabStripRect: (): DOMRect | null => null,
-    measureGroupTabMemberRects: (): ReadonlyArray<{
-      index: number;
-      left: number;
-      top: number;
-      right: number;
-      bottom: number;
-    }> => [],
-    measureGroupDropTargetRects: (): ReadonlyArray<DOMRect> => [],
-    readComputedTransform: (): string | null => null,
-    ...overrides,
-  };
-}
 
 function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };
@@ -78,211 +28,104 @@ function twoLeafLayout(): TilingSplitNode {
   };
 }
 
-const CAPS: ResolvedTilingInteractionCapabilities =
-  resolveInteractionCapabilities(undefined);
-const CONFIG: TilingLayoutConfig = DEFAULT_TILING_LAYOUT_CONFIG;
+const CONFIG: TilingLayoutConfig = { gapPx: 0, handleSizePx: 0, minPaneSizePx: 40 };
+// A 400 × 400 stage: A is [0..200] wide, B is [200..400], both full height.
+const STAGE = { width: 400, height: 400 };
 
-// Viewport at client offset (100, 50): a client point (cx, cy) maps to the
-// viewport-local point (cx - 100, cy - 50) the footprint hit-test uses.
-const VIEWPORT = rect(100, 50, 400, 400);
-const FOOTPRINTS: ReadonlyMap<string, TilingPaneFootprint> = new Map([
-  ["A", { left: 0, top: 0, width: 200, height: 400 }],
-  ["B", { left: 200, top: 0, width: 200, height: 400 }],
-]);
+/** A host drop element on a pane's top: inset 100 px from its left, 60 px from its right, 30 px high. */
+const TOP_ELEMENT = { left: 100, top: 0, right: 60, height: 30 };
 
-function pointerInput(
-  clientX: number,
-  clientY: number,
-  sourceLeafId: string,
-  overrides?: Partial<Parameters<typeof resolvePointerTargetFromMeasurement>[1]>,
-): Parameters<typeof resolvePointerTargetFromMeasurement>[1] {
-  return {
-    clientX,
-    clientY,
-    sourceLeafId,
-    previousTarget: null,
-    isRearrangeEnabled: true,
-    groupingEnabled: CAPS.grouping.enable,
-    dropHitZoneGeometry: CAPS.dropHitZoneGeometry,
-    liveDragModeEnabled: true,
-    liveHitFootprintsById: FOOTPRINTS,
-    leafFootprintsById: FOOTPRINTS,
-    leafIds: ["A", "B"],
-    rearrangeGatedLeafIds: new Set<string>(),
-    layout: twoLeafLayout(),
-    config: CONFIG,
-    viewportSize: { width: 400, height: 400 },
-    ...overrides,
-  };
-}
-
-describe("resolvePointerTargetFromMeasurement — synthetic-rect characterization", (): void => {
-  it("returns null when the viewport rect is unmeasurable (port → null)", (): void => {
-    const port: MeasurementPort = fakePort({ measureViewportRect: () => null });
-    // client (400, 250) would land inside B if the viewport were measurable.
-    const result = resolvePointerTargetFromMeasurement(
-      port,
-      pointerInput(400, 250, "A"),
-    );
-    expect(result).toBeNull();
+describe("the drag hit on synthetic geometry — characterization", (): void => {
+  it("holds a place on a non-source pane (a centre point is a swap with it)", (): void => {
+    const run = hitRun(layoutDrag(twoLeafLayout(), "A", STAGE, CONFIG)!, "lift");
+    expect(run.at({ x: 300, y: 200 }).held).toEqual({ kind: "swap", at: "tile-b" });
   });
 
-  it("returns null when rearrange is disabled (never reads the viewport)", (): void => {
-    let viewportReads = 0;
-    const port: MeasurementPort = fakePort({
-      measureViewportRect: () => {
-        viewportReads += 1;
-        return VIEWPORT;
-      },
-    });
-    const result = resolvePointerTargetFromMeasurement(
-      port,
-      pointerInput(400, 250, "A", { isRearrangeEnabled: false }),
-    );
-    expect(result).toBeNull();
-    expect(viewportReads).toBe(0);
+  it("holds home over the drag source's own place (the source is skipped as a target)", (): void => {
+    const run = hitRun(layoutDrag(twoLeafLayout(), "A", STAGE, CONFIG)!, "lift");
+    expect(run.at({ x: 100, y: 200 }).held).toEqual({ kind: "home" });
   });
 
-  it("resolves a hit on a non-source leaf, translating client→viewport-local via the injected rect", (): void => {
-    const port: MeasurementPort = fakePort({ measureViewportRect: () => VIEWPORT });
-    // client (400, 250) → local (300, 200): inside B's footprint [200..400]×[0..400].
-    const result = resolvePointerTargetFromMeasurement(
-      port,
-      pointerInput(400, 250, "A"),
-    );
-    expect(result).not.toBeNull();
-    expect(result?.leafId).toBe("B");
+  it("holds nothing in a gap outside every pane", (): void => {
+    const run = hitRun(layoutDrag(twoLeafLayout(), "A", STAGE, CONFIG)!, "lift");
+    const read = run.at({ x: 500, y: 200 });
+    expect(read.held).toBeNull();
+    expect(read.refused).toBeNull();
   });
 
-  it("returns null over the drag source's own footprint (source is skipped)", (): void => {
-    const port: MeasurementPort = fakePort({ measureViewportRect: () => VIEWPORT });
-    // client (200, 250) → local (100, 200): inside A — but A is the source.
-    const result = resolvePointerTargetFromMeasurement(
-      port,
-      pointerInput(200, 250, "A"),
-    );
-    expect(result).toBeNull();
+  it("a pane that takes no drop (statically gated) is no target at all: nothing is held or shown refused on it, and a release there is `still`", (): void => {
+    const drag = createLayoutTilingDrag({
+      layout: twoLeafLayout(),
+      sourceLeafId: "A",
+      container: STAGE,
+      config: CONFIG,
+      min: CONFIG.minPaneSizePx,
+      still: (tile: string): boolean => tile === "tile-b",
+    })!;
+    const run = hitRun(drag, "lift");
+    const read = run.at({ x: 300, y: 200 });
+    expect(read.held).toBeNull();
+    expect(read.refused).toBeNull();
+    expect(drag.after({ kind: "swap", at: "tile-b" }).refusal).toEqual({ code: "still" });
   });
 
-  it("returns null in a gap outside every footprint", (): void => {
-    const port: MeasurementPort = fakePort({ measureViewportRect: () => VIEWPORT });
-    // client (600, 250) → local (500, 200): right of B's right edge (400).
-    const result = resolvePointerTargetFromMeasurement(
-      port,
-      pointerInput(600, 250, "A"),
-    );
-    expect(result).toBeNull();
+  it("resolves a host drop element as a join, ahead of the edge band it overlaps", (): void => {
+    // (310, 10) is the top edge band of B, which the host element covers: a join with no index, not a side.
+    const drag = layoutDrag(twoLeafLayout(), "A", STAGE, CONFIG, undefined, { bands: new Map([["tile-b", [TOP_ELEMENT]]]) })!;
+    const read = hitRun(drag, "lift").at({ x: 310, y: 10 });
+    expect(read.held).toEqual({ kind: "join", at: "tile-b" });
+    // Without the element the same point is B's top side.
+    const bare = layoutDrag(twoLeafLayout(), "A", STAGE, CONFIG)!;
+    expect(hitRun(bare, "lift").at({ x: 310, y: 10 }).held).toEqual({ kind: "beside", at: "tile-b", side: "top" });
   });
 
-  it("returns null when the only hittable leaf is statically gated", (): void => {
-    const port: MeasurementPort = fakePort({ measureViewportRect: () => VIEWPORT });
-    const result = resolvePointerTargetFromMeasurement(
-      port,
-      pointerInput(400, 250, "A", {
-        rearrangeGatedLeafIds: new Set<string>(["B"]),
-      }),
-    );
-    expect(result).toBeNull();
+  it("keeps a centre body drop as swap when no host element covers it", (): void => {
+    const drag = layoutDrag(twoLeafLayout(), "A", STAGE, CONFIG, undefined, { bands: new Map([["tile-b", [TOP_ELEMENT]]]) })!;
+    expect(hitRun(drag, "lift").at({ x: 300, y: 200 }).held).toEqual({ kind: "swap", at: "tile-b" });
   });
 
-  it("resolves a host group-drop target as group-merge, ahead of the body zone it overlaps", (): void => {
-    // client (310, 60) → local (210, 10): the top edge band of B. The host
-    // element covers that band, so the hit is group-merge rather than edge-insert.
-    const port: MeasurementPort = fakePort({
-      measureViewportRect: () => VIEWPORT,
-      measureGroupDropTargetRects: (leafId: string): ReadonlyArray<DOMRect> =>
-        leafId === "B" ? [rect(300, 50, 40, 30)] : [],
-    });
-    const result = resolvePointerTargetFromMeasurement(
-      port,
-      pointerInput(310, 60, "A"),
-    );
-    expect(result?.action).toBe("group-merge");
-    expect(result?.leafId).toBe("B");
-    expect(result?.fallbackReason).toBe("host-group-drop-target");
+  it("keeps an uncovered edge band as a side (across the run; along it, B next to A has no side: its strip is the swap's)", (): void => {
+    const drag = layoutDrag(twoLeafLayout(), "A", STAGE, CONFIG, undefined, {
+      bands: new Map([["tile-b", [{ left: 0, top: 0, right: 192, height: 8 }]]]),
+    })!;
+    expect(hitRun(drag, "lift").at({ x: 300, y: 20 }).held).toEqual({ kind: "beside", at: "tile-b", side: "top" });
+    // B is the subject's run neighbor: its left strip belongs to the center.
+    expect(hitRun(drag, "lift").at({ x: 210, y: 200 }).held).toEqual({ kind: "swap", at: "tile-b" });
   });
 
-  it("keeps a centre body drop as swap when no host target covers it", (): void => {
-    const port: MeasurementPort = fakePort({ measureViewportRect: () => VIEWPORT });
-    const result = resolvePointerTargetFromMeasurement(
-      port,
-      pointerInput(400, 250, "A"),
-    );
-    expect(result?.leafId).toBe("B");
-    expect(result?.action).toBe("swap");
+  it("ignores the drag source's own host element: its place is home", (): void => {
+    const drag = layoutDrag(twoLeafLayout(), "A", STAGE, CONFIG, undefined, { bands: new Map([["tile-a", [{ left: 50, top: 190, right: 70, height: 40 }]]]) })!;
+    expect(hitRun(drag, "lift").at({ x: 100, y: 200 }).held).toEqual({ kind: "home" });
   });
 
-  it("keeps an uncovered edge band as edge-insert", (): void => {
-    const port: MeasurementPort = fakePort({
-      measureViewportRect: () => VIEWPORT,
-      measureGroupDropTargetRects: (): ReadonlyArray<DOMRect> => [
-        rect(0, 0, 8, 8),
-      ],
-    });
-    const result = resolvePointerTargetFromMeasurement(
-      port,
-      pointerInput(310, 250, "A", {
-        config: { ...CONFIG, minPaneSizePx: 40 },
-      }),
-    );
-    expect(result?.leafId).toBe("B");
-    expect(result?.action).toBe("edge-insert");
-  });
-
-  it("ignores the drag source's own host target", (): void => {
-    const port: MeasurementPort = fakePort({
-      measureViewportRect: () => VIEWPORT,
-      measureGroupDropTargetRects: (leafId: string): ReadonlyArray<DOMRect> =>
-        leafId === "A" ? [rect(150, 200, 80, 40)] : [],
-    });
-    const result = resolvePointerTargetFromMeasurement(
-      port,
-      pointerInput(180, 220, "A"),
-    );
-    expect(result).toBeNull();
-  });
-
-  it("falls through to the body zone when the source is already in the target group", (): void => {
+  it("a source already in the target group: joining it back changes nothing (a place with the lift's arrangement is home), and its body is refused (self)", (): void => {
     const grouped: TilingGroupNode = {
       kind: "group",
       id: "group-B",
       activeMemberId: "B",
       members: [leaf("B", "tile-b"), leaf("A", "tile-a")],
     };
-    const port: MeasurementPort = fakePort({
-      measureViewportRect: () => VIEWPORT,
-      measureGroupDropTargetRects: (leafId: string): ReadonlyArray<DOMRect> =>
-        leafId === "B" ? [rect(350, 200, 80, 40)] : [],
-    });
-    const result = resolvePointerTargetFromMeasurement(
-      port,
-      pointerInput(400, 250, "A", {
-        layout: grouped,
-        leafIds: ["B"],
-        liveHitFootprintsById: new Map<string, TilingPaneFootprint>([
-          ["B", { left: 200, top: 0, width: 200, height: 400 }],
-        ]),
-        leafFootprintsById: new Map<string, TilingPaneFootprint>([
-          ["B", { left: 200, top: 0, width: 200, height: 400 }],
-        ]),
-      }),
-    );
-    expect(result?.action).toBe("swap");
-    expect(result?.leafId).toBe("B");
-  });
-
-  it("ignores host targets when grouping is disabled", (): void => {
-    const port: MeasurementPort = fakePort({
-      measureViewportRect: () => VIEWPORT,
-      measureGroupDropTargetRects: (leafId: string): ReadonlyArray<DOMRect> =>
-        leafId === "B" ? [rect(350, 200, 80, 40)] : [],
-    });
-    const result = resolvePointerTargetFromMeasurement(
-      port,
-      pointerInput(400, 250, "A", { groupingEnabled: false }),
-    );
-    expect(result?.action).toBe("swap");
-    expect(result?.fallbackReason).not.toBe("host-group-drop-target");
+    const layout: TilingLayoutNode = { kind: "split", id: "root", axis: "horizontal", ratio: 0.5, first: leaf("C", "tile-c"), second: grouped };
+    const drag = createLayoutTilingDrag({
+      layout,
+      sourceLeafId: "A",
+      container: STAGE,
+      config: CONFIG,
+      min: CONFIG.minPaneSizePx,
+      parts: tilingDragParts({ bands: new Map([["tile-b", [TOP_ELEMENT]]]) }),
+    })!;
+    // The group is drawn on the right half as tile-b; A is a tab torn off it.
+    // A tab torn off its group leaves no slot open (the group stays drawn): the drag has no home rect of its own.
+    expect(drag.home).toBeNull();
+    // The host element, joined back to the group it came from, gives the lift's own layout: that place is home.
+    expect(drag.after({ kind: "join", at: "tile-b" }).refusal).toBeNull();
+    // (The tab joins as the group's active one, so the group is drawn under its key; the panes' rects are the lift's.)
+    expect([...drag.after({ kind: "join", at: "tile-b" }).layout.values()]).toEqual([...drag.lift.layout.values()]);
+    expect(hitRun(drag, "lift").at({ x: 310, y: 10 }).held).toEqual({ kind: "home" });
+    // Its body: a swap with its own group is refused, so nothing is held and the refused place shows.
+    const onBody = hitRun(drag, "lift").at({ x: 300, y: 200 });
+    expect(onBody.held).toBeNull();
+    expect(onBody.refused).toEqual({ kind: "swap", at: "tile-b" });
+    expect(drag.after({ kind: "swap", at: "tile-b" }).refusal).toEqual({ code: "self" });
   });
 });
-

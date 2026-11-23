@@ -5,23 +5,19 @@
  * state shows up as a difference. `HPT_GOLDEN_WRITE=1 pnpm test golden` rewrites
  * the fixtures; do that only for a change meant to alter an answer, and say
  * which cases moved in its commit.
+ *
+ * The drag sections (`regions`, `drops`, `drop-boundary`, `drag-home`, `drag-home-return`, `drag-home-column`,
+ * `drag-forward-column`) were re-recorded for the drag's place coming from placement's `tilingDrag` hit: they read
+ * the hit and `after(place)` where they once read hypr-tiling's own zone classifier, validity and home rules.
  */
 import { createFakeClock, createFrameLoop, type FakeClock, type FrameLoop, type Rect } from "@n-uf/motion";
-import { classifyPaneZone, resolvePaneZoneGeometry, TILING_DROP_INTENT_CONFIG } from "../../engine/drop-intent-resolver";
-import { evaluateZoneCandidate } from "../../engine/drop-validity";
-import {
-  DRAG_MACHINE_INITIAL_STATE,
-  deriveCandidateTree,
-  deriveLiveDragTree,
-  dragMachineReducer,
-  isCommittableTarget,
-  resolveDragRoomTarget,
-  type DragMachinePoint,
-  type DragMachineState,
-  type DragResolvedTarget,
-} from "../../engine/drag-machine";
-import { createDragInputDriver } from "../../engine/input-driver";
+import { createDragIntent } from "@n-uf/motion/drag";
+import { paneRegion, type TilingBasis, type TilingDrag, type TilingHeld, type TilingHit, type TilingHitRead, type TilingHitTarget } from "@n-uf/placement/tiling";
+import { resolvePaneCenterGeometry, TILING_DROP_INTENT_CONFIG } from "../../engine/drop-intent-resolver";
+import { collectStaticGatedLeafIds } from "../../engine/drop-validity";
+import { deriveCandidateTree, type DragMachinePoint, type DragResolvedTarget } from "../../engine/drag-machine";
 import { clampHeldRectToStage, resolveDragLandingRect } from "../../engine/drag-landing";
+import { createLayoutTilingDrag, deriveDropCommitTree, tilingDragParts, type TilingDragTree } from "../../engine/tiling-drag-tree";
 import { collectLeafFootprints, footprintsByLeafId, resolveLayoutGeometry } from "../../engine/leaf-geometry";
 import { buildDefaultDwindleLayout, normalizeLayout } from "../../engine/layout-normalize";
 import { createLeafMotion, type LeafMotion, type LeafMotionFrame } from "../../engine/leaf-motion";
@@ -214,9 +210,14 @@ export function layoutCases(): Record<string, unknown> {
 
 const ZONE_CODE: Record<string, string> = { center: "c", top: "t", right: "r", bottom: "b", left: "l" };
 
-/** Drop regions on a point grid, for every pane size, pixel ratio and previous region. */
-export function regionCases(): Record<string, string> {
-  const out: Record<string, string> = {};
+/**
+ * Drop regions on a point grid, for every pane size and pixel ratio: the pane's center rectangle as the drop hit zone
+ * geometry gives it (`resolvePaneCenterGeometry`), and the region of each point of the grid by placement's
+ * `paneRegion` on that center, which is how the drag's hit reads a pane. The hit has no hysteresis of its own: what
+ * it holds past a zone's edge is its one hold rule (`hold` in the drag hit's properties).
+ */
+export function regionCases(): Record<string, string | number[]> {
+  const out: Record<string, string | number[]> = {};
   const sizes = [
     { width: 600, height: 400 },
     { width: 120, height: 90 },
@@ -224,34 +225,117 @@ export function regionCases(): Record<string, string> {
     { width: 20, height: 20 },
     { width: 333.3, height: 211.7 },
   ];
-  const previous = [null, "center", "top", "right", "bottom", "left"] as const;
-  const configs = [
-    TILING_DROP_INTENT_CONFIG,
-    { centerRatio: 0.5, centerRatioY: 0.2, centerMinPx: 40, hysteresisPx: 10 },
-  ];
+  const configs = [TILING_DROP_INTENT_CONFIG, { centerRatio: 0.5, centerRatioY: 0.2, centerMinPx: 40 }];
   configs.forEach((config, ci) => {
     for (const size of sizes) {
       for (const dpr of [1, 1.5, 2]) {
-        const geo = resolvePaneZoneGeometry(size, { ...config, devicePixelRatio: dpr });
-        for (const prev of previous) {
-          let line = "";
-          for (let iy = 0; iy <= 16; iy++) {
-            for (let ix = 0; ix <= 20; ix++) {
-              const point = { x: -2 + ((size.width + 4) * ix) / 20, y: -2 + ((size.height + 4) * iy) / 16 };
-              line += ZONE_CODE[classifyPaneZone(point, geo, { previousZone: prev, hysteresisPx: config.hysteresisPx })];
-            }
+        const geo = resolvePaneCenterGeometry(size, { ...config, devicePixelRatio: dpr });
+        const paneCenter = { width: geo.width, height: geo.height, left: geo.centerLeftPx, top: geo.centerTopPx, right: geo.centerRightPx, bottom: geo.centerBottomPx };
+        let line = "";
+        for (let iy = 0; iy <= 16; iy++) {
+          for (let ix = 0; ix <= 20; ix++) {
+            const point = { x: -2 + ((size.width + 4) * ix) / 20, y: -2 + ((size.height + 4) * iy) / 16 };
+            line += ZONE_CODE[paneRegion({ x: 0, y: 0, ...size }, point, null, { paneCenter })];
           }
-          out[`${ci}/${size.width}x${size.height}/${dpr}/${prev}`] = line;
         }
+        out[`${ci}/${size.width}x${size.height}/${dpr}`] = line;
+        out[`center/${ci}/${size.width}x${size.height}/${dpr}`] = [geo.centerLeftPx, geo.centerTopPx, geo.centerRightPx, geo.centerBottomPx];
       }
     }
   });
   return out;
 }
 
+// ---------------------------------------------------------------- the drag's hit
+
+/** The tile a leaf of `layout` shows (a group member's own tile), or null. */
+function tileOfLeaf(layout: TilingLayoutNode, leafId: string): string | null {
+  if (layout.kind === "leaf") return layout.id === leafId ? layout.tileId : null;
+  if (layout.kind === "group") return layout.members.find((m) => m.id === leafId)?.tileId ?? null;
+  return tileOfLeaf(layout.first, leafId) ?? tileOfLeaf(layout.second, leafId);
+}
+
+/** The drag of `sourceLeafId` as the renderer builds it at the lift (the static-gated panes take no drop), or null when the leaf cannot be lifted. */
+export function layoutDrag(
+  layout: TilingLayoutNode,
+  sourceLeafId: string,
+  area: { readonly width: number; readonly height: number },
+  config: TilingLayoutConfig,
+  subject?: "pane" | "group",
+  parts?: Parameters<typeof tilingDragParts>[0],
+): TilingDrag<TilingDragTree, string> | null {
+  const gated = new Set<string>();
+  for (const id of collectStaticGatedLeafIds(layout)) {
+    const tile = tileOfLeaf(layout, id);
+    if (tile != null) gated.add(tile);
+  }
+  try {
+    return createLayoutTilingDrag({
+      layout,
+      sourceLeafId,
+      ...(subject != null ? { subject } : {}),
+      container: { width: area.width, height: area.height },
+      config,
+      min: config.minPaneSizePx,
+      still: (tile: string): boolean => gated.has(tile),
+      ...(parts != null ? { parts: tilingDragParts(parts) } : {}),
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** A drag's hit on one basis, with the drag intent the pointer goes through, one sample every 16 ms. */
+export interface HitRun {
+  readonly drag: TilingDrag<TilingDragTree, string>;
+  readonly hit: TilingHit<TilingDragTree, string>;
+  /** The pointer at `point`: what the hit reads of the intent's frame. */
+  at(point: DragMachinePoint): TilingHitRead<string>;
+}
+
+export function hitRun(drag: TilingDrag<TilingDragTree, string>, basis: TilingBasis): HitRun {
+  const hit = drag.hit(basis);
+  const intent = createDragIntent<TilingHitTarget<string>>({ ...hit.intent });
+  let now = 0;
+  return {
+    drag,
+    hit,
+    at: (point: DragMachinePoint): TilingHitRead<string> => hit.read(intent.update(point, (now += 16), hit.targets), point),
+  };
+}
+
+/** A held place as a short label. */
+function heldLabel(held: TilingHeld<string>): string {
+  if (held.kind === "home") return "home";
+  if (held.kind === "swap") return `swap ${held.at}`;
+  if (held.kind === "beside") return `${held.side} of ${held.at}`;
+  return `join ${held.at}${held.index !== undefined ? `#${held.index}` : ""}`;
+}
+
+/** What a read holds, as a label: the held place, or the refused one with its code, or `-`. */
+function readLabel(run: HitRun, read: TilingHitRead<string>): string {
+  if (read.held != null) return heldLabel(read.held);
+  if (read.refused != null) return `refused ${heldLabel(read.refused)} ${run.drag.after(read.refused).refusal?.code ?? "?"}`;
+  return "-";
+}
+
+/** What a frame draws on the hit's basis: `lift` for the layout at the lift, else the tree's shape. */
+function drawnLabel(run: HitRun, read: TilingHitRead<string>): string {
+  const drawn = run.hit.drawn(read);
+  return drawn.tree === run.drag.lift.tree ? "lift" : shape(drawn.tree.layout);
+}
+
+/** A release on a read: `cancel` (the layout comes back) or `commit` with the shape of the tree it stores. */
+function releaseLabel(run: HitRun, read: TilingHitRead<string>): string {
+  const after = run.hit.release(read);
+  return read.held == null || read.held.kind === "home" || after.refusal != null ? "cancel" : `commit ${shape(after.tree.layout)}`;
+}
+
 /**
- * Drops: every source, target and region on the first trees of each kind. The tree the commit applies, the landing
- * rect, and whether the drop is valid under two configs (judged on the lifted tree, as the renderer does).
+ * Drops: every source, target and region on the first trees of each kind. The tree the release commits (the drag
+ * hit's `after(place).tree`, as the renderer stores it), the landing rect, and the verdict of each place under two
+ * configs and two areas: `after(place).refusal`, judged on the drag's base (room) and on the layout the release
+ * makes (fit); `1` taken, `0` refused, `-1` for a target the base does not draw.
  */
 export function dropCases(): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -259,30 +343,30 @@ export function dropCases(): Record<string, unknown> {
   for (const { name, tree } of trees) {
     const ids = readLeafNodeIds(tree);
     for (const s of ids) {
-      const lifted = removeLeafTile(tree, s);
       for (const t of ids) {
         if (t === s) continue;
+        const at = tileOfLeaf(tree, t)!;
         for (const zone of ["center", "top", "right", "bottom", "left"] as const) {
+          const place: TilingHeld<string> = zone === "center" ? { kind: "swap", at } : { kind: "beside", at, side: zone };
           const target = {
             leafId: t,
             zone,
             action: zone === "center" ? "swap" : "edge-insert",
             finalEdge: zone === "center" ? null : zone,
             selectedSplitZone: zone === "center" ? null : zone,
+            place,
           } as unknown as Parameters<typeof deriveCandidateTree>[2];
-          const committed = deriveCandidateTree(tree, s, target);
+          const committed = deriveDropCommitTree({ layout: tree, sourceLeafId: s, target, container: { width: 1280, height: 800 }, config: CONFIGS.default! });
           const landing = resolveDragLandingRect({ layout: tree, sourceLeafId: s, target, container: { width: 1280, height: 800 }, config: CONFIGS.default! });
           const valid: number[] = [];
           for (const config of [CONFIGS.default!, CONFIGS.body!]) {
             for (const area of [AREAS[0]!, AREAS[2]!]) {
-              const prints = footprintsByLeafId(collectLeafFootprints(lifted, 0, 0, area.width, area.height, config));
-              const fp = prints.get(t);
-              if (fp == null) {
+              const drag = layoutDrag(tree, s, area, config);
+              if (drag == null || !drag.base.layout.has(at)) {
                 valid.push(-1);
                 continue;
               }
-              const ev = evaluateZoneCandidate({ zone, layout: tree, sourceLeafId: s, targetLeafId: t, targetFootprint: fp, config, viewportWidth: area.width, viewportHeight: area.height });
-              valid.push(ev.isValid ? 1 : 0);
+              valid.push(drag.after(place).refusal == null ? 1 : 0);
             }
           }
           out[`${name}/${s}>${t}/${zone}`] = { tree: shape(committed), landing: landing ? rectOf(landing) : null, valid };
@@ -609,11 +693,12 @@ export function springLoadCases(): Record<string, unknown[]> {
 }
 
 /**
- * Drop room at its boundary, recorded from 26.11.7: edge and center drops judged with fractional gaps, handles and
- * minimums, on target footprints exactly at, just under and just over two minimums plus the gutter along the split
- * (and the minimum across it), with and without a source. Then stored ratios that are not plain numbers (±Infinity,
- * null, a numeric string, true) through the layout, on a binary and on a master split. NaN is left out: it lays out at
- * 0.5 now, where 26.11.7 drew NaN rects.
+ * Drop room at its boundary: edge and center drops judged with fractional gaps, handles and minimums, on a target
+ * exactly at, just under and just over two minimums plus the gutter along the split (and the minimum across it). The
+ * drag is the one pane A lifted from the pair A | B, so its base is B alone filling the stage, and the stage is sized
+ * to the target: each place's verdict is `after(place).refusal` on B (`1` taken, else the refusal code). Then stored
+ * ratios that are not plain numbers (±Infinity, null, a numeric string, true) through the layout, on a binary and on
+ * a master split. NaN is left out: it lays out at 0.5 now, where 26.11.7 drew NaN rects.
  */
 export function dropBoundaryCases(): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -626,6 +711,7 @@ export function dropBoundaryCases(): Record<string, unknown> {
     first: L("A"),
     second: { kind: "split", id: "t", axis: "vertical", ratio: 0.5, first: L("B"), second: L("C") },
   };
+  const pair: TilingLayoutNode = { kind: "split", id: "pair", axis: "horizontal", ratio: 0.5, first: L("A"), second: L("B") };
   const values = [0, 0.1, 0.2, 0.3, 1.1, 4, 12.3, 40.1];
   const deltas = [0, 1e-12, -1e-12, 1e-9, -1e-9];
   for (const gapPx of values) {
@@ -638,15 +724,19 @@ export function dropBoundaryCases(): Record<string, unknown> {
           for (const delta of deltas) {
             const along = need + delta;
             const across = minPaneSizePx + delta;
-            const footprints =
+            const stages =
               zone === "top"
-                ? [{ left: 0, top: 0, width: 300, height: along }, { left: 1.5, top: 2.5, width: across, height: along }]
-                : [{ left: 0, top: 0, width: along, height: 300 }, { left: 1.5, top: 2.5, width: along, height: across }];
-            for (const targetFootprint of footprints) {
-              for (const sourceLeafId of ["A", null]) {
-                const ev = evaluateZoneCandidate({ zone, layout, sourceLeafId, targetLeafId: "B", targetFootprint, config, viewportWidth: 1000, viewportHeight: 700 });
-                verdicts.push(ev.isValid ? 1 : ev.rejectionReason);
+                ? [{ width: 300, height: along }, { width: across, height: along }]
+                : [{ width: along, height: 300 }, { width: along, height: across }];
+            for (const stage of stages) {
+              const drag = layoutDrag(pair, "A", stage, config);
+              if (drag == null) {
+                verdicts.push("no drag");
+                continue;
               }
+              const place: TilingHeld<string> = zone === "center" ? { kind: "swap", at: "t-B" } : { kind: "beside", at: "t-B", side: zone };
+              const refusal = drag.after(place).refusal;
+              verdicts.push(refusal == null ? 1 : refusal.code);
             }
           }
         }
@@ -671,138 +761,109 @@ export function dropBoundaryCases(): Record<string, unknown> {
 }
 
 /**
- * The lifted pane's home, recorded from 26.11.9: for every leaf of every tree, a drag lifted at the leaf's center and
- * moved to its far corner (inside home, edges included), 1 px past its right edge, then back to its center. Each step
- * gives the phase, whether the pointer has left home, and the tree the live drag lays out with no room target:
- * `home` for the original tree (the pane's place kept open), else its shape (the gap closed). Since the home is a
- * target for the whole drag, the last step (back at the center) lays out `home` again.
+ * The lifted pane's home through the drag's hit: for every leaf of every tree, on each basis (`lift` is Indicator's,
+ * `base` Snap's), a pointer lifted at the leaf's center and moved to its far corner (inside home, edges included),
+ * 1 px past its right edge, 7 px past it (beyond the hold rule's 6 px), then back to its center. Each step gives
+ * what the hit holds and what a frame draws: `lift` for the layout at the lift (the pane's place kept open), else the
+ * tree's shape. Home is a place of the hit for the whole drag, so the first three steps and the last hold it and
+ * draw `lift`.
  */
-export function dragHomeCases(): Record<string, string[]> {
-  const out: Record<string, string[]> = {};
+export function dragHomeCases(): Record<string, Record<string, string[] | null>> {
+  const out: Record<string, Record<string, string[] | null>> = {};
   for (const { name, tree } of goldenTrees()) {
     const rects = resolveLayoutGeometry(tree, AREAS[0]!, CONFIGS.default!).leaves;
     for (const [leafId, r] of rects) {
-      const home = { left: r.x, top: r.y, width: r.width, height: r.height };
       const center: DragMachinePoint = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-      let state: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, {
-        type: "POINTER_DOWN",
-        pointerId: 1,
-        pointerType: "mouse",
-        sourceLeafId: leafId,
-        anchorFootprint: home,
-        pointerAnchorOffset: { x: r.width / 2, y: r.height / 2 },
-        originClient: center,
-      });
-      const steps: string[] = [];
-      for (const client of [
-        { x: r.x + r.width, y: r.y + r.height },
-        { x: r.x + r.width + 1, y: center.y },
-        center,
-      ]) {
-        state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client });
-        if (state.phase !== "dragging") {
-          steps.push(state.phase);
+      const drag = layoutDrag(tree, leafId, AREAS[0]!, CONFIGS.default!);
+      const byBasis: Record<string, string[] | null> = {};
+      for (const basis of ["lift", "base"] as const) {
+        if (drag == null) {
+          byBasis[basis] = null;
           continue;
         }
-        const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: null, homeHeld: state.atHome });
-        steps.push(`dragging/${state.leftHome ? "left" : "home"}/${laid === tree ? "home" : shape(laid)}`);
+        const run = hitRun(drag, basis);
+        byBasis[basis] = [
+          { x: r.x + r.width, y: r.y + r.height },
+          { x: r.x + r.width + 1, y: center.y },
+          { x: r.x + r.width + 7, y: center.y },
+          center,
+        ].map((point) => {
+          const read = run.at(point);
+          return `${readLabel(run, read)} / ${drawnLabel(run, read)}`;
+        });
       }
-      out[`${name}/${leafId}`] = steps;
+      out[`${name}/${leafId}`] = byBasis;
     }
   }
   return out;
 }
 
 /**
- * Back home after leaving, recorded from the release after 26.11.10: for every leaf of every tree, a drag driven
- * through the input driver (a resolver that answers a swap onto another leaf everywhere) lifted at the leaf's center,
- * taken 1 px past its bottom edge (or its top edge, for a leaf at the bottom of the area), then back over its header
- * (8 px below its top, at its center x), then released there; and the same with the page moving under the drag while
- * the pointer is away (`HOME_INVALIDATED`). Each step gives whether the home is the target, the tree laid out (`home`
- * or its shape), whether a drop target was resolved, and the release's outcome. The tree laid out is the drop
- * indicator's frame (`resolveDragRoomTarget`, `swapFrame: "room"`): since the swap preview through placement's
- * `tilingDrag`, a frame held over a swap draws the layout at the lift (`home`: the old place reopened for the partner,
- * the target in its own slot, nothing moved), not the gap-closed one.
+ * Back home after leaving, through the drag's hit: for every leaf of every tree, on each basis (`lift` is Indicator's,
+ * `base` Snap's), a pointer lifted at the leaf's center (10 px right of it), taken 1 px past its bottom edge (or its
+ * top edge, for a leaf at the bottom of the area: still home, the hold rule's edge is 6 px), then 30 px past it (into
+ * the neighbour, or the gap), then back over its header (8 px below its top, at its center x), then released there.
+ * Each step gives what the hit holds and what a frame draws (`lift` for the layout at the lift, else the tree's
+ * shape), and the release's outcome: `cancel`, or `commit` with the tree it stores. Back over home it is `home`
+ * whatever was held outside.
  */
-export function dragHomeReturnCases(): Record<string, string[]> {
-  const out: Record<string, string[]> = {};
+export function dragHomeReturnCases(): Record<string, Record<string, string[] | null>> {
+  const out: Record<string, Record<string, string[] | null>> = {};
   for (const { name, tree } of goldenTrees()) {
     const rects = resolveLayoutGeometry(tree, AREAS[0]!, CONFIGS.default!).leaves;
-    const ids = [...rects.keys()];
-    if (ids.length < 2) continue;
+    if (rects.size < 2) continue;
     for (const [leafId, r] of rects) {
-      const other = ids.find((id) => id !== leafId)!;
-      for (const lost of [false, true]) {
-        const home = { left: r.x, top: r.y, width: r.width, height: r.height };
-        const center: DragMachinePoint = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-        const atBottom = r.y + r.height + 1 > AREAS[0]!.y + AREAS[0]!.height;
-        const away: DragMachinePoint = { x: center.x, y: atBottom ? r.y - 1 : r.y + r.height + 1 };
-        const header: DragMachinePoint = { x: center.x, y: r.y + 8 };
-        let state: DragMachineState = DRAG_MACHINE_INITIAL_STATE;
-        const driver = createDragInputDriver({
-          getState: (): DragMachineState => state,
-          dispatch: (event): void => {
-            state = dragMachineReducer(state, event);
-          },
-          resolveTarget: (): DragResolvedTarget =>
-            ({ ...resolvedSwap, leafId: other }) as DragResolvedTarget,
-          capturePointer: (): void => undefined,
-          getSlotCommitment: () => ({ mode: "delta-responsive", reresolveDeltaPx: 24 }),
-        });
-        state = dragMachineReducer(state, {
-          type: "POINTER_DOWN",
-          pointerId: 1,
-          pointerType: "mouse",
-          sourceLeafId: leafId,
-          anchorFootprint: home,
-          pointerAnchorOffset: { x: r.width / 2, y: r.height / 2 },
-          originClient: center,
-        });
+      const center: DragMachinePoint = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      const atBottom = r.y + r.height + 1 > AREAS[0]!.y + AREAS[0]!.height;
+      const sign = atBottom ? -1 : 1;
+      const edge: number = atBottom ? r.y : r.y + r.height;
+      const away: DragMachinePoint = { x: center.x, y: edge + sign };
+      const gone: DragMachinePoint = { x: center.x, y: edge + sign * 30 };
+      const header: DragMachinePoint = { x: center.x, y: r.y + 8 };
+      const drag = layoutDrag(tree, leafId, AREAS[0]!, CONFIGS.default!);
+      const byBasis: Record<string, string[] | null> = {};
+      for (const basis of ["lift", "base"] as const) {
+        if (drag == null) {
+          byBasis[basis] = null;
+          continue;
+        }
+        const run = hitRun(drag, basis);
         const steps: string[] = [];
-        const record = (label: string): void => {
-          if (state.phase !== "dragging") {
-            steps.push(`${label}:${state.phase}`);
-            return;
-          }
-          const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: indicatorRoom(state.resolvedTarget, leafId), homeHeld: state.atHome, swapFrame: "room" });
-          steps.push(
-            `${label}:${state.atHome ? "home" : "away"}/${laid === tree ? "home" : shape(laid)}/${state.resolvedTarget?.leafId ?? "-"}`,
-          );
+        const record = (label: string, point: DragMachinePoint): TilingHitRead<string> => {
+          const read = run.at(point);
+          steps.push(`${label}: ${readLabel(run, read)} / ${drawnLabel(run, read)}`);
+          return read;
         };
-        driver.processPointerSample({ x: center.x + 10, y: center.y });
-        record("lift");
-        driver.processPointerSample(away);
-        record("away");
-        if (lost) state = dragMachineReducer(state, { type: "HOME_INVALIDATED" });
-        driver.processPointerSample(header);
-        record("back");
-        driver.latchRelease();
-        driver.processPointerSample(header, true);
-        state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
-        steps.push(`release:${state.phase === "settling" ? state.outcome : state.phase}`);
-        out[`${name}/${leafId}/${lost ? "lost" : "kept"}`] = steps;
+        record("lift", { x: center.x + 10, y: center.y });
+        record("away", away);
+        record("gone", gone);
+        const back = record("back", header);
+        steps.push(`release: ${releaseLabel(run, back)}`);
+        byBasis[basis] = steps;
       }
+      out[`${name}/${leafId}`] = byBasis;
     }
   }
   return out;
 }
 
 /**
- * Back home in a column, recorded from the release after 26.11.10: the dragged subject on top of pane B (a tab group
- * of three dragged whole, or a single pane), at ratios from short to tall, in a 360 × 784 column with a 180 px minimum.
- * Each case records the subject's home, B's rect once the gap closed, the verdict the gap-closed geometry gives B's
- * top edge (for a tall group it is refused: its projection moves only the dragged leaf), and a drag through the input
- * driver: lift on the header, out below the column, over B's lower part (a swap), then back over the header or over
- * B's grown title bar, then released. The resolver answers as that geometry would: a merge over B's title bar, B's
- * top edge (with that verdict) in its top quarter, a swap below. The tree laid out is the drop indicator's frame
- * (`resolveDragRoomTarget`, `swapFrame: "room"`): over B's lower part (the swap) it is the layout at the lift
- * (`home`), A's old place reopened for B and B in its own slot.
+ * Back home in a column, through the drag's hit: the dragged subject on top of pane B (a tab group of three dragged
+ * whole, or a single pane), at ratios from short to tall, in a 360 × 784 column with a 180 px minimum, B with a 41 px
+ * title bar that takes a join. Each case records the subject's home, B's rect in the drag's base (the gap closed,
+ * B filling the column), the verdict of B's top edge there (`after(place).refusal`: for a tall group the edge is
+ * refused, a short one is taken), and, on each basis (`lift` is Indicator's, `base` Snap's), a drag: lift on the
+ * header, out below the column, over B's lower part, then back over the header or over the top of the subject's own
+ * slot, then released. Each step gives what the hit holds and what a frame draws (`lift` for the layout at the lift,
+ * else the tree's shape), and the release's outcome. Back over home it is `home` whatever B's grown title bar would
+ * hold in the base.
  */
 export function dragHomeColumnCases(): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const area: Rect = { x: 0, y: 0, width: 360, height: 784 };
   const config: TilingLayoutConfig = { gapPx: 6, handleSizePx: 4, minPaneSizePx: 180 };
   const titleBarPx = 41;
+  const parts = { bands: new Map([["b", [{ left: 0, top: 0, right: 0, height: titleBarPx }]]]) };
   for (const subject of ["group", "pane"] as const) {
     for (const ratio of [0.2, 0.25, 0.4, 0.5, 0.6, 0.7, 0.85]) {
       const layout: TilingLayoutNode = {
@@ -828,90 +889,41 @@ export function dragHomeColumnCases(): Record<string, unknown> {
       const dragSubject = subject === "group" ? ("group" as const) : undefined;
       const a = resolveLayoutGeometry(layout, area, config).leaves.get("A")!;
       const home = { left: a.x, top: a.y, width: a.width, height: a.height };
-      const closed = deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: null, subject: dragSubject, homeHeld: false });
-      const b = resolveLayoutGeometry(closed, area, config).leaves.get("B")!;
-      const grownB = { left: b.x, top: b.y, width: b.width, height: b.height };
-      const topEdge = evaluateZoneCandidate({
-        zone: "top",
-        layout,
-        sourceLeafId: "A",
-        targetLeafId: "B",
-        targetFootprint: grownB,
-        config,
-        viewportWidth: area.width,
-        viewportHeight: area.height,
-      });
-      const answer = (point: DragMachinePoint): DragResolvedTarget | null => {
-        if (point.y > area.y + area.height) return null;
-        if (point.y <= grownB.top + titleBarPx) {
-          return { ...resolvedSwap, leafId: "B", action: "group-merge", fallbackReason: "host-group-drop-target" } as DragResolvedTarget;
-        }
-        if (point.y <= grownB.top + grownB.height / 4) {
-          return {
-            ...resolvedSwap,
-            leafId: "B",
-            zone: "top",
-            action: topEdge.isValid ? "edge-insert" : "none",
-            finalEdge: topEdge.isValid ? "top" : null,
-            blockedReason: topEdge.rejectionReason,
-          } as DragResolvedTarget;
-        }
-        return { ...resolvedSwap, leafId: "B" } as DragResolvedTarget;
-      };
+      const drag = layoutDrag(layout, "A", area, config, dragSubject, parts);
+      if (drag == null) {
+        out[`${subject}/${ratio}`] = null;
+        continue;
+      }
+      const grownB = drag.base.layout.get("b")!;
+      const topEdge = drag.after({ kind: "beside", at: "b", side: "top" }).refusal;
       const header: DragMachinePoint = { x: home.left + 150, y: home.top + 20 };
-      const drags: Record<string, string[]> = {};
-      for (const [label, back] of [
-        ["header", header],
-        ["title-bar", { x: header.x, y: home.top + 8 }],
-      ] as const) {
-        let state: DragMachineState = DRAG_MACHINE_INITIAL_STATE;
-        const driver = createDragInputDriver({
-          getState: (): DragMachineState => state,
-          dispatch: (event): void => {
-            state = dragMachineReducer(state, event);
-          },
-          resolveTarget: (x: number, y: number): DragResolvedTarget | null => answer({ x, y }),
-          capturePointer: (): void => undefined,
-          getSlotCommitment: () => ({ mode: "delta-responsive", reresolveDeltaPx: 24 }),
-        });
-        state = dragMachineReducer(state, {
-          type: "POINTER_DOWN",
-          pointerId: 1,
-          pointerType: "mouse",
-          sourceLeafId: "A",
-          ...(dragSubject != null ? { subject: dragSubject } : {}),
-          anchorFootprint: home,
-          pointerAnchorOffset: { x: header.x - home.left, y: header.y - home.top },
-          originClient: header,
-        });
-        const steps: string[] = [];
-        const record = (step: string): void => {
-          if (state.phase !== "dragging") {
-            steps.push(`${step}:${state.phase}`);
-            return;
-          }
-          const laid = deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: indicatorRoom(state.resolvedTarget, "A"), subject: dragSubject, homeHeld: state.atHome, swapFrame: "room" });
-          const t = state.resolvedTarget;
-          steps.push(`${step}:${state.atHome ? "home" : "away"}/${laid === layout ? "home" : shape(laid)}/${t == null ? "-" : `${t.leafId} ${t.zone} ${t.action}`}`);
-        };
-        driver.processPointerSample({ x: header.x, y: header.y + 10 });
-        record("lift");
-        driver.processPointerSample({ x: header.x, y: area.height + 30 });
-        record("below");
-        driver.processPointerSample({ x: header.x, y: area.height - 40 });
-        record("over-b");
-        driver.processPointerSample(back);
-        record(label);
-        driver.latchRelease();
-        driver.processPointerSample(back, true);
-        state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
-        steps.push(`release:${state.phase === "settling" ? state.outcome : state.phase}`);
-        drags[label] = steps;
+      const drags: Record<string, Record<string, string[]>> = {};
+      for (const basis of ["lift", "base"] as const) {
+        const byBack: Record<string, string[]> = {};
+        for (const [label, back] of [
+          ["header", header],
+          ["title-bar", { x: header.x, y: home.top + 8 }],
+        ] as const) {
+          const run = hitRun(drag, basis);
+          const steps: string[] = [];
+          const record = (step: string, point: DragMachinePoint): TilingHitRead<string> => {
+            const read = run.at(point);
+            steps.push(`${step}: ${readLabel(run, read)} / ${drawnLabel(run, read)}`);
+            return read;
+          };
+          record("lift", { x: header.x, y: header.y + 10 });
+          record("below", { x: header.x, y: area.height + 30 });
+          record("over-b", { x: header.x, y: area.height - 40 });
+          const read = record(label, back);
+          steps.push(`release: ${releaseLabel(run, read)}`);
+          byBack[label] = steps;
+        }
+        drags[basis] = byBack;
       }
       out[`${subject}/${ratio}`] = {
         home: [home.left, home.top, home.width, home.height],
-        grownB: [grownB.left, grownB.top, grownB.width, grownB.height],
-        topEdge: topEdge.isValid ? "valid" : topEdge.rejectionReason,
+        baseB: [grownB.x, grownB.y, grownB.width, grownB.height],
+        topEdge: topEdge == null ? "valid" : topEdge.code,
         drags,
       };
     }
@@ -920,11 +932,11 @@ export function dragHomeColumnCases(): Record<string, unknown> {
 }
 
 /**
- * Dragging forward in a column, recorded from the release after 26.11.10: the subject on top of pane B (a tab group
- * of three dragged whole, or a single pane), at ratios from short to tall, in a 360 × 784 column with a 180 px minimum.
- * For each of B's edges as the gap-closed geometry measures B (filling the column): the verdict drop validity gives
- * for the subject, and the shape and leaf rects of the tree the release commits there. The verdict is that tree's:
- * the subject is released first, then placed.
+ * Dragging forward in a column, through the drag's hit: the subject on top of pane B (a tab group of three dragged
+ * whole, or a single pane), at ratios from short to tall, in a 360 × 784 column with a 180 px minimum. For each of B's
+ * edges as the drag's base measures B (filling the column): the verdict of the place (`after(place).refusal`) for the
+ * subject, and the shape and leaf rects of the tree the release commits there. The verdict is that tree's: the
+ * subject is released first, then placed.
  */
 export function dragForwardColumnCases(): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -952,31 +964,26 @@ export function dragForwardColumnCases(): Record<string, unknown> {
             : { kind: "leaf", id: "A", tileId: "a" },
         second: { kind: "leaf", id: "B", tileId: "b" },
       };
-      const closed = deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: null, subject, homeHeld: false });
-      const b = resolveLayoutGeometry(closed, area, config).leaves.get("B")!;
+      const drag = layoutDrag(layout, "A", area, config, subject === "group" ? "group" : undefined);
+      if (drag == null) {
+        out[`${subject}/${ratio}`] = null;
+        continue;
+      }
       const edges: Record<string, unknown> = {};
       for (const zone of ["top", "bottom", "left", "right"] as const) {
-        const verdict = evaluateZoneCandidate({
-          zone,
-          layout,
-          sourceLeafId: "A",
-          targetLeafId: "B",
-          targetFootprint: { left: b.x, top: b.y, width: b.width, height: b.height },
-          config,
-          viewportWidth: area.width,
-          viewportHeight: area.height,
-          subject,
-        });
+        const after = drag.after({ kind: "beside", at: "b", side: zone });
         const committed = deriveCandidateTree(
           layout,
           "A",
-          { ...resolvedSwap, leafId: "B", zone, action: "edge-insert", finalEdge: zone } as DragResolvedTarget,
+          { leafId: "B", zone, action: "edge-insert", finalEdge: zone, selectedSplitZone: zone } as unknown as DragResolvedTarget,
           subject,
         );
         edges[zone] = {
-          verdict: verdict.isValid ? "valid" : verdict.rejectionReason,
+          verdict: after.refusal == null ? "valid" : after.refusal.code,
           committed: shape(committed),
           rects: [...resolveLayoutGeometry(committed, area, config).leaves].map(([id, r]) => [id, ...rectOf(r)]),
+          // What the drag's hit stores for the place, when it takes it: the reducers' tree, or the difference.
+          hit: after.refusal != null ? "refused" : shape(after.tree.layout) === shape(committed) ? "same" : shape(after.tree.layout),
         };
       }
       out[`${subject}/${ratio}`] = edges;
@@ -984,36 +991,6 @@ export function dragForwardColumnCases(): Record<string, unknown> {
   }
   return out;
 }
-
-/** The drop the drop indicator's frame makes room for (no `dragPreviewMakesRoom`): a committable swap, else none. */
-function indicatorRoom(target: DragResolvedTarget | null, sourceLeafId: string): DragResolvedTarget | null {
-  const committable: DragResolvedTarget | null = isCommittableTarget(target, sourceLeafId) ? target : null;
-  return resolveDragRoomTarget({ preview: "indicator", makesRoom: false, snapped: null, committable });
-}
-
-/** A committable swap, the drop the return-trip resolver answers everywhere (its `leafId` set per case). */
-const resolvedSwap = {
-  zone: "center",
-  action: "swap",
-  dominantEdge: "right",
-  finalEdge: null,
-  fallbackReason: null,
-  blockedReason: null,
-  axisPath: [],
-  edgeThresholdRatio: 0.25,
-  centerRectWidthPx: 100,
-  centerRectHeightPx: 100,
-  centerDistancePx: 0,
-  nearestEdgeDistancePx: 0,
-  paneLocalX: 0,
-  paneLocalY: 0,
-  targetSplitId: null,
-  targetSplitPlacement: null,
-  selectedSplitZone: null,
-  selectedSplitDistancePx: null,
-  rejectedSplitReasons: [],
-  tuning: { centerRatio: 0.5, edgeThresholdRatio: 0.25, hysteresisPx: 6, devicePixelRatio: 1 },
-};
 
 /**
  * The held pane against the stage, recorded from 26.11.9: for every leaf of every tree, held by its center at seeded

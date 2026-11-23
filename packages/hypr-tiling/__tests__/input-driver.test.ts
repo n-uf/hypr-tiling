@@ -6,14 +6,12 @@ import {
   type DragMachineState,
   type DragPointerType,
   type DragResolvedTarget,
-  type DragSlotCommitmentMode,
   dragMachineReducer,
   shouldSuppressCompetingCancel,
 } from "../engine/drag-machine";
 import {
   type DragInputDriver,
   type DragInputDriverHost,
-  type DragInputDriverSlotCommitment,
   createDragInputDriver,
 } from "../engine/input-driver";
 import type {
@@ -76,7 +74,8 @@ interface DriverHarness {
       previousTarget: DragResolvedTarget | null,
     ) => DragResolvedTarget | null,
   ): void;
-  setSlotCommitment(commitment: DragInputDriverSlotCommitment): void;
+  /** Whether the drag hit holds home at the sample being processed (the host's `heldHome`). */
+  setHome(home: boolean): void;
   pointerDown(point: DragMachinePoint, pointerType?: DragPointerType, pointerId?: number): void;
 }
 
@@ -90,10 +89,7 @@ function createHarness(): DriverHarness {
     sourceLeafId: string,
     previousTarget: DragResolvedTarget | null,
   ) => DragResolvedTarget | null = (): DragResolvedTarget | null => null;
-  let slotCommitment: DragInputDriverSlotCommitment = {
-    mode: "delta-responsive",
-    reresolveDeltaPx: 24,
-  };
+  let home: boolean = false;
   const host: DragInputDriverHost = {
     getState: (): DragMachineState => state,
     dispatch: (event: DragMachineEvent): void => {
@@ -106,10 +102,10 @@ function createHarness(): DriverHarness {
       sourceLeafId: string,
       previousTarget: DragResolvedTarget | null,
     ): DragResolvedTarget | null => resolver(x, y, sourceLeafId, previousTarget),
+    heldHome: (): boolean => home,
     capturePointer: (pointerId: number): void => {
       captures.push(pointerId);
     },
-    getSlotCommitment: (): DragInputDriverSlotCommitment => slotCommitment,
   };
   const driver: DragInputDriver = createDragInputDriver(host);
   return {
@@ -120,8 +116,8 @@ function createHarness(): DriverHarness {
     setResolver: (fn): void => {
       resolver = fn;
     },
-    setSlotCommitment: (commitment): void => {
-      slotCommitment = commitment;
+    setHome: (value: boolean): void => {
+      home = value;
     },
     pointerDown: (point, pointerType = "mouse", pointerId = 1): void => {
       events.push({
@@ -178,21 +174,19 @@ describe("input-driver — armed → threshold → dragging promotion", (): void
     }
   });
 
-  it("captures the seat anchor only when the first target is committable", (): void => {
+  it("holds no seat when the first target is not committable", (): void => {
     const harness: DriverHarness = createHarness();
     harness.setResolver((): DragResolvedTarget | null => null);
     harness.pointerDown({ x: 0, y: 0 });
     harness.driver.processPointerSample({ x: 10, y: 0 });
     expect(harness.state().phase).toBe("dragging");
     expect(harness.driver.committableSeat).toBeNull();
-    expect(harness.driver.seatAnchor).toBeNull();
   });
 });
 
-describe("input-driver — seated hold (delta-responsive vs zone-exit-hold) + re-aim re-anchor", (): void => {
-  function seatedHarness(mode: DragSlotCommitmentMode): DriverHarness {
+describe("input-driver — the seat is the drag hit's, the driver holds nothing of its own", (): void => {
+  function seatedHarness(): DriverHarness {
     const harness: DriverHarness = createHarness();
-    harness.setSlotCommitment({ mode, reresolveDeltaPx: 24 });
     const seat: DragResolvedTarget = makeTarget("C", "center", "swap");
     harness.setResolver((): DragResolvedTarget | null => seat);
     harness.pointerDown({ x: 0, y: 0 });
@@ -201,44 +195,57 @@ describe("input-driver — seated hold (delta-responsive vs zone-exit-hold) + re
     return harness;
   }
 
-  it("delta-responsive HOLDS the seat under a sub-delta move inside the footprint", (): void => {
-    const harness: DriverHarness = seatedHarness("delta-responsive");
-    // Resolver still returns C (same footprint); travel < 24px from anchor (10,0).
-    harness.driver.processPointerSample({ x: 20, y: 0 });
-    const resolved: DragMachineEvent[] = targetResolvedEvents(harness.events);
-    const last: DragMachineEvent | undefined = resolved[resolved.length - 1];
-    if (last?.type === "TARGET_RESOLVED") {
-      expect(last.resolvedTarget?.leafId).toBe("C");
-    }
-    expect(harness.driver.committableSeat?.leafId).toBe("C");
-    // The seat anchor stays at the original (10,0) seat (no re-anchor on a hold).
-    expect(harness.driver.seatAnchor).toEqual({ x: 10, y: 0 });
-  });
-
-  it("delta-responsive RE-AIMS + re-anchors once travel exceeds the delta to a new seat", (): void => {
-    const harness: DriverHarness = seatedHarness("delta-responsive");
+  it("takes what the hit answers on every sample: a new place is the seat at once, however little the pointer moved", (): void => {
+    const harness: DriverHarness = seatedHarness();
     const newSeat: DragResolvedTarget = makeTarget("B", "center", "swap");
     harness.setResolver((): DragResolvedTarget | null => newSeat);
-    harness.driver.processPointerSample({ x: 100, y: 0 });
+    harness.driver.processPointerSample({ x: 11, y: 0 });
     expect(harness.driver.committableSeat?.leafId).toBe("B");
-    // Re-seated → anchor moves to the new sample position.
-    expect(harness.driver.seatAnchor).toEqual({ x: 100, y: 0 });
   });
 
-  it("zone-exit-hold PINS the seat through any in-footprint travel (no re-aim)", (): void => {
-    const harness: DriverHarness = seatedHarness("zone-exit-hold");
-    // A fresh resolution would pick B, but the cursor is still within C's
-    // footprint (resolver returns C) → the seat is pinned, no re-resolve.
-    harness.driver.processPointerSample({ x: 200, y: 0 });
+  it("an answer of nothing clears the seat at once (the hold rule is the hit's: the driver keeps no seat it was not given)", (): void => {
+    const harness: DriverHarness = seatedHarness();
+    harness.setResolver((): DragResolvedTarget | null => null);
+    harness.driver.processPointerSample({ x: 11, y: 0 });
+    expect(harness.driver.committableSeat).toBeNull();
+  });
+
+  it("asks the host once per sample, with the previous target the machine holds", (): void => {
+    const harness: DriverHarness = createHarness();
+    const asked: Array<DragResolvedTarget | null> = [];
+    harness.setResolver((_x, _y, _source, previous): DragResolvedTarget | null => {
+      asked.push(previous);
+      return makeTarget("C", "center", "swap");
+    });
+    harness.pointerDown({ x: 0, y: 0 });
+    harness.driver.processPointerSample({ x: 10, y: 0 });
+    harness.driver.processPointerSample({ x: 12, y: 0 });
+    expect(asked).toHaveLength(2);
+    expect(asked[0]).toBeNull();
+    expect(asked[1]?.leafId).toBe("C");
+  });
+
+  it("a sample the hit holds home on has no seat and resolves no target, even where a place is answered; the machine is told home", (): void => {
+    const harness: DriverHarness = createHarness();
+    harness.setResolver((): DragResolvedTarget | null => makeTarget("C", "center", "swap"));
+    harness.pointerDown({ x: 0, y: 0 });
+    harness.setHome(true);
+    harness.driver.processPointerSample({ x: 10, y: 0 });
+    expect(harness.driver.committableSeat).toBeNull();
+    const resolved: DragMachineEvent[] = targetResolvedEvents(harness.events);
+    expect(resolved).toHaveLength(1);
+    if (resolved[0]?.type === "TARGET_RESOLVED") {
+      expect(resolved[0].resolvedTarget).toBeNull();
+      expect(resolved[0].atHome).toBe(true);
+    }
+    const state: DragMachineState = harness.state();
+    expect(state.phase === "dragging" && state.atHome).toBe(true);
+    // Leaving home: the next sample's answer is the seat, and the machine is told it is away.
+    harness.setHome(false);
+    harness.driver.processPointerSample({ x: 40, y: 0 });
     expect(harness.driver.committableSeat?.leafId).toBe("C");
-  });
-
-  it("zone-exit-hold RE-RESOLVES once the cursor exits the seated footprint", (): void => {
-    const harness: DriverHarness = seatedHarness("zone-exit-hold");
-    const exited: DragResolvedTarget = makeTarget("B", "center", "swap");
-    harness.setResolver((): DragResolvedTarget | null => exited);
-    harness.driver.processPointerSample({ x: 500, y: 0 });
-    expect(harness.driver.committableSeat?.leafId).toBe("B");
+    const away: DragMachineState = harness.state();
+    expect(away.phase === "dragging" && !away.atHome && away.leftHome).toBe(true);
   });
 });
 
@@ -275,31 +282,20 @@ describe("input-driver — synchronous release-sample (snap-back nucleus)", (): 
     }
   });
 
-  it("latchRelease falls back to the decayed last-committable seat on a single transient clear", (): void => {
+  it("latchRelease latches what the last sample showed: after one clear there is no earlier seat to fall back to", (): void => {
     const harness: DriverHarness = createHarness();
     const seat: DragResolvedTarget = makeTarget("C", "center", "swap");
     harness.setResolver((): DragResolvedTarget | null => seat);
     harness.pointerDown({ x: 0, y: 0 });
     harness.driver.processPointerSample({ x: 10, y: 0 });
-    // ONE transient clear (final-move sub-pixel jitter): committableSeat → null,
-    // but the fallback retains C (first null is transient).
+    // The next sample holds nothing (the hit let the place go): the seat clears, and a release there puts the
+    // layout back, as the last frame drew it.
     harness.setResolver((): DragResolvedTarget | null => null);
     harness.driver.processPointerSample({ x: 12, y: 0 });
     expect(harness.driver.committableSeat).toBeNull();
-    expect(harness.driver.latchRelease()?.leafId).toBe("C");
-  });
-
-  it("latchRelease cancels (null) after a SUSTAINED null run (genuine leave)", (): void => {
-    const harness: DriverHarness = createHarness();
-    const seat: DragResolvedTarget = makeTarget("C", "center", "swap");
-    harness.setResolver((): DragResolvedTarget | null => seat);
-    harness.pointerDown({ x: 0, y: 0 });
-    harness.driver.processPointerSample({ x: 10, y: 0 });
-    harness.setResolver((): DragResolvedTarget | null => null);
-    // Two consecutive nulls = sustained leave → fallback decays to null.
-    harness.driver.processPointerSample({ x: 200, y: 0 });
-    harness.driver.processPointerSample({ x: 400, y: 0 });
     expect(harness.driver.latchRelease()).toBeNull();
+    const state: DragMachineState = dragMachineReducer(harness.state(), { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase === "settling" && state.outcome).toBe("cancel");
   });
 });
 
@@ -319,7 +315,6 @@ describe("input-driver — competing-cancel suppression inputs + reset", (): voi
     harness.driver.reset();
     expect(harness.driver.committableSeat).toBeNull();
     expect(harness.driver.releaseCommitLatched).toBeNull();
-    expect(harness.driver.seatAnchor).toBeNull();
     expect(
       shouldSuppressCompetingCancel(
         harness.driver.releaseCommitLatched,
