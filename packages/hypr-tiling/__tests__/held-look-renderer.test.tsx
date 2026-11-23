@@ -313,6 +313,48 @@ function seen(container: HTMLElement): SeenLook {
 
 const FULL_HEIGHT: number = 600;
 
+const translateOf = (transform: string): { dx: number; dy: number } => {
+  const match: RegExpExecArray | null = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(transform);
+  return match == null ? { dx: 0, dy: 0 } : { dx: Number(match[1]), dy: Number(match[2]) };
+};
+const scaleOfTransform = (transform: string): number => {
+  const match: RegExpExecArray | null = /scale\((-?[\d.]+)\)/.exec(transform);
+  return match == null ? 1 : Number(match[1]);
+};
+
+/** The box the lifted pane is SEEN in (viewport px): its frame layer, moved by the leaf motion, scaled by the look layer about the grab point. */
+function liftedSeenBox(container: HTMLElement): Box {
+  const holder: HTMLElement = container.querySelector<HTMLElement>("[data-hpt-lifted]")!;
+  const layer: HTMLElement = lookLayer(container)!;
+  const wrapper: HTMLElement = holder.querySelector<HTMLElement>('[data-hpt-leaf="a"]')!;
+  const frame: HTMLElement = wrapper.querySelector<HTMLElement>(":scope > [data-hpt-leaf-frame]")!;
+  const { dx, dy } = translateOf(wrapper.style.transform);
+  const [originX, originY] = layer.style.transformOrigin.split(" ").map((part: string): number => parseFloat(part));
+  const scale: number = scaleOfTransform(layer.style.transform);
+  return {
+    x: parseFloat(holder.style.left) + originX! + scale * (dx - originX!),
+    y: parseFloat(holder.style.top) + originY! + scale * (dy - originY!),
+    width: scale * parseFloat(frame.style.width),
+    height: scale * parseFloat(frame.style.height),
+  };
+}
+
+/** The box a pane landed in `slot` is SEEN in (viewport px): its frame layer, moved by the leaf motion, scaled about the wrapper's top-left. */
+function landedSeenBox(container: HTMLElement, slot: Box): Box {
+  const wrapper: HTMLElement = container.querySelector<HTMLElement>('[data-hpt-leaf="a"]')!;
+  const frame: HTMLElement = wrapper.querySelector<HTMLElement>(":scope > [data-hpt-leaf-frame]")!;
+  const { dx, dy } = translateOf(wrapper.style.transform);
+  const scale: number = scaleOfTransform(wrapper.style.transform);
+  // At rest the frame layer is hidden: the box is the slot itself.
+  const drawn: boolean = frame.style.display !== "none";
+  return {
+    x: slot.x + dx,
+    y: slot.y + dy,
+    width: scale * (drawn ? parseFloat(frame.style.width) : slot.width),
+    height: scale * (drawn ? parseFloat(frame.style.height) : slot.height),
+  };
+}
+
 /** Let `ms` pass (leaf-motion frames run on timers here). */
 async function frames(ms: number): Promise<void> {
   await act(async (): Promise<void> => {
@@ -963,6 +1005,47 @@ describe("held look — drawing only: the drop is the same in every look", (): v
     await frames(700);
     expect(a.style.transform).toBe("");
     expect(frame.style.display).toBe("none");
+  });
+
+  it("a thumbnail dropped into a slot of another size than the lift: the box seen is continuous across the handover frame, then glides to the slot", async (): Promise<void> => {
+    restGeometry();
+    const { container } = render(<Host heldLook="thumbnail" animate />);
+    await liftA(container);
+    liftedGeometry();
+    // Over b's centre, clear of the stage's edge: the thumbnail is not clamped.
+    await moveTo(600, 300, 0);
+    await frames(500);
+    const before: Box = liftedSeenBox(container);
+    expect(before.width).toBeCloseTo(500 * HELD_THUMBNAIL_SCALE, 1);
+    expect(before.height).toBeCloseTo(FULL_HEIGHT * HELD_THUMBNAIL_SCALE, 1);
+    // The slot it lands in is smaller than the pane was, and elsewhere.
+    const SLOT: Box = { x: 650, y: 100, width: 300, height: 400 };
+    GEOMETRY.set("a", SLOT);
+    GEOMETRY.set("b", { x: 0, y: 0, width: 650, height: 600 });
+    await act(async (): Promise<void> => {
+      pointer(window, "pointerup", 600, 300);
+    });
+    expect(container.querySelector("[data-hpt-lifted]")).toBeNull();
+    const a: HTMLElement = container.querySelector<HTMLElement>('[data-hpt-leaf="a"]')!;
+    const handover: Box = landedSeenBox(container, SLOT);
+    // The handover frame: the same box, to the pixel (no jump in size, scale or place).
+    expect(handover.x).toBeCloseTo(before.x, 1);
+    expect(handover.y).toBeCloseTo(before.y, 1);
+    expect(handover.width).toBeCloseTo(before.width, 1);
+    expect(handover.height).toBeCloseTo(before.height, 1);
+    // Then it glides to the slot: the box stays between where it was seen and the slot (the width product of the
+    // shrinking drawn rect and the growing scale may pass the slot by a pixel), and it ends there.
+    for (let i = 0; i < 60; i++) {
+      await frames(16);
+      const box: Box = landedSeenBox(container, SLOT);
+      expect(box.width).toBeGreaterThanOrEqual(Math.min(before.width, SLOT.width) - 1);
+      expect(box.width).toBeLessThanOrEqual(Math.max(before.width, SLOT.width) + 2);
+      expect(box.height).toBeGreaterThanOrEqual(Math.min(before.height, SLOT.height) - 1);
+      expect(box.height).toBeLessThanOrEqual(Math.max(before.height, SLOT.height) + 2);
+    }
+    await frames(600);
+    expect(a.style.transform).toBe("");
+    expect(landedSeenBox(container, SLOT)).toMatchObject({ x: SLOT.x, y: SLOT.y, width: SLOT.width, height: SLOT.height });
   });
 
   it("a fade drop lands from the fade: the same opacity at the handover, settling to solid", async (): Promise<void> => {
