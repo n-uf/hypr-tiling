@@ -32,7 +32,9 @@ the version number alone does not flag them.
   picked up by: a strip across the top of the pane, at least 60 % of its
   width (the built-in header, a `TilingDragHandle`, a group's tab strip), is
   its title bar; a pane dragged by its whole body or a small grip has none.
-  A drag continued on another workspace measures it again on the new seat.
+  A drag continued on another workspace measures it again on the new seat
+  (with `paneIdentity: "slot"` the pane is mounted afresh there, so the
+  continued drag has no title bar).
 - **Drawing only.** Drop targets, validity and the committed layout are the
   same in every look (the golden drag and drop fixtures are unchanged). A
   `dragMode: "preview"` drag holds no pane under the pointer, so nothing

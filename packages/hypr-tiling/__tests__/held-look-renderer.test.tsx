@@ -764,6 +764,13 @@ describe("held look — a spring-load rearm switches the held look from the hand
     expect(seen).toEqual({ before: "thumbnail", after: "thumbnail", active: "ops" });
   });
 
+  it("slot identity mounts the pane afresh at the rearm: its handle is gone, so the continued drag has no title bar (documented)", (): void => {
+    wsGeometry();
+    const { container } = render(<WsHost handle="header" paneIdentity="slot" />);
+    const seen = springLoad(container, "header");
+    expect(seen).toEqual({ before: "title-bar", after: "thumbnail", active: "ops" });
+  });
+
   it("the handle is measured again on the new seat: a header that is the whole pane there switches the look to a thumbnail", (): void => {
     wsGeometry();
     const { container } = render(<WsHost handle="header" />);
