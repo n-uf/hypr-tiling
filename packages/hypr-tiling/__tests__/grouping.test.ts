@@ -19,7 +19,6 @@ import {
 import type { TilingGrowConstraints } from "../engine/state";
 import { collectLeafFootprints } from "../engine/leaf-geometry";
 import type { TilingLeafFootprint } from "../engine/leaf-geometry";
-import { resolveProjectedDropLayout } from "../engine/projected-layout";
 import type { TilingDropIntentState } from "../engine/drop-intent-resolver";
 import { tilingDropStateOf } from "../engine/tiling-drag-tree";
 import { hitRun, layoutDrag } from "./golden/cases";
@@ -384,6 +383,9 @@ describe("drag-into-group drop intent", (): void => {
   const centerBodyDrop = (): TilingDropIntentState => dropAt(g.x + g.width / 2, g.y + g.height / 2);
   /** Over the tab strip, in the first slot or (index undefined) past the last tab. */
   const tabStripMergeDrop = (x: number): TilingDropIntentState => dropAt(x, g.y + 10);
+  /** The tree a release on the drop's held place commits: the drag's `after(place).tree`. */
+  const resolveProjectedDropLayout = (_layout: TilingLayoutNode, _source: string, drop: TilingDropIntentState): TilingLayoutNode | null =>
+    drop.place == null || drop.place.kind === "home" ? null : drag.after(drop.place).tree.layout;
 
   it("classifies a valid center body drop as swap (never group-merge)", (): void => {
     expect(centerBodyDrop().action).toBe("swap");

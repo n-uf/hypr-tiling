@@ -14,7 +14,7 @@
 import { describe, expect, it } from "@jest/globals";
 import { dropFits, type TilingBasis } from "@n-uf/placement/tiling";
 import { DEFAULT_TILING_LAYOUT_CONFIG } from "../react/tiling-renderer";
-import { deriveCandidateTree, type DragResolvedTarget, type DragSubject } from "../engine/drag-machine";
+import type { DragSubject } from "../engine/drag-machine";
 import { resolveLeafRects } from "../engine/leaf-geometry";
 import type { TilingLayoutConfig, TilingLayoutNode } from "../engine/types";
 import { hitRun, layoutDrag, shape } from "./golden/cases";
@@ -91,15 +91,12 @@ describe("drop validity — the subject's own move (dragging forward below the n
       it(`${subject}, ${height}: every verdict of B's sides is the verdict of the tree its release commits`, (): void => {
         const layout = column(subject, ratio);
         const drag = layoutDrag(layout, "A", AREA, CONFIG, subject)!;
+        // The same drag with no minimum: its `after` is the tree the change makes, never refused for size.
+        const open = layoutDrag(layout, "A", AREA, { ...CONFIG, minPaneSizePx: 0 }, subject)!;
         for (const side of ["top", "right", "bottom", "left"] as const) {
           const after = drag.after({ kind: "beside", at: "b", side });
-          // The tree the reducers commit for this side, judged valid or not.
-          const committed = deriveCandidateTree(
-            layout,
-            "A",
-            { leafId: "B", zone: side, action: "edge-insert", finalEdge: side, selectedSplitZone: side } as unknown as DragResolvedTarget,
-            subject,
-          );
+          // The tree this side's change makes, judged valid or not.
+          const committed = open.after({ kind: "beside", at: "b", side }).tree.layout!;
           expect([side, after.refusal == null]).toEqual([side, fits(committed)]);
           // And what the drag's hit stores is that same tree.
           if (after.refusal == null) expect(shape(after.tree.layout)).toBe(shape(committed));

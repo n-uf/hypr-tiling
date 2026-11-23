@@ -1953,7 +1953,7 @@ export function addLeafToGroup(
 
 /**
  * Drag-to-group commit shared by the built-in group tab strip and a host
- * `groupDropTargetRef` hit (`deriveCandidateTree` / projected layout).
+ * `groupDropTargetRef` hit (a drag's join, through `tiling-drag-tree.ts`).
  *
  * - The target leaf already sits in a group → {@link addLeafToGroup} inserts
  *   the source at `insertIndex` (appends when omitted) and makes it active

@@ -12,8 +12,7 @@ import {
 import { normalizeLayout } from "../engine/layout-normalize";
 import { collectLeafFootprints, type TilingLeafFootprint } from "../engine/leaf-geometry";
 import { isStaticAlongSplitAxis } from "../engine/pane-sizing";
-import { collectStaticGatedLeafIds } from "../engine/drop-validity";
-import { deriveCandidateTree, type DragResolvedTarget } from "../engine/drag-machine";
+import { collectStaticGatedLeafIds, createLayoutTilingDrag } from "../engine/tiling-drag-tree";
 import { commandRequiredCapability, isCommandEnabled } from "../engine/commands";
 import type { TilingCommandGates } from "../engine/commands";
 import {
@@ -320,7 +319,7 @@ describe("collapse geometry — side-by-side (horizontal) split is along-axis (w
 
 describe("collapsed drag re-parent — axis reconciliation (HT-PANE-COLLAPSE-DRAG)", (): void => {
   /**
-   * A drag's edge-insert (`deriveCandidateTree` / `insertLeafAdjacent`) always
+   * A drag's edge-insert (`after(beside)` / `insertLeafAdjacent`) always
    * derives its NEW split's axis from the drop placement — independent of the
    * axis the leaf collapsed under. Root cause of "collapsed drag doesn't work
    * like normal drag": a collapsed leaf dropped into a split with a DIFFERENT
@@ -416,7 +415,7 @@ describe("collapsed drag re-parent — axis reconciliation (HT-PANE-COLLAPSE-DRA
     expect(findLeafById(moved, "cases")).toBe(collapsedLeaf);
   });
 
-  it("end-to-end via deriveCandidateTree (the ACTUAL drag-commit path): collapsed source dropped edge-insert on an axis-flipping target reconciles like a real drag", (): void => {
+  it("end-to-end via the drag's after(beside) (the ACTUAL drag-commit path): collapsed source dropped edge-insert on an axis-flipping target reconciles like a real drag", (): void => {
     const collapsedLeaf: TilingLeafNode = {
       ...leaf("cases"),
       sizing: { height: "static", heightPx: COLLAPSE_PX },
@@ -428,30 +427,15 @@ describe("collapsed drag re-parent — axis reconciliation (HT-PANE-COLLAPSE-DRA
       hsplit(0.5, collapsedLeaf, leaf("main")),
       leaf("target"),
     );
-    const target: DragResolvedTarget = {
-      leafId: "target",
-      zone: "left",
-      action: "edge-insert",
-      dominantEdge: "left",
-      finalEdge: "left",
-      fallbackReason: null,
-      blockedReason: null,
-      axisPath: ["vertical"],
-      edgeThresholdRatio: 0.25,
-      centerRectWidthPx: 100,
-      centerRectHeightPx: 100,
-      centerDistancePx: 0,
-      nearestEdgeDistancePx: 0,
-      paneLocalX: 5,
-      paneLocalY: 5,
-      targetSplitId: null,
-      targetSplitPlacement: null,
-      selectedSplitZone: "left",
-      selectedSplitDistancePx: null,
-      rejectedSplitReasons: [],
-      tuning: { centerRatio: 0.5, edgeThresholdRatio: 0.25, devicePixelRatio: 1 },
-    };
-    const candidate: TilingLayoutNode = deriveCandidateTree(layout, "cases", target);
+    const drag = createLayoutTilingDrag({
+      layout,
+      sourceLeafId: "cases",
+      container: { width: 1000, height: 800 },
+      config: GAP_FREE_CONFIG,
+    });
+    const after = drag?.after({ kind: "beside", at: findLeafById(layout, "target")!.tileId, side: "left" });
+    expect(after?.refusal).toBeNull();
+    const candidate: TilingLayoutNode = after!.tree.layout!;
     const cases: TilingLeafNode | null = findLeafById(candidate, "cases");
     // "cases" collapsed under a HORIZONTAL parent (width pin) originally — the
     // drop target's own split axis here is vertical/left→horizontal insert, so

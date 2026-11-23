@@ -257,7 +257,7 @@ export function resolveRatioSafetyBounds(
 /**
  * True when the layout tree contains ANY node declared static in either
  * dimension — a generic whole-tree predicate. NOTE: this is no longer the drag
- * gate. The drag/rearrange gate is now PER-SUBTREE (`drop-validity.ts`
+ * gate. The drag/rearrange gate is now PER-SUBTREE (`tiling-drag-tree.ts`
  * `collectStaticGatedLeafIds`) and the footprint geometry is static-aware
  * (`leaf-geometry.ts`), so a pinned static pane no longer freezes the whole tree
  * (HT-SIZING-STATIC-DRAG-GATING). Retained as a reusable predicate.

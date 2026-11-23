@@ -6,10 +6,9 @@
 import { describe, expect, it } from "@jest/globals";
 import { paneRegion, type PaneRegion } from "@n-uf/placement/tiling";
 import { resolvePaneCenterGeometry, TILING_DROP_INTENT_CONFIG } from "../engine/drop-intent-resolver";
-import { deriveCandidateTree } from "../engine/drag-machine";
 import { clampHeldRectToStage } from "../engine/drag-landing";
 import { resolveLayoutGeometry } from "../engine/leaf-geometry";
-import { readLeafNodeIds, removeLeafTile, siblingSubtreeForLeaf, tileOrderByLeafId } from "../engine/state";
+import { findLeafById, readLeafNodeIds, removeLeafTile, siblingSubtreeForLeaf, tileOrderByLeafId } from "../engine/state";
 import type { TilingLayoutConfig, TilingLayoutNode, TilingSplitNode } from "../engine/types";
 import { AREAS, hitRun, layoutDrag, randomTree, seeded, shape, tilesOf } from "./golden/cases";
 
@@ -107,21 +106,27 @@ describe("edit and drop properties", () => {
   });
 
   it("a drop keeps the set of tiles, and an edge drop taken back out gives the lifted tree", () => {
+    const open: TilingLayoutConfig = { gapPx: 0, handleSizePx: 0, minPaneSizePx: 0 };
+    let taken = 0;
     for (const tree of plainTrees().slice(0, 40)) {
       const tiles = [...tileOrderByLeafId(tree)].sort();
       const ids = readLeafNodeIds(tree);
       for (const s of ids) {
+        const drag = layoutDrag(tree, s, AREAS[0]!, open)!;
         for (const t of ids) {
           if (s === t) continue;
+          const at: string = findLeafById(tree, t)!.tileId;
           for (const zone of ["center", "top", "right", "bottom", "left"] as const) {
-            const target = { leafId: t, zone, action: zone === "center" ? "swap" : "edge-insert", finalEdge: zone === "center" ? null : zone, selectedSplitZone: zone === "center" ? null : zone } as unknown as Parameters<typeof deriveCandidateTree>[2];
-            const after = deriveCandidateTree(tree, s, target);
-            expect([...tileOrderByLeafId(after)].sort()).toEqual(tiles);
-            if (zone !== "center") expect(shape(removeLeafTile(after, s))).toEqual(shape(removeLeafTile(tree, s)));
+            const after = drag.after(zone === "center" ? { kind: "swap", at } : { kind: "beside", at, side: zone });
+            if (after.refusal != null || after.tree.layout == null) continue;
+            taken += 1;
+            expect([...tileOrderByLeafId(after.tree.layout)].sort()).toEqual(tiles);
+            if (zone !== "center") expect(shape(removeLeafTile(after.tree.layout, s))).toEqual(shape(removeLeafTile(tree, s)));
           }
         }
       }
     }
+    expect(taken).toBeGreaterThan(0);
   });
 });
 
