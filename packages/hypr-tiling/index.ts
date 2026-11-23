@@ -305,6 +305,7 @@ export type {
   TilingLeafPreviewMode,
   TilingLeafPreviewRole,
   TilingDropAction,
+  TilingDropActionSplitContainerInsert,
 } from "./engine/types";
 
 // H8 — workspace commands, gate, keymap fragment
