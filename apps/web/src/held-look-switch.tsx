@@ -1,5 +1,5 @@
 import * as React from "react";
-import type { TilingHeldLook } from "@n-uf/hypr-tiling";
+import type { TilingDragPreview, TilingHeldLook } from "@n-uf/hypr-tiling";
 import { useIsHydrating } from "./home-first-paint";
 
 /** The held pane's looks while dragged, in the order the switch shows them, with what each does. */
@@ -46,6 +46,15 @@ function isHeldLook(value: string): value is TilingHeldLook {
   return HELD_LOOK_OPTIONS.some((option): boolean => option.id === value);
 }
 
+/**
+ * Whether a look suits a drop preview. Snap to slot draws the landing itself,
+ * with no outline for a faded pane to show through, so the fade (a see-through
+ * pane over live content) is the indicator's alone.
+ */
+export function heldLookFits(look: TilingHeldLook, preview: TilingDragPreview): boolean {
+  return preview !== "snap" || look !== "fade";
+}
+
 /** Read the persisted held look, falling back to the default when unset or invalid. */
 export function readStoredHeldLook(): TilingHeldLook {
   if (typeof window === "undefined") {
@@ -76,9 +85,11 @@ function writeStoredHeldLook(look: TilingHeldLook): void {
 /**
  * The home's held look and its setter (which persists the choice). The
  * prerendered home starts at the default; the stored choice applies right
- * after hydration.
+ * after hydration. A look that doesn't suit the drop preview
+ * ({@link heldLookFits}) falls back to the default, and that is stored: so
+ * switching to snap with the fade picked leaves "auto".
  */
-export function useHomeHeldLook(): readonly [
+export function useHomeHeldLook(preview: TilingDragPreview): readonly [
   TilingHeldLook,
   (next: TilingHeldLook) => void,
 ] {
@@ -93,7 +104,12 @@ export function useHomeHeldLook(): readonly [
     setLook(next);
     writeStoredHeldLook(next);
   }, []);
-  return [look, changeLook];
+  React.useEffect((): void => {
+    if (!heldLookFits(look, preview)) {
+      changeLook(DEFAULT_HOME_HELD_LOOK);
+    }
+  }, [look, preview, changeLook]);
+  return [heldLookFits(look, preview) ? look : DEFAULT_HOME_HELD_LOOK, changeLook];
 }
 
 /**
@@ -103,12 +119,15 @@ export function useHomeHeldLook(): readonly [
  */
 export function HeldLookSwitch({
   look,
+  preview,
   onChange,
   className,
   labelClassName,
   selectClassName,
 }: {
   look: TilingHeldLook;
+  /** The drop preview: the menu offers only the looks that suit it. */
+  preview: TilingDragPreview;
   onChange: (next: TilingHeldLook) => void;
   className: string;
   labelClassName: string;
@@ -131,7 +150,7 @@ export function HeldLookSwitch({
         }}
         className={selectClassName}
       >
-        {HELD_LOOK_OPTIONS.map(
+        {HELD_LOOK_OPTIONS.filter((option): boolean => heldLookFits(option.id, preview)).map(
           (option): React.ReactElement => (
             <option key={option.id} value={option.id}>
               {option.label}
