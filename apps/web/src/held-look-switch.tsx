@@ -30,8 +30,8 @@ export const HELD_LOOK_OPTIONS: ReadonlyArray<{
   },
   {
     id: "none",
-    label: "Off",
-    hint: "The dragged pane keeps its full look everywhere.",
+    label: "Full size",
+    hint: "The original look: the dragged pane keeps its full size everywhere.",
   },
 ];
 
