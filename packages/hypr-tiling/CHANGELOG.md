@@ -41,21 +41,81 @@ the version number alone does not flag them.
   `dragMode: "preview"` drag holds no pane under the pointer, so nothing
   changes there.
 - **A swap shows where the other pane goes.** Hold a pane over another
-  pane's middle (a swap) and the pane's old place opens again (the
-  neighbour that grew into it at the lift gives the room back), marked by a
-  tinted wash in the swap colour with ⇄ and the other pane's name, with no
-  frame and no content, above the held pane. In the indicator preview the
-  other pane stays in its own slot and only the old place reopens; in the
-  snap preview the swap is drawn landed, the other pane already in the old
-  place under the wash. A release commits the swap, the same tree
-  `tilingDrag` lays out, in both. Off the swap the gap closes again as
-  before. Before, the indicator preview kept the gap closed over a swap, so
-  the place the other pane would land in was not on screen. The wash's
-  colour is the default drop indicator's orange; set `--hpt-swap-color` on
-  the renderer or an ancestor to change it. The swap's layout comes from
-  `@n-uf/placement/tiling`'s `tilingDrag`. The golden drag fixtures
-  `drag-home-return` and `drag-home-column` record the indicator frame held
-  over a swap, which is now the layout at the lift.
+  pane's middle (a swap) and, in the indicator preview, the pane's old place
+  stays open, marked by a tinted wash in the swap colour with ⇄ and the other
+  pane's name, with no frame and no content, above the held pane; the other
+  pane stays in its own slot. In the snap preview the swap is drawn landed,
+  the other pane already in the old place, with no wash (the wash marks a
+  swap in the indicator preview only). A release commits the swap, the same
+  tree `tilingDrag` lays out, in both. Before, the indicator preview closed
+  the gap over a swap, so the place the other pane would land in was not on
+  screen. The wash's colour is the default drop indicator's orange; set
+  `--hpt-swap-color` on the renderer or an ancestor to change it. The swap's
+  layout comes from `@n-uf/placement/tiling`'s `tilingDrag`.
+- **Where a drop lands is decided once, at the lift.** The place under the
+  pointer (a swap with a pane, a side of a pane, a join into a tab group, or
+  the dragged pane's own place) comes from `@n-uf/placement/tiling`'s drag
+  hit, built when the pane is lifted and fixed for the whole drag: on the
+  layout at the lift in the indicator preview, on the layout with the pane
+  taken out in snap to slot. Nothing is measured or laid out again as the
+  pointer moves, so a pane that moves or grows to preview a drop can no
+  longer change the place under a pointer that has not moved. Before, every
+  move classified the zone again on whichever layout was drawn then, with
+  its own damping for the zone, another for the slot and a third for the
+  pane's own place.
+- **One hold rule.** A held place keeps the pointer until it is 6 px past the
+  edge of the place's zone, and inside one pane until it is also 24 px from
+  where the place was taken (each at most a quarter of the zone). Any change
+  of place takes the pointer anew, and the pane's own place follows the same
+  rule. It replaces the 6 px zone hysteresis and the slot commitment's 24 px
+  re-aim distance, which were counted from different points.
+- **A pane next to the dragged one has no side along it.** A pane beside the
+  dragged pane in one row or column, with the same extent across, takes no
+  insert along that row or column (it would only give the layout back as it
+  was, or the swap's result): across, the middle 56 % of its extent is the
+  swap over its whole length, and the strips on either side of the middle
+  insert beside it. A tab group beside the dragged pane loses only the side
+  that faces it. A place whose result is the layout at the lift is the
+  dragged pane's own place.
+- **Indicator draws marks, snap draws the result.** The indicator preview
+  draws the layout at the lift for the whole drag, the pane's old place kept
+  open and the other panes not moving, and marks the place under the pointer
+  on it: the half of the target on that side for a side drop, the target's
+  outline for a swap or a join, and for a swap the wash in the open place.
+  Snap to slot draws the layout the release would commit as soon as a place
+  is held (the others make room, the pane in its slot), not only once the
+  pane has settled into it; the held look still shows until the pointer is
+  well inside the slot.
+- **A swap is refused when it would leave a pane under the minimum.** Every
+  place is judged by placement's room and fit rules: a side needs two minimum
+  panes plus the gutter along the split, and one across it, on the target as
+  the lifted layout leaves it, and every place must leave the dragged pane
+  and its target at least `minPaneSizePx` wide and high. A swap hands each
+  pane the other's place, so it now meets the fit rule too (before, a swap
+  was always allowed). Panes that are statically sized take no drop, as
+  before.
+- **A page scroll or a window resize mid-drag keeps the pane's own place.**
+  The hit reads the pointer in the viewport's own pixels, so the place moves
+  with the page; before, either ended the hold for the rest of the drag. A
+  new layout or a new viewport size rebuilds the hit on the new layout.
+- **Removed: `interaction.slotCommitment` and
+  `dropHitZoneGeometry.hysteresisPx`,** with the types
+  `TilingSlotCommitmentCapability`, `TilingSlotCommitmentMode` and
+  `ResolvedTilingSlotCommitmentCapability`. The hold rule above is fixed, so
+  a value passed for either is ignored (TypeScript flags it); the centre
+  rectangle's `centerRatio`, `centerRatioX`, `centerRatioY` and `centerMinPx`
+  still shape the regions.
+- **Engine API:** the `dragging` state of `DragMachineState` no longer has
+  `homeLost` (added in 26.11.11), and neither it nor the `armed` state has
+  `homeFootprint`; the `HOME_INVALIDATED` event is gone. The pane's own place
+  is whatever the drag hit holds, which the machine keeps as `atHome`.
+  `TilingDropIntentState` gains `place`, the hit's held place, and `mark`,
+  the indicator's mark for it.
+- **Golden answers re-recorded** for the drag: `regions`, `drops`,
+  `drop-boundary`, `drag-home`, `drag-home-return`, `drag-home-column` and
+  `drag-forward-column`. The tree and the landing rect a drop commits are
+  unchanged in every recorded case; the verdicts are the hit's refusals, and
+  the home sections record both previews through the hit.
 
 ## 26.11.11 — 2026-11-22
 
