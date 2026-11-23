@@ -176,14 +176,12 @@ import type {
   TilingProjectedLandingOverlay,
   TilingProjectedLandingSubject,
 } from "../engine/projected-layout";
-import {
-  resolveProjectedDropLayout,
-  resolveProjectedLandingOverlays,
-} from "../engine/projected-layout";
+import { resolveProjectedLandingOverlays } from "../engine/projected-layout";
 import type { SchedulerPort } from "../engine/scheduler-port";
 import {
   createLayoutTilingDrag,
   deriveDropCommitTree,
+  deriveDropPreviewTree,
   resolveTilingSwapPreview,
   tilingDragParts,
   tilingDragZoneRefusals,
@@ -5049,11 +5047,6 @@ const TilingRendererComponent = React.forwardRef<
         isLeafRearrangeEligible,
       ],
     );
-  const projectedDropLayout: TilingLayoutNode | null = React.useMemo(
-    (): TilingLayoutNode | null =>
-      resolveProjectedDropLayout(layout, dragSourceLeafId, dropState, dragSubject),
-    [dragSourceLeafId, dragSubject, dropState, layout],
-  );
   // TRUE live reflow: in live mode the rendered tree IS the derived candidate
   // tree (the destination physically reorganizes to the post-drop result), NOT a
   // frozen tree with a projected shadow. Recomputed only when the resolved
@@ -5140,6 +5133,23 @@ const TilingRendererComponent = React.forwardRef<
       dragHitRef.current = null;
     }
   }, [dragState.phase]);
+  // The preview overlays draw the tree a release commits: for a held place, the
+  // hit's `after(place).tree` from the very drag the commit takes it from.
+  const projectedDropLayout: TilingLayoutNode | null = React.useMemo(
+    (): TilingLayoutNode | null =>
+      deriveDropPreviewTree({
+        layout,
+        sourceLeafId: dragSourceLeafId,
+        target: dropState,
+        subject: dragSubject,
+        container: viewportSize,
+        config,
+        drag: dragHitRef.current?.drag ?? null,
+      }),
+    // The drag is the hit's (a ref, fixed for the drag); a new drop state reads it again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dragSourceLeafId, dragSubject, dropState, layout, viewportSize, config],
+  );
   // While the hit holds home (the pane's place at the lift, or a place whose
   // release gives the lift back), the layout is the one at the lift.
   const dragHomeHeld: boolean =
