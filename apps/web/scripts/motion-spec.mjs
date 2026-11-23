@@ -800,6 +800,80 @@ await dragScenario("drag charlie onto alpha (swap)", {
   to: (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + rest.a.height * 0.5 }),
   expect: { commit: true },
 });
+
+/**
+ * A `during` check for bravo held over alpha's middle (a swap, placement's `tilingDrag`): bravo's old place reopens
+ * (charlie, which grew into it at the lift, is back at its rest rect) and alpha is drawn landed there; a wash marks
+ * it, at that rect, with ⇄ and alpha's name, tinted, with no border, outline or shadow, above the held pane. With
+ * `--shots`, a screenshot of the held frame.
+ */
+const swapWashCheck = (preview) => async (rest) => {
+  const failures = [];
+  let now = null;
+  for (let i = 0; i < 40; i++) {
+    now = await restRects();
+    if (now.c != null && near(now.c, rest.c, 1) && now.a != null && near(now.a, rest.b, 1)) break;
+    await page.waitForTimeout(50);
+  }
+  if (now.c == null || !near(now.c, rest.c, 1)) failures.push(`charlie at ${rectText(now.c)}, not back at ${rectText(rest.c)}`);
+  if (now.a == null || !near(now.a, rest.b, 1)) failures.push(`alpha at ${rectText(now.a)}, not landed in bravo's old place ${rectText(rest.b)}`);
+  const wash = await page.evaluate(() => {
+    const element = document.querySelector("[data-hpt-swap-wash]");
+    if (element == null) return null;
+    const b = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const lifted = document.querySelector("[data-hpt-lifted]");
+    return {
+      rect: { x: b.left + window.scrollX, y: b.top + window.scrollY, width: b.width, height: b.height },
+      partner: element.getAttribute("data-hpt-swap-partner"),
+      text: element.textContent,
+      border: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth],
+      outline: style.outlineStyle,
+      shadow: style.boxShadow,
+      background: style.backgroundColor,
+      z: Number(style.zIndex),
+      liftedZ: lifted == null ? null : Number(getComputedStyle(lifted).zIndex),
+    };
+  });
+  if (wash == null) failures.push("no swap wash while held over a swap");
+  else {
+    if (wash.partner !== "a") failures.push(`the wash names partner ${wash.partner}, not alpha`);
+    if (!near(wash.rect, rest.b, 1)) failures.push(`the wash is at ${rectText(wash.rect)}, not bravo's old place ${rectText(rest.b)}`);
+    if (!wash.text.includes("⇄") || !wash.text.includes("alpha")) failures.push(`the wash reads "${wash.text}"`);
+    if (wash.border.some((w) => w !== "0px")) failures.push(`the wash has a border (${wash.border.join(" ")})`);
+    if (wash.outline !== "none") failures.push(`the wash has an outline (${wash.outline})`);
+    if (wash.shadow !== "none") failures.push(`the wash has a shadow (${wash.shadow})`);
+    if (wash.background === "rgba(0, 0, 0, 0)" || wash.background === "transparent") failures.push("the wash is not tinted");
+    if (preview === "indicator" && wash.liftedZ != null && !(wash.z > wash.liftedZ)) failures.push(`the wash (z ${wash.z}) is not above the held pane (z ${wash.liftedZ})`);
+  }
+  if (shotsDir != null) {
+    mkdirSync(shotsDir, { recursive: true });
+    await page.screenshot({ path: resolve(shotsDir, `swap-${preview}-${tilesMode}.png`) });
+  }
+  return failures;
+};
+
+// A held swap in both previews: the old place reopens, the partner is drawn landed there under the wash, and the
+// release does exactly what was shown (bravo in alpha's place, alpha in bravo's).
+for (const preview of ["indicator", "snap"]) {
+  await dragScenario("hold bravo over alpha (swap): the old place reopens, marked by the wash", {
+    preview,
+    tileId: "b",
+    to: (rest) => ({ x: rest.a.x + rest.a.width * 0.5, y: rest.a.y + rest.a.height * 0.5 }),
+    during: swapWashCheck(preview),
+    expect: {
+      commit: true,
+      after: (layout) => {
+        const tileAt = (node, id) => (node.kind === "leaf" ? (node.id === id ? node.tileId : null) : node.kind === "split" ? (tileAt(node.first, id) ?? tileAt(node.second, id)) : null);
+        const failures = [];
+        if (tileAt(layout, "leaf-a") !== "b") failures.push(`leaf-a carries ${tileAt(layout, "leaf-a")}, not bravo`);
+        if (tileAt(layout, "leaf-b") !== "a") failures.push(`leaf-b carries ${tileAt(layout, "leaf-b")}, not alpha`);
+        if (tileAt(layout, "leaf-c") !== "c") failures.push(`leaf-c carries ${tileAt(layout, "leaf-c")}, not charlie`);
+        return failures;
+      },
+    },
+  });
+}
 await dragScenario("click (below the threshold) is a no-op", {
   preview: "indicator",
   tileId: "a",
