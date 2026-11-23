@@ -42,6 +42,8 @@ import {
   resolveDragLandingLeafId,
   resolveDragRoomTarget,
   resolveExternalDropSubject,
+  swapFrameOf,
+  type DragSwapFrame,
   type DragMachinePoint,
   type DragMachineState,
   type DragPointerType,
@@ -5254,7 +5256,13 @@ const TilingRendererComponent = React.forwardRef<
   // A held swap, as `tilingDrag` lays it out: the pane's old place reopened
   // (the neighbour that grew into it at the lift gives the room back) with
   // the partner landed there, and the pane's landing in the partner's place.
-  // The frame draws this tree, and the release commits it.
+  // The release commits this tree. Snap draws it landed; the indicator keeps
+  // the target in its slot and draws only the room (the layout at the lift,
+  // the pane's slot empty), with the wash where the partner will go.
+  const swapFrame: DragSwapFrame = swapFrameOf({
+    preview: isSnapPreview ? "snap" : "indicator",
+    makesRoom: dragPreviewMakesRoom,
+  });
   const swapPreview: TilingSwapPreview | null = React.useMemo(
     (): TilingSwapPreview | null =>
       roomTarget != null && roomTarget.action === "swap" && !dragHomeHeld
@@ -5265,7 +5273,7 @@ const TilingRendererComponent = React.forwardRef<
   );
   const liveDragDisplayLayout: TilingLayoutNode = React.useMemo(
     (): TilingLayoutNode =>
-      swapPreview != null
+      swapPreview != null && swapFrame === "landed"
         ? swapPreview.layout
         : deriveLiveDragTree({
             layout,
@@ -5273,11 +5281,12 @@ const TilingRendererComponent = React.forwardRef<
             roomTarget,
             subject: dragSubject,
             homeHeld: dragHomeHeld,
+            swapFrame,
           }),
     // `roomTarget` identity changes on every pointer move, so key on what
     // decides the tree instead — identical resolves are free.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [layout, dragSourceLeafId, dragSubject, roomTargetKey, dragHomeHeld, swapPreview],
+    [layout, dragSourceLeafId, dragSubject, roomTargetKey, dragHomeHeld, swapPreview, swapFrame],
   );
   // The home footprint is client px measured at the press. A layout change or
   // a viewport resize mid-drag moves the pane's place under it, so the home
