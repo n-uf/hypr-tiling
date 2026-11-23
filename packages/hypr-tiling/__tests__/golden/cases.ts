@@ -720,8 +720,9 @@ export function dragHomeCases(): Record<string, string[]> {
  * (8 px below its top, at its center x), then released there; and the same with the page moving under the drag while
  * the pointer is away (`HOME_INVALIDATED`). Each step gives whether the home is the target, the tree laid out (`home`
  * or its shape), whether a drop target was resolved, and the release's outcome. The tree laid out is the drop
- * indicator's frame (`resolveDragRoomTarget`): since the swap preview through placement's `tilingDrag`, a frame held
- * over a swap draws the swapped tree (the old place reopened, the partner landed there), not the gap-closed one.
+ * indicator's frame (`resolveDragRoomTarget`, `swapFrame: "room"`): since the swap preview through placement's
+ * `tilingDrag`, a frame held over a swap draws the layout at the lift (`home`: the old place reopened for the partner,
+ * the target in its own slot, nothing moved), not the gap-closed one.
  */
 export function dragHomeReturnCases(): Record<string, string[]> {
   const out: Record<string, string[]> = {};
@@ -763,7 +764,7 @@ export function dragHomeReturnCases(): Record<string, string[]> {
             steps.push(`${label}:${state.phase}`);
             return;
           }
-          const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: indicatorRoom(state.resolvedTarget, leafId), homeHeld: state.atHome });
+          const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: indicatorRoom(state.resolvedTarget, leafId), homeHeld: state.atHome, swapFrame: "room" });
           steps.push(
             `${label}:${state.atHome ? "home" : "away"}/${laid === tree ? "home" : shape(laid)}/${state.resolvedTarget?.leafId ?? "-"}`,
           );
@@ -794,7 +795,8 @@ export function dragHomeReturnCases(): Record<string, string[]> {
  * driver: lift on the header, out below the column, over B's lower part (a swap), then back over the header or over
  * B's grown title bar, then released. The resolver answers as that geometry would: a merge over B's title bar, B's
  * top edge (with that verdict) in its top quarter, a swap below. The tree laid out is the drop indicator's frame
- * (`resolveDragRoomTarget`): over B's lower part (the swap) it is the swapped tree, A's old place reopened for B.
+ * (`resolveDragRoomTarget`, `swapFrame: "room"`): over B's lower part (the swap) it is the layout at the lift
+ * (`home`), A's old place reopened for B and B in its own slot.
  */
 export function dragHomeColumnCases(): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -888,7 +890,7 @@ export function dragHomeColumnCases(): Record<string, unknown> {
             steps.push(`${step}:${state.phase}`);
             return;
           }
-          const laid = deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: indicatorRoom(state.resolvedTarget, "A"), subject: dragSubject, homeHeld: state.atHome });
+          const laid = deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: indicatorRoom(state.resolvedTarget, "A"), subject: dragSubject, homeHeld: state.atHome, swapFrame: "room" });
           const t = state.resolvedTarget;
           steps.push(`${step}:${state.atHome ? "home" : "away"}/${laid === layout ? "home" : shape(laid)}/${t == null ? "-" : `${t.leafId} ${t.zone} ${t.action}`}`);
         };

@@ -2,9 +2,10 @@
  * @jest-environment jsdom
  *
  * A held swap through placement's `tilingDrag`, in both drop previews: the pane's old place reopens (the neighbour
- * that grew into it at the lift gives the room back) with the partner drawn landed there, a wash marks it (tinted,
- * ⇄ and the partner's name, no frame), the held pane keeps its held look under the wash, and the release commits
- * exactly the tree the frame drew. Off the swap the gap closes again.
+ * that grew into it at the lift gives the room back) and a wash marks it as where the partner goes (tinted, ⇄ and the
+ * partner's name, no frame), above the held pane in every held look. The indicator keeps the target in its own slot
+ * and draws nothing under the wash; snap draws the partner landed there. The release commits `after(swap).tree`
+ * either way. Off the swap the gap closes again.
  *
  * jsdom has no layout: every leaf wrapper (`[data-hpt-leaf]`, keyed by tile id) reports the rect in `GEOMETRY`; the
  * viewport is 1000×600. Columns: 01 above 02 on the left, 03 on the right (the operator's case, 02 held over 03).
@@ -239,15 +240,21 @@ const HELD_LOOKS: ReadonlyArray<TilingHeldLook> = ["title-bar", "thumbnail", "fa
 
 describe("a held swap reopens the old place, marks where the partner lands, and commits what it drew", (): void => {
   for (const preview of PREVIEWS) {
-    it(`${preview}: 02 over 03 — 01 gives the room back, 03 is drawn in 02's old place under the wash`, async (): Promise<void> => {
+    it(`${preview}: 02 over 03 — 01 gives the room back, the wash marks 02's old place for 03`, async (): Promise<void> => {
       const changes: TilingLayoutNode[] = [];
       const { container } = await holdTwoOverThree({ preview, heldLook: "title-bar", changes });
-      // The left column again holds two panes: 01, and 03 where 02 was. 02's landing is 03's old place: kept empty
-      // while it is held (indicator), or the pane itself once it has settled there (snap).
       const order: string[] = drawnOrder(container);
-      expect(order.slice(0, 2)).toEqual(["one", "three"]);
-      expect(order[2]).toBe(preview === "snap" ? "two" : "slot:L3");
+      if (preview === "indicator") {
+        // Room only: the layout at the lift. 01 back in its own slot, 02's slot kept empty (the reopened place), and
+        // 03 still in its own slot: nothing moves before the release.
+        expect(order).toEqual(["one", "slot:L2", "three"]);
+      } else {
+        // Snap: the swap drawn landed. 03 in 02's old place, 02 settled into 03's.
+        expect(order).toEqual(["one", "three", "two"]);
+      }
       const wash: HTMLElement | null = washOf(container);
+      // The wash is only the mark: no pane content inside it.
+      expect(wash?.querySelector("[data-hpt-leaf], article, header") ?? null).toBeNull();
       expect(wash).not.toBeNull();
       expect(wash!.getAttribute("data-hpt-swap-partner")).toBe("three");
       expect(wash!.textContent).toBe("⇄Install");
@@ -260,9 +267,13 @@ describe("a held swap reopens the old place, marks where the partner lands, and 
       expect(["", "none"]).toContain(style.boxShadow);
       expect(wash!.style.background).toContain("color-mix");
       if (preview === "indicator") {
-        // The drop indicator marks 02's landing: 03's old place.
+        // The drop indicator marks 02's landing on the target, which keeps its own rect: 03's place at the lift.
         const indicator: HTMLElement | null = container.querySelector<HTMLElement>("[data-hpt-drop-indicator]");
         expect({ x: parseFloat(indicator!.style.left), y: parseFloat(indicator!.style.top), width: parseFloat(indicator!.style.width), height: parseFloat(indicator!.style.height) }).toEqual(PARTNER_PLACE);
+        // Nothing under the wash but the empty kept slot: 03's pane is not in 02's old place.
+        const kept: Element | null = container.querySelector('[data-drag-held-slot-leaf="L2"]');
+        expect(kept).not.toBeNull();
+        expect(kept!.querySelector("[data-hpt-leaf]")).toBeNull();
       }
       // The release commits exactly the tree the frame drew: 02 and 03 trade places.
       await act(async (): Promise<void> => {

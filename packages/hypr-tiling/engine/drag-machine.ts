@@ -481,7 +481,8 @@ export function isDragHomeHeld(
  * The tree a live drag lays out now. While the home is the target (`homeHeld`, see {@link isDragHomeHeld}) it is the
  * layout at the lift: the pane's own place is open and every other pane is where it was. Elsewhere it is the
  * candidate tree for the room target ({@link deriveCandidateTree}), which with no target is the tree with the dragged
- * subject taken out and its gap closed.
+ * subject taken out and its gap closed. A swap room target drawn as `swapFrame: "room"` (see {@link swapFrameOf}) is
+ * the layout at the lift too: the old place reopens and nothing moves before the release.
  */
 export function deriveLiveDragTree(params: {
   readonly layout: TilingLayoutNode;
@@ -489,19 +490,39 @@ export function deriveLiveDragTree(params: {
   readonly roomTarget: DragResolvedTarget | null;
   readonly subject?: DragSubject;
   readonly homeHeld: boolean;
+  readonly swapFrame?: DragSwapFrame;
 }): TilingLayoutNode {
   if (params.homeHeld) {
+    return params.layout;
+  }
+  if (params.swapFrame === "room" && params.roomTarget?.action === "swap" && params.roomTarget.leafId !== params.sourceLeafId) {
     return params.layout;
   }
   return deriveCandidateTree(params.layout, params.sourceLeafId, params.roomTarget, params.subject);
 }
 
 /**
+ * How a frame held over a swap draws it. The release commits the swap either way.
+ * - `"room"`: the swap target stays in its own slot and nothing moves; only the dragged pane's old place reopens
+ *   (the neighbour that grew into it at the lift gives the room back), marked as where the partner will go.
+ * - `"landed"`: the swap drawn done, the partner landed in the old place (`after(swap)`).
+ */
+export type DragSwapFrame = "room" | "landed";
+
+/**
+ * The swap frame of a drop preview: the indicator draws `"room"` (the target keeps its slot, the marks are the
+ * promise); snap to slot, and the indicator with `dragPreviewMakesRoom` (a live reorder), draw `"landed"`.
+ */
+export function swapFrameOf(params: { readonly preview: "indicator" | "snap"; readonly makesRoom: boolean }): DragSwapFrame {
+  return params.preview === "snap" || params.makesRoom ? "landed" : "room";
+}
+
+/**
  * The drop a live drag's frame makes room for: the tree it lays out is {@link deriveLiveDragTree} for it.
  *
  * - A committable **swap** opens its room in both drop previews. Its room is the subject's old place, which the gap
- *   closed at the lift: the neighbour that grew into it gives the room back and the partner is drawn landed there,
- *   so the frame draws exactly what the release commits (placement's `tilingDrag` rule for a held swap).
+ *   closed at the lift: the neighbour that grew into it gives the room back. The indicator keeps the target in its
+ *   slot and marks the reopened place; snap draws the partner landed there ({@link swapFrameOf}).
  * - Otherwise `"snap"` makes room for the drop the pane has snapped into (`snapped`), and `"indicator"` for the
  *   committable drop only with `makesRoom` (`dragPreviewMakesRoom`); with neither, no room: the gap stays closed.
  */
