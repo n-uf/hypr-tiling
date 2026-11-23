@@ -804,6 +804,8 @@ export function resolvePointerTargetFromMeasurement(
     clientX: number;
     clientY: number;
     sourceLeafId: string;
+    /** What the drag moves (absent: the one pane); drop validity judges that subject's move. */
+    subject?: DragSubject;
     previousTarget: TilingDropState | null;
     isRearrangeEnabled: boolean;
     groupingEnabled: boolean;
@@ -920,6 +922,7 @@ export function resolvePointerTargetFromMeasurement(
               config: input.config,
               viewportWidth: input.viewportSize.width,
               viewportHeight: input.viewportSize.height,
+              subject: input.subject,
             }),
         });
       }
@@ -977,6 +980,7 @@ export function resolvePointerTargetFromMeasurement(
               config: input.config,
               viewportWidth: input.viewportSize.width,
               viewportHeight: input.viewportSize.height,
+              subject: input.subject,
             }),
         });
       }
@@ -1047,6 +1051,7 @@ export function resolvePointerTargetFromMeasurement(
         config: input.config,
         viewportWidth: input.viewportSize.width,
         viewportHeight: input.viewportSize.height,
+        subject: input.subject,
       }),
   });
 }
@@ -5034,8 +5039,8 @@ const TilingRendererComponent = React.forwardRef<
     );
   const projectedDropLayout: TilingLayoutNode | null = React.useMemo(
     (): TilingLayoutNode | null =>
-      resolveProjectedDropLayout(layout, dragSourceLeafId, dropState),
-    [dragSourceLeafId, dropState, layout],
+      resolveProjectedDropLayout(layout, dragSourceLeafId, dropState, dragSubject),
+    [dragSourceLeafId, dragSubject, dropState, layout],
   );
   // TRUE live reflow: in live mode the rendered tree IS the derived candidate
   // tree (the destination physically reorganizes to the post-drop result), NOT a
@@ -5704,6 +5709,7 @@ const TilingRendererComponent = React.forwardRef<
               config,
               viewportWidth: viewportSize.width,
               viewportHeight: viewportSize.height,
+              subject: dragSubject,
             }),
         });
       const edgeCandidates: ReadonlyArray<TilingPaneHitZoneCandidateDebugState> =
@@ -5736,6 +5742,7 @@ const TilingRendererComponent = React.forwardRef<
     activeFocusedLeafId,
     config,
     dragSourceLeafId,
+    dragSubject,
     isRearrangeEnabled,
     layout,
     leafFootprintsById,
@@ -7507,6 +7514,7 @@ const TilingRendererComponent = React.forwardRef<
         clientX,
         clientY,
         sourceLeafId,
+        subject: dragSubject,
         previousTarget,
         isRearrangeEnabled,
         groupingEnabled: isGroupingEnabled,
@@ -7525,6 +7533,7 @@ const TilingRendererComponent = React.forwardRef<
       }),
     [
       config,
+      dragSubject,
       isRearrangeEnabled,
       isGroupingEnabled,
       interactionCapabilities.dropHitZoneGeometry,
@@ -8385,6 +8394,7 @@ const TilingRendererComponent = React.forwardRef<
               config,
               viewportWidth: viewportSize.width,
               viewportHeight: viewportSize.height,
+              subject: dragSourceLeafId != null ? dragSubject : undefined,
             }),
         });
       const edgeDiagnostics: TilingLiveHitLogState["edgeDiagnostics"] =
@@ -8452,6 +8462,7 @@ const TilingRendererComponent = React.forwardRef<
             config,
             viewportWidth: viewportSize.width,
             viewportHeight: viewportSize.height,
+            subject: dragSourceLeafId != null ? dragSubject : undefined,
           }),
       });
       const intent: TilingDropIntentDebugState =
@@ -8480,6 +8491,7 @@ const TilingRendererComponent = React.forwardRef<
       activeFocusedLeafId,
       config,
       dragSourceLeafId,
+      dragSubject,
       dropState,
       layout,
       leafFootprintsById,
