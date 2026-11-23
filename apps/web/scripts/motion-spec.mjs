@@ -1040,6 +1040,44 @@ for (const top of ["group", "pane"]) {
     }
   }
 }
+// Forward in the same column: bravo (or the bravo + charlie group) dragged
+// down below delta. The room check releases what is dragged first, the whole
+// group for a group, then places it: a tall group fits below delta as a tall
+// pane does (it was refused, judged as if only its dragged tab moved). The
+// cursor is never refused there, and the drop commits the subject below delta.
+const belowDelta = (top) => (layout) => {
+  const right = layout.second;
+  if (right?.kind !== "split" || right.axis !== "vertical") return [`the right column is not a vertical split: ${JSON.stringify(right)}`];
+  const ids = (node) => (node.kind === "split" ? [...ids(node.first), ...ids(node.second)] : [node.id]);
+  const order = ids(right).join(",");
+  const expected = top === "group" ? "leaf-d,group-bc" : "leaf-d,leaf-b";
+  const failures = order === expected ? [] : [`column order ${order}, expected ${expected}`];
+  return top === "group" ? [...failures, ...groupBcIntact(layout)] : failures;
+};
+const neverRefused = async () => {
+  const cursor = await page.evaluate(() => document.querySelector("[data-drag-cursor]")?.getAttribute("data-drag-cursor-kind") ?? null);
+  return cursor === "invalid" ? ["the cursor is refused below delta"] : [];
+};
+for (const top of ["group", "pane"]) {
+  for (const [height, ratio] of [["short", 0.25], ["tall", 0.7]]) {
+    for (const preview of ["snap", "indicator"]) {
+      await dragScenario(`forward in a column, below delta: ${top}, ${height}`, {
+        preview,
+        tileId: "b",
+        layout: column(top, ratio),
+        // Past the pane's own place, over the column's lower part (delta's bottom edge once the gap closed).
+        to: (rest) => ({ x: rest.b.x + rest.b.width * 0.5, y: rest.d.y + rest.d.height - 12 }),
+        expect: {
+          commit: true,
+          ...(top === "group" ? { landing: "group", after: belowDelta(top) } : { after: belowDelta(top) }),
+          groupFrame: top === "group" && preview === "indicator",
+          crossesSlots: preview === "snap",
+        },
+        during: neverRefused,
+      });
+    }
+  }
+}
 await dragScenario("drag the bravo + charlie group by its strip, Escape puts it back", {
   preview: "indicator",
   tileId: "b",
