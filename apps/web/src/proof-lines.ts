@@ -13,11 +13,11 @@ export function proofParagraphs(): ReadonlyArray<DocParagraph> {
   return [
     [`${facts.testSuites} test suites, ${facts.tests} tests.`],
     [
-      "dist/index.mjs gzip ",
+      "What a user downloads, gzip: dist/index.mjs with the renderer chunk it loads, ",
       { code: String(facts.gzipIndexBytes) },
-      " bytes. dist/engine.mjs gzip ",
+      ` bytes (about ${Math.round(facts.gzipIndexBytes / 1000)} KB). dist/engine.mjs with its chunks, `,
       { code: String(facts.gzipEngineBytes) },
-      " bytes.",
+      ` bytes (about ${Math.round(facts.gzipEngineBytes / 1000)} KB).`,
     ],
     [
       "Engine entry imports in Node with react unresolvable (",

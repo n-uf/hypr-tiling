@@ -1,6 +1,7 @@
 // Writes apps/web/src/proof-facts.generated.ts from the library package:
 // Jest suite/test totals (the same config as `pnpm --filter @n-uf/hypr-tiling test`),
-// gzip sizes of dist/index.mjs and dist/engine.mjs, runtime dependencies,
+// gzip sizes of dist/index.mjs and dist/engine.mjs as a user downloads them
+// (each entry plus every chunk it loads), runtime dependencies,
 // React peer ranges, license, and version. The docs prebuild runs this so the
 // committed snapshot matches the package that the site is built from.
 
@@ -74,8 +75,40 @@ if (typeof testSuites !== "number" || typeof tests !== "number") {
   throw new Error("proof-facts: jest json missing numTotalTestSuites / numTotalTests");
 }
 
-const gzipIndexBytes = gzipSync(readFileSync(indexBundle)).length;
-const gzipEngineBytes = gzipSync(readFileSync(engineBundle)).length;
+/**
+ * The files a user downloads for an entry: the entry and every chunk of the
+ * build it imports, statically or dynamically, transitively (relative
+ * specifiers only: dependencies such as React are not counted).
+ * @param {string} entry
+ * @returns {string[]}
+ */
+function loadedFiles(entry) {
+  const seen = new Set([entry]);
+  const queue = [entry];
+  const specifier = /(?:\bfrom\s*|\bimport\s*\(?\s*)["'](\.{1,2}\/[^"']+)["']/g;
+  while (queue.length > 0) {
+    const file = queue.shift();
+    for (const match of readFileSync(file, "utf8").matchAll(specifier)) {
+      const next = resolve(dirname(file), match[1]);
+      if (!seen.has(next) && existsSync(next)) {
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return [...seen];
+}
+
+/**
+ * Gzip bytes of an entry as downloaded: the entry plus every chunk it loads, each gzipped as served.
+ * @param {string} entry
+ */
+function gzipLoadedBytes(entry) {
+  return loadedFiles(entry).reduce((sum, file) => sum + gzipSync(readFileSync(file)).length, 0);
+}
+
+const gzipIndexBytes = gzipLoadedBytes(indexBundle);
+const gzipEngineBytes = gzipLoadedBytes(engineBundle);
 
 const dependencyRecord = packageJson.dependencies ?? {};
 const runtimeDependencies = Object.keys(dependencyRecord).sort();
@@ -101,7 +134,9 @@ export interface ProofFacts {
   readonly version: string;
   readonly testSuites: number;
   readonly tests: number;
+  /** dist/index.mjs plus every chunk it loads, gzip bytes. */
   readonly gzipIndexBytes: number;
+  /** dist/engine.mjs plus every chunk it loads, gzip bytes. */
   readonly gzipEngineBytes: number;
   readonly runtimeDependencyCount: number;
   readonly runtimeDependencies: ReadonlyArray<string>;

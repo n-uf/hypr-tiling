@@ -5,11 +5,11 @@ h1: "Dockable panels in React with a tiled layout"
 mainKeyword: "react dockable panels"
 kind: use-case
 published: 2026-11-04
-updated: 2026-11-04
+updated: 2026-11-23
 author: n-uf
 takeaways:
   - "Docking needs a layout tree that records where each panel sits, drop targets while a panel is dragged, and a way to save the result; hypr-tiling gives you the tree and the drag behaviour, and your app owns the state."
-  - "A drop resolves to a swap, an edge insert beside a pane, a split-container insert or a group merge onto a tab strip; the strip's eject and ungroup controls undock panes again."
+  - "A drop resolves to a swap, an edge insert beside a pane or a group merge onto a tab strip; the strip's eject and ungroup controls undock panes again."
   - "Docking stays inside one tiled tree: hypr-tiling has no floating or pop-out windows and no docking to the screen's edges."
   - "The layout is plain JSON, group nodes included, so you save it from onLayoutChange like any other state."
   - "dockview, FlexLayout and rc-dock name floating or pop-out windows on their own pages; hypr-tiling needs React 19 and Tailwind and is source-available, not open source."
@@ -91,20 +91,19 @@ hypr-tiling is a [react tiling window manager](/) made by n-uf. Its interaction 
 
 ## What does docking mean in hypr-tiling?
 
-A react docking layout built with hypr-tiling is one tree, and every panel is a pane in it. A drag commits when the user lets go and resolves to one of four outcomes:
+A react docking layout built with hypr-tiling is one tree, and every panel is a pane in it. A drag commits when the user lets go and resolves to one of three outcomes:
 
 - `swap`: the drop lands on the middle of another pane and the two exchange tiles.
 - `edge-insert`: the drop lands in one of the four edge bands around a pane's centre, and the dragged pane docks beside it on that side.
-- `split-container-insert`: the pane goes into an existing split container rather than beside a single pane.
 - `group-merge`: the drop lands on a group's tab strip and the pane becomes a tab, at the hovered tab's position, or at the end if you drop past the last tab.
 
-When zones compete, the built-in tab strip wins over the edge bands, and the edge bands win over the centre.
+A tab strip takes the drop before the body of the pane it sits on. A pane right next to the dragged one in a row or column has no edge band facing along that line: its middle swaps. A drop that would leave a pane under the minimum size, or that needs more room than the target has, is refused, and letting go there puts the layout back.
 
 To undock, the strip has two controls at its right end. Eject moves the active tab out into a pane beside the group; ungroup breaks the whole group back into separate panes. Both are on by default.
 
 A loose pane has no strip to drop on. Users start a group by Alt/Opt+clicking two or more pane headers and pressing the Group button that appears on them. Alt+G groups the focused pane with its reading-order neighbour, or ungroups it if it's already in a group.
 
-Other gestures work on the same tree. Alt+Enter maximizes the focused pane without rewriting the layout, and Escape restores it; a maximized group member keeps its tab strip unless you set `maximize.keepGroupTabStrip` to `false`. Alt+M starts keyboard move mode: arrow keys pick a destination pane, Enter commits and Escape cancels. On a touch screen a pane drag starts with a long press (`interaction.touchDrag`, on by default). That's all the docs promise for touch.
+Other gestures work on the same tree. Alt+Enter maximizes the focused pane without rewriting the layout, and Escape restores it; a maximized group member keeps its tab strip unless you set `maximize.keepGroupTabStrip` to `false`. Alt+M starts keyboard move mode: arrow keys pick a destination pane, Enter commits and Escape cancels. Move mode follows the drag's rules, so it never picks a destination a drag would refuse. On a touch screen a pane drag starts with a long press (`interaction.touchDrag`, on by default). That's all the docs promise for touch.
 
 A free grid of widgets with empty cells is a different model; the [alternatives to react-grid-layout](/blog/react-grid-layout-alternatives) article covers those libraries.
 

@@ -136,19 +136,20 @@ export type TilingResizeCapability = "both" | "horizontal" | "vertical" | "none"
  * Drag-to-rearrange feedback mode — how a pending move is shown WHILE dragging,
  * before it is committed on drop.
  *
- * - `"preview"` — non-committing preview (default). The pending result is shown
- *   via the translucent PROJECTED landing overlays (S' / T' / successor) painted
- *   over the unchanged layout; the layout tree is NOT mutated until drop.
- * - `"live"` — Hyprland-faithful drag. Past the pickup threshold the REAL pane
- *   is lifted out of the layout and held 1:1 under the pointer while the others
- *   close the gap (`removeLeafTile`); the drop preview
- *   ({@link TilingRendererCommonProps.dragPreview}) shows where it will land.
- *   The drop is resolved + committed exactly ONCE on release against the
- *   original layout via the SAME resolver + reducers preview uses
- *   (`swapLeafTiles` / `insertLeafAdjacent`), so the live commit equals the
- *   preview commit for the same intent. The prop tree is never mutated
- *   pre-commit, so cancel / Escape / a release over the pane's own place
- *   restores the layout exactly.
+ * - `"preview"` — non-committing preview. The pending result is shown via the
+ *   translucent PROJECTED landing overlays (S' / T' / successor) painted over
+ *   the unchanged layout; the layout tree is NOT mutated until drop.
+ * - `"live"` (default) — Hyprland-faithful drag. Past the pickup threshold the
+ *   REAL pane is lifted out of the layout and held 1:1 under the pointer; the
+ *   drop preview ({@link TilingRendererCommonProps.dragPreview}) shows where it
+ *   will land.
+ *
+ * Either way the drop is committed exactly ONCE on release, against the
+ * original layout: the tree `@n-uf/placement`'s tiling drag gives for the held
+ * place (`after(place)`), the same tree the overlays or the preview drew. A
+ * refused place commits nothing. The prop tree is never mutated pre-commit, so
+ * cancel / Escape / a release over the pane's own place restores the layout
+ * exactly.
  *
  * NOTE on vocabulary: "projected" names the RENDERING TECHNIQUE for the preview
  * overlays (projected geometry, S' / T' / successor). "preview" vs "live" is the
@@ -464,6 +465,13 @@ export type TilingPaneCycleDirection = "next" | "previous";
  * renderer resolves it against the CURRENT focused leaf at dispatch time (the
  * "act on the focused pane" ergonomic). Commands that need explicit operands
  * (swap / insert / split ops) require them.
+ *
+ * The move commands (`swap-panes`, `insert-adjacent`) and move mode's commit
+ * are moves the user makes: each commits the tree a pointer drag of the same
+ * pane to the same place commits, and is refused, with no layout change, where
+ * that drag is refused (a pane left under `minPaneSizePx`, no room for two
+ * panes, a statically sized pane). Move mode moves a pane's whole tab group,
+ * as its title bar drags it.
  */
 export type TilingCommand =
   | { kind: "focus-pane"; leafId: string }
@@ -2141,9 +2149,11 @@ export type TilingLeafPreviewRole = "drag-source-landing-shadow" | "drop-target-
 export type TilingLeafPreviewMode = "swap" | "edge-insert" | "group-merge";
 /**
  * The outcome a drop resolves to: exchange tiles (`"swap"`), insert at an edge
- * (`"edge-insert"`), insert into an existing split container
- * (`"split-container-insert"`), merge into a tabbed group (`"group-merge"`), or
- * no valid action (`"none"`).
+ * (`"edge-insert"`), merge into a tabbed group (`"group-merge"`), or no valid
+ * action (`"none"`).
+ *
+ * `"split-container-insert"` is deprecated: no drop produces it. It stays in
+ * the union until the next breaking release removes it.
  */
 export type TilingDropAction =
   | "swap"
@@ -2996,6 +3006,13 @@ export interface TilingRendererCommonProps {
    *   is in the slot and the drop under it is the same, then settles back under
    *   the pointer at its lift size. The drop a release commits is the one
    *   under the pointer, whatever slot the pane settled into first.
+   *
+   * Not drawing only: the drop zones are laid out once, at the lift, on the
+   * layout the preview draws (the layout at the lift for `"indicator"`, the
+   * layout with the pane taken out for `"snap"` and for
+   * {@link TilingRendererCommonProps.dragPreviewMakesRoom}), so one pointer
+   * path can hold different places under the two. A release on a given place
+   * commits the same tree under either.
    */
   dragPreview?: TilingDragPreview;
   /**

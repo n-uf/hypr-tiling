@@ -201,7 +201,8 @@ commands, or restore persisted arrangements:
 | `collectGroups` | Enumerate the group nodes in a layout. |
 | `isStructurallyValidLayout` | Validate a layout tree's structural invariants. |
 
-All reducers are re-exported from the package root:
+The reducers are exported from the React-free `./engine` entry, not from the
+package root:
 
 ```ts
 import {
@@ -209,14 +210,23 @@ import {
   insertLeafAdjacent,
   swapLeafTiles,
   isStructurallyValidLayout,
-} from "@n-uf/hypr-tiling";
+} from "@n-uf/hypr-tiling/engine";
 ```
 
-Other layout-tree helpers are exported for advanced/internal use, but the
-reducers above are the stable, documented surface for application code.
+`./engine` is marked `@beta`: its names may still move between releases, and
+the changelog lists every move. Pin an exact version (see Versioning).
+
+The reducers are your own edits to your own tree: they are never refused. A
+move the user makes is judged instead. A pointer drag, keyboard move mode and
+the `swap-panes` and `insert-adjacent` commands all commit through one rule:
+the tree `@n-uf/placement`'s tiling drag gives for that place, refused where a
+drag to the same place is (a pane left under `minPaneSizePx`, no room for two
+panes, a statically sized pane).
 
 For complete generated API signatures, see
-[`etc/hypr-tiling.api.md`](https://github.com/n-uf/hypr-tiling/blob/main/packages/hypr-tiling/etc/hypr-tiling.api.md).
+[`etc/hypr-tiling.engine.api.md`](https://github.com/n-uf/hypr-tiling/blob/main/packages/hypr-tiling/etc/hypr-tiling.engine.api.md)
+(and [`etc/hypr-tiling.api.md`](https://github.com/n-uf/hypr-tiling/blob/main/packages/hypr-tiling/etc/hypr-tiling.api.md)
+for the root entry).
 
 ### Persisted layout (optional glue)
 
@@ -302,6 +312,22 @@ return (
 The container must not sit under a `transform` / `filter` /
 `backdrop-filter` / `perspective` / `contain: paint` ancestor. Overlay
 z-indexes (220 / 230) are relative to that container's stacking context.
+
+### The drop preview (`dragPreview`)
+
+A live drag shows where the held pane will land in one of two ways:
+
+| `dragPreview` | While a place is held |
+|---|---|
+| `"indicator"` (default) | the layout stays as it was at the lift (the pane's old place kept open) and a drop indicator marks the place: the target's half for a side, its outline for a swap or a join, and for a swap a wash where the other pane goes |
+| `"snap"` | the layout the release would commit is drawn: the others make room and the pane settles into its slot once the pointer is well inside it |
+
+The option is not drawing only. Where each place's zone lies is decided once,
+at the lift, on the layout the preview draws: the layout at the lift for the
+indicator, the layout with the pane taken out for snap (and for
+`dragPreviewMakesRoom`). So the same pointer path can hold different places
+under the two previews. What a release on a given place commits is the same
+under both. A preview switched mid-drag takes effect on the next drag.
 
 ### The held pane's look (`heldLook`)
 
@@ -1023,9 +1049,10 @@ interaction={{
 ## Features
 
 - **Drag/drop rearrange** — Hyprland-style live drag; the move commits on
-  release, resolving to swap, edge-insert, split-container-insert, or
-  group-merge (built-in strip, or a host `groupDropTargetRef` when the strip
-  is hidden).
+  release, resolving to swap, edge-insert, or group-merge (built-in strip,
+  or a host `groupDropTargetRef` when the strip is hidden). Keyboard move
+  mode and the move commands commit by the same rule and are refused where a
+  drag would be.
 - **Resizable split dividers** — drag dividers, or pin a pane to a measured pixel
   extent (static) versus ratio-distributed (flexible).
 - **Group / stack tabs** — collapse several leaves into one slot as a stacked

@@ -5,7 +5,7 @@ h1: "Build a drag-and-drop dashboard in React with tiled panels"
 mainKeyword: "react drag and drop dashboard"
 kind: use-case
 published: 2026-11-03
-updated: 2026-11-03
+updated: 2026-11-23
 author: n-uf
 takeaways:
   - "A drag-and-drop dashboard in React needs three parts: the layout as data in your state, a component that renders and edits it, and a way to save it per user."
@@ -156,7 +156,7 @@ That's a working drag-and-drop dashboard in React, trimmed from the metrics dash
 
 ## Save each user's layout
 
-You own the tree and it's plain JSON, so saving means writing it somewhere in `onLayoutChange` and reading it back on load. This is the shape of the docs' save-and-restore example, with `localStorage`:
+You own the tree and it's plain JSON, so saving means writing it somewhere in `onLayoutChange` and reading it back on load. The plain way, with `localStorage`:
 
 ```tsx
 const STORAGE_KEY = "my-app.layout";
