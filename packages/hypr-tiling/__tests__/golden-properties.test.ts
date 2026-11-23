@@ -149,15 +149,11 @@ describe("drop region properties", () => {
   });
 });
 
-type Box = { x: number; y: number; width: number; height: number };
-const inside = (r: Box, p: { x: number; y: number }): boolean => p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height;
-const inset = (r: Box, px: number): Box => ({ x: r.x + px, y: r.y + px, width: r.width - 2 * px, height: r.height - 2 * px });
-
 /** Whether some point within `px` per axis of `p` (probed every half pixel) reads `place` on the hit's zone map. */
-function zoneWithin(hit: { zone(point: { x: number; y: number }): string | null }, p: { x: number; y: number }, px: number, place: string): boolean {
+function zoneWithin(hit: { placeAt(point: { x: number; y: number }): string | null }, p: { x: number; y: number }, px: number, place: string): boolean {
   for (let dx = -px; dx <= px; dx += 0.5) {
     for (let dy = -px; dy <= px; dy += 0.5) {
-      if (hit.zone({ x: p.x + dx, y: p.y + dy }) === place) return true;
+      if (hit.placeAt({ x: p.x + dx, y: p.y + dy }) === place) return true;
     }
   }
   return false;
@@ -182,21 +178,20 @@ describe("drag hit hold properties", () => {
           const point = () => ({ x: r() * AREAS[0]!.width, y: r() * AREAS[0]!.height });
           for (let i = 0; i < 60; i++) {
             const p = point();
-            expect(hit.hold(null, p)?.place ?? null).toBe(hit.zone(p));
+            expect(hit.hold(null, p)?.place ?? null).toBe(hit.placeAt(p));
             const q = point();
             const taken = hit.hold(null, q);
             if (taken == null) continue;
             const held = hit.hold(taken, p);
-            const raw = hit.zone(p);
+            const raw = hit.placeAt(p);
             if (held == null) expect(raw).toBeNull();
             else expect([raw, taken.place]).toContain(held.place);
             if (held?.place === taken.place && raw !== taken.place) {
               kept++;
-              // The upper bound: a place is kept only within 6 px past its zone's edge or within the travel (capped,
-              // so at most 24 px per axis) of where it was taken; past both, the point reads the raw zone. On the base
-              // basis a place's zone runs on under home, which lies above it: home's 6 px rim is within that zone.
-              const inHomeRim = hit.home != null && inside(hit.home, p) && !inside(inset(hit.home, 6), p);
-              if (!inHomeRim && (Math.abs(p.x - taken.at.x) >= 24 || Math.abs(p.y - taken.at.y) >= 24)) {
+              // The upper bound: a place is kept only within 6 px past the part of its zone that shows, or within the
+              // travel (capped, so at most 24 px per axis) of where it was taken; past both, the point reads the raw
+              // zone. Home's rim included: home wins over a zone that runs on beneath it.
+              if (Math.abs(p.x - taken.from.x) >= 24 || Math.abs(p.y - taken.from.y) >= 24) {
                 keptByEdge++;
                 expect(zoneWithin(hit, p, 6, taken.place)).toBe(true);
               }

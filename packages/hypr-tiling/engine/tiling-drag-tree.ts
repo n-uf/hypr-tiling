@@ -513,13 +513,13 @@ export interface TilingPaneCenterZone {
  * the middle holds no swap (home, a refused swap). For the debug overlay.
  * @internal
  */
-export function tilingHitPaneCenter(hit: { zone(point: { x: number; y: number }): string | null; place(id: string): TilingHeld<string> | null }, rect: Rect): TilingPaneCenterZone | null {
+export function tilingHitPaneCenter(hit: { placeAt(point: { x: number; y: number }): string | null; heldOf(id: string): TilingHeld<string> | null }, rect: Rect): TilingPaneCenterZone | null {
   const mid = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-  const id: string | null = hit.zone(mid);
-  if (id == null || hit.place(id)?.kind !== "swap") {
+  const id: string | null = hit.placeAt(mid);
+  if (id == null || hit.heldOf(id)?.kind !== "swap") {
     return null;
   }
-  const at = (dx: number, dy: number, by: number): boolean => hit.zone({ x: mid.x + dx * by, y: mid.y + dy * by }) === id;
+  const at = (dx: number, dy: number, by: number): boolean => hit.placeAt({ x: mid.x + dx * by, y: mid.y + dy * by }) === id;
   // How far from the middle the zone runs along (dx, dy), up to `span`: it is convex, so one crossing.
   const reach = (dx: number, dy: number, span: number): number => {
     if (at(dx, dy, span - 0.5)) {
