@@ -438,6 +438,7 @@ function HomeTopBar({
           stored or default look either way). */}
       <HeldLookSwitch
         look={heldLook}
+        preview={dragPreview}
         onChange={onHeldLookChange}
         className={`${tokens.switchGroup} max-2xl:hidden`}
         labelClassName={tokens.switchLabel}
@@ -850,7 +851,7 @@ export function HomePage({
   const [dragPreview, onDragPreviewChange] = useHomeDragPreview();
   // How a dragged pane looks while held: the renderer's default
   // ("auto") until the visitor picks another in the top bar.
-  const [heldLook, onHeldLookChange] = useHomeHeldLook();
+  const [heldLook, onHeldLookChange] = useHomeHeldLook(dragPreview);
   const isMobile: boolean = useIsMobileHomeViewport();
   const isReadMode: boolean = isMobile && mobileMode === "read";
   const isCoarsePointer: boolean = useIsCoarsePointer();
