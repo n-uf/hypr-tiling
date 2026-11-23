@@ -149,11 +149,26 @@ describe("drop region properties", () => {
   });
 });
 
+type Box = { x: number; y: number; width: number; height: number };
+const inside = (r: Box, p: { x: number; y: number }): boolean => p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height;
+const inset = (r: Box, px: number): Box => ({ x: r.x + px, y: r.y + px, width: r.width - 2 * px, height: r.height - 2 * px });
+
+/** Whether some point within `px` per axis of `p` (probed every half pixel) reads `place` on the hit's zone map. */
+function zoneWithin(hit: { zone(point: { x: number; y: number }): string | null }, p: { x: number; y: number }, px: number, place: string): boolean {
+  for (let dx = -px; dx <= px; dx += 0.5) {
+    for (let dy = -px; dy <= px; dy += 0.5) {
+      if (hit.zone({ x: p.x + dx, y: p.y + dy }) === place) return true;
+    }
+  }
+  return false;
+}
+
 describe("drag hit hold properties", () => {
   it("what the hit holds is the zone under the pointer or the place it held before, and nothing is held before the first sample", () => {
     // Counted, so the property cannot pass on hits that held nothing.
     let hits = 0;
     let kept = 0;
+    let keptByEdge = 0;
     let switched = 0;
     for (const tree of plainTrees().slice(0, 30)) {
       const rects = resolveLayoutGeometry(tree, AREAS[0]!, { gapPx: 6, handleSizePx: 4, minPaneSizePx: 96 }).leaves;
@@ -175,7 +190,17 @@ describe("drag hit hold properties", () => {
             const raw = hit.zone(p);
             if (held == null) expect(raw).toBeNull();
             else expect([raw, taken.place]).toContain(held.place);
-            if (held?.place === taken.place && raw !== taken.place) kept++;
+            if (held?.place === taken.place && raw !== taken.place) {
+              kept++;
+              // The upper bound: a place is kept only within 6 px past its zone's edge or within the travel (capped,
+              // so at most 24 px per axis) of where it was taken; past both, the point reads the raw zone. On the base
+              // basis a place's zone runs on under home, which lies above it: home's 6 px rim is within that zone.
+              const inHomeRim = hit.home != null && inside(hit.home, p) && !inside(inset(hit.home, 6), p);
+              if (!inHomeRim && (Math.abs(p.x - taken.at.x) >= 24 || Math.abs(p.y - taken.at.y) >= 24)) {
+                keptByEdge++;
+                expect(zoneWithin(hit, p, 6, taken.place)).toBe(true);
+              }
+            }
             if (held != null && held.place !== taken.place) switched++;
           }
         }
@@ -183,6 +208,7 @@ describe("drag hit hold properties", () => {
     }
     expect(hits).toBeGreaterThan(100);
     expect(kept).toBeGreaterThan(0);
+    expect(keptByEdge).toBeGreaterThan(0);
     expect(switched).toBeGreaterThan(0);
   });
 });
