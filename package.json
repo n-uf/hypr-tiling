@@ -1,6 +1,6 @@
 {
   "name": "hypr-tiling-workspace",
-  "version": "26.11.11",
+  "version": "26.6.1",
   "private": true,
   "description": "Workspace for hypr-tiling packages and homepage app.",
   "license": "LicenseRef-PolyForm-Perimeter-1.0.1",
