@@ -190,6 +190,8 @@ the version number alone does not flag them.
   tree as it came.
 - **The engine's reducers are unchanged** and stay the host's own edits: they
   are never refused.
+- **Known gap:** an arrow that move mode refuses gives no feedback yet; the aim
+  just stays where it was.
 - **A release with no held place commits nothing.** A drop state without a
   place from the drag's hit, or on a refused place, no longer falls back to
   the reducers' tree.
