@@ -934,22 +934,28 @@ describe("held look — a tab group lands from its look: the strip pivots with t
     });
   }
 
-  it("a fade drop: the strip is faded with the pane, at full size, then settles to solid", async (): Promise<void> => {
-    GEOMETRY.set("a", { x: 0, y: 0, width: 500, height: 600 });
-    groupAt(500, "top");
-    const { container } = render(<GroupHost look="fade" placement="top" />);
-    await dropGroup(container, "top");
-    const pane: HTMLElement = container.querySelector<HTMLElement>('[data-hpt-leaf="c"]')!;
-    const strip: HTMLElement = stripOf(container);
-    expect(Number(pane.style.opacity)).toBeCloseTo(HELD_FADE_OPACITY, 3);
-    expect(Number(strip.style.opacity)).toBeCloseTo(HELD_FADE_OPACITY, 3);
-    expect(translateScale(strip.style.transform)?.scale).toBe(1);
-    await frames(60);
-    expect(Number(strip.style.opacity)).toBeGreaterThan(HELD_FADE_OPACITY);
-    await frames(900);
-    expect(pane.style.opacity).toBe("");
-    expect(strip.style.opacity).toBe("");
-    expect(strip.style.transform).toBe("");
+  // The handover frame's opacity is a frame-by-frame bound: on the wall clock a loaded full run lets the settle start
+  // before the first read (0.637 seen against 0.45), so it runs on the driven clock.
+  describe("on a driven clock", (): void => {
+    useDrivenClock();
+
+    it("a fade drop: the strip is faded with the pane, at full size, then settles to solid", async (): Promise<void> => {
+      GEOMETRY.set("a", { x: 0, y: 0, width: 500, height: 600 });
+      groupAt(500, "top");
+      const { container } = render(<GroupHost look="fade" placement="top" />);
+      await dropGroup(container, "top");
+      const pane: HTMLElement = container.querySelector<HTMLElement>('[data-hpt-leaf="c"]')!;
+      const strip: HTMLElement = stripOf(container);
+      expect(Number(pane.style.opacity)).toBeCloseTo(HELD_FADE_OPACITY, 3);
+      expect(Number(strip.style.opacity)).toBeCloseTo(HELD_FADE_OPACITY, 3);
+      expect(translateScale(strip.style.transform)?.scale).toBe(1);
+      await frames(60);
+      expect(Number(strip.style.opacity)).toBeGreaterThan(HELD_FADE_OPACITY);
+      await frames(900);
+      expect(pane.style.opacity).toBe("");
+      expect(strip.style.opacity).toBe("");
+      expect(strip.style.transform).toBe("");
+    });
   });
 });
 
