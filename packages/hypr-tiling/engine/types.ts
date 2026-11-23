@@ -147,8 +147,8 @@ export type TilingResizeCapability = "both" | "horizontal" | "vertical" | "none"
  *   original layout via the SAME resolver + reducers preview uses
  *   (`swapLeafTiles` / `insertLeafAdjacent`), so the live commit equals the
  *   preview commit for the same intent. The prop tree is never mutated
- *   pre-commit, so cancel / Escape / a release that never left the pane's own
- *   place restores the layout exactly.
+ *   pre-commit, so cancel / Escape / a release over the pane's own place
+ *   restores the layout exactly.
  *
  * NOTE on vocabulary: "projected" names the RENDERING TECHNIQUE for the preview
  * overlays (projected geometry, S' / T' / successor). "preview" vs "live" is the

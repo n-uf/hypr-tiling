@@ -8080,7 +8080,7 @@ const TilingRendererComponent = React.forwardRef<
         setFocusedLeaf(committedFocusLeafId);
       }
     }
-    // A cancel (Escape, pointercancel, a release that never left home, a
+    // A cancel (Escape, pointercancel, a release over the pane's own place, a
     // refused candidate) commits nothing: the display falls back to the
     // untouched `layout`, the layout as it was at the lift, and every pane —
     // the dropped one included — settles back from where it is drawn. A host
