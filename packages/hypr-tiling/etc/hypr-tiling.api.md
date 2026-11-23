@@ -881,6 +881,9 @@ export interface TilingGroupTabStripTheme {
 }
 
 // @public
+export type TilingHeldOverTarget = "auto" | "title-bar" | "thumbnail" | "fade" | "none";
+
+// @public
 export interface TilingHideTileResult {
     readonly orphaned: boolean;
     readonly set: TilingWorkspaceSet;
@@ -1168,6 +1171,7 @@ export interface TilingRendererCommonProps {
     dragPreviewMakesRoom?: boolean;
     externalDragHover?: TilingExternalDragHover | null;
     focusedLeafId?: string | null;
+    heldOverTarget?: TilingHeldOverTarget;
     interaction?: TilingInteractionCapabilities;
     maximizedLeafId?: string | null;
     onExternalDragHoverChange?: (hover: TilingExternalDragHover | null) => void;
@@ -1423,6 +1427,7 @@ export interface TilingTile {
     accent?: TilingTileAccent;
     content?: React_2.ReactNode;
     description?: string;
+    heldOverTarget?: TilingHeldOverTarget;
     id: string;
     rows?: ReadonlyArray<string>;
     title: string;
