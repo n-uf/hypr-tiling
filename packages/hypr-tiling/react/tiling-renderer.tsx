@@ -705,6 +705,8 @@ interface DragHitInputs {
   readonly basis: TilingBasis;
   readonly geometry: ResolvedTilingDropHitZoneGeometryCapability;
   readonly gated: ReadonlySet<string>;
+  /** Whether grouping is on: with it off no tab strip or host drop element takes a join, so no part is measured. */
+  readonly grouping: boolean;
   /** Every pane's slot at the lift (viewport layout px), by leaf id. */
   readonly footprints: ReadonlyMap<string, TilingPaneFootprint>;
 }
@@ -5079,6 +5081,7 @@ const TilingRendererComponent = React.forwardRef<
     basis: dragHitBasis,
     geometry: interactionCapabilities.dropHitZoneGeometry,
     gated: rearrangeGatedLeafIds,
+    grouping: isGroupingEnabled,
     footprints: leafFootprintsById,
   };
   const dragHitRef = React.useRef<DragHitSession | null>(null);
@@ -5106,7 +5109,7 @@ const TilingRendererComponent = React.forwardRef<
       inputs,
       sourceLeafId,
       subject,
-      measureDragPartGeometry(measurementPort, inputs, viewportClientFrame()),
+      inputs.grouping ? measureDragPartGeometry(measurementPort, inputs, viewportClientFrame()) : {},
     );
     return dragHitRef.current;
   };
