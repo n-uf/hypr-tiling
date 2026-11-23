@@ -5434,11 +5434,15 @@ const TilingRendererComponent = React.forwardRef<
    * Where the lifted pane is drawn (viewport layout px), from a client point,
    * through the viewport's frame as it is now (scrolled, scaled): where the
    * pointer holds it, in its held look, kept inside the stage
-   * (`clampHeldRectToStage`). The pointer itself, and the drop it resolves,
-   * are not clamped.
+   * (`clampHeldRectToStage`). What is kept inside is what is SEEN (a
+   * thumbnail's scaled box), and the frame moves with it. `frame` is the
+   * frame's rect before any scale, `origin` the grab point the scale is about.
+   * The pointer itself, and the drop it resolves, are not clamped.
    */
   const heldRectAt = React.useCallback(
-    (client: DragMachinePoint): TilingRect | null => {
+    (
+      client: DragMachinePoint,
+    ): { readonly frame: TilingRect; readonly origin: DragMachinePoint } | null => {
       const lift = liftGeometryRef.current;
       const look: HeldLookFrame | null = currentHeldLookFrame();
       if (lift == null || look == null) {
@@ -5448,15 +5452,24 @@ const TilingRendererComponent = React.forwardRef<
         measureViewportClientFrame(viewportRef.current),
         client,
       );
-      return clampHeldRectToStage(
-        {
-          x: point.x - lift.grab.x,
-          y: point.y - look.anchorY,
+      const seen: TilingRect = {
+        x: point.x - lift.grab.x * look.scale,
+        y: point.y - look.anchorY * look.scale,
+        width: lift.layoutRect.width * look.scale,
+        height: look.height * look.scale,
+      };
+      const kept: TilingRect = clampHeldRectToStage(seen, viewportSizeRef.current);
+      const dx: number = kept.x - seen.x;
+      const dy: number = kept.y - seen.y;
+      return {
+        frame: {
+          x: point.x - lift.grab.x + dx,
+          y: point.y - look.anchorY + dy,
           width: lift.layoutRect.width,
           height: look.height,
         },
-        viewportSizeRef.current,
-      );
+        origin: { x: point.x + dx, y: point.y + dy },
+      };
     },
     [currentHeldLookFrame],
   );
@@ -5470,17 +5483,19 @@ const TilingRendererComponent = React.forwardRef<
     (client: DragMachinePoint, flush: boolean): void => {
       const lift = liftGeometryRef.current;
       const motion: LeafMotion | null = leafMotionRef.current;
-      const frameRect: TilingRect | null = heldRectAt(client);
+      const held = heldRectAt(client);
       const look: HeldLookFrame | null = currentHeldLookFrame();
       if (
         lift == null ||
         motion == null ||
-        frameRect == null ||
+        held == null ||
         look == null ||
         !isPaneHeldRef.current
       ) {
         return;
       }
+      const frameRect: TilingRect = held.frame;
+      const origin: DragMachinePoint = held.origin;
       // The motion moves the (active) pane: held where the frame is, offset
       // by its place in the frame (a group's pane sits beside its strip), at
       // the height its look leaves it (a fold to the title bar).
@@ -5497,10 +5512,6 @@ const TilingRendererComponent = React.forwardRef<
       }
       // The thumbnail scales about the grab point and the fade sits on the
       // whole lifted pane (a group's strip included).
-      const origin: DragMachinePoint = {
-        x: frameRect.x + lift.grab.x,
-        y: frameRect.y + look.anchorY,
-      };
       writeHeldLookLayer(heldLookLayerRef.current, look, {
         x: origin.x - lift.layoutRect.x,
         y: origin.y - lift.layoutRect.y,
