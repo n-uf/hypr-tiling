@@ -423,24 +423,24 @@ export interface TilingHeldPaneDrop {
 /**
  * Whether the held pane drop `held` keeps the pointer at `point` (container px), by `tilingDrag`'s `holds`: the point
  * is in the held place's own zone where the frame draws its pane (`drawnLayout` laid out as `drawnFootprints`, by leaf
- * id). A held swap keeps the partner's centre as drawn, a side its band. Gives the footprint the pane is drawn at, or
- * null when it doesn't hold (the next drop is then acquired on the base).
+ * id). A held swap keeps the partner's centre as drawn and its band that touches the reopened place, a side its band.
+ * When it doesn't hold, the next drop is acquired on the base.
  * @internal
  */
-export function tilingDragHeldFootprint(
+export function tilingDragHolds(
   drag: TilingDrag<TilingDragTree, string> | null,
   held: TilingHeldPaneDrop,
   point: { readonly x: number; readonly y: number },
   drawnLayout: TilingLayoutNode,
   drawnFootprints: ReadonlyMap<string, TilingPaneFootprint>,
-): TilingPaneFootprint | null {
+): boolean {
   const lift: TilingLayoutNode | null = drag?.lift.tree.layout ?? null;
   if (drag == null || lift == null || (held.action !== "swap" && held.action !== "edge-insert")) {
-    return null;
+    return false;
   }
   const tile: string | undefined = leafOfLeafId(lift, held.leafId)?.tileId;
   if (tile == null) {
-    return null;
+    return false;
   }
   // The pane is drawn on the leaf that shows its tile in the drawn tree: its own, or its group's.
   const group: TilingGroupNode | null = groupOfTile(drawnLayout, tile);
@@ -448,9 +448,9 @@ export function tilingDragHeldFootprint(
   const drawnLeaf: TilingLeafNode | null = leafOfTile(drawnLayout, drawnTile);
   const footprint: TilingPaneFootprint | undefined = drawnLeaf == null ? undefined : drawnFootprints.get(drawnLeaf.id);
   if (footprint == null) {
-    return null;
+    return false;
   }
   const rect: Rect = { x: footprint.left, y: footprint.top, width: footprint.width, height: footprint.height };
   const place = held.action === "swap" ? ({ kind: "swap", at: tile } as const) : held.zone === "center" ? null : ({ kind: "beside", at: tile, side: held.zone } as const);
-  return place != null && drag.holds(place, point, new Map([[tile, rect]])) ? footprint : null;
+  return place != null && drag.holds(place, point, new Map([[tile, rect]]));
 }
