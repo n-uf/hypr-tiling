@@ -15,13 +15,15 @@ export interface ProofFacts {
 }
 
 export const PROOF_FACTS: ProofFacts = {
-  version: "26.9.10",
-  testSuites: 67,
-  tests: 1392,
-  gzipIndexBytes: 7107,
-  gzipEngineBytes: 30588,
-  runtimeDependencyCount: 2,
+  version: "26.11.11",
+  testSuites: 74,
+  tests: 1452,
+  gzipIndexBytes: 7100,
+  gzipEngineBytes: 30273,
+  runtimeDependencyCount: 4,
   runtimeDependencies: [
+    "@n-uf/motion",
+    "@n-uf/placement",
     "clsx",
     "tailwind-merge",
   ],
