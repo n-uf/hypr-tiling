@@ -1,5 +1,6 @@
 import {
   tilingDrag,
+  type PaneRegionOptions,
   type Rect,
   type Split,
   type SplitOptions,
@@ -24,7 +25,7 @@ import {
   swapGroupWithSlot,
   swapLeafTiles,
 } from "./state";
-import type { TilingGroupNode, TilingLayoutConfig, TilingLayoutNode, TilingLeafNode, TilingSplitNode } from "./types";
+import type { TilingGroupNode, TilingLayoutConfig, TilingLayoutNode, TilingLeafNode, TilingPaneFootprint, TilingSplitNode } from "./types";
 
 /**
  * hypr-tiling's tree as `@n-uf/placement/tiling`'s drag reads and changes it: the layout tree and its own reducers,
@@ -299,6 +300,8 @@ export interface LayoutTilingDragParams {
    * renderer's own (a swap is always valid there), so the drag refuses no swap it would commit.
    */
   readonly min?: number;
+  /** A pane's drop regions, as the renderer's own zone geometry sizes them (centre ratios, floor, hysteresis, pixel ratio). */
+  readonly regions?: PaneRegionOptions;
 }
 
 /**
@@ -318,6 +321,7 @@ export function createLayoutTilingDrag(params: LayoutTilingDragParams): TilingDr
     ops: createTilingDragOps(),
     area,
     min: params.min ?? 0,
+    ...(params.regions ? { regions: params.regions } : {}),
   };
   return tilingDrag<TilingDragTree, string>({ layout: params.layout }, subject, options);
 }
@@ -388,4 +392,65 @@ export function deriveDropCommitTree(params: {
     }
   }
   return deriveCandidateTree(layout, sourceLeafId, target, subject);
+}
+
+/** A rect as a footprint (container px). */
+const footprintOf = (rect: Rect): TilingPaneFootprint => ({ left: rect.x, top: rect.y, width: rect.width, height: rect.height });
+
+/**
+ * The drag's hit footprints by leaf id: each of `tilingDrag`'s targets (one per pane of the base, the tree with the
+ * subject released) at its base rect, keyed by the leaf it is drawn on there. A new target is acquired on these.
+ * @internal
+ */
+export function tilingDragHitFootprints(drag: TilingDrag<TilingDragTree, string>): ReadonlyMap<string, TilingPaneFootprint> {
+  const out = new Map<string, TilingPaneFootprint>();
+  for (const target of drag.targets) {
+    const leaf: TilingLeafNode | null = leafOfTile(drag.base.tree.layout, target.pane);
+    if (leaf != null) {
+      out.set(leaf.id, footprintOf(target.hit));
+    }
+  }
+  return out;
+}
+
+/** A pane drop the resolver holds: on the leaf `leafId`, a swap (`action: "swap"`) or a side drop (`"edge-insert"`, on `zone`). */
+export interface TilingHeldPaneDrop {
+  readonly leafId: string;
+  readonly zone: "center" | "left" | "right" | "top" | "bottom";
+  readonly action: string;
+}
+
+/**
+ * Whether the held pane drop `held` keeps the pointer at `point` (container px), by `tilingDrag`'s `holds`: the point
+ * is in the held place's own zone where the frame draws its pane (`drawnLayout` laid out as `drawnFootprints`, by leaf
+ * id). A held swap keeps the partner's centre as drawn, a side its band. Gives the footprint the pane is drawn at, or
+ * null when it doesn't hold (the next drop is then acquired on the base).
+ * @internal
+ */
+export function tilingDragHeldFootprint(
+  drag: TilingDrag<TilingDragTree, string> | null,
+  held: TilingHeldPaneDrop,
+  point: { readonly x: number; readonly y: number },
+  drawnLayout: TilingLayoutNode,
+  drawnFootprints: ReadonlyMap<string, TilingPaneFootprint>,
+): TilingPaneFootprint | null {
+  const lift: TilingLayoutNode | null = drag?.lift.tree.layout ?? null;
+  if (drag == null || lift == null || (held.action !== "swap" && held.action !== "edge-insert")) {
+    return null;
+  }
+  const tile: string | undefined = leafOfLeafId(lift, held.leafId)?.tileId;
+  if (tile == null) {
+    return null;
+  }
+  // The pane is drawn on the leaf that shows its tile in the drawn tree: its own, or its group's.
+  const group: TilingGroupNode | null = groupOfTile(drawnLayout, tile);
+  const drawnTile: string = group == null ? tile : shownTileOf(group);
+  const drawnLeaf: TilingLeafNode | null = leafOfTile(drawnLayout, drawnTile);
+  const footprint: TilingPaneFootprint | undefined = drawnLeaf == null ? undefined : drawnFootprints.get(drawnLeaf.id);
+  if (footprint == null) {
+    return null;
+  }
+  const rect: Rect = { x: footprint.left, y: footprint.top, width: footprint.width, height: footprint.height };
+  const place = held.action === "swap" ? ({ kind: "swap", at: tile } as const) : held.zone === "center" ? null : ({ kind: "beside", at: tile, side: held.zone } as const);
+  return place != null && drag.holds(place, point, new Map([[tile, rect]])) ? footprint : null;
 }

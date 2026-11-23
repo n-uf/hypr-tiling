@@ -60,6 +60,7 @@ import {
   type DragWatchdog,
 } from "../engine/drag-recovery";
 import type {
+  TilingCenterRatios,
   TilingDropIntentHitZoneDiagnostics,
   TilingDropIntentState as TilingDropState,
   TilingEdgeZone,
@@ -70,6 +71,7 @@ import {
   buildGroupTabStripMergeIntent,
   paneZoneCenterInsetPercent,
   paneZoneClipPaths,
+  resolveCenterRatios,
   resolveDropIntent,
   resolveDropIntentHitZoneDiagnostics,
   resolveGroupTabInsertIndex,
@@ -188,8 +190,11 @@ import {
   createLayoutTilingDrag,
   deriveDropCommitTree,
   resolveTilingSwapPreview,
+  tilingDragHeldFootprint,
+  tilingDragHitFootprints,
   type TilingSwapPreview,
 } from "../engine/tiling-drag-tree";
+import type { PaneRegionOptions } from "@n-uf/placement/tiling";
 import type { TilingGrowConstraints } from "../engine/state";
 import {
   addLeafToGroup,
@@ -421,6 +426,18 @@ function currentGeometryConfig(
     centerMinPx: geometry.centerMinPx,
     hysteresisPx: geometry.hysteresisPx,
     devicePixelRatio: devicePixelRatio > 0 ? devicePixelRatio : 1,
+  };
+}
+
+/** The zone geometry as placement's pane regions read it (the same centre the resolver measures). */
+function paneRegionOptionsOf(config: TilingZoneGeometryConfig): PaneRegionOptions {
+  const ratios: TilingCenterRatios = resolveCenterRatios(config);
+  return {
+    centerX: ratios.x,
+    centerY: ratios.y,
+    centerMin: config.centerMinPx,
+    hysteresis: Math.max(0, config.hysteresisPx),
+    pixelRatio: config.devicePixelRatio,
   };
 }
 
@@ -942,6 +959,15 @@ export function resolvePointerTargetFromMeasurement(
     layout: TilingLayoutNode;
     config: TilingLayoutConfig;
     viewportSize: { width: number; height: number };
+    /**
+     * Where the frame draws the held drop's pane, when the held drop still
+     * keeps the pointer (`point`, viewport layout px) in its own zone there;
+     * else null. Absent: no held drop keeps its zone as drawn.
+     */
+    heldFootprint?: (
+      held: TilingDropState,
+      point: { x: number; y: number },
+    ) => TilingPaneFootprint | null;
   },
 ): TilingDropState | null {
   if (!input.isRearrangeEnabled) {
@@ -1110,9 +1136,18 @@ export function resolvePointerTargetFromMeasurement(
       }
     }
   }
-  let hitLeafId: string | null = null;
-  let hitFootprint: TilingPaneFootprint | undefined;
-  for (const leafId of input.leafIds) {
+  // A held pane drop keeps its zone where the frame draws its pane (placement's
+  // `holds`): while it does, the zone is judged there. Once it doesn't, the
+  // next drop is acquired on the hit footprints (the base) as below.
+  const heldTarget: TilingDropState | null = input.previousTarget;
+  const heldFootprint: TilingPaneFootprint | null =
+    heldTarget != null && input.heldFootprint != null
+      ? input.heldFootprint(heldTarget, { x: localX, y: localY })
+      : null;
+  let hitLeafId: string | null =
+    heldTarget != null && heldFootprint != null ? heldTarget.leafId : null;
+  let hitFootprint: TilingPaneFootprint | undefined = heldFootprint ?? undefined;
+  for (const leafId of hitLeafId != null ? [] : input.leafIds) {
     // Skip the source and any statically-gated leaf: a gated target has no
     // trustworthy footprint, so it resolves to no target (→ cancel-on-release
     // / gap-closed candidate) rather than a wrong swap/insert.
@@ -1155,6 +1190,9 @@ export function resolvePointerTargetFromMeasurement(
     input.previousTarget,
     hitLeafId,
   );
+  // Validity judges the move on the target's hit footprint, wherever its zone is judged.
+  const validityFootprint: TilingPaneFootprint =
+    hitFootprints.get(hitLeafId) ?? hitFootprint;
   return resolveDropIntent({
     leafId: hitLeafId,
     paneLocalX: paneLocalPoint.x,
@@ -1171,7 +1209,7 @@ export function resolvePointerTargetFromMeasurement(
         layout: input.layout,
         sourceLeafId: input.sourceLeafId,
         targetLeafId: hitLeafId as string,
-        targetFootprint: hitFootprint as TilingPaneFootprint,
+        targetFootprint: validityFootprint,
         config: input.config,
         viewportWidth: input.viewportSize.width,
         viewportHeight: input.viewportSize.height,
@@ -5249,9 +5287,20 @@ const TilingRendererComponent = React.forwardRef<
             subject: dragSubject,
             container: viewportSize,
             config,
+            regions: paneRegionOptionsOf(
+              currentGeometryConfig(interactionCapabilities.dropHitZoneGeometry),
+            ),
           })
         : null,
-    [isLiveDragging, layout, dragSourceLeafId, dragSubject, viewportSize, config],
+    [
+      isLiveDragging,
+      layout,
+      dragSourceLeafId,
+      dragSubject,
+      viewportSize,
+      config,
+      interactionCapabilities.dropHitZoneGeometry,
+    ],
   );
   // A held swap, as `tilingDrag` lays it out: the pane's old place reopened
   // (the neighbour that grew into it at the lift gives the room back) with
@@ -6018,15 +6067,19 @@ const TilingRendererComponent = React.forwardRef<
   const liveHitFootprintsById: ReadonlyMap<string, TilingPaneFootprint> =
     React.useMemo(
       (): ReadonlyMap<string, TilingPaneFootprint> =>
-        resolveStableDragHitFootprints(
-          liveDragModeEnabled,
-          layout,
-          dragSourceLeafId,
-          viewportSize,
-          config,
-          leafFootprintsById,
-          dragSubject,
-        ),
+        // While the drag runs through `tilingDrag`, its targets are the base:
+        // a new drop is acquired on them.
+        liveTilingDrag != null
+          ? tilingDragHitFootprints(liveTilingDrag)
+          : resolveStableDragHitFootprints(
+              liveDragModeEnabled,
+              layout,
+              dragSourceLeafId,
+              viewportSize,
+              config,
+              leafFootprintsById,
+              dragSubject,
+            ),
       [
         config,
         dragSourceLeafId,
@@ -6034,8 +6087,26 @@ const TilingRendererComponent = React.forwardRef<
         layout,
         leafFootprintsById,
         liveDragModeEnabled,
+        liveTilingDrag,
         viewportSize,
       ],
+    );
+  // Where the frame draws each pane (the display tree laid out), by leaf id: a
+  // held drop keeps its zone there (see `tilingDragHeldFootprint`).
+  const drawnFootprintsById: ReadonlyMap<string, TilingPaneFootprint> =
+    React.useMemo(
+      (): ReadonlyMap<string, TilingPaneFootprint> =>
+        footprintsByLeafId(
+          collectLeafFootprints(
+            displayLayout,
+            0,
+            0,
+            viewportSize.width,
+            viewportSize.height,
+            config,
+          ),
+        ),
+      [config, displayLayout, viewportSize.height, viewportSize.width],
     );
   const projectedLandingOverlays: ReadonlyArray<TilingProjectedLandingOverlay> =
     React.useMemo(
@@ -7930,9 +8001,26 @@ const TilingRendererComponent = React.forwardRef<
           width: viewportSize.width,
           height: viewportSize.height,
         },
+        heldFootprint:
+          liveTilingDrag == null
+            ? undefined
+            : (
+                held: TilingDropState,
+                point: { x: number; y: number },
+              ): TilingPaneFootprint | null =>
+                tilingDragHeldFootprint(
+                  liveTilingDrag,
+                  held,
+                  point,
+                  displayLayout,
+                  drawnFootprintsById,
+                ),
       }),
     [
       config,
+      displayLayout,
+      drawnFootprintsById,
+      liveTilingDrag,
       dragSubject,
       isRearrangeEnabled,
       isGroupingEnabled,
