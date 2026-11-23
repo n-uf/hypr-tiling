@@ -56,14 +56,22 @@ describe("the drag's hit session", (): void => {
   it("a new layout or viewport rebuilds the hit from the lift's part measures, on the same basis, reading no DOM", (): void => {
     const m = counted();
     const first = nextDragHitSession(null, inputsOf({ basis: "base" }), "la", undefined, m.measure)!;
-    const moved = nextDragHitSession(first, inputsOf({ layout: { ...(layout as object) } as TilingLayoutNode, basis: "lift" }), "la", undefined, m.measure)!;
+    // The same tree handed back as a new object is the same layout: the drag keeps its hit and its hold.
+    const copy = JSON.parse(JSON.stringify(layout)) as TilingLayoutNode;
+    expect(nextDragHitSession(first, inputsOf({ layout: { ...(layout as object) } as TilingLayoutNode }), "la", undefined, m.measure)).toBe(first);
+    expect(nextDragHitSession(first, inputsOf({ layout: copy }), "la", undefined, m.measure)).toBe(first);
+    // Another tree rebuilds it.
+    const right = (layout as Extract<TilingLayoutNode, { kind: "split" }>).second as Extract<TilingLayoutNode, { kind: "split" }>;
+    const reshaped = { ...(layout as object), second: { ...right, axis: "horizontal" } } as TilingLayoutNode;
+    const moved = nextDragHitSession(first, inputsOf({ layout: reshaped, basis: "lift" }), "la", undefined, m.measure)!;
     expect(moved).not.toBe(first);
+    expect(moved.hit.laid.layout.get("b")).not.toEqual(first.hit.laid.layout.get("b"));
     expect(moved.parts).toBe(first.parts);
     expect(moved.basis).toBe("base");
     const resized = nextDragHitSession(moved, inputsOf({ layout: moved.layout, width: 1200 }), "la", undefined, m.measure)!;
     expect(resized).not.toBe(moved);
     expect(resized.parts).toBe(first.parts);
-    expect(resized.hit.laid.layout.get("b")!.width).toBeGreaterThan(first.hit.laid.layout.get("b")!.width);
+    expect(resized.hit.laid.layout.get("b")!.width).toBeGreaterThan(moved.hit.laid.layout.get("b")!.width);
     const other = nextDragHitSession(resized, inputsOf({ layout: resized.layout, width: 1200, config: { ...config, gapPx: 12 } }), "la", undefined, m.measure)!;
     expect(other).not.toBe(resized);
     expect(m.calls()).toBe(1);
