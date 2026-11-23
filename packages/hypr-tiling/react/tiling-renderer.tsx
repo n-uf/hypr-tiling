@@ -825,19 +825,24 @@ function dragHitOptions(geometry: ResolvedTilingDropHitZoneGeometryCapability): 
   return { regions: { centerX: g.centerRatioX ?? g.centerRatio, centerY: g.centerRatioY ?? g.centerRatio, centerMin: g.centerMinPx, pixelRatio: g.devicePixelRatio } };
 }
 
+/** The drag's still panes (they take no drop): the tiles of the statically gated leaves of `layout`. */
+function stillTilesOf(layout: TilingLayoutNode, gated: ReadonlySet<string>): (tile: string) => boolean {
+  const tiles: Set<string> = new Set<string>();
+  for (const id of gated) {
+    const tile: string | undefined = findLeafById(layout, id)?.tileId;
+    if (tile != null) {
+      tiles.add(tile);
+    }
+  }
+  return (tile: string): boolean => tiles.has(tile);
+}
+
 function createDragHitSession(
   inputs: DragHitInputs,
   sourceLeafId: string,
   subject: DragSubject | undefined,
   parts: TilingDragPartGeometry,
 ): DragHitSession | null {
-  const gatedTiles: Set<string> = new Set<string>();
-  for (const id of inputs.gated) {
-    const tile: string | undefined = findLeafById(inputs.layout, id)?.tileId;
-    if (tile != null) {
-      gatedTiles.add(tile);
-    }
-  }
   const drag: TilingDrag<TilingDragTree, string> | null = createLayoutTilingDrag({
     layout: inputs.layout,
     sourceLeafId,
@@ -845,7 +850,7 @@ function createDragHitSession(
     container: { width: inputs.width, height: inputs.height },
     config: inputs.config,
     min: inputs.config.minPaneSizePx,
-    still: (tile: string): boolean => gatedTiles.has(tile),
+    still: stillTilesOf(inputs.layout, inputs.gated),
     parts: tilingDragParts(parts),
   });
   if (drag == null) {
@@ -5175,6 +5180,14 @@ const TilingRendererComponent = React.forwardRef<
       dragHitRef.current = null;
     }
   }, [dragState.phase]);
+  // The drag's hit, current for this render: built at the lift, rebuilt on a new
+  // tree, before anything below reads it (a mid-drag rebuild is never missed).
+  const dragHitNow: DragHitSession | null =
+    dragState.phase === "dragging" && dragSourceLeafId != null
+      ? ensureDragHit(dragSourceLeafId, dragSubject)
+      : dragHitRef.current;
+  // The still panes, for a commit tree made without the drag's own drag.
+  const dragStill: (tile: string) => boolean = stillTilesOf(layout, rearrangeGatedLeafIds);
   // The preview overlays draw the tree a release commits: for a held place, the
   // hit's `after(place).tree` from the very drag the commit takes it from.
   const projectedDropLayout: TilingLayoutNode | null = React.useMemo(
@@ -5186,11 +5199,12 @@ const TilingRendererComponent = React.forwardRef<
         subject: dragSubject,
         container: viewportSize,
         config,
-        drag: dragHitRef.current?.drag ?? null,
+        drag: dragHitNow?.drag ?? null,
+        still: dragStill,
       }),
-    // The drag is the hit's (a ref, fixed for the drag); a new drop state reads it again.
+    // `dragStill` follows `layout` and the gated leaves, which key it here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dragSourceLeafId, dragSubject, dropState, layout, viewportSize, config],
+    [dragSourceLeafId, dragSubject, dropState, layout, viewportSize, config, dragHitNow, rearrangeGatedLeafIds],
   );
   // While the hit holds home (the pane's place at the lift, or a place whose
   // release gives the lift back), the layout is the one at the lift.
@@ -5198,8 +5212,7 @@ const TilingRendererComponent = React.forwardRef<
     isLiveDragging && dragState.phase === "dragging" && dragState.atHome;
   // The drag as placement's `tilingDrag` lays it out, over hypr-tiling's own
   // tree adapter: the hit's, fixed for the drag.
-  const liveDragHit: DragHitSession | null =
-    isLiveDragging && dragSourceLeafId != null ? ensureDragHit(dragSourceLeafId, dragSubject) : null;
+  const liveDragHit: DragHitSession | null = isLiveDragging && dragSourceLeafId != null ? dragHitNow : null;
   const liveTilingDrag: TilingDrag<TilingDragTree, string> | null = liveDragHit?.drag ?? null;
   // What the frame draws follows the basis the hit was built on at the lift, not a preview switched mid-drag.
   const shownBasis: TilingBasis = liveDragHit?.basis ?? dragHitBasis;
@@ -5288,8 +5301,11 @@ const TilingRendererComponent = React.forwardRef<
         config,
         // The drag the frame drew the held place with (kept until idle).
         drag: dragHitRef.current?.drag ?? null,
+        still: dragStill,
       });
-    }, [dragState, layout, liveDragModeEnabled, viewportSize, config]);
+      // `dragStill` follows `layout` and the gated leaves.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dragState, layout, liveDragModeEnabled, viewportSize, config, rearrangeGatedLeafIds]);
   // Claimed settle: hold the gap-closed tree (source already detached) so the
   // leaf does not flash back while the host's synchronous `onExternalDrop`
   // layout update lands. A no-op if the host already removed it in the same
@@ -8167,6 +8183,7 @@ const TilingRendererComponent = React.forwardRef<
             container: viewportSizeRef.current,
             config: configRef.current,
             drag: dragHitRef.current?.drag ?? null,
+            still: dragStill,
           })
         : null;
     // Commit-time tree verification: a corrupt candidate (duplicated/orphaned
