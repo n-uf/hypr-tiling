@@ -303,18 +303,23 @@ The container must not sit under a `transform` / `filter` /
 `backdrop-filter` / `perspective` / `contain: paint` ancestor. Overlay
 z-indexes (220 / 230) are relative to that container's stacking context.
 
-### The held pane over a target (`heldOverTarget`)
+### The held pane's look (`heldLook`)
 
-While a dragged pane is over a drop target (a drop the release would
-commit), it changes look so it never hides what it is over: the target and
-the drop indicator. Over its own place, a refused place or free space it is
-drawn in full again. The change glides both ways on the pane motion's settle
-curve (it snaps under `prefers-reduced-motion` or with
-`dragAnimationEnabled: false`), the pointer keeps its grab point on the pane
-in every look, and it works in both drop previews. It is drawing only:
-targets, validity and the committed layout are the same in every look.
+A dragged pane changes look for the whole drag, so it never hides what it is
+over: the targets, the drop indicator, the layout. At the lift it glides from
+full size into its look and keeps it wherever the pointer goes: over a
+target, its own place, a refused place or free space. It comes back to full
+size only as it lands: settling into its slot on a drop, or home on a release
+there (or a cancel), from the look it was seen in. In the snap preview the
+look shows only until the pane settles into a slot (it is the landing mark
+there, at full size), and comes back when the pane leaves the slot. The
+changes glide on the pane motion's settle curve (they snap under
+`prefers-reduced-motion` or with `dragAnimationEnabled: false`), the pointer
+keeps its grab point on the pane in every look, and it works in both drop
+previews. It is drawing only: targets, validity and the committed layout are
+the same in every look.
 
-| `heldOverTarget` | Over a target |
+| `heldLook` | While dragged |
 |---|---|
 | `"auto"` (default) | `"title-bar"` if the pane draws a title bar, else `"thumbnail"` |
 | `"title-bar"` | folds to its own title bar at the pointer |
@@ -324,20 +329,23 @@ targets, validity and the committed layout are the same in every look.
 
 A pane draws a title bar when the element its drag was picked up by (the one
 wired to `onHandlePointerDown`: the built-in pane's header, a
-`TilingDragHandle`, a group's tab strip) is a strip along the top of what is
-held, shorter than half of it. A custom pane that is dragged by its whole
-body has none, so `"auto"` (and `"title-bar"`) give it a thumbnail.
+`TilingDragHandle`, a group's tab strip) is a strip across the top of what is
+held: it starts at the top edge (or at the pane's top under a group's tab
+strip), spans at least 60 % of the width and ends above the middle. A custom
+pane dragged by its whole body or by a small grip has none, so `"auto"` (and
+`"title-bar"`) give it a thumbnail. A drag continued on another workspace
+(spring-loaded tab drop) measures that handle again on the pane's new seat.
 
 A tile can choose its own look; when set, it beats the renderer's prop for
 that pane (its `"auto"` included):
 
 ```tsx
 const tiles: TilingTile[] = [
-  { id: "chart", title: "Chart", heldOverTarget: "fade" }, // this pane fades
+  { id: "chart", title: "Chart", heldLook: "fade" }, // this pane fades
   { id: "notes", title: "Notes" }, // follows the renderer
 ];
 
-<TilingRenderer tiles={tiles} heldOverTarget="thumbnail" /* … */ />;
+<TilingRenderer tiles={tiles} heldLook="thumbnail" /* … */ />;
 ```
 
 A `dragMode: "preview"` drag holds no pane under the pointer (the source
@@ -1049,9 +1057,9 @@ interaction={{
   drop target. A scroll or
   resize that moves the viewport, or a new `layout` object mid-drag (a
   change of identity, as everywhere in the renderer), ends it for the rest
-  of the drag. Over a drop target the held pane folds to its title bar,
-  shrinks to a thumbnail or fades, so it never hides the target
-  (`heldOverTarget`, per tile too).
+  of the drag. For the whole drag the held pane folds to its title bar,
+  shrinks to a thumbnail or fades, so it never hides what it is over, and
+  lands from that look (`heldLook`, per tile too).
 - **External drop** — host-reported `externalDragHover`, and `onExternalDrop`
   claim-before-settle.
   In set mode a `kind: "workspace-tab"` hover is an engine-owned drop target.

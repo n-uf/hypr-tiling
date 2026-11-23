@@ -11,23 +11,28 @@ the version number alone does not flag them.
 
 ### Dragging a pane
 
-- **The held pane no longer hides what it is over.** While a dragged pane
-  is over a drop target, it changes look: by default it folds to its own
-  title bar at the pointer, or, for a pane without one, shrinks to a
-  thumbnail around the grab point. Over its own place, a refused place or
-  free space it is drawn in full again. The change glides both ways on the
-  pane motion's settle curve and snaps under reduced motion; the pointer
-  keeps its grab point on the pane in every look, in both drop previews.
-  Before, the full-size pane covered the target and the drop indicator.
-- **`heldOverTarget`** on `TilingRenderer` picks the look:
+- **The held pane no longer hides what it is over.** At the lift a dragged
+  pane glides into a smaller look and keeps it for the whole drag, wherever
+  the pointer goes: by default it folds to its own title bar at the
+  pointer, or, for a pane without one, shrinks to a thumbnail around the
+  grab point. It comes back to full size only as it lands, into its slot
+  on a drop or home on a release there, settling from the look it was seen
+  in (its scale and opacity included, so nothing pops). In the snap preview
+  the look shows only until the pane settles into a slot. The changes glide
+  on the pane motion's settle curve and snap under reduced motion; the
+  pointer keeps its grab point on the pane in every look, in both drop
+  previews. Before, the full-size pane covered the targets and the drop
+  indicator.
+- **`heldLook`** on `TilingRenderer` picks the look:
   `"auto"` (default), `"title-bar"`, `"thumbnail"`, `"fade"` (about 45 %
   opacity, with the drop indicator drawn above the pane) or `"none"` (the
   look before this release). The same field on a tile picks that pane's
-  look and beats the renderer's prop. New type `TilingHeldOverTarget`.
+  look and beats the renderer's prop. New type `TilingHeldLook`.
 - **Whether a pane has a title bar** comes from the element its drag was
-  picked up by: a strip along the top of the pane (the built-in header, a
-  `TilingDragHandle`, a group's tab strip) is its title bar; a pane dragged
-  by its whole body has none.
+  picked up by: a strip across the top of the pane, at least 60 % of its
+  width (the built-in header, a `TilingDragHandle`, a group's tab strip), is
+  its title bar; a pane dragged by its whole body or a small grip has none.
+  A drag continued on another workspace measures it again on the new seat.
 - **Drawing only.** Drop targets, validity and the committed layout are the
   same in every look (the golden drag and drop fixtures are unchanged). A
   `dragMode: "preview"` drag holds no pane under the pointer, so nothing
