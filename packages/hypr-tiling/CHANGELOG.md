@@ -31,7 +31,7 @@ the version number alone does not flag them.
   left; from then on the old place is resolved like any other.
 - **After a spring-loaded drop onto a workspace tab,** the pane's new seat is
   its place for the continued drag, the same way, unless the drop merged the
-  pane into a tab group there: then it is a torn tab, as below.
+  pane into a tab group there: then it is a torn tab, as above.
 - **A tall tab group fits where it fits.** Drag a whole group down past the
   pane below it in its own column and the drop there is no longer refused:
   the room check now frees the space the group leaves before asking whether
@@ -51,7 +51,7 @@ the version number alone does not flag them.
   optional fields, so code that builds that state keeps compiling: `atHome`
   (the pane's place is the target now; absent: false), `homeLost` (the page
   moved under the drag; absent: false) and, on `armed` and `dragging` and the
-  `POINTER_DOWN` event, `liftLeavesGap` (whether lifting the subject empties
+  `POINTER_DOWN` and `REARM` events, `liftLeavesGap` (whether lifting the subject empties
   its place; absent: true). `leftHome` keeps its meaning; it decides only for
   a torn tab.
 
