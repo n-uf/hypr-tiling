@@ -2296,6 +2296,11 @@ export interface TilingPaneHitZoneOverlayDebugState {
   centerRectWidthPx: number;
   /** Center rectangle height (CSS px). */
   centerRectHeightPx: number;
+  /**
+   * The center rectangle's inset from each pane edge (percent of the pane), as the drag's hit has it: a run neighbor's
+   * swap is off-center or reaches an edge where a side is gone. Omitted: centered, from `centerRatioX` / `centerRatioY`.
+   */
+  centerInsetPercent?: { left: number; top: number; right: number; bottom: number };
   /** Whether the center (swap) zone is a valid target. */
   centerIsValid: boolean;
   /** Why the center zone is blocked, or `null`. */

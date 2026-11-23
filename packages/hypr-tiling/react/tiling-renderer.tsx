@@ -72,6 +72,7 @@ import { collectStaticGatedLeafIds } from "../engine/drop-validity";
 import { createDragIntent, type DragIntent } from "@n-uf/motion/drag";
 import {
   paneRegion,
+  type PaneRegionOptions,
   type TilingAfter,
   type TilingBasis,
   type TilingDrag,
@@ -185,6 +186,8 @@ import {
   resolveTilingSwapPreview,
   tilingDragParts,
   tilingDragZoneRefusals,
+  tilingHitPaneCenter,
+  type TilingPaneCenterZone,
   tilingDropStateOf,
   tilingRefusedDropStateOf,
   type TilingDragPartGeometry,
@@ -809,6 +812,12 @@ function measureDragPartGeometry(
 }
 
 /** The drag of `sourceLeafId` with its hit on the inputs' basis, and the drag intent the pointer goes through. */
+/** The hit's region options from the drop hit-zone geometry capability. */
+function dragHitOptions(geometry: ResolvedTilingDropHitZoneGeometryCapability): { regions: PaneRegionOptions } {
+  const g = currentGeometryConfig(geometry);
+  return { regions: { centerX: g.centerRatioX ?? g.centerRatio, centerY: g.centerRatioY ?? g.centerRatio, centerMin: g.centerMinPx, pixelRatio: g.devicePixelRatio } };
+}
+
 function createDragHitSession(
   inputs: DragHitInputs,
   sourceLeafId: string,
@@ -835,10 +844,7 @@ function createDragHitSession(
   if (drag == null) {
     return null;
   }
-  const g = currentGeometryConfig(inputs.geometry);
-  const hit: TilingHit<TilingDragTree, string> = drag.hit(inputs.basis, {
-    regions: { centerX: g.centerRatioX ?? g.centerRatio, centerY: g.centerRatioY ?? g.centerRatio, centerMin: g.centerMinPx, pixelRatio: g.devicePixelRatio },
-  });
+  const hit: TilingHit<TilingDragTree, string> = drag.hit(inputs.basis, dragHitOptions(inputs.geometry));
   return {
     layout: inputs.layout,
     config: inputs.config,
@@ -899,14 +905,26 @@ function readDragHit(session: DragHitSession, point: DragMachinePoint, devicePix
   return null;
 }
 
-/** The debug overlay's zones of a pane of `paneSize`: placement's center, and each region's refusal by the drag's own rule. */
+/**
+ * The debug overlay's zones of a pane of `paneSize`: the center as the drag's hit has it (`center`, pane-local px: a
+ * run neighbor's swap across the run, the sides it has no more given to it), else placement's center by the geometry
+ * config; and each region's refusal by the drag's own rule.
+ */
 function debugHitZoneDiagnostics(
   paneSize: { width: number; height: number },
   geometryConfig: TilingZoneGeometryConfig,
   refusals: Readonly<Record<"center" | TilingEdgeZone, string | null>> | null,
+  center: TilingPaneCenterZone | null = null,
 ): TilingDropIntentHitZoneDiagnostics {
-  const geometry = resolvePaneCenterGeometry(paneSize, geometryConfig);
-  const ratios = resolveCenterRatios(geometryConfig);
+  const configured = resolvePaneCenterGeometry(paneSize, geometryConfig);
+  const geometry =
+    center == null || configured.width <= 0 || configured.height <= 0
+      ? configured
+      : { ...configured, centerLeftPx: center.left, centerTopPx: center.top, centerRightPx: center.right, centerBottomPx: center.bottom };
+  const ratios =
+    geometry === configured
+      ? resolveCenterRatios(geometryConfig)
+      : { x: (geometry.centerRightPx - geometry.centerLeftPx) / geometry.width, y: (geometry.centerBottomPx - geometry.centerTopPx) / geometry.height };
   return {
     geometry,
     centerRatio: ratios.x,
@@ -1891,32 +1909,46 @@ function DragCursorOverlay({
   );
 }
 
+type PaneCenterInsetPercent = NonNullable<TilingPaneHitZoneOverlayDebugState["centerInsetPercent"]>;
+
+/** The edge trapezoids around a center inset by `inset` (percent): a side with no inset has no strip. */
+function edgeZoneClipPathOf(zone: TilingEdgeZone, inset: PaneCenterInsetPercent): string {
+  const [l, t, r, b] = [inset.left, inset.top, 100 - inset.right, 100 - inset.bottom].map((v: number): string => v.toFixed(4));
+  if (zone === "top") return `polygon(0% 0%, 100% 0%, ${r}% ${t}%, ${l}% ${t}%)`;
+  if (zone === "right") return `polygon(100% 0%, 100% 100%, ${r}% ${b}%, ${r}% ${t}%)`;
+  if (zone === "bottom") return `polygon(0% 100%, 100% 100%, ${r}% ${b}%, ${l}% ${b}%)`;
+  return `polygon(0% 0%, 0% 100%, ${l}% ${b}%, ${l}% ${t}%)`;
+}
+
 function edgeZoneClipPathStyle(
   zone: TilingEdgeZone,
   centerRatioX: number,
   centerRatioY: number,
+  inset?: PaneCenterInsetPercent,
 ): React.CSSProperties {
   return {
     position: "absolute",
     inset: 0,
-    clipPath: paneZoneClipPaths(centerRatioX, centerRatioY)[zone],
+    clipPath: inset == null ? paneZoneClipPaths(centerRatioX, centerRatioY)[zone] : edgeZoneClipPathOf(zone, inset),
   };
 }
 
 function centerZoneInsetStyle(
   centerRatioX: number,
   centerRatioY: number,
+  given?: PaneCenterInsetPercent,
 ): React.CSSProperties {
-  const inset: { x: number; y: number } = paneZoneCenterInsetPercent(
+  const centered: { x: number; y: number } = paneZoneCenterInsetPercent(
     centerRatioX,
     centerRatioY,
   );
+  const inset: PaneCenterInsetPercent = given ?? { left: centered.x, right: centered.x, top: centered.y, bottom: centered.y };
   return {
     position: "absolute",
-    left: `${inset.x}%`,
-    right: `${inset.x}%`,
-    top: `${inset.y}%`,
-    bottom: `${inset.y}%`,
+    left: `${inset.left}%`,
+    right: `${inset.right}%`,
+    top: `${inset.top}%`,
+    bottom: `${inset.bottom}%`,
   };
 }
 
@@ -1968,7 +2000,7 @@ function PaneHitZoneOverlay({
               <div
                 key={`zone-${zone}`}
                 style={{
-                  ...edgeZoneClipPathStyle(zone, centerRatioX, centerRatioY),
+                  ...edgeZoneClipPathStyle(zone, centerRatioX, centerRatioY, paneHitZoneDebug.centerInsetPercent),
                   backgroundColor: rgbaFromHex(
                     edgeColorHex,
                     paneHitZonesAlpha,
@@ -1992,7 +2024,7 @@ function PaneHitZoneOverlay({
         <div
           className="rounded-md border"
           style={{
-            ...centerZoneInsetStyle(centerRatioX, centerRatioY),
+            ...centerZoneInsetStyle(centerRatioX, centerRatioY, paneHitZoneDebug.centerInsetPercent),
             borderColor: rgbaFromHex(
               centerColorHex,
               Math.min(1, paneHitZonesAlpha + 0.55),
@@ -5932,6 +5964,13 @@ const TilingRendererComponent = React.forwardRef<
             config,
             min: config.minPaneSizePx,
           });
+    // The zones are the hit's, on the layout drawn here (the lift): the drag's own while it marks on it, else one
+    // built for this source.
+    const session: DragHitSession | null = dragHitRef.current;
+    const debugHit: TilingHit<TilingDragTree, string> | null =
+      session != null && session.sourceLeafId === hitZoneSourceLeafId && session.basis === "lift" && session.layout === layout
+        ? session.hit
+        : (debugDrag?.hit("lift", dragHitOptions(interactionCapabilities.dropHitZoneGeometry)) ?? null);
     for (const leafId of leafIds) {
       // A statically-gated leaf is not a drop participant — no hit zones for it.
       if (rearrangeGatedLeafIds.has(leafId)) {
@@ -5947,7 +5986,9 @@ const TilingRendererComponent = React.forwardRef<
           { width: targetFootprint.width, height: targetFootprint.height },
           currentGeometryConfig(interactionCapabilities.dropHitZoneGeometry),
           tilingDragZoneRefusals(debugDrag, leafId),
+          debugHit == null ? null : tilingHitPaneCenter(debugHit, { x: targetFootprint.left, y: targetFootprint.top, width: targetFootprint.width, height: targetFootprint.height }),
         );
+      const inset = hitZoneDiagnostics.geometry;
       const edgeCandidates: ReadonlyArray<TilingPaneHitZoneCandidateDebugState> =
         hitZoneDiagnostics.edgeZones.map(
           (edgeZoneDiagnostic): TilingPaneHitZoneCandidateDebugState => ({
@@ -5966,6 +6007,16 @@ const TilingRendererComponent = React.forwardRef<
         centerRatioY: hitZoneDiagnostics.centerRatioY,
         centerRectWidthPx: hitZoneDiagnostics.centerRectWidthPx,
         centerRectHeightPx: hitZoneDiagnostics.centerRectHeightPx,
+        ...(inset.width > 0 && inset.height > 0
+          ? {
+              centerInsetPercent: {
+                left: (inset.centerLeftPx / inset.width) * 100,
+                top: (inset.centerTopPx / inset.height) * 100,
+                right: ((inset.width - inset.centerRightPx) / inset.width) * 100,
+                bottom: ((inset.height - inset.centerBottomPx) / inset.height) * 100,
+              },
+            }
+          : {}),
         centerIsValid,
         centerBlockedReason: centerIsValid
           ? null
@@ -5979,6 +6030,7 @@ const TilingRendererComponent = React.forwardRef<
     config,
     dragSourceLeafId,
     dragSubject,
+    interactionCapabilities.dropHitZoneGeometry,
     isRearrangeEnabled,
     layout,
     leafFootprintsById,
@@ -8451,23 +8503,36 @@ const TilingRendererComponent = React.forwardRef<
           ? null
           : (leafFootprintsById.get(dragSourceLeafId) ?? null);
       // Which regions take a drop is the drag's own rule (`after(place).refusal`).
+      const resolverDrag: TilingDrag<TilingDragTree, string> | null =
+        resolverSourceLeafId == null
+          ? null
+          : createLayoutTilingDrag({
+              layout,
+              sourceLeafId: resolverSourceLeafId,
+              subject: dragSourceLeafId != null ? dragSubject : undefined,
+              container: viewportSize,
+              config,
+              min: config.minPaneSizePx,
+            });
+      // The center as the hit has it (layout px), scaled to the pane as measured.
+      const hitCenter: TilingPaneCenterZone | null =
+        resolverDrag == null
+          ? null
+          : tilingHitPaneCenter(resolverDrag.hit("lift", dragHitOptions(interactionCapabilities.dropHitZoneGeometry)), {
+              x: targetFootprint.left,
+              y: targetFootprint.top,
+              width: targetFootprint.width,
+              height: targetFootprint.height,
+            });
+      const [sx, sy] = [paneSize.width / Math.max(1, targetFootprint.width), paneSize.height / Math.max(1, targetFootprint.height)];
       const hitZoneDiagnostics: TilingDropIntentHitZoneDiagnostics =
         debugHitZoneDiagnostics(
           paneSize,
           geometryConfig,
-          resolverSourceLeafId == null
+          tilingDragZoneRefusals(resolverDrag, hoveredLeafId),
+          hitCenter == null
             ? null
-            : tilingDragZoneRefusals(
-                createLayoutTilingDrag({
-                  layout,
-                  sourceLeafId: resolverSourceLeafId,
-                  subject: dragSourceLeafId != null ? dragSubject : undefined,
-                  container: viewportSize,
-                  config,
-                  min: config.minPaneSizePx,
-                }),
-                hoveredLeafId,
-              ),
+            : { left: hitCenter.left * sx, top: hitCenter.top * sy, right: hitCenter.right * sx, bottom: hitCenter.bottom * sy },
         );
       const edgeDiagnostics: TilingLiveHitLogState["edgeDiagnostics"] =
         hitZoneDiagnostics.edgeZones.map((edgeZoneDiagnostic) => ({

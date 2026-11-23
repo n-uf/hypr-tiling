@@ -498,6 +498,45 @@ export function tilingDragZoneRefusals(
   };
 }
 
+/** A pane's center (swap) zone, pane-local px. @internal */
+export interface TilingPaneCenterZone {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
+/**
+ * The center (swap) zone of the pane drawn at `rect`, as `hit`'s zone map has it (pane-local px): placement's regions,
+ * with a run neighbor's swap across the run and the strips of the sides it has no more. Read on the pane's midlines,
+ * since the center is a rectangle through the pane's middle; an edge within 1 px of the pane's is the pane's. Null when
+ * the middle holds no swap (home, a refused swap). For the debug overlay.
+ * @internal
+ */
+export function tilingHitPaneCenter(hit: { zone(point: { x: number; y: number }): string | null; place(id: string): TilingHeld<string> | null }, rect: Rect): TilingPaneCenterZone | null {
+  const mid = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  const id: string | null = hit.zone(mid);
+  if (id == null || hit.place(id)?.kind !== "swap") {
+    return null;
+  }
+  const at = (dx: number, dy: number, by: number): boolean => hit.zone({ x: mid.x + dx * by, y: mid.y + dy * by }) === id;
+  // How far from the middle the zone runs along (dx, dy), up to `span`: it is convex, so one crossing.
+  const reach = (dx: number, dy: number, span: number): number => {
+    if (at(dx, dy, span - 0.5)) {
+      return span;
+    }
+    let [inner, outer] = [0, span];
+    while (outer - inner > 0.25) {
+      const m: number = (inner + outer) / 2;
+      if (at(dx, dy, m)) inner = m;
+      else outer = m;
+    }
+    return span - inner <= 1 ? span : inner;
+  };
+  const [hw, hh] = [rect.width / 2, rect.height / 2];
+  return { left: hw - reach(-1, 0, hw), right: hw + reach(1, 0, hw), top: hh - reach(0, -1, hh), bottom: hh + reach(0, 1, hh) };
+}
+
 /** A swap as a frame holding it draws it, and as its release commits it. @internal */
 export interface TilingSwapPreview {
   /** The layout tree the release commits (`after(swap).tree`): the frame draws it. */
