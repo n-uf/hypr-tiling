@@ -214,8 +214,9 @@ the version number alone does not flag them.
   where the reducers are exported (the root never exported them), and says
   that entry is `@beta`.
 - `split-container-insert` is gone from the README and the articles: no drop
-  produces it. The value stays in `TilingDropAction`, documented as
-  deprecated, until the next breaking release.
+  produces it. The value stays in `TilingDropAction` until the next breaking
+  release, as the new `@deprecated` type `TilingDropActionSplitContainerInsert`
+  (same union, so no code changes).
 - `dragPreview` is documented as more than a look: the drop zones are laid out
   on the layout the preview draws, so one pointer path can hold different
   places under the indicator and snap. `heldLook` stays drawing only.

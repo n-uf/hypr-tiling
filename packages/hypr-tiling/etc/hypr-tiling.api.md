@@ -765,7 +765,10 @@ export interface TilingDragRecoveryCapability {
 }
 
 // @public
-export type TilingDropAction = "swap" | "edge-insert" | "split-container-insert" | "group-merge" | "none";
+export type TilingDropAction = "swap" | "edge-insert" | TilingDropActionSplitContainerInsert | "group-merge" | "none";
+
+// @public @deprecated
+export type TilingDropActionSplitContainerInsert = "split-container-insert";
 
 // @public
 export interface TilingDropHitZoneGeometryCapability {

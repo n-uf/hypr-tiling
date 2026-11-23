@@ -5,9 +5,11 @@ export interface ProofFacts {
   readonly version: string;
   readonly testSuites: number;
   readonly tests: number;
-  /** dist/index.mjs plus every chunk it loads, gzip bytes. */
+  /** dist/index.mjs plus every chunk it loads, gzip bytes (no dependency code). */
   readonly gzipIndexBytes: number;
-  /** dist/engine.mjs plus every chunk it loads, gzip bytes. */
+  /** The same plus the whole @n-uf/motion and @n-uf/placement modules it imports, gzip bytes (no React, clsx, tailwind-merge). */
+  readonly gzipIndexWithLibrariesBytes: number;
+  /** dist/engine.mjs plus every chunk it loads, gzip bytes (no dependency code). */
   readonly gzipEngineBytes: number;
   readonly runtimeDependencyCount: number;
   readonly runtimeDependencies: ReadonlyArray<string>;
@@ -19,9 +21,10 @@ export interface ProofFacts {
 export const PROOF_FACTS: ProofFacts = {
   version: "26.11.11",
   testSuites: 80,
-  tests: 1478,
-  gzipIndexBytes: 123269,
-  gzipEngineBytes: 30167,
+  tests: 1479,
+  gzipIndexBytes: 123265,
+  gzipIndexWithLibrariesBytes: 182698,
+  gzipEngineBytes: 30117,
   runtimeDependencyCount: 4,
   runtimeDependencies: [
     "@n-uf/motion",
