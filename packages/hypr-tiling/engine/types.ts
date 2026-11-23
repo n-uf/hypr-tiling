@@ -2148,17 +2148,26 @@ export type TilingLeafPreviewRole = "drag-source-landing-shadow" | "drop-target-
 /** Whether a preview depicts a swap, an edge-insert, or a group-merge result. */
 export type TilingLeafPreviewMode = "swap" | "edge-insert" | "group-merge";
 /**
+ * The `"split-container-insert"` member of {@link TilingDropAction}.
+ *
+ * @deprecated No drop produces it. It stays in {@link TilingDropAction} until
+ * the next breaking release removes it; code that branches on it can drop the
+ * branch now.
+ */
+export type TilingDropActionSplitContainerInsert = "split-container-insert";
+
+/**
  * The outcome a drop resolves to: exchange tiles (`"swap"`), insert at an edge
  * (`"edge-insert"`), merge into a tabbed group (`"group-merge"`), or no valid
  * action (`"none"`).
  *
- * `"split-container-insert"` is deprecated: no drop produces it. It stays in
- * the union until the next breaking release removes it.
+ * `"split-container-insert"` ({@link TilingDropActionSplitContainerInsert}) is
+ * deprecated: no drop produces it.
  */
 export type TilingDropAction =
   | "swap"
   | "edge-insert"
-  | "split-container-insert"
+  | TilingDropActionSplitContainerInsert
   | "group-merge"
   | "none";
 
