@@ -4,8 +4,10 @@ import {
   insertGroupAdjacent,
   insertLeafAdjacent,
   mergeDraggedLeafIntoTarget,
+  mergeGroupIntoTarget,
   readLeafNodeIds,
   siblingSubtreeForLeaf,
+  swapGroupWithSlot,
   swapLeafTiles,
 } from "./state";
 import { collectLeafFootprints, footprintsByLeafId } from "./leaf-geometry";
@@ -72,8 +74,43 @@ export function insertDragSubjectAdjacent(
 }
 
 /**
+ * The swap a release commits: a whole group (`subject: "group"`) trades its
+ * slot with the target's slot; a pane trades tiles with the target leaf.
+ * @internal
+ */
+export function swapDragSubject(
+  layout: TilingLayoutNode,
+  sourceLeafId: string,
+  targetLeafId: string,
+  subject?: "pane" | "group",
+): TilingLayoutNode {
+  const group: TilingGroupNode | null = subject === "group" ? findGroupContainingLeaf(layout, sourceLeafId) : null;
+  return group != null ? swapGroupWithSlot(layout, group.id, targetLeafId) : swapLeafTiles(layout, sourceLeafId, targetLeafId);
+}
+
+/**
+ * The merge a release commits: every member of a whole group
+ * (`subject: "group"`), or the one pane, joins the target's slot as tabs at
+ * `insertIndex` (appended when omitted), the dragged tab active.
+ * @internal
+ */
+export function mergeDragSubject(
+  layout: TilingLayoutNode,
+  sourceLeafId: string,
+  targetLeafId: string,
+  insertIndex: number | undefined,
+  subject?: "pane" | "group",
+): TilingLayoutNode {
+  const group: TilingGroupNode | null = subject === "group" ? findGroupContainingLeaf(layout, sourceLeafId) : null;
+  return group != null
+    ? mergeGroupIntoTarget(layout, group.id, targetLeafId, insertIndex)
+    : mergeDraggedLeafIntoTarget(layout, sourceLeafId, targetLeafId, insertIndex);
+}
+
+/**
  * Project the post-drop layout tree using the exact reducers used at commit
- * time (`swapLeafTiles` / {@link insertDragSubjectAdjacent}), so overlay geometry == result.
+ * time ({@link swapDragSubject} / {@link mergeDragSubject} /
+ * {@link insertDragSubjectAdjacent}, for the drag's subject), so overlay geometry == result.
  * @internal
  */
 export function resolveProjectedDropLayout(
@@ -87,21 +124,19 @@ export function resolveProjectedDropLayout(
   }
 
   if (dropState.action === "swap") {
-    return swapLeafTiles(layout, sourceLeafId, dropState.leafId);
+    if (subject === "group" && findLeafById(layout, dropState.leafId) == null) {
+      return null;
+    }
+    return swapDragSubject(layout, sourceLeafId, dropState.leafId, subject);
   }
   if (dropState.action === "group-merge") {
-    // Same reducer as the live candidate / commit (`mergeDraggedLeafIntoTarget`):
-    // insert at `memberInsertIndex` (append when omitted), or create a group
-    // when the target is a loose leaf. A missing target leaf has no projection.
+    // Same reducer as the live candidate / commit (`mergeDragSubject`): insert
+    // at `memberInsertIndex` (append when omitted), or create a group when the
+    // target is a loose leaf. A missing target leaf has no projection.
     if (findLeafById(layout, dropState.leafId) == null) {
       return null;
     }
-    return mergeDraggedLeafIntoTarget(
-      layout,
-      sourceLeafId,
-      dropState.leafId,
-      dropState.memberInsertIndex,
-    );
+    return mergeDragSubject(layout, sourceLeafId, dropState.leafId, dropState.memberInsertIndex, subject);
   }
   if (dropState.action !== "edge-insert") {
     return null;

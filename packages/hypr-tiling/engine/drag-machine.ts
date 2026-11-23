@@ -1,15 +1,11 @@
 import {
   findGroupContainingLeaf,
   findLeafById,
-  mergeDraggedLeafIntoTarget,
-  mergeGroupIntoTarget,
   removeGroupNode,
   removeLeafTile,
-  swapGroupWithSlot,
-  swapLeafTiles,
 } from "./state";
 import { inRect } from "@n-uf/motion/drag";
-import { insertDragSubjectAdjacent } from "./projected-layout";
+import { insertDragSubjectAdjacent, mergeDragSubject, swapDragSubject } from "./projected-layout";
 import type { TilingDropIntentState, TilingEdgeZone } from "./drop-intent-resolver";
 import type {
   TilingExternalDropSubject,
@@ -114,6 +110,25 @@ export function detachDragSubject(
 }
 
 /**
+ * Whether lifting `subject` off `sourceLeafId` empties its place: true for a
+ * pane on its own or a whole group, false for a tab torn off a group that
+ * stays (the group keeps the place, with one tab fewer). Only a place that
+ * empties is a drop target for the whole drag; the place of a lift that leaves
+ * no gap holds until the pointer first leaves it, and from then on its group's
+ * strip, edges and remaining pane are ordinary targets.
+ */
+export function dragLiftLeavesGap(
+  layout: TilingLayoutNode,
+  sourceLeafId: string,
+  subject: DragSubject | undefined,
+): boolean {
+  if (subject === "group") {
+    return true;
+  }
+  return (findGroupContainingLeaf(layout, sourceLeafId)?.members.length ?? 0) < 2;
+}
+
+/**
  * What a claim of the drag (a host `onExternalDrop`, a workspace-tab drop)
  * hands over: the whole group of a group drag, its members in tab order, or
  * the one pane.
@@ -180,6 +195,8 @@ export type DragMachineState =
       subject?: DragSubject;
       /** The home a release must leave to commit (absent: `anchorFootprint`). */
       homeFootprint?: TilingPaneFootprint;
+      /** Whether lifting the subject empties its place (absent: true); see {@link dragLiftLeavesGap}. */
+      liftLeavesGap?: boolean;
       anchorFootprint: TilingPaneFootprint;
       pointerAnchorOffset: DragMachinePoint;
       originClient: DragMachinePoint;
@@ -195,6 +212,8 @@ export type DragMachineState =
       subject?: DragSubject;
       /** The home a release must leave to commit (absent: `anchorFootprint`). */
       homeFootprint?: TilingPaneFootprint;
+      /** Whether lifting the subject empties its place (absent: true); see {@link dragLiftLeavesGap}. */
+      liftLeavesGap?: boolean;
       anchorFootprint: TilingPaneFootprint;
       pointerAnchorOffset: DragMachinePoint;
       /** Where the pointer holds the pane: pointer minus grab offset, at its lift size. */
@@ -202,23 +221,23 @@ export type DragMachineState =
       resolvedTarget: DragResolvedTarget | null;
       /**
        * Whether the home (the pane's place at the lift, see
-       * {@link dragHomeFootprint}) is the drop target now: the pointer is over
-       * it and `homeLost` is false. It is a target for the whole drag, whenever
-       * the pointer comes back over it: while it is, the layout is the one at
-       * the lift and a release there is a cancel (that layout comes back).
+       * {@link dragHomeFootprint}) is the drop target now (see
+       * {@link isDragHomeHeld}): while it is, the layout is the one at the lift
+       * and a release there is a cancel (that layout comes back). Absent: false.
        */
-      atHome: boolean;
+      atHome?: boolean;
       /**
        * Whether the pointer has left the home at least once since the lift (or
-       * the home was lost). It decides nothing; `atHome` does.
+       * the home was lost). It decides only for a lift that leaves no gap (a
+       * tab torn off a group that stays), whose home holds until then.
        */
       leftHome: boolean;
       /**
        * Whether the page moved under the drag (`HOME_INVALIDATED`): the home
        * footprint no longer marks the pane's place, so it is no target for the
-       * rest of the drag.
+       * rest of the drag. Absent: false.
        */
-      homeLost: boolean;
+      homeLost?: boolean;
     }
   | {
       phase: "settling";
@@ -242,6 +261,11 @@ export type DragMachineEvent =
        * `anchorFootprint` (a tab torn off its group: the whole group).
        */
       homeFootprint?: TilingPaneFootprint;
+      /**
+       * Whether lifting the subject empties its place (absent: true): false for
+       * a tab torn off a group that stays. See {@link dragLiftLeavesGap}.
+       */
+      liftLeavesGap?: boolean;
       anchorFootprint: TilingPaneFootprint;
       pointerAnchorOffset: DragMachinePoint;
       originClient: DragMachinePoint;
@@ -452,12 +476,20 @@ export function dragHomeFootprint(state: {
 }
 
 /**
- * Whether the home is the drop target with the pointer at `client`: the pointer is inside the drag's home
- * ({@link dragHomeFootprint}, edges included) and the home is not lost (`homeLost`, see `HOME_INVALIDATED`). It is
- * `atHome` after a move to `client`. The home is a target for the whole drag: the pointer may leave it and come back.
+ * Whether the home is the drop target with the pointer at `client`: the pointer is over the drag's home
+ * ({@link dragHomeFootprint}) and the home is not lost (`homeLost`, see `HOME_INVALIDATED`). It is `atHome` after a
+ * move to `client`.
  *
- * The home is tested in the geometry of the lift, the layout the drag lays out while it is the target, so it does
- * not flicker: whether the pointer is over it never depends on what the others did meanwhile.
+ * - **A lift that empties its place** ({@link dragLiftLeavesGap}: a pane on its own, a whole group): the home is a
+ *   target for the whole drag; the pointer may leave it and come back.
+ * - **A lift that leaves no gap** (a tab torn off a group that stays): the home holds only until the pointer first
+ *   leaves it (`leftHome`); from then on the group's strip, edges and remaining pane are ordinary targets.
+ *
+ * The pointer is over the home while it stays inside the plain rect (edges included), and comes back over it only
+ * {@link DRAG_HOME_ENTER_INSET_PX} inside it (at most a quarter of its smaller side), so a wobble on the edge does
+ * not glide the layout back and forth. The
+ * home is tested in the geometry of the lift, the layout the drag lays out while it is the target, so whether the
+ * pointer is over it never depends on what the others did meanwhile.
  *
  * While the home is the target nothing else is (the layout is the one at the lift, the pane's place open, so the
  * others give back any room they took), no drop target is resolved (the cursor is never "invalid" there), and a
@@ -471,11 +503,29 @@ export function isDragHomeHeld(
   state: Extract<DragMachineState, { phase: "armed" | "dragging" }>,
   client: DragMachinePoint,
 ): boolean {
-  if (state.phase === "dragging" && state.homeLost) {
+  const home: TilingPaneFootprint = dragHomeFootprint(state);
+  if (state.phase === "armed") {
+    return isPointInFootprint(home, client);
+  }
+  if (state.homeLost === true || (state.liftLeavesGap === false && state.leftHome)) {
     return false;
   }
-  return isPointInFootprint(dragHomeFootprint(state), client);
+  if (state.atHome === true) {
+    return isPointInFootprint(home, client);
+  }
+  const inset: number = Math.min(DRAG_HOME_ENTER_INSET_PX, Math.min(home.width, home.height) / 4);
+  return isPointInFootprint(
+    { left: home.left + inset, top: home.top + inset, width: home.width - 2 * inset, height: home.height - 2 * inset },
+    client,
+  );
 }
+
+/**
+ * How far inside its rect the pointer must come for the home to become the target again (CSS px; a quarter of the
+ * home's smaller side when that is less, so a sliver of a pane keeps a home); it stops being the target only past the
+ * plain rect. The hysteresis band of the home's edge.
+ */
+export const DRAG_HOME_ENTER_INSET_PX: number = 6;
 
 /**
  * The tree a live drag lays out now. While the home is the target (`homeHeld`, see {@link isDragHomeHeld}) it is the
@@ -565,18 +615,13 @@ export function deriveCandidateTree(
     return removeLeafTile(layout, sourceLeafId);
   }
   if (resolvedTarget.action === "swap") {
-    return swapLeafTiles(layout, sourceLeafId, resolvedTarget.leafId);
+    return swapDragSubject(layout, sourceLeafId, resolvedTarget.leafId);
   }
   if (resolvedTarget.action === "group-merge") {
     if (findLeafById(layout, resolvedTarget.leafId) == null) {
       return removeLeafTile(layout, sourceLeafId);
     }
-    return mergeDraggedLeafIntoTarget(
-      layout,
-      sourceLeafId,
-      resolvedTarget.leafId,
-      resolvedTarget.memberInsertIndex,
-    );
+    return mergeDragSubject(layout, sourceLeafId, resolvedTarget.leafId, resolvedTarget.memberInsertIndex);
   }
   if (resolvedTarget.action === "edge-insert") {
     const edgeZone: TilingEdgeZone | null = resolveCommitEdgeZone(resolvedTarget);
@@ -607,10 +652,10 @@ function deriveGroupCandidateTree(
     return removeGroupNode(layout, groupId);
   }
   if (resolvedTarget.action === "swap") {
-    return swapGroupWithSlot(layout, groupId, resolvedTarget.leafId);
+    return swapDragSubject(layout, sourceLeafId, resolvedTarget.leafId, "group");
   }
   if (resolvedTarget.action === "group-merge") {
-    return mergeGroupIntoTarget(layout, groupId, resolvedTarget.leafId, resolvedTarget.memberInsertIndex);
+    return mergeDragSubject(layout, sourceLeafId, resolvedTarget.leafId, resolvedTarget.memberInsertIndex, "group");
   }
   if (resolvedTarget.action === "edge-insert") {
     const edgeZone: TilingEdgeZone | null = resolveCommitEdgeZone(resolvedTarget);
@@ -935,6 +980,7 @@ function armedFrom(event: Extract<DragMachineEvent, { type: "POINTER_DOWN" }>): 
     sourceLeafId: event.sourceLeafId,
     ...(event.subject != null ? { subject: event.subject } : {}),
     ...(event.homeFootprint != null ? { homeFootprint: event.homeFootprint } : {}),
+    ...(event.liftLeavesGap != null ? { liftLeavesGap: event.liftLeavesGap } : {}),
     anchorFootprint: event.anchorFootprint,
     pointerAnchorOffset: event.pointerAnchorOffset,
     originClient: event.originClient,
@@ -1029,6 +1075,7 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             sourceLeafId: state.sourceLeafId,
             ...(state.subject != null ? { subject: state.subject } : {}),
             ...(state.homeFootprint != null ? { homeFootprint: state.homeFootprint } : {}),
+            ...(state.liftLeavesGap != null ? { liftLeavesGap: state.liftLeavesGap } : {}),
             anchorFootprint: state.anchorFootprint,
             pointerAnchorOffset: state.pointerAnchorOffset,
             heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, event.client),
@@ -1054,6 +1101,7 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             sourceLeafId: state.sourceLeafId,
             ...(state.subject != null ? { subject: state.subject } : {}),
             ...(state.homeFootprint != null ? { homeFootprint: state.homeFootprint } : {}),
+            ...(state.liftLeavesGap != null ? { liftLeavesGap: state.liftLeavesGap } : {}),
             anchorFootprint: state.anchorFootprint,
             pointerAnchorOffset: state.pointerAnchorOffset,
             heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, state.originClient),
@@ -1086,7 +1134,7 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
         case "TARGET_RESOLVED":
           return { ...state, resolvedTarget: event.resolvedTarget };
         case "HOME_INVALIDATED":
-          return state.homeLost ? state : { ...state, atHome: false, leftHome: true, homeLost: true };
+          return state.homeLost === true ? state : { ...state, atHome: false, leftHome: true, homeLost: true };
         case "POINTER_UP":
           if (event.claimed === true) {
             return settleFrom(state, "claimed");
@@ -1096,7 +1144,7 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
           // lift, whatever is under it now.
           return settleFrom(
             state,
-            !state.atHome && isCommittableTarget(state.resolvedTarget, state.sourceLeafId) ? "commit" : "cancel",
+            state.atHome !== true && isCommittableTarget(state.resolvedTarget, state.sourceLeafId) ? "commit" : "cancel",
           );
         // Every interruption is an enumerated cancel edge → settling(cancel) →
         // idle. This is the structural elimination of "stuck on drag".

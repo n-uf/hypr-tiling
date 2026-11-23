@@ -115,7 +115,7 @@ function harness(resolve: (point: DragMachinePoint) => DragResolvedTarget | null
         layout: LAYOUT,
         sourceLeafId: state.phase === "dragging" ? state.sourceLeafId : null,
         roomTarget: null,
-        homeHeld: state.phase === "dragging" && state.atHome,
+        homeHeld: state.phase === "dragging" && state.atHome === true,
       }),
   };
 }
@@ -153,6 +153,43 @@ describe("drag home — the rule", (): void => {
     expect(back.atHome).toBe(true);
     expect(back.leftHome).toBe(true);
     expect(isDragHomeHeld(back, { x: 150, y: 200 })).toBe(true);
+  });
+});
+
+describe("drag home — hysteresis at the home's edge", (): void => {
+  it("comes back only 6 px inside the rect and leaves only past the plain rect, so a 1 px wobble moves nothing", (): void => {
+    const h = harness(() => null);
+    h.press({ x: 150, y: 110 });
+    const atHomeAfter = (y: number): boolean => {
+      h.dispatch({ type: "POINTER_MOVE", pointerId: 1, client: { x: 150, y } });
+      const state = h.state();
+      if (state.phase !== "dragging") throw new Error("not dragging");
+      return state.atHome === true;
+    };
+    // Lifted at home, then out past the bottom edge (250).
+    expect(atHomeAfter(120)).toBe(true);
+    expect(atHomeAfter(251)).toBe(false);
+    // A wobble on the edge, inside the plain rect but not 6 px in: still away.
+    for (const y of [250, 249, 251, 245]) expect(atHomeAfter(y)).toBe(false);
+    // 6 px in: home again, and the same wobble keeps it home until past the plain rect.
+    expect(atHomeAfter(244)).toBe(true);
+    for (const y of [249, 250, 246]) expect(atHomeAfter(y)).toBe(true);
+    expect(atHomeAfter(251)).toBe(false);
+  });
+
+  it("a sliver of a pane keeps a home: the inset is at most a quarter of its smaller side", (): void => {
+    let state: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, {
+      type: "POINTER_DOWN",
+      pointerId: 1,
+      pointerType: "mouse",
+      sourceLeafId: "A",
+      anchorFootprint: { left: 0, top: 0, width: 400, height: 12 },
+      pointerAnchorOffset: { x: 100, y: 6 },
+      originClient: { x: 100, y: 6 },
+    });
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 100, y: 40 } });
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 300, y: 6 } });
+    expect(state.phase === "dragging" && state.atHome).toBe(true);
   });
 });
 
@@ -350,11 +387,9 @@ describe("drag home — no target, no invalid cursor, release restores", (): voi
  * pane B below. Once the subject lifts, B grows to fill the column, so the subject's header lies over B's title bar
  * band and the top edge of B's body. There the gap-closed geometry resolves:
  * - over B's title bar: a group merge into B (a host title-bar drop target);
- * - just below it: B's top edge-insert, whose verdict comes from the projected tree. For a group subject that
- *   projection moves only the dragged leaf and leaves the rest of the group at its ratio, so a TALL group leaves too
- *   little room and the edge is refused (the ⊘ cursor), while a short one is valid (a release would commit a new
- *   split, not the old layout).
- * Coming back over the home must beat all of them, at either height.
+ * - just below it: B's top edge-insert, judged for the subject (released first, then placed), which is valid at
+ *   either height: a release there would commit a new half-and-half split, not the layout at the lift.
+ * Coming back over the home must beat both, at either height, so the release puts the layout back exactly.
  */
 describe("drag home — back over a column neighbour that grew (short / tall, group / single)", (): void => {
   const AREA = { x: 0, y: 0, width: 360, height: 784 };
@@ -397,7 +432,7 @@ describe("drag home — back over a column neighbour that grew (short / tall, gr
         // B fills the column once the subject is out.
         expect(grownB.top).toBe(AREA.y);
         expect(grownB.height).toBe(AREA.height);
-        // B's top edge as the gap-closed geometry judges it (the drop the pointer met there before).
+        // B's top edge as drop validity judges it for the subject in the gap-closed geometry.
         const topEdge = evaluateZoneCandidate({
           zone: "top",
           layout,
@@ -407,8 +442,9 @@ describe("drag home — back over a column neighbour that grew (short / tall, gr
           config: CONFIG,
           viewportWidth: AREA.width,
           viewportHeight: AREA.height,
+          subject,
         });
-        expect(topEdge.isValid).toBe(!(subject === "group" && height === "tall"));
+        expect(topEdge.isValid).toBe(true);
         const resolver = (point: DragMachinePoint): DragResolvedTarget | null => {
           if (point.y > AREA.y + AREA.height) return null;
           if (point.y <= grownB.top + TITLE_BAR_PX) return { ...target("B", "center", "group-merge" as TilingDropAction), fallbackReason: "host-group-drop-target" } as DragResolvedTarget;
@@ -459,7 +495,7 @@ describe("drag home — back over a column neighbour that grew (short / tall, gr
           expect(resolveDragCursorPresentation(state.resolvedTarget, "A").kind).not.toBe("invalid");
           // The room comes back: the tree laid out is the original one.
           expect(
-            deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: null, subject: subject === "group" ? "group" : undefined, homeHeld: state.atHome }),
+            deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: null, subject: subject === "group" ? "group" : undefined, homeHeld: state.atHome === true }),
           ).toBe(layout);
           driver.latchRelease();
           driver.processPointerSample(back, true);
