@@ -176,8 +176,6 @@ export type DragMachineState =
       sourceLeafId: string;
       /** What the drag moves (absent: the one pane). */
       subject?: DragSubject;
-      /** The home a release must leave to commit (absent: `anchorFootprint`). */
-      homeFootprint?: TilingPaneFootprint;
       anchorFootprint: TilingPaneFootprint;
       pointerAnchorOffset: DragMachinePoint;
       originClient: DragMachinePoint;
@@ -191,8 +189,6 @@ export type DragMachineState =
       sourceLeafId: string;
       /** What the drag moves (absent: the one pane). */
       subject?: DragSubject;
-      /** The home a release must leave to commit (absent: `anchorFootprint`). */
-      homeFootprint?: TilingPaneFootprint;
       anchorFootprint: TilingPaneFootprint;
       pointerAnchorOffset: DragMachinePoint;
       /** Where the pointer holds the pane: pointer minus grab offset, at its lift size. */
@@ -206,16 +202,10 @@ export type DragMachineState =
        */
       atHome: boolean;
       /**
-       * Whether the pointer has left the home at least once since the lift (or
-       * the home was lost). It decides nothing; `atHome` does.
+       * Whether the drag hit has let go of home at least once since the lift.
+       * It decides nothing; `atHome` does.
        */
       leftHome: boolean;
-      /**
-       * Whether the page moved under the drag (`HOME_INVALIDATED`): the home
-       * footprint no longer marks the pane's place, so it is no target for the
-       * rest of the drag.
-       */
-      homeLost: boolean;
     }
   | {
       phase: "settling";
@@ -234,11 +224,6 @@ export type DragMachineEvent =
       sourceLeafId: string;
       /** What the press picks up: the pane (default) or its whole tab group. */
       subject?: DragSubject;
-      /**
-       * The place a release must leave to commit, when it is not
-       * `anchorFootprint` (a tab torn off its group: the whole group).
-       */
-      homeFootprint?: TilingPaneFootprint;
       anchorFootprint: TilingPaneFootprint;
       pointerAnchorOffset: DragMachinePoint;
       originClient: DragMachinePoint;
@@ -258,21 +243,7 @@ export type DragMachineEvent =
   | { type: "BLUR" }
   | { type: "VISIBILITY_HIDDEN" }
   | { type: "SETTLE_DONE" }
-  | DragHomeInvalidatedEvent
   | DragRearmEvent;
-
-/**
- * `HOME_INVALIDATED` — the page moved under the drag (a scroll, a viewport or window resize, a layout change), so the
- * home footprint, a client-px snapshot taken at the press, no longer marks the pane's place. The home is lost for the
- * rest of the drag (`homeLost` becomes true, `atHome` false) and the drag resolves at the pointer as it does away from
- * home, over the old rect too. Only `dragging` reacts; it is a no-op once the home is lost. The renderer sends it when the
- * viewport's client rect differs from the one at the press after a scroll or window resize, when the viewport's size
- * changes, and when a new `layout` object arrives mid-drag (a change of identity counts, as everywhere in the renderer).
- */
-export interface DragHomeInvalidatedEvent {
-  /** Discriminant. */
-  type: "HOME_INVALIDATED";
-}
 
 /**
  * `REARM` — start a NEW drag on `sourceLeafId` at the CURRENT pointer position
@@ -720,7 +691,6 @@ function armedFrom(event: Extract<DragMachineEvent, { type: "POINTER_DOWN" }>): 
     touchDrag: event.pointerType === "touch",
     sourceLeafId: event.sourceLeafId,
     ...(event.subject != null ? { subject: event.subject } : {}),
-    ...(event.homeFootprint != null ? { homeFootprint: event.homeFootprint } : {}),
     anchorFootprint: event.anchorFootprint,
     pointerAnchorOffset: event.pointerAnchorOffset,
     originClient: event.originClient,
@@ -777,7 +747,6 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
           // The drag hit says where home is from its first sample (`TARGET_RESOLVED`).
           atHome: true,
           leftHome: false,
-          homeLost: false,
         };
       }
       return state;
@@ -812,7 +781,6 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             touchDrag: state.touchDrag,
             sourceLeafId: state.sourceLeafId,
             ...(state.subject != null ? { subject: state.subject } : {}),
-            ...(state.homeFootprint != null ? { homeFootprint: state.homeFootprint } : {}),
             anchorFootprint: state.anchorFootprint,
             pointerAnchorOffset: state.pointerAnchorOffset,
             heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, event.client),
@@ -820,7 +788,6 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             // The drag hit says where home is from its first sample (`TARGET_RESOLVED`).
             atHome: true,
             leftHome: false,
-            homeLost: false,
           };
         }
         // Touch long-press elapsed while the finger is held within tolerance →
@@ -838,14 +805,12 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             touchDrag: state.touchDrag,
             sourceLeafId: state.sourceLeafId,
             ...(state.subject != null ? { subject: state.subject } : {}),
-            ...(state.homeFootprint != null ? { homeFootprint: state.homeFootprint } : {}),
             anchorFootprint: state.anchorFootprint,
             pointerAnchorOffset: state.pointerAnchorOffset,
             heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, state.originClient),
             resolvedTarget: null,
             atHome: true,
             leftHome: false,
-            homeLost: false,
           };
         }
         // Sub-threshold release / cancel / interruption: it was a click/tap,
@@ -869,7 +834,7 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
         case "POINTER_MOVE":
           return movedTo(state, event.client);
         case "TARGET_RESOLVED":
-          if (event.atHome == null || state.homeLost) {
+          if (event.atHome == null) {
             return { ...state, resolvedTarget: event.resolvedTarget };
           }
           return {
@@ -878,8 +843,6 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             atHome: event.atHome,
             leftHome: state.leftHome || !event.atHome,
           };
-        case "HOME_INVALIDATED":
-          return state.homeLost ? state : { ...state, atHome: false, leftHome: true, homeLost: true };
         case "POINTER_UP":
           if (event.claimed === true) {
             return settleFrom(state, "claimed");
