@@ -1,17 +1,13 @@
 import { describe, expect, it } from "@jest/globals";
-import {
-  collectStaticGatedLeafIds,
-  evaluateEdgeInsertCandidate,
-  evaluateZoneCandidate,
-} from "../engine/drop-validity";
+import { collectStaticGatedLeafIds } from "../engine/drop-validity";
 import type {
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,
-  TilingPaneFootprint,
   TilingSplitNode,
   TilingPaneSizing,
 } from "../engine/types";
+import { layoutDrag } from "./golden/cases";
 
 function leaf(id: string, sizing?: TilingPaneSizing): TilingLeafNode {
   return sizing == null
@@ -148,155 +144,66 @@ describe("collectStaticGatedLeafIds — per-subtree drag gate", (): void => {
   });
 });
 
-describe("evaluateEdgeInsertCandidate — span + min-pane validity", (): void => {
-  const targetFootprint: TilingPaneFootprint = { left: 0, top: 0, width: 500, height: 400 };
+/**
+ * What a place takes, in the drag's own terms: `tilingDrag(...).after(place).refusal`, placement's room rule
+ * (`canSplitPane`: two minimums plus the gutter along the split, one across it, on the pane as the base draws it) and
+ * its fit rule (`dropFits`, on the layout the release makes), over hypr-tiling's layout. The subject A is lifted from
+ * A | B, so B fills the stage in the base: the stage is the target.
+ */
+describe("a place's refusal — span + min-pane validity", (): void => {
   const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
+  const refusal = (side: "left" | "top", stage: { width: number; height: number }, config: TilingLayoutConfig = CONFIG) =>
+    layoutDrag(layout, "A", stage, config)!.after({ kind: "beside", at: "tile-B", side }).refusal;
 
-  it("accepts an edge insert with adequate axis + cross span (source-less probe)", (): void => {
-    const result = evaluateEdgeInsertCandidate({
-      candidateZone: "left",
-      layout,
-      sourceLeafId: null,
-      targetLeafId: "B",
-      targetFootprint,
-      config: CONFIG,
-      viewportWidth: VIEWPORT_WIDTH,
-      viewportHeight: VIEWPORT_HEIGHT,
-    });
-    expect(result.isValid).toBe(true);
-    expect(result.rejectionReason).toBeNull();
+  it("accepts an edge insert with adequate axis + cross span", (): void => {
+    expect(refusal("left", { width: 500, height: 400 })).toBeNull();
   });
 
-  it("rejects when the target axis span cannot fit two panes + the splitter", (): void => {
-    const result = evaluateEdgeInsertCandidate({
-      candidateZone: "left",
-      layout,
-      sourceLeafId: null,
-      targetLeafId: "B",
-      targetFootprint: { left: 0, top: 0, width: 50, height: 400 },
-      config: CONFIG,
-      viewportWidth: VIEWPORT_WIDTH,
-      viewportHeight: VIEWPORT_HEIGHT,
-    });
-    expect(result.isValid).toBe(false);
-    expect(result.rejectionReason).toContain("axis span");
+  it("refuses when the target axis span cannot fit two panes + the splitter, with the span it has and needs", (): void => {
+    // Two minimums (2 × 40) plus the gutter (8 gap + 4 handle).
+    expect(refusal("left", { width: 50, height: 400 })).toEqual({ code: "room-along", need: 92, have: 50 });
   });
 
-  it("rejects when the target cross span is below the per-pane minimum", (): void => {
-    const result = evaluateEdgeInsertCandidate({
-      candidateZone: "top",
-      layout,
-      sourceLeafId: null,
-      targetLeafId: "B",
-      targetFootprint: { left: 0, top: 0, width: 20, height: 400 },
-      config: CONFIG,
-      viewportWidth: VIEWPORT_WIDTH,
-      viewportHeight: VIEWPORT_HEIGHT,
-    });
-    expect(result.isValid).toBe(false);
-    expect(result.rejectionReason).toContain("cross span");
+  it("refuses when the target cross span is below the per-pane minimum", (): void => {
+    expect(refusal("top", { width: 20, height: 400 })).toEqual({ code: "room-across", need: 40, have: 20 });
   });
 
-  it("validates the PROJECTED insert footprint against the min pane when a source is present", (): void => {
-    const result = evaluateEdgeInsertCandidate({
-      candidateZone: "left",
-      layout,
-      sourceLeafId: "A",
-      targetLeafId: "B",
-      targetFootprint,
-      config: CONFIG,
-      viewportWidth: VIEWPORT_WIDTH,
-      viewportHeight: VIEWPORT_HEIGHT,
-    });
-    // Big viewport, generous min → the projected A|B split clears the floor.
-    expect(result.isValid).toBe(true);
+  it("judges the layout the release makes against the min pane: the subject and its target fit when both clear it", (): void => {
+    // Big stage, generous min → the A | B split clears the floor.
+    expect(layoutDrag(layout, "A", { width: 1000, height: 800 }, CONFIG)!.after({ kind: "beside", at: "tile-B", side: "left" }).refusal).toBeNull();
+  });
+
+  it("refuses a place whose pane the base does not draw (missing) or the subject's own (self)", (): void => {
+    const drag = layoutDrag(layout, "A", { width: 1000, height: 800 }, CONFIG)!;
+    expect(drag.after({ kind: "beside", at: "ghost", side: "left" }).refusal).toEqual({ code: "missing" });
+    expect(drag.after({ kind: "swap", at: "tile-A" }).refusal).toEqual({ code: "self" });
   });
 });
 
-describe("evaluateEdgeInsertCandidate — span boundary and reasons", (): void => {
+describe("a place's refusal — span boundary", (): void => {
   const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), vsplit(0.5, leaf("B"), leaf("C")));
-  // A fractional gutter: 2 × 4 + 0.2 = 8.2 exactly; halving 8.2 and taking half the gutter comes out an ulp under 4.
-  const fractional: TilingLayoutConfig = { gapPx: 0, handleSizePx: 0.2, minPaneSizePx: 4 };
-  const evaluate = (sourceLeafId: string | null, footprint: TilingPaneFootprint, config: TilingLayoutConfig = fractional) =>
-    evaluateEdgeInsertCandidate({ candidateZone: "left", layout, sourceLeafId, targetLeafId: "B", targetFootprint: footprint, config, viewportWidth: 1000, viewportHeight: 700 });
+  // No gutter, a 4 px minimum: the target needs 8 px along the split exactly.
+  const exact: TilingLayoutConfig = { gapPx: 0, handleSizePx: 0, minPaneSizePx: 4 };
+  const left = (stage: { width: number; height: number }) =>
+    layoutDrag(layout, "A", stage, exact)!.after({ kind: "beside", at: "tile-B", side: "left" }).refusal;
 
-  it("accepts a target exactly two minimums plus the gutter wide, with and without a source", (): void => {
-    for (const sourceLeafId of ["A", null]) {
-      expect(evaluate(sourceLeafId, { left: 0, top: 0, width: 8.2, height: 300 })).toEqual({ isValid: true, rejectionReason: null });
-    }
+  it("accepts a target exactly two minimums wide", (): void => {
+    // B and C stacked in the base: B is as wide as the stage.
+    expect(left({ width: 8, height: 300 })).toBeNull();
   });
 
-  it("refuses a hair under it, with the axis-span reason", (): void => {
-    expect(evaluate("A", { left: 0, top: 0, width: 8.2 - 1e-9, height: 300 })).toEqual({
-      isValid: false,
-      rejectionReason: "left rejected: axis span 8.2px < min 8.2px (2 panes + splitter/gap 0.2px)",
-    });
-  });
-
-  it("reports the axis and cross span reasons word for word", (): void => {
-    expect(evaluate(null, { left: 0, top: 0, width: 50, height: 400 }, CONFIG).rejectionReason).toBe(
-      "left rejected: axis span 50.0px < min 92.0px (2 panes + splitter/gap 12px)",
-    );
-    expect(evaluate(null, { left: 0, top: 0, width: 500, height: 20 }, CONFIG).rejectionReason).toBe(
-      "left rejected: cross span 20.0px < min 40px",
-    );
+  it("refuses a hair under it, with the axis-span code", (): void => {
+    expect(left({ width: 8 - 1e-9, height: 300 })?.code).toBe("room-along");
   });
 });
 
-describe("evaluateZoneCandidate — center swap eligibility", (): void => {
+describe("a place's refusal — a swap with itself", (): void => {
   const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
-  const targetFootprint: TilingPaneFootprint = { left: 0, top: 0, width: 500, height: 400 };
 
-  it("blocks a center swap onto the same source leaf", (): void => {
-    const result = evaluateZoneCandidate({
-      zone: "center",
-      layout,
-      sourceLeafId: "A",
-      targetLeafId: "A",
-      targetFootprint,
-      config: CONFIG,
-      viewportWidth: VIEWPORT_WIDTH,
-      viewportHeight: VIEWPORT_HEIGHT,
-    });
-    expect(result.isValid).toBe(false);
-    expect(result.rejectionReason).toContain("same source and target");
-  });
-
-  it("allows a center swap onto a different leaf", (): void => {
-    const result = evaluateZoneCandidate({
-      zone: "center",
-      layout,
-      sourceLeafId: "A",
-      targetLeafId: "B",
-      targetFootprint,
-      config: CONFIG,
-      viewportWidth: VIEWPORT_WIDTH,
-      viewportHeight: VIEWPORT_HEIGHT,
-    });
-    expect(result.isValid).toBe(true);
+  it("refuses a swap onto the subject's own leaf (self) and takes one onto a different leaf", (): void => {
+    const drag = layoutDrag(layout, "A", { width: 1000, height: 800 }, CONFIG)!;
+    expect(drag.after({ kind: "swap", at: "tile-A" }).refusal).toEqual({ code: "self" });
+    expect(drag.after({ kind: "swap", at: "tile-B" }).refusal).toBeNull();
   });
 });
 
-describe("evaluateEdgeInsertCandidate — the projected fit", (): void => {
-  const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
-  const roomy: TilingPaneFootprint = { left: 0, top: 0, width: 500, height: 400 };
-  const evaluate = (targetLeafId: string, viewportWidth: number, viewportHeight: number) =>
-    evaluateEdgeInsertCandidate({ candidateZone: "left", layout, sourceLeafId: "A", targetLeafId, targetFootprint: roomy, config: CONFIG, viewportWidth, viewportHeight });
-
-  it("passes with a zero viewport (nothing to validate yet)", (): void => {
-    expect(evaluate("B", 0, 0)).toEqual({ isValid: true, rejectionReason: null });
-  });
-
-  it("rejects when a projected leaf is missing from the tree", (): void => {
-    expect(evaluate("ghost", VIEWPORT_WIDTH, VIEWPORT_HEIGHT)).toEqual({
-      isValid: false,
-      rejectionReason: "left rejected: projected source/target footprint violates min pane 40px",
-    });
-  });
-
-  it("judges the insertLeafAdjacent projection in the viewport", (): void => {
-    // A beside B in the whole width: (100 / 2 - 6) = 44 px each fits 40; (90 / 2 - 6) = 39 px does not.
-    expect(evaluate("B", 100, VIEWPORT_HEIGHT).isValid).toBe(true);
-    expect(evaluate("B", 90, VIEWPORT_HEIGHT).isValid).toBe(false);
-  });
-});

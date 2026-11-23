@@ -1,11 +1,12 @@
 /**
  * @jest-environment jsdom
  *
- * A held swap through placement's `tilingDrag`, in both drop previews: the pane's old place reopens (the neighbour
- * that grew into it at the lift gives the room back) and a wash marks it as where the partner goes (tinted, ⇄ and the
- * partner's name, no frame), above the held pane in every held look. The indicator keeps the target in its own slot
- * and draws nothing under the wash; snap draws the partner landed there. The release commits `after(swap).tree`
- * either way. Off the swap the gap closes again.
+ * A held swap through placement's `tilingDrag`, in both drop previews. The indicator draws marks over the layout at
+ * the lift for the whole drag: the pane's old place stays open and a wash marks it as where the partner goes (tinted,
+ * ⇄ and the partner's name, no frame), above the held pane in every held look, the target in its own slot, nothing
+ * drawn under the wash. Snap draws `after(swap)` as soon as the place is held: the partner landed in the old place,
+ * with no wash (the wash marks a swap in the indicator only). The release commits `after(swap).tree` either way. Off
+ * the swap the indicator's layout is still the lift's.
  *
  * jsdom has no layout: every leaf wrapper (`[data-hpt-leaf]`, keyed by tile id) reports the rect in `GEOMETRY`; the
  * viewport is 1000×600. Columns: 01 above 02 on the left, 03 on the right (the operator's case, 02 held over 03).
@@ -16,7 +17,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { TilingRenderer } from "../react/tiling-renderer";
 import { swapLeafTiles } from "../engine/state";
 import { deriveDropCommitTree } from "../engine/tiling-drag-tree";
-import { resolveDragRoomTarget, type DragResolvedTarget } from "../engine/drag-machine";
+import type { DragResolvedTarget } from "../engine/drag-machine";
 import type { TilingDragPreview, TilingHeldLook, TilingLayoutNode, TilingLeafNode, TilingTile } from "../engine/types";
 
 interface Box {
@@ -240,7 +241,7 @@ const HELD_LOOKS: ReadonlyArray<TilingHeldLook> = ["title-bar", "thumbnail", "fa
 
 describe("a held swap reopens the old place, marks where the partner lands, and commits what it drew", (): void => {
   for (const preview of PREVIEWS) {
-    it(`${preview}: 02 over 03 — 01 gives the room back, the wash marks 02's old place for 03`, async (): Promise<void> => {
+    it(`${preview}: 02 over 03 — ${preview === "indicator" ? "01 gives the room back, the wash marks 02's old place for 03" : "the swap is drawn landed, with no wash"}`, async (): Promise<void> => {
       const changes: TilingLayoutNode[] = [];
       const { container } = await holdTwoOverThree({ preview, heldLook: "title-bar", changes });
       const order: string[] = drawnOrder(container);
@@ -253,6 +254,17 @@ describe("a held swap reopens the old place, marks where the partner lands, and 
         expect(order).toEqual(["one", "three", "two"]);
       }
       const wash: HTMLElement | null = washOf(container);
+      if (preview === "snap") {
+        // Snap draws the swap landed (03 in 02's old place): the wash marks a swap in Indicator only.
+        expect(wash).toBeNull();
+        await act(async (): Promise<void> => {
+          pointer(window, "pointerup", 750, 300);
+          await wait(20);
+        });
+        expect(changes).toHaveLength(1);
+        expect(changes[0]).toEqual(swapLeafTiles(LAYOUT, "L2", "L3"));
+        return;
+      }
       // The wash is only the mark: no pane content inside it.
       expect(wash?.querySelector("[data-hpt-leaf], article, header") ?? null).toBeNull();
       expect(wash).not.toBeNull();
@@ -309,26 +321,16 @@ describe("a held swap reopens the old place, marks where the partner lands, and 
     await moveTo(250, 260);
     expect(washOf(container)?.getAttribute("data-hpt-swap-partner") ?? null).toBe("one");
     expect(parseFloat(washOf(container)!.style.top)).toBe(OLD_PLACE.y);
-    // Over 03's right edge: a side drop, no swap. The indicator preview makes no room: 01 fills the left column.
+    // Over 03's right edge: a side drop, no swap. The indicator marks over the layout at the lift: 01 in its own
+    // slot, 02's slot kept open, 03 where it was; nothing is drawn under a wash.
     await moveTo(985, 300);
     expect(washOf(container)).toBeNull();
-    expect(drawnOrder(container)).toEqual(["one", "three"]);
+    expect(drawnOrder(container)).toEqual(["one", "slot:L2", "three"]);
   });
 });
 
-describe("the room rule and the commit tree", (): void => {
-  const swap = { leafId: "L3", action: "swap", zone: "center" } as unknown as DragResolvedTarget;
-  const edge = { leafId: "L3", action: "edge-insert", zone: "right", finalEdge: "right" } as unknown as DragResolvedTarget;
-
-  it("a committable swap makes room in both previews; other drops as before", (): void => {
-    for (const preview of ["indicator", "snap"] as const) {
-      expect(resolveDragRoomTarget({ preview, makesRoom: false, snapped: null, committable: swap })).toBe(swap);
-    }
-    expect(resolveDragRoomTarget({ preview: "indicator", makesRoom: false, snapped: null, committable: edge })).toBeNull();
-    expect(resolveDragRoomTarget({ preview: "indicator", makesRoom: true, snapped: null, committable: edge })).toBe(edge);
-    expect(resolveDragRoomTarget({ preview: "snap", makesRoom: false, snapped: null, committable: edge })).toBeNull();
-    expect(resolveDragRoomTarget({ preview: "snap", makesRoom: false, snapped: edge, committable: edge })).toBe(edge);
-  });
+describe("the commit tree", (): void => {
+  const swap = { leafId: "L3", action: "swap", zone: "center", place: { kind: "swap", at: "three" } } as unknown as DragResolvedTarget;
 
   it("a swap commits tilingDrag's after(swap).tree, the swap reducer's tree", (): void => {
     const committed = deriveDropCommitTree({ layout: LAYOUT, sourceLeafId: "L2", target: swap, container: CONTAINER, config: CONFIG });

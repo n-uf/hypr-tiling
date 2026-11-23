@@ -20,15 +20,9 @@ import type { TilingGrowConstraints } from "../engine/state";
 import { collectLeafFootprints } from "../engine/leaf-geometry";
 import type { TilingLeafFootprint } from "../engine/leaf-geometry";
 import { resolveProjectedDropLayout } from "../engine/projected-layout";
-import {
-  buildGroupTabStripMergeIntent,
-  resolveDropIntent,
-  resolveGroupTabInsertIndex,
-} from "../engine/drop-intent-resolver";
-import type {
-  TilingDropIntentState,
-  TilingZoneGeometryConfig,
-} from "../engine/drop-intent-resolver";
+import type { TilingDropIntentState } from "../engine/drop-intent-resolver";
+import { tilingDropStateOf } from "../engine/tiling-drag-tree";
+import { hitRun, layoutDrag } from "./golden/cases";
 import { commandRequiredCapability, keyboardActionToCommand } from "../engine/commands";
 import { matchKeymapAction, resolveKeymap } from "../engine/pane-switching";
 import type { TilingKeymapActionGuards } from "../engine/pane-switching";
@@ -368,56 +362,43 @@ describe("group geometry — a group is ONE slot (active member only)", (): void
 });
 
 describe("drag-into-group drop intent", (): void => {
-  const CONFIG: TilingZoneGeometryConfig = {
-    centerRatio: 0.34,
-    centerMinPx: 24,
-    hysteresisPx: 6,
-    devicePixelRatio: 1,
-  };
+  // The drag's hit on a layout with the group {a, b} and a loose pane c, c dragged: the group's body is a pane like
+  // any other (a center drop on it is `swap`, as on a leaf), and add-to-group (`group-merge`) is reachable only
+  // through the group's tab strip (a slot per member, giving the index) or a host drop element, never the body.
+  const GROUPED: TilingLayoutNode = groupLeaves(threeLeafTree(), ["a", "b"]);
+  const CONFIG: TilingLayoutConfig = { gapPx: 6, handleSizePx: 4, minPaneSizePx: 96 };
+  const drag = layoutDrag(GROUPED, "c", { width: 1000, height: 600 }, CONFIG, undefined, {
+    strip: { top: 0, height: 28, left: 0, gap: 0, widths: new Map([["tile-a", 40], ["tile-b", 40]]) },
+  })!;
+  // The group is drawn as its active member, tile-a.
+  const g = drag.lift.layout.get("tile-a")!;
 
-  function centerBodyDrop(): TilingDropIntentState {
-    return resolveDropIntent({
-      leafId: "b",
-      paneLocalX: 100,
-      paneLocalY: 100,
-      paneSize: { width: 200, height: 200 },
-      axisPath: [],
-      geometryConfig: CONFIG,
-      previousZone: null,
-      evaluateZone: (): { isValid: boolean; rejectionReason: string | null } => ({
-        isValid: true,
-        rejectionReason: null,
-      }),
-    });
+  /** The drop state the drag hit holds at `point`, as the renderer keeps it (the drop of the held place). */
+  function dropAt(x: number, y: number): TilingDropIntentState {
+    const read = hitRun(drag, "lift").at({ x, y });
+    if (read.held == null || read.held.kind === "home") throw new Error("nothing held");
+    const state: TilingDropIntentState | null = tilingDropStateOf(GROUPED, read.held, read.mark, 1);
+    if (state == null) throw new Error("no drop state");
+    return state;
   }
-
-  // The center (swap) zone is group-agnostic — `resolveDropIntent` no longer
-  // takes a `targetIsGroup` flag, so a center drop on a group body is `swap`
-  // just like a center drop on a leaf. Add-to-group (`group-merge`) is reachable
-  // through the group's tab strip or a host group-drop target
-  // (`buildGroupTabStripMergeIntent`), not through the body partition.
-  function tabStripMergeDrop(): TilingDropIntentState {
-    return buildGroupTabStripMergeIntent({
-      activeMemberLeafId: "b",
-      evaluateCenter: (): { isValid: boolean; rejectionReason: string | null } => ({
-        isValid: true,
-        rejectionReason: null,
-      }),
-    });
-  }
+  const centerBodyDrop = (): TilingDropIntentState => dropAt(g.x + g.width / 2, g.y + g.height / 2);
+  /** Over the tab strip, in the first slot or (index undefined) past the last tab. */
+  const tabStripMergeDrop = (x: number): TilingDropIntentState => dropAt(x, g.y + 10);
 
   it("classifies a valid center body drop as swap (never group-merge)", (): void => {
     expect(centerBodyDrop().action).toBe("swap");
   });
 
   it("classifies a tab-strip drop as group-merge", (): void => {
-    expect(tabStripMergeDrop().action).toBe("group-merge");
+    expect(tabStripMergeDrop(g.x + 10).action).toBe("group-merge");
   });
 
   it("projects a tab-strip group-merge drop through addLeafToGroup", (): void => {
-    const grouped: TilingLayoutNode = groupLeaves(threeLeafTree(), ["a", "b"]);
-    const dropState: TilingDropIntentState = tabStripMergeDrop();
-    const projected: TilingLayoutNode | null = resolveProjectedDropLayout(grouped, "c", dropState);
+    // Past the last tab: a join with no index, which appends.
+    const dropState: TilingDropIntentState = tabStripMergeDrop(g.x + 200);
+    expect(dropState.action).toBe("group-merge");
+    expect(dropState.memberInsertIndex).toBeUndefined();
+    const projected: TilingLayoutNode | null = resolveProjectedDropLayout(GROUPED, "c", dropState);
     expect(projected).not.toBeNull();
     const group: TilingGroupNode = asGroup(
       findGroupById(projected as TilingLayoutNode, "group-a") as TilingLayoutNode,
@@ -427,17 +408,9 @@ describe("drag-into-group drop intent", (): void => {
   });
 
   it("inserts a tab-strip drop at the hovered member index", (): void => {
-    const grouped: TilingLayoutNode = groupLeaves(threeLeafTree(), ["a", "b"]);
-    const dropState: TilingDropIntentState = buildGroupTabStripMergeIntent({
-      activeMemberLeafId: "b",
-      memberInsertIndex: 0,
-      evaluateCenter: (): { isValid: boolean; rejectionReason: string | null } => ({
-        isValid: true,
-        rejectionReason: null,
-      }),
-    });
+    const dropState: TilingDropIntentState = tabStripMergeDrop(g.x + 10);
     expect(dropState.memberInsertIndex).toBe(0);
-    const projected: TilingLayoutNode | null = resolveProjectedDropLayout(grouped, "c", dropState);
+    const projected: TilingLayoutNode | null = resolveProjectedDropLayout(GROUPED, "c", dropState);
     expect(projected).not.toBeNull();
     const group: TilingGroupNode = asGroup(
       findGroupById(projected as TilingLayoutNode, "group-a") as TilingLayoutNode,
@@ -447,14 +420,9 @@ describe("drag-into-group drop intent", (): void => {
   });
 
   it("resolves a hovered tab's insert index and appends past the last tab", (): void => {
-    const tabs = [
-      { index: 0, bounds: { left: 0, top: 0, right: 40, bottom: 28 } },
-      { index: 1, bounds: { left: 40, top: 0, right: 80, bottom: 28 } },
-    ];
-    expect(resolveGroupTabInsertIndex(10, 10, tabs)).toBe(0);
-    expect(resolveGroupTabInsertIndex(50, 10, tabs)).toBe(1);
-    expect(resolveGroupTabInsertIndex(100, 10, tabs)).toBe(2);
-    expect(resolveGroupTabInsertIndex(10, 80, tabs)).toBeUndefined();
+    expect(tabStripMergeDrop(g.x + 10).memberInsertIndex).toBe(0);
+    expect(tabStripMergeDrop(g.x + 50).memberInsertIndex).toBe(1);
+    expect(tabStripMergeDrop(g.x + 100).memberInsertIndex).toBeUndefined();
   });
 });
 

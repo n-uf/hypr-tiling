@@ -3,7 +3,6 @@ import {
   type DragMachineState,
   type DragResolvedTarget,
 } from "../engine/drag-machine";
-import type { DragInputDriverSlotCommitment } from "../engine/input-driver";
 import {
   type TilingController,
   type TilingControllerHost,
@@ -83,10 +82,6 @@ function createStubHost(seat: DragResolvedTarget | null): {
       capturePointer: (pointerId: number): void => {
         captures.push(pointerId);
       },
-      getSlotCommitment: (): DragInputDriverSlotCommitment => ({
-        mode: "delta-responsive",
-        reresolveDeltaPx: 24,
-      }),
     },
   };
 }

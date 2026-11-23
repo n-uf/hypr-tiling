@@ -17,22 +17,13 @@ import {
   dragMachineReducer,
   heldFootprintAt,
   hasCrossedPickupThreshold,
-  DEFAULT_DRAG_RERESOLVE_DELTA_PX,
-  DEFAULT_DRAG_SLOT_COMMITMENT_MODE,
   isCommittableTarget,
-  isPointInFootprint,
-  previousZoneSeed,
   resolveDragLandingLeafId,
   presentationDragSourceLeafId,
   presentationResolvedTarget,
   resolveTouchArmedMove,
-  shouldReresolveSeatedTarget,
   deriveCommittableSeat,
-  foldCommittableSeatFallback,
-  resolveReleaseCommitSeat,
   shouldSuppressCompetingCancel,
-  EMPTY_COMMITTABLE_SEAT_FALLBACK,
-  type CommittableSeatFallback,
   canRearmDrag,
   rearmPointerAnchorOffset,
   type DragRearmEvent,
@@ -141,11 +132,13 @@ function toTouchArmed(pointerId: number = 1): DragMachineState {
 
 /**
  * Drive idle → armed → dragging (threshold crossed), with the pointer already
- * off the pane's own place (ANCHOR spans x 100..300), so a release can commit.
+ * off the pane's own place: the drag hit's first sample says it holds no home
+ * (`TARGET_RESOLVED` with `atHome: false`), so a release can commit.
  */
 function toDragging(pointerId: number = 1): DragMachineState {
   let state: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, pointerDown(pointerId));
   state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId, client: { x: 350, y: 200 } });
+  state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId, resolvedTarget: null, atHome: false });
   return state;
 }
 
@@ -162,12 +155,6 @@ describe("drag-machine — pickup threshold + held geometry", (): void => {
     const footprint: TilingPaneFootprint = heldFootprintAt(ANCHOR, { x: 10, y: 10 }, { x: 250, y: 260 });
     expect(footprint).toEqual({ left: 240, top: 250, width: 200, height: 150 });
   });
-
-  it("isPointInFootprint includes the edges", (): void => {
-    expect(isPointInFootprint(ANCHOR, { x: 100, y: 100 })).toBe(true);
-    expect(isPointInFootprint(ANCHOR, { x: 300, y: 250 })).toBe(true);
-    expect(isPointInFootprint(ANCHOR, { x: 301, y: 200 })).toBe(false);
-  });
 });
 
 describe("drag-machine — home: a release that never left the pane's place restores the layout", (): void => {
@@ -180,24 +167,34 @@ describe("drag-machine — home: a release that never left the pane's place rest
     expect(state.phase === "settling" && state.outcome).toBe("cancel");
   });
 
+  it("a drag starts at home, whatever the pointer's first move is: the hit says where home is from its first sample", (): void => {
+    let state: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, pointerDown());
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 350, y: 200 } });
+    expect(state.phase === "dragging" && state.atHome && !state.leftHome).toBe(true);
+  });
+
   it("once the pointer left home, coming back over it is home again: a release there cancels, even over a committable target", (): void => {
     let state: DragMachineState = toDragging();
     expect(state.phase === "dragging" && state.leftHome && !state.atHome).toBe(true);
-    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 200, y: 200 } });
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("C", "center", "swap"), atHome: true });
     expect(state.phase === "dragging" && state.leftHome && state.atHome).toBe(true);
-    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("C", "center", "swap") });
     state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
     expect(state.phase === "settling" && state.outcome).toBe("cancel");
   });
 
   it("away from home a committable target commits, after a visit home too", (): void => {
     let state: DragMachineState = toDragging();
-    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 200, y: 200 } });
-    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 500, y: 500 } });
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: null, atHome: true });
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("C", "center", "swap"), atHome: false });
     expect(state.phase === "dragging" && state.atHome).toBe(false);
-    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("C", "center", "swap") });
     state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
     expect(state.phase === "settling" && state.outcome).toBe("commit");
+  });
+
+  it("a pointer move alone moves the held pane, not home: the pointer's place is the hit's to say", (): void => {
+    let state: DragMachineState = toDragging();
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 200, y: 200 } });
+    expect(state.phase === "dragging" && state.atHome).toBe(false);
   });
 
   it("a touch long-press lifts at home: leftHome starts false", (): void => {
@@ -565,62 +562,6 @@ describe("drag-machine — landing leaf (swap lands in the TARGET slot, not the 
   });
 });
 
-describe("drag-machine — slot-commitment policy (zone-exit-hold vs delta-responsive)", (): void => {
-  it("defaults: mode is delta-responsive, delta is 24px", (): void => {
-    expect(DEFAULT_DRAG_SLOT_COMMITMENT_MODE).toBe("delta-responsive");
-    expect(DEFAULT_DRAG_RERESOLVE_DELTA_PX).toBe(24);
-  });
-
-  it("exiting the seated footprint always re-resolves (both modes)", (): void => {
-    for (const mode of ["zone-exit-hold", "delta-responsive"] as const) {
-      expect(
-        shouldReresolveSeatedTarget({
-          mode,
-          seatAnchor: { x: 100, y: 100 },
-          currentClient: { x: 101, y: 101 },
-          reresolveDeltaPx: 24,
-          cursorWithinSeatedFootprint: false,
-        }),
-      ).toBe(true);
-    }
-  });
-
-  it("zone-exit-hold: holds through any movement WITHIN the seated footprint", (): void => {
-    expect(
-      shouldReresolveSeatedTarget({
-        mode: "zone-exit-hold",
-        seatAnchor: { x: 100, y: 100 },
-        currentClient: { x: 100 + 500, y: 100 }, // huge move, still inside the pane
-        reresolveDeltaPx: 24,
-        cursorWithinSeatedFootprint: true,
-      }),
-    ).toBe(false);
-  });
-
-  it("delta-responsive: holds below the delta, re-resolves at/above it (without exiting)", (): void => {
-    const within = (dx: number): boolean =>
-      shouldReresolveSeatedTarget({
-        mode: "delta-responsive",
-        seatAnchor: { x: 100, y: 100 },
-        currentClient: { x: 100 + dx, y: 100 },
-        reresolveDeltaPx: 24,
-        cursorWithinSeatedFootprint: true,
-      });
-    expect(within(10)).toBe(false); // below threshold → held
-    expect(within(24)).toBe(true); // exactly threshold → re-aim
-    expect(within(40)).toBe(true); // beyond threshold → re-aim
-  });
-});
-
-describe("drag-machine — hysteresis seed (subsumes stableDropStateRef)", (): void => {
-  it("returns the prior zone only for the same hovered leaf", (): void => {
-    const target: DragResolvedTarget = makeTarget("C", "left", "edge-insert");
-    expect(previousZoneSeed(target, "C")).toBe("left");
-    expect(previousZoneSeed(target, "B")).toBeNull();
-    expect(previousZoneSeed(null, "C")).toBeNull();
-  });
-});
-
 describe("drag-machine — touch pickup classifier (resolveTouchArmedMove, pure)", (): void => {
   const origin = { x: 100, y: 100 };
 
@@ -935,6 +876,7 @@ describe("drag-machine — fast drag-release commits at the release position (co
       type: "TARGET_RESOLVED",
       pointerId: 1,
       resolvedTarget: makeTarget("C", "center", "swap"),
+      atHome: false,
     });
     state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
     expect(state.phase).toBe("settling");
@@ -1012,6 +954,7 @@ describe("drag-machine — committable-seat SSOT + atomic seated-release commit 
       type: "TARGET_RESOLVED",
       pointerId: 1,
       resolvedTarget: seatedSwap,
+      atHome: false,
     });
     // The seat the renderer captured at this dwell frame.
     const committableSeat: DragResolvedTarget | null = deriveCommittableSeat(
@@ -1089,6 +1032,7 @@ describe("drag-machine — committable-seat SSOT + atomic seated-release commit 
       type: "TARGET_RESOLVED",
       pointerId: 1,
       resolvedTarget: seatedSwap,
+      atHome: false,
     });
     // Still `dragging` — no auto-advance toward commit without the release event.
     expect(state.phase).toBe("dragging");
@@ -1142,57 +1086,10 @@ describe("drag-machine — commit latch wins over competing cancel (throttling s
   // (first-terminal-event-wins); (2) the FINAL coalesced move can transiently
   // clear `committableSeatRef` to null right before release, so the release
   // commits null → cancel. Fix A latches the commit seat at `pointerup` and
-  // no-ops competing cancels; the decaying fallback closes the transient-clear
-  // tertiary. These pin the pure logic behind that wiring.
+  // no-ops competing cancels; a final sample that holds nothing is not papered
+  // over (the drag hit's one hold rule decides what is held, so a release with
+  // nothing held puts the layout back). These pin the pure logic behind that wiring.
   const seatC: DragResolvedTarget = makeTarget("C", "center", "swap");
-  const seatB: DragResolvedTarget = makeTarget("B", "center", "swap");
-
-  describe("foldCommittableSeatFallback — decaying last-committable-seat fallback", (): void => {
-    it("a non-null seat refreshes the fallback and resets the null run", (): void => {
-      const folded: CommittableSeatFallback = foldCommittableSeatFallback(
-        { lastCommittableSeat: seatB, consecutiveNullSeats: 1 },
-        seatC,
-      );
-      expect(folded.lastCommittableSeat).toBe(seatC);
-      expect(folded.consecutiveNullSeats).toBe(0);
-    });
-
-    it("a SINGLE null seat preserves the fallback (transient final-move clear)", (): void => {
-      const folded: CommittableSeatFallback = foldCommittableSeatFallback(
-        { lastCommittableSeat: seatC, consecutiveNullSeats: 0 },
-        null,
-      );
-      expect(folded.lastCommittableSeat).toBe(seatC);
-      expect(folded.consecutiveNullSeats).toBe(1);
-    });
-
-    it("a SUSTAINED null run (>= 2) drops the fallback (genuine leave → no stale commit)", (): void => {
-      let fallback: CommittableSeatFallback = { lastCommittableSeat: seatC, consecutiveNullSeats: 0 };
-      fallback = foldCommittableSeatFallback(fallback, null); // 1st null — transient, kept
-      expect(fallback.lastCommittableSeat).toBe(seatC);
-      fallback = foldCommittableSeatFallback(fallback, null); // 2nd null — sustained, dropped
-      expect(fallback.lastCommittableSeat).toBeNull();
-      expect(fallback.consecutiveNullSeats).toBe(2);
-    });
-  });
-
-  describe("resolveReleaseCommitSeat — the seat the release latches", (): void => {
-    it("prefers the live seat captured on the final sample", (): void => {
-      expect(
-        resolveReleaseCommitSeat(seatC, { lastCommittableSeat: seatB, consecutiveNullSeats: 0 }),
-      ).toBe(seatC);
-    });
-
-    it("falls back to the last committable seat when the final move transiently cleared it", (): void => {
-      expect(
-        resolveReleaseCommitSeat(null, { lastCommittableSeat: seatC, consecutiveNullSeats: 1 }),
-      ).toBe(seatC);
-    });
-
-    it("stays null when there was never a committable seat (fallback empty → release cancels)", (): void => {
-      expect(resolveReleaseCommitSeat(null, EMPTY_COMMITTABLE_SEAT_FALLBACK)).toBeNull();
-    });
-  });
 
   describe("shouldSuppressCompetingCancel — self-heal only for the genuinely-stuck case", (): void => {
     it("suppresses a competing cancel while a release commit is latched", (): void => {
@@ -1227,11 +1124,8 @@ describe("drag-machine — commit latch wins over competing cancel (throttling s
   it("(assertion 1) a cancel (watchdog onExpire / lostpointercapture / blur) AFTER a commit is latched does NOT revert — commit wins", (): void => {
     let state: DragMachineState = toDragging();
     state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: seatC });
-    // Release latches the committable seat (live seat present, fallback irrelevant).
-    const latched: DragResolvedTarget | null = resolveReleaseCommitSeat(
-      seatC,
-      foldCommittableSeatFallback(EMPTY_COMMITTABLE_SEAT_FALLBACK, seatC),
-    );
+    // Release latches the committable seat the last sample showed.
+    const latched: DragResolvedTarget | null = deriveCommittableSeat(seatC, "A");
     expect(latched).toBe(seatC);
     // A competing cancel arrives in the same task — suppressed, FSM untouched.
     state = competingCancel(state, latched, seatC);
@@ -1256,37 +1150,16 @@ describe("drag-machine — commit latch wins over competing cancel (throttling s
     }
   });
 
-  it("(assertion 3) a final move that transiently clears the seat still commits the last committable seat on release", (): void => {
-    let fallback: CommittableSeatFallback = EMPTY_COMMITTABLE_SEAT_FALLBACK;
+  it("(assertion 3) a final sample that holds nothing leaves no seat to latch: the release cancels, no earlier seat is kept", (): void => {
     // Dwell sample: seated on a committable swap.
     let liveSeat: DragResolvedTarget | null = deriveCommittableSeat(seatC, "A");
-    fallback = foldCommittableSeatFallback(fallback, liveSeat);
     expect(liveSeat).toBe(seatC);
-    // FINAL move: a sub-pixel/footprint-edge jitter resolves null → seat cleared.
+    // The last sample holds nothing (the drag hit let the place go): the seat is what the last frame showed.
     liveSeat = deriveCommittableSeat(null, "A");
-    fallback = foldCommittableSeatFallback(fallback, liveSeat);
     expect(liveSeat).toBeNull();
-    // Release latch falls back to the dwelled seat (single transient clear kept).
-    const latched: DragResolvedTarget | null = resolveReleaseCommitSeat(liveSeat, fallback);
-    expect(latched).toBe(seatC);
-    // FSM commits the latched seat.
-    let state: DragMachineState = toDragging();
-    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: latched });
-    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
-    expect(state.phase).toBe("settling");
-    if (state.phase === "settling") {
-      expect(state.outcome).toBe("commit");
-      expect(state.resolvedTarget?.leafId).toBe("C");
-    }
-  });
-
-  it("a SUSTAINED leave (cursor left all targets and held) decays the fallback → release cancels (no stale commit)", (): void => {
-    let fallback: CommittableSeatFallback = EMPTY_COMMITTABLE_SEAT_FALLBACK;
-    fallback = foldCommittableSeatFallback(fallback, deriveCommittableSeat(seatC, "A")); // seated
-    fallback = foldCommittableSeatFallback(fallback, deriveCommittableSeat(null, "A")); // left (1)
-    fallback = foldCommittableSeatFallback(fallback, deriveCommittableSeat(null, "A")); // still off (2) → decay
-    const latched: DragResolvedTarget | null = resolveReleaseCommitSeat(null, fallback);
-    expect(latched).toBeNull();
+    // The release latches that seat: nothing, so a release puts the layout back.
+    const latched: DragResolvedTarget | null = liveSeat;
+    expect(shouldSuppressCompetingCancel(latched, null)).toBe(false);
     let state: DragMachineState = toDragging();
     state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: latched });
     state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
@@ -1294,14 +1167,10 @@ describe("drag-machine — commit latch wins over competing cancel (throttling s
   });
 
   it("(assertion 4) with NO committable seat ever, release still cancels (no false commit)", (): void => {
-    let fallback: CommittableSeatFallback = EMPTY_COMMITTABLE_SEAT_FALLBACK;
     // Every sample resolved a non-committable position (free-following over gaps).
-    fallback = foldCommittableSeatFallback(fallback, deriveCommittableSeat(null, "A"));
-    fallback = foldCommittableSeatFallback(fallback, deriveCommittableSeat(makeTarget("A", "center", "swap"), "A")); // self-target → null
-    const latched: DragResolvedTarget | null = resolveReleaseCommitSeat(
-      deriveCommittableSeat(null, "A"),
-      fallback,
-    );
+    expect(deriveCommittableSeat(null, "A")).toBeNull();
+    expect(deriveCommittableSeat(makeTarget("A", "center", "swap"), "A")).toBeNull(); // self-target → null
+    const latched: DragResolvedTarget | null = deriveCommittableSeat(null, "A");
     expect(latched).toBeNull();
     expect(shouldSuppressCompetingCancel(latched, null)).toBe(false);
     let state: DragMachineState = toDragging();
@@ -1365,8 +1234,9 @@ describe("drag-machine — REARM (spring-load commit-and-rearm continuation drag
       // Pointer outside the seat → centred grab, the pane centred under the pointer.
       expect(state.pointerAnchorOffset).toEqual({ x: 120, y: 90 });
       expect(state.heldFootprint).toEqual({ left: -80, top: -78, width: 240, height: 180 });
-      // The pointer is off the new seat: a release there commits (or cancels) on its target.
-      expect(state.leftHome).toBe(true);
+      // The drag hit says where home is from its first sample (`TARGET_RESOLVED`): until it does, the drag is at home.
+      expect(state.atHome).toBe(true);
+      expect(state.leftHome).toBe(false);
     }
   });
 
@@ -1443,10 +1313,12 @@ describe("drag-machine — REARM (spring-load commit-and-rearm continuation drag
 
   it("after rearm, the NEW seat is the home: back over it, a release cancels (the pane stays on its new seat)", (): void => {
     let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm());
+    // The pointer is off the new seat: the drag hit's first sample says it holds no home.
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: null, atHome: false });
     expect(state.phase === "dragging" && state.atHome).toBe(false);
     state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 700, y: 500 } });
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("B", "center", "swap"), atHome: true });
     expect(state.phase === "dragging" && state.atHome).toBe(true);
-    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("B", "center", "swap") });
     state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
     expect(state.phase === "settling" && state.outcome).toBe("cancel");
   });
@@ -1456,7 +1328,7 @@ describe("drag-machine — REARM (spring-load commit-and-rearm continuation drag
     state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 900, y: 500 } });
     expect(state.phase === "dragging" && state.heldFootprint).toEqual({ left: 780, top: 410, width: 240, height: 180 });
     const target: DragResolvedTarget = makeTarget("B", "center", "swap");
-    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: target });
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: target, atHome: false });
     expect(activeResolvedTarget(state)?.leafId).toBe("B");
     state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
     expect(state.phase).toBe("settling");

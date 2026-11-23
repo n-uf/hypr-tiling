@@ -4,20 +4,14 @@
  * golden answers what the answers were.
  */
 import { describe, expect, it } from "@jest/globals";
-import { classifyPaneZone, resolvePaneZoneGeometry, TILING_DROP_INTENT_CONFIG } from "../engine/drop-intent-resolver";
-import {
-  DRAG_MACHINE_INITIAL_STATE,
-  deriveCandidateTree,
-  deriveLiveDragTree,
-  dragMachineReducer,
-  type DragMachineState,
-} from "../engine/drag-machine";
+import { paneRegion, type PaneRegion } from "@n-uf/placement/tiling";
+import { resolvePaneCenterGeometry, TILING_DROP_INTENT_CONFIG } from "../engine/drop-intent-resolver";
+import { deriveCandidateTree } from "../engine/drag-machine";
 import { clampHeldRectToStage } from "../engine/drag-landing";
-import { createDragInputDriver } from "../engine/input-driver";
 import { resolveLayoutGeometry } from "../engine/leaf-geometry";
 import { readLeafNodeIds, removeLeafTile, siblingSubtreeForLeaf, tileOrderByLeafId } from "../engine/state";
 import type { TilingLayoutConfig, TilingLayoutNode, TilingSplitNode } from "../engine/types";
-import { AREAS, randomTree, seeded, shape, tilesOf } from "./golden/cases";
+import { AREAS, hitRun, layoutDrag, randomTree, seeded, shape, tilesOf } from "./golden/cases";
 
 const SEEDS = 120;
 const plainTrees = (): TilingLayoutNode[] =>
@@ -137,100 +131,99 @@ describe("drop region properties", () => {
     { width: 90, height: 260 },
     { width: 24, height: 24 },
   ];
-  const step = (p: { x: number; y: number }, zone: string, by: number, size: { width: number; height: number }): { x: number; y: number } => {
-    if (zone === "left") return { x: p.x - by, y: p.y };
-    if (zone === "right") return { x: p.x + by, y: p.y };
-    if (zone === "top") return { x: p.x, y: p.y - by };
-    if (zone === "bottom") return { x: p.x, y: p.y + by };
-    const dx = size.width / 2 - p.x;
-    const dy = size.height / 2 - p.y;
-    const len = Math.hypot(dx, dy);
-    return len <= by || len === 0 ? { x: size.width / 2, y: size.height / 2 } : { x: p.x + (dx / len) * by, y: p.y + (dy / len) * by };
-  };
-
-  it("every point of a pane is in exactly one region, and a held region is never more than the hysteresis past its boundary", () => {
-    const zones = ["center", "top", "right", "bottom", "left"] as const;
+  it("every point of a pane is in exactly one region, the center on the drop hit zone geometry's rectangle", () => {
+    const zones: readonly PaneRegion[] = ["center", "top", "right", "bottom", "left"];
     for (const size of sizes) {
-      const geometry = resolvePaneZoneGeometry(size, { ...TILING_DROP_INTENT_CONFIG, devicePixelRatio: 1 });
+      const geometry = resolvePaneCenterGeometry(size, { ...TILING_DROP_INTENT_CONFIG, devicePixelRatio: 1 });
+      const paneCenter = { width: geometry.width, height: geometry.height, left: geometry.centerLeftPx, top: geometry.centerTopPx, right: geometry.centerRightPx, bottom: geometry.centerBottomPx };
       const r = seeded(size.width);
       for (let i = 0; i < 2000; i++) {
         const p = { x: r() * size.width, y: r() * size.height };
-        const raw = classifyPaneZone(p, geometry);
-        expect(zones).toContain(raw);
-        for (const previous of zones) {
-          const held = classifyPaneZone(p, geometry, { previousZone: previous, hysteresisPx: 6 });
-          expect([raw, previous]).toContain(held);
-          if (held !== raw) expect(classifyPaneZone(step(p, previous, 6, size), geometry)).toBe(previous);
-        }
+        const region = paneRegion({ x: 0, y: 0, ...size }, p, null, { paneCenter });
+        expect(zones).toContain(region);
+        const inCenter = p.x >= geometry.centerLeftPx && p.x <= geometry.centerRightPx && p.y >= geometry.centerTopPx && p.y <= geometry.centerBottomPx;
+        if (inCenter) expect(region).toBe("center");
+        if (!inCenter) expect(region).not.toBe("center");
       }
     }
   });
 });
 
-describe("drag home properties", () => {
-  it("while the pointer has stayed inside the lifted pane's home, the layout is unchanged and no target is asked for", () => {
-    // Counted, so the property cannot pass on drags that never lifted.
-    let drags = 0;
-    let lifts = 0;
-    let liftedSamples = 0;
-    let cancels = 0;
-    for (const tree of plainTrees().slice(0, 40)) {
+describe("drag hit hold properties", () => {
+  it("what the hit holds is the zone under the pointer or the place it held before, and nothing is held before the first sample", () => {
+    // Counted, so the property cannot pass on hits that held nothing.
+    let hits = 0;
+    let kept = 0;
+    let switched = 0;
+    for (const tree of plainTrees().slice(0, 30)) {
       const rects = resolveLayoutGeometry(tree, AREAS[0]!, { gapPx: 6, handleSizePx: 4, minPaneSizePx: 96 }).leaves;
-      for (const [leafId, rect] of rects) {
-        const r = seeded(rect.x * 7 + rect.y * 13 + rect.width);
-        const home = { left: rect.x, top: rect.y, width: rect.width, height: rect.height };
-        let state: DragMachineState = DRAG_MACHINE_INITIAL_STATE;
-        let asked = 0;
-        const driver = createDragInputDriver({
-          getState: (): DragMachineState => state,
-          dispatch: (event): void => {
-            state = dragMachineReducer(state, event);
-          },
-          resolveTarget: (): null => {
-            asked++;
-            return null;
-          },
-          capturePointer: (): void => undefined,
-          getSlotCommitment: () => ({ mode: "delta-responsive", reresolveDeltaPx: 24 }),
-        });
-        const press = { x: rect.x + r() * rect.width, y: rect.y + r() * rect.height };
-        state = dragMachineReducer(state, {
-          type: "POINTER_DOWN",
-          pointerId: 1,
-          pointerType: "mouse",
-          sourceLeafId: leafId,
-          anchorFootprint: home,
-          pointerAnchorOffset: { x: press.x - rect.x, y: press.y - rect.y },
-          originClient: press,
-        });
-        for (let i = 0; i < 40; i++) {
-          // Edges included: some samples sit exactly on the home's edges.
-          const roll = r();
-          const x = roll < 0.1 ? rect.x : roll < 0.2 ? rect.x + rect.width : rect.x + r() * rect.width;
-          const y = roll > 0.9 ? rect.y + rect.height : rect.y + r() * rect.height;
-          driver.processPointerSample({ x, y });
-          if (state.phase !== "dragging") continue;
-          liftedSamples++;
-          expect(state.leftHome).toBe(false);
-          expect(state.resolvedTarget).toBeNull();
-          expect(deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: null, homeHeld: !state.leftHome })).toBe(tree);
+      for (const leafId of [...rects.keys()].slice(0, 3)) {
+        const drag = layoutDrag(tree, leafId, AREAS[0]!, { gapPx: 6, handleSizePx: 4, minPaneSizePx: 96 });
+        if (drag == null) continue;
+        for (const basis of ["lift", "base"] as const) {
+          const { hit } = hitRun(drag, basis);
+          hits++;
+          const r = seeded(Math.round(AREAS[0]!.width * 3 + hits));
+          const point = () => ({ x: r() * AREAS[0]!.width, y: r() * AREAS[0]!.height });
+          for (let i = 0; i < 60; i++) {
+            const p = point();
+            expect(hit.hold(null, p)?.place ?? null).toBe(hit.zone(p));
+            const q = point();
+            const taken = hit.hold(null, q);
+            if (taken == null) continue;
+            const held = hit.hold(taken, p);
+            const raw = hit.zone(p);
+            if (held == null) expect(raw).toBeNull();
+            else expect([raw, taken.place]).toContain(held.place);
+            if (held?.place === taken.place && raw !== taken.place) kept++;
+            if (held != null && held.place !== taken.place) switched++;
+          }
         }
-        expect(asked).toBe(0);
-        drags++;
-        if (state.phase === "dragging") lifts++;
-        // A release there restores: it cancels (or, never lifted, was a click).
-        driver.latchRelease();
-        state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
-        expect(state.phase === "idle" || (state.phase === "settling" && state.outcome === "cancel")).toBe(true);
-        if (state.phase === "settling") cancels++;
       }
     }
-    // Every pane here is far larger than the pickup threshold: every drag lifts,
-    // nearly every sample is a held one, and every lifted release cancels.
-    expect(drags).toBeGreaterThan(150);
-    expect(lifts).toBe(drags);
-    expect(cancels).toBe(lifts);
-    expect(liftedSamples).toBeGreaterThanOrEqual(drags * 35);
+    expect(hits).toBeGreaterThan(100);
+    expect(kept).toBeGreaterThan(0);
+    expect(switched).toBeGreaterThan(0);
+  });
+});
+
+describe("drag home properties", () => {
+  it("while the pointer has stayed inside the lifted pane's home, the hit holds home, the layout drawn is the lift's and a release cancels", () => {
+    // Counted, so the property cannot pass on drags that never held anything.
+    let drags = 0;
+    let samples = 0;
+    let releases = 0;
+    for (const tree of plainTrees().slice(0, 40)) {
+      const config: TilingLayoutConfig = { gapPx: 6, handleSizePx: 4, minPaneSizePx: 96 };
+      const rects = resolveLayoutGeometry(tree, AREAS[0]!, config).leaves;
+      for (const [leafId, rect] of rects) {
+        const drag = layoutDrag(tree, leafId, AREAS[0]!, config);
+        if (drag == null) continue;
+        for (const basis of ["lift", "base"] as const) {
+          const run = hitRun(drag, basis);
+          const r = seeded(rect.x * 7 + rect.y * 13 + rect.width + (basis === "lift" ? 0 : 1));
+          let read = run.at({ x: rect.x + r() * rect.width, y: rect.y + r() * rect.height });
+          for (let i = 0; i < 40; i++) {
+            // Edges included: some samples sit exactly on the home's edges.
+            const roll = r();
+            const x = roll < 0.1 ? rect.x : roll < 0.2 ? rect.x + rect.width : rect.x + r() * rect.width;
+            const y = roll > 0.9 ? rect.y + rect.height : rect.y + r() * rect.height;
+            read = run.at({ x, y });
+            samples++;
+            expect(read.held).toEqual({ kind: "home" });
+            // The frame draws the layout at the lift: the pane's place open, the others where they were.
+            expect(run.hit.drawn(read).tree).toBe(drag.lift.tree);
+          }
+          // A release there restores: it commits home's tree, the lift itself.
+          expect(run.hit.release(read).tree).toBe(drag.lift.tree);
+          drags++;
+          releases++;
+        }
+      }
+    }
+    expect(drags).toBeGreaterThan(300);
+    expect(releases).toBe(drags);
+    expect(samples).toBeGreaterThanOrEqual(drags * 40);
   });
 });
 

@@ -2,15 +2,16 @@ import { describe, expect, it } from "@jest/globals";
 import { readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../engine/state";
 import {
   DRAG_MACHINE_INITIAL_STATE,
+  activeDragSourceLeafId,
   deriveCandidateTree,
-  deriveLiveDragTree,
   dragMachineReducer,
   type DragMachineEvent,
   type DragMachineState,
   type DragResolvedTarget,
 } from "../engine/drag-machine";
 import type { TilingDropIntentState } from "../engine/drop-intent-resolver";
-import type { TilingLayoutNode, TilingLeafDropZone, TilingLeafNode, TilingSplitNode } from "../engine/types";
+import type { TilingLayoutConfig, TilingLayoutNode, TilingLeafDropZone, TilingLeafNode, TilingSplitNode } from "../engine/types";
+import { hitRun, layoutDrag } from "./golden/cases";
 
 function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };
@@ -57,62 +58,67 @@ function twoPaneLayout(): TilingSplitNode {
 
 const SOURCE_LEAF_ID = "A";
 
-/** The tree a live drag lays out with no room target, after the pointer left home (the old gap-closed base). */
-function liveTree(sourceLeafId: string | null, layout: TilingLayoutNode, homeHeld = false): TilingLayoutNode {
-  return deriveLiveDragTree({ layout, sourceLeafId, roomTarget: null, homeHeld });
-}
+const CONFIG: TilingLayoutConfig = { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 };
+const STAGE = { width: 1000, height: 800 };
 
-describe("live-drag cleanup — frozen tree is parked ONLY while drag state is held", (): void => {
-  it("in-flight live drag (source held, home left) displays the gap-closed frozen tree (source absent)", (): void => {
+describe("live-drag cleanup — the base is drawn ONLY while drag state is held", (): void => {
+  it("in-flight live drag (source held, nothing held yet) displays the gap-closed base (source absent)", (): void => {
     const layout: TilingSplitNode = baseLayout();
-    const displayed: TilingLayoutNode = liveTree(SOURCE_LEAF_ID, layout);
-    // Mid-drag the displayed tree IS the detach tree, NOT the original layout.
-    expect(displayed).not.toBe(layout);
-    expect(displayed).toEqual(removeLeafTile(layout, SOURCE_LEAF_ID));
-    expect(readLeafNodeIds(displayed)).not.toContain(SOURCE_LEAF_ID);
+    const drag = layoutDrag(layout, SOURCE_LEAF_ID, STAGE, CONFIG)!;
+    const run = hitRun(drag, "base");
+    // Nothing held: a frame draws the base, the subject taken out and its gap closed.
+    const drawn = run.hit.drawn({ held: null, refused: null, mark: null });
+    expect(drawn.tree).toBe(drag.base.tree);
+    expect(drawn.tree.layout).not.toBe(layout);
+    expect(drawn.tree.layout).toEqual(removeLeafTile(layout, SOURCE_LEAF_ID));
+    expect(readLeafNodeIds(drawn.tree.layout!)).not.toContain(SOURCE_LEAF_ID);
   });
 
-  it("after dragend with NO valid drop (state cleared → source null) the displayed tree IS the original layout", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    // clearDragInteraction() sets dragSourceLeafId = null; the displayed tree must
-    // collapse back to the original layout (gap restored), NOT stay frozen.
-    const displayed: TilingLayoutNode = liveTree(null, layout);
-    expect(displayed).toBe(layout);
-    expect([...readLeafNodeIds(displayed)].sort()).toEqual(["A", "B", "C"]);
+  it("after dragend with NO valid drop (state cleared → source null) the drag has no source: the renderer lays out the prop layout", (): void => {
+    const dragging: DragMachineState = dragMachineDraggingOver("C");
+    expect(activeDragSourceLeafId(dragging)).toBe(SOURCE_LEAF_ID);
+    // clearDragInteraction() empties the source; with it the hit goes, and the prop layout is what is laid out.
+    const settling: DragMachineState = dragMachineReducer(dragging, { type: "POINTER_CANCEL", pointerId: 1 });
+    const idle: DragMachineState = dragMachineReducer(settling, { type: "SETTLE_DONE" });
+    expect(activeDragSourceLeafId(idle)).toBeNull();
+    expect(activeDragSourceLeafId(settling)).toBeNull();
   });
 
-  it("after cancel/Escape (state cleared) the displayed tree IS the original layout", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    const displayed: TilingLayoutNode = liveTree(null, layout);
-    expect(displayed).toBe(layout);
-    expect(readLeafNodeIds(displayed)).toContain(SOURCE_LEAF_ID);
+  it("after cancel/Escape (state cleared) the drag has no source", (): void => {
+    const dragging: DragMachineState = dragMachineDraggingOver("C");
+    const idle: DragMachineState = dragMachineReducer(dragMachineReducer(dragging, { type: "ESCAPE" }), { type: "SETTLE_DONE" });
+    expect(activeDragSourceLeafId(idle)).toBeNull();
   });
 
-  it("two-pane parked-forever symptom: pickup collapses to the survivor; clear restores BOTH panes", (): void => {
+  it("two-pane parked-forever symptom: pickup collapses to the survivor; the lift restores BOTH panes", (): void => {
     const layout: TilingSplitNode = twoPaneLayout();
-
-    // Mid-drag: picking up "A" collapses the tree to the survivor "B" full-width —
+    const drag = layoutDrag(layout, "A", STAGE, CONFIG)!;
+    // Mid-drag: picking up "A" collapses the base to the survivor "B" full-width —
     // this is the state that, when left uncleared, parked the layout forever.
-    const midDrag: TilingLayoutNode = liveTree("A", layout);
-    expect(readLeafNodeIds(midDrag)).toEqual(["B"]);
-
-    // Drag end / cancel clears the source → both panes restored (gap closes back up).
-    const afterClear: TilingLayoutNode = liveTree(null, layout);
-    expect(afterClear).toBe(layout);
-    expect([...readLeafNodeIds(afterClear)].sort()).toEqual(["A", "B"]);
+    expect(readLeafNodeIds(drag.base.tree.layout!)).toEqual(["B"]);
+    // The lift (what a cancel restores, and home draws) has both panes, the layout itself.
+    expect(drag.lift.tree.layout).toBe(layout);
+    expect([...readLeafNodeIds(drag.lift.tree.layout!)].sort()).toEqual(["A", "B"]);
   });
 
-  it("while the home holds the source is never detached, whatever the held source id", (): void => {
+  it("while the hit holds home the source is never detached, on either basis", (): void => {
     const layout: TilingSplitNode = baseLayout();
-    // (Preview, non-live, mode never reaches the live tree: the renderer lays
-    // out the prop `layout` unless a live drag is in flight.)
-    expect(liveTree(SOURCE_LEAF_ID, layout, true)).toBe(layout);
-    expect(liveTree("B", twoPaneLayout(), true)).toEqual(twoPaneLayout());
+    for (const basis of ["lift", "base"] as const) {
+      const run = hitRun(layoutDrag(layout, SOURCE_LEAF_ID, STAGE, CONFIG)!, basis);
+      const read = run.at({ x: 100, y: 100 });
+      expect(read.held).toEqual({ kind: "home" });
+      expect(run.hit.drawn(read).tree.layout).toBe(layout);
+    }
   });
 
-  it("root-leaf source is a no-op detach (keeps the original tree, never null/collapsed)", (): void => {
+  it("root-leaf source is a no-op detach: the whole stage is home, the drawn layout stays the original (never null/collapsed)", (): void => {
     const rootLeaf: TilingLeafNode = leaf("only", "tile-only");
-    expect(liveTree("only", rootLeaf)).toBe(rootLeaf);
+    for (const basis of ["lift", "base"] as const) {
+      const run = hitRun(layoutDrag(rootLeaf, "only", STAGE, CONFIG)!, basis);
+      const read = run.at({ x: 500, y: 400 });
+      expect(read.held).toEqual({ kind: "home" });
+      expect(run.hit.drawn(read).tree.layout).toBe(rootLeaf);
+    }
   });
 });
 
@@ -162,7 +168,8 @@ function dragMachineDraggingOver(targetLeafId: string): DragMachineState {
     originClient: { x: 10, y: 10 },
   });
   drive({ type: "POINTER_MOVE", pointerId: 1, client: { x: 200, y: 200 } });
-  drive({ type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeResolvedTarget(targetLeafId, "center", "swap") });
+  // The drag hit holds the swap, so it holds no home (`atHome: false`): a release commits it.
+  drive({ type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeResolvedTarget(targetLeafId, "center", "swap"), atHome: false });
   return state;
 }
 

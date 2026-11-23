@@ -2,7 +2,7 @@
  * Dragging a whole tab group (engine half): the group node moves as one —
  * taken out (gap closed), swapped, inserted beside a target, or merged into it
  * (every member joins as a tab, the dragged active tab active) — and the drag
- * machine carries the subject and a torn-off tab's home.
+ * machine carries the subject.
  */
 import { describe, expect, it } from "@jest/globals";
 import {
@@ -132,7 +132,7 @@ describe("deriveCandidateTree with a group subject", (): void => {
   });
 });
 
-describe("drag machine: subject and a torn-off tab's home", (): void => {
+describe("drag machine: subject", (): void => {
   const down = {
     type: "POINTER_DOWN" as const,
     pointerId: 1,
@@ -150,14 +150,5 @@ describe("drag machine: subject and a torn-off tab's home", (): void => {
     expect(state.phase === "dragging" && state.subject).toBe("group");
     state = dragMachineReducer(state, { type: "ESCAPE" });
     expect(state.phase === "settling" && state.subject).toBe("group");
-  });
-
-  it("a tab's home is the whole group: moving over the strip has not left it", (): void => {
-    const home = { left: 500, top: 0, width: 500, height: 300 };
-    let state: DragMachineState = dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, { ...down, homeFootprint: home });
-    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 540, y: 10 } });
-    expect(state.phase === "dragging" && state.leftHome).toBe(false);
-    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 300, y: 10 } });
-    expect(state.phase === "dragging" && state.leftHome).toBe(true);
   });
 });

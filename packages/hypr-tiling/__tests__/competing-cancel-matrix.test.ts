@@ -10,7 +10,6 @@ import {
 import {
   type DragInputDriver,
   type DragInputDriverHost,
-  type DragInputDriverSlotCommitment,
   createDragInputDriver,
   shouldArmIdleWatchdog,
 } from "../engine/input-driver";
@@ -62,10 +61,6 @@ interface DriverHarness {
 function createHarness(): DriverHarness {
   let state: DragMachineState = DRAG_MACHINE_INITIAL_STATE;
   let resolver: () => DragResolvedTarget | null = (): DragResolvedTarget | null => null;
-  const slotCommitment: DragInputDriverSlotCommitment = {
-    mode: "delta-responsive",
-    reresolveDeltaPx: 24,
-  };
   const host: DragInputDriverHost = {
     getState: (): DragMachineState => state,
     dispatch: (event: DragMachineEvent): void => {
@@ -73,7 +68,6 @@ function createHarness(): DriverHarness {
     },
     resolveTarget: (): DragResolvedTarget | null => resolver(),
     capturePointer: (): void => {},
-    getSlotCommitment: (): DragInputDriverSlotCommitment => slotCommitment,
   };
   const driver: DragInputDriver = createDragInputDriver(host);
   return {
@@ -176,8 +170,8 @@ describe("competing-cancel matrix — every source × {idle, seated-committable,
   });
 });
 
-describe("competing-cancel matrix — fallback decay feeds the release latch", (): void => {
-  it("a single transient final-move clear → latch still commits the dwelled seat", (): void => {
+describe("competing-cancel matrix — the release latch is what the last sample showed", (): void => {
+  it("a clear on the final move → the latch holds nothing (no earlier seat is kept: the hit's hold rule decides what is held)", (): void => {
     const harness: DriverHarness = createHarness();
     const seat: DragResolvedTarget = makeTarget("C", "center", "swap");
     harness.setResolver((): DragResolvedTarget | null => seat);
@@ -185,7 +179,10 @@ describe("competing-cancel matrix — fallback decay feeds the release latch", (
     harness.driver.processPointerSample({ x: 10, y: 0 });
     harness.setResolver((): DragResolvedTarget | null => null);
     harness.driver.processPointerSample({ x: 12, y: 0 });
-    expect(harness.driver.latchRelease()?.leafId).toBe("C");
+    expect(harness.driver.committableSeat).toBeNull();
+    expect(harness.driver.latchRelease()).toBeNull();
+    // With no seat and no latch the arbiter lets a genuinely stuck drag self-heal.
+    expect(harness.driver.shouldDispatchCompetingCancel()).toBe(true);
   });
 
   it("a sustained null run (genuine leave) → latch cancels (null)", (): void => {

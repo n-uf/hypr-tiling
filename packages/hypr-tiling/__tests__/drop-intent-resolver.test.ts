@@ -1,208 +1,93 @@
 import { describe, expect, it } from "@jest/globals";
+import { paneRegion, type PaneRegion } from "@n-uf/placement/tiling";
 import {
   TILING_DROP_INTENT_CONFIG,
-  buildGroupTabStripMergeIntent,
-  classifyPaneZone,
   paneZoneCenterInsetPercent,
-  pointInClientBounds,
-  resolveDominantEdge,
-  resolveDropIntent,
-  resolveDropIntentHitZoneDiagnostics,
-  resolveGroupTabStripHit,
-  resolveHostGroupDropTargetHit,
-  resolvePaneZoneGeometry,
+  paneZoneClipPaths,
+  resolveCenterRatios,
+  resolvePaneCenterGeometry,
   toPaneLocalPoint,
 } from "../engine/drop-intent-resolver";
-import type { TilingPanePoint } from "../engine/drop-intent-resolver";
-import type {
-  TilingPaneSize,
-  TilingZoneGeometryConfig,
-} from "../engine/drop-intent-resolver";
-import type {
-  TilingLeafDropZone,
-  TilingSplitAxis,
-} from "../engine/types";
+import type { TilingPanePoint, TilingPaneSize, TilingZoneGeometryConfig } from "../engine/drop-intent-resolver";
+import type { TilingLayoutConfig, TilingLayoutNode } from "../engine/types";
+import { hitRun, layoutDrag } from "./golden/cases";
 
-const EMPTY_AXIS_PATH: ReadonlyArray<TilingSplitAxis> = [];
+/**
+ * The drop hit zones: the pane's center rectangle as the drop hit zone geometry gives it
+ * (`resolvePaneCenterGeometry`), and the region a point is in by placement's `paneRegion` on that center, which is how
+ * the drag's hit reads a pane. Which place the pointer holds is the hit's (see `drag-home`, `tiling-hit-conformance`
+ * and the properties of `golden-properties`); here are the zones themselves, and what the hit makes of a group.
+ */
+
 const SQUARE_PANE: TilingPaneSize = { width: 200, height: 200 };
-
-interface ZoneEvaluation {
-  isValid: boolean;
-  rejectionReason: string | null;
-}
 
 function makeConfig(overrides?: Partial<TilingZoneGeometryConfig>): TilingZoneGeometryConfig {
   return {
     centerRatio: TILING_DROP_INTENT_CONFIG.centerRatio,
     centerMinPx: TILING_DROP_INTENT_CONFIG.centerMinPx,
-    hysteresisPx: TILING_DROP_INTENT_CONFIG.hysteresisPx,
     devicePixelRatio: 1,
     ...overrides,
   };
 }
 
-function allValid(): ZoneEvaluation {
-  return { isValid: true, rejectionReason: null };
-}
-
-function resolveAt(
-  paneLocalX: number,
-  paneLocalY: number,
-  options?: {
-    config?: TilingZoneGeometryConfig;
-    previousZone?: TilingLeafDropZone | null;
-    evaluateZone?: (zone: TilingLeafDropZone) => ZoneEvaluation;
-    paneSize?: TilingPaneSize;
-  },
-) {
-  return resolveDropIntent({
-    leafId: "target",
-    paneLocalX,
-    paneLocalY,
-    paneSize: options?.paneSize ?? SQUARE_PANE,
-    axisPath: EMPTY_AXIS_PATH,
-    geometryConfig: options?.config ?? makeConfig(),
-    previousZone: options?.previousZone ?? null,
-    evaluateZone: options?.evaluateZone ?? allValid,
-  });
+/** The region of the pane-local point (`x`, `y`) of a pane of `size`, on the center the geometry gives it. */
+function regionAt(x: number, y: number, options?: { config?: TilingZoneGeometryConfig; paneSize?: TilingPaneSize }): PaneRegion {
+  const size: TilingPaneSize = options?.paneSize ?? SQUARE_PANE;
+  const g = resolvePaneCenterGeometry(size, options?.config ?? makeConfig());
+  const paneCenter = { width: g.width, height: g.height, left: g.centerLeftPx, top: g.centerTopPx, right: g.centerRightPx, bottom: g.centerBottomPx };
+  return paneRegion({ x: 0, y: 0, ...size }, { x, y }, null, { paneCenter });
 }
 
 describe("hit-zone geometry (single source of truth)", (): void => {
   it("classifies the pane centroid as the center swap zone", (): void => {
-    const result = resolveAt(100, 100);
-    expect(result.zone).toBe("center");
-    expect(result.action).toBe("swap");
-    expect(result.finalEdge).toBeNull();
+    expect(regionAt(100, 100)).toBe("center");
   });
 
   it("classifies each edge trapezoid deterministically", (): void => {
-    expect(resolveAt(10, 100).zone).toBe("left");
-    expect(resolveAt(190, 100).zone).toBe("right");
-    expect(resolveAt(100, 10).zone).toBe("top");
-    expect(resolveAt(100, 190).zone).toBe("bottom");
-  });
-
-  it("blocks the center swap when the evaluator rejects it", (): void => {
-    const result = resolveAt(100, 100, {
-      evaluateZone: (zone): ZoneEvaluation =>
-        zone === "center"
-          ? { isValid: false, rejectionReason: "same source and target leaf" }
-          : allValid(),
-    });
-    expect(result.zone).toBe("center");
-    expect(result.action).toBe("none");
-    expect(result.blockedReason).toBe("same source and target leaf");
-  });
-
-  it("blocks an edge insert and records every rejected split reason", (): void => {
-    const result = resolveAt(10, 100, {
-      evaluateZone: (zone): ZoneEvaluation => ({
-        isValid: false,
-        rejectionReason: `${zone} blocked by min-pane constraint`,
-      }),
-    });
-    expect(result.zone).toBe("left");
-    expect(result.action).toBe("none");
-    expect(result.blockedReason).toBe("left blocked by min-pane constraint");
-    expect(result.rejectedSplitReasons.length).toBe(4);
+    expect(regionAt(10, 100)).toBe("left");
+    expect(regionAt(190, 100)).toBe("right");
+    expect(regionAt(100, 10)).toBe("top");
+    expect(regionAt(100, 190)).toBe("bottom");
   });
 });
 
-describe("parameterized geometry (centerRatio / centerMinPx / hysteresisPx)", (): void => {
+describe("parameterized geometry (centerRatio / centerMinPx)", (): void => {
   it("widens the center swap rectangle as centerRatio grows (edge band shrinks)", (): void => {
     // Default ratio 0.34 → center rect [66, 134]; (140,100) is in the RIGHT band.
-    expect(resolveAt(140, 100).zone).toBe("right");
+    expect(regionAt(140, 100)).toBe("right");
     // ratio 0.5 → center rect [50, 150]; the SAME point now lands in CENTER.
-    const wide = resolveAt(140, 100, { config: makeConfig({ centerRatio: 0.5 }) });
-    expect(wide.zone).toBe("center");
-    expect(wide.action).toBe("swap");
-  });
-
-  it("derives the edge threshold ratio as the complement of centerRatio", (): void => {
-    const result = resolveAt(100, 100, { config: makeConfig({ centerRatio: 0.5 }) });
-    expect(result.tuning.centerRatio).toBe(0.5);
-    expect(result.tuning.edgeThresholdRatio).toBeCloseTo((1 - 0.5) / 2, 6);
+    expect(regionAt(140, 100, { config: makeConfig({ centerRatio: 0.5 }) })).toBe("center");
   });
 
   it("clamps centerRatio into [0.05, 0.95]", (): void => {
-    const tooSmall = resolveAt(100, 100, { config: makeConfig({ centerRatio: 0.001 }) });
-    expect(tooSmall.tuning.centerRatio).toBe(0.05);
-    const tooLarge = resolveAt(100, 100, { config: makeConfig({ centerRatio: 1.5 }) });
-    expect(tooLarge.tuning.centerRatio).toBe(0.95);
+    expect(resolveCenterRatios({ centerRatio: 0.001, centerMinPx: 24 })).toEqual({ x: 0.05, y: 0.05 });
+    expect(resolveCenterRatios({ centerRatio: 1.5, centerMinPx: 24 })).toEqual({ x: 0.95, y: 0.95 });
   });
 
   it("applies centerMinPx as the floor for the center rectangle on tiny panes", (): void => {
     const tinyPane: TilingPaneSize = { width: 50, height: 50 };
     // 50 * 0.34 = 17 < 24, so the floor wins: center rect is 24px wide.
-    const floored = resolvePaneZoneGeometry(tinyPane, makeConfig({ centerMinPx: 24 }));
+    const floored = resolvePaneCenterGeometry(tinyPane, makeConfig({ centerMinPx: 24 }));
     expect(floored.centerRightPx - floored.centerLeftPx).toBe(24);
     // Drop the floor to 0 → the raw ratio extent (17px) governs instead.
-    const unfloored = resolvePaneZoneGeometry(tinyPane, makeConfig({ centerMinPx: 0 }));
+    const unfloored = resolvePaneCenterGeometry(tinyPane, makeConfig({ centerMinPx: 0 }));
     expect(unfloored.centerRightPx - unfloored.centerLeftPx).toBeCloseTo(17, 6);
-  });
-
-  it("disables the hysteresis hold when hysteresisPx is 0", (): void => {
-    // Default 6px holds the previous center zone at x=137; 0px must switch.
-    const held = resolveAt(137, 100, { previousZone: "center" });
-    expect(held.zone).toBe("center");
-    const noHold = resolveAt(137, 100, { previousZone: "center", config: makeConfig({ hysteresisPx: 0 }) });
-    expect(noHold.zone).toBe("right");
-    expect(noHold.fallbackReason).toBeNull();
-  });
-
-  it("widens the hysteresis hold band as hysteresisPx grows", (): void => {
-    // At 6px the cursor at x=145 has already switched to "right".
-    expect(resolveAt(145, 100, { previousZone: "center" }).zone).toBe("right");
-    // A larger 16px band still holds "center" at the same point.
-    const wideBand = resolveAt(145, 100, { previousZone: "center", config: makeConfig({ hysteresisPx: 16 }) });
-    expect(wideBand.zone).toBe("center");
-    expect(wideBand.fallbackReason).toContain("hysteresis-hold");
   });
 });
 
 describe("corner / boundary determinism", (): void => {
   it("resolves a symmetric corner the same way every call (no oscillation)", (): void => {
-    const first = resolveAt(20, 20);
-    const second = resolveAt(20, 20);
-    const third = resolveAt(20, 20);
-    expect(first.zone).toBe(second.zone);
-    expect(second.zone).toBe(third.zone);
+    const first = regionAt(20, 20);
+    expect(regionAt(20, 20)).toBe(first);
+    expect(regionAt(20, 20)).toBe(first);
     // top is enumerated before left, so an exact diagonal tie resolves to top.
-    expect(first.zone).toBe("top");
+    expect(first).toBe("top");
   });
 
   it("partitions the pane with no center/edge overlap at the boundary", (): void => {
-    const geometry = resolvePaneZoneGeometry(SQUARE_PANE, makeConfig());
-    const justInside = classifyPaneZone(
-      { x: geometry.centerRightPx - 0.5, y: 100 },
-      geometry,
-    );
-    const justOutside = classifyPaneZone(
-      { x: geometry.centerRightPx + 0.5, y: 100 },
-      geometry,
-    );
-    expect(justInside).toBe("center");
-    expect(justOutside).toBe("right");
-  });
-});
-
-describe("geometric hysteresis", (): void => {
-  it("holds the previous center zone within the hysteresis band", (): void => {
-    // center right boundary is at x=134 for a 200px pane @ ratio 0.34.
-    const held = resolveAt(137, 100, { previousZone: "center" });
-    expect(held.zone).toBe("center");
-    expect(held.fallbackReason).toContain("hysteresis-hold");
-  });
-
-  it("switches once the cursor crosses beyond the hysteresis band", (): void => {
-    const switched = resolveAt(145, 100, { previousZone: "center" });
-    expect(switched.zone).toBe("right");
-    expect(switched.fallbackReason).toBeNull();
-  });
-
-  it("does not apply hysteresis when there is no previous zone", (): void => {
-    const fresh = resolveAt(137, 100, { previousZone: null });
-    expect(fresh.zone).toBe("right");
+    const geometry = resolvePaneCenterGeometry(SQUARE_PANE, makeConfig());
+    expect(regionAt(geometry.centerRightPx - 0.5, 100)).toBe("center");
+    expect(regionAt(geometry.centerRightPx + 0.5, 100)).toBe("right");
   });
 });
 
@@ -210,19 +95,7 @@ describe("coordinate-origin transforms", (): void => {
   it("maps a client point through the pane rect origin into pane-local space", (): void => {
     const local = toPaneLocalPoint({ x: 150, y: 120 }, { left: 50, top: 20 });
     expect(local).toEqual({ x: 100, y: 100 });
-
-    const result = resolveDropIntent({
-      leafId: "target",
-      paneLocalX: local.x,
-      paneLocalY: local.y,
-      paneSize: SQUARE_PANE,
-      axisPath: EMPTY_AXIS_PATH,
-      geometryConfig: makeConfig(),
-      evaluateZone: allValid,
-    });
-    expect(result.zone).toBe("center");
-    expect(result.paneLocalX).toBe(100);
-    expect(result.paneLocalY).toBe(100);
+    expect(regionAt(local.x, local.y)).toBe("center");
   });
 
   it("is invariant to the absolute client offset of the pane", (): void => {
@@ -234,30 +107,21 @@ describe("coordinate-origin transforms", (): void => {
 
 describe("devicePixelRatio / Retina correctness", (): void => {
   it("snaps every center-rectangle boundary onto the device-pixel grid", (): void => {
-    const geometry = resolvePaneZoneGeometry(
-      { width: 201, height: 201 },
-      makeConfig({ devicePixelRatio: 2 }),
-    );
-    for (const boundary of [
-      geometry.centerLeftPx,
-      geometry.centerTopPx,
-      geometry.centerRightPx,
-      geometry.centerBottomPx,
-    ]) {
+    const geometry = resolvePaneCenterGeometry({ width: 201, height: 201 }, makeConfig({ devicePixelRatio: 2 }));
+    for (const boundary of [geometry.centerLeftPx, geometry.centerTopPx, geometry.centerRightPx, geometry.centerBottomPx]) {
       expect((boundary * 2) % 1).toBe(0);
     }
   });
 
-  it("reports the resolved device pixel ratio in tuning", (): void => {
-    const result = resolveAt(100, 100, { config: makeConfig({ devicePixelRatio: 3 }) });
-    expect(result.tuning.devicePixelRatio).toBe(3);
+  it("reports the device pixel ratio in the geometry", (): void => {
+    expect(resolvePaneCenterGeometry(SQUARE_PANE, makeConfig({ devicePixelRatio: 3 })).devicePixelRatio).toBe(3);
   });
 });
 
 describe("per-axis centerRatio (asymmetric swap-zone sizing)", (): void => {
   it("sizes the center rect independently per axis on a square pane", (): void => {
     // centerRatioX 0.5, centerRatioY 0.2 → wide-but-short center rect.
-    const geometry = resolvePaneZoneGeometry(SQUARE_PANE, makeConfig({ centerRatioX: 0.5, centerRatioY: 0.2 }));
+    const geometry = resolvePaneCenterGeometry(SQUARE_PANE, makeConfig({ centerRatioX: 0.5, centerRatioY: 0.2 }));
     const centerWidth: number = geometry.centerRightPx - geometry.centerLeftPx;
     const centerHeight: number = geometry.centerBottomPx - geometry.centerTopPx;
     expect(centerWidth).toBeCloseTo(SQUARE_PANE.width * 0.5, 6);
@@ -266,23 +130,15 @@ describe("per-axis centerRatio (asymmetric swap-zone sizing)", (): void => {
   });
 
   it("falls back to the symmetric centerRatio for the unspecified axis", (): void => {
-    const geometry = resolvePaneZoneGeometry(SQUARE_PANE, makeConfig({ centerRatio: 0.4, centerRatioX: 0.6 }));
+    const geometry = resolvePaneCenterGeometry(SQUARE_PANE, makeConfig({ centerRatio: 0.4, centerRatioX: 0.6 }));
     const centerWidth: number = geometry.centerRightPx - geometry.centerLeftPx;
     const centerHeight: number = geometry.centerBottomPx - geometry.centerTopPx;
     expect(centerWidth).toBeCloseTo(SQUARE_PANE.width * 0.6, 6);
     expect(centerHeight).toBeCloseTo(SQUARE_PANE.height * 0.4, 6);
   });
 
-  it("reports both per-axis ratios in the hit-zone diagnostics", (): void => {
-    const diagnostics = resolveDropIntentHitZoneDiagnostics({
-      paneSize: SQUARE_PANE,
-      geometryConfig: makeConfig({ centerRatioX: 0.5, centerRatioY: 0.2 }),
-      evaluateZone: allValid,
-    });
-    expect(diagnostics.centerRatioX).toBe(0.5);
-    expect(diagnostics.centerRatioY).toBe(0.2);
-    // the representative `centerRatio` tracks the X axis
-    expect(diagnostics.centerRatio).toBe(0.5);
+  it("resolves both per-axis ratios", (): void => {
+    expect(resolveCenterRatios({ centerRatio: 0.34, centerRatioX: 0.5, centerRatioY: 0.2, centerMinPx: 24 })).toEqual({ x: 0.5, y: 0.2 });
   });
 
   it("derives per-axis center insets (paneZoneCenterInsetPercent)", (): void => {
@@ -293,75 +149,26 @@ describe("per-axis centerRatio (asymmetric swap-zone sizing)", (): void => {
 });
 
 describe("zone / overlay agreement", (): void => {
-  it("derives the same center inset for overlay and resolver", (): void => {
+  it("derives the same center inset for overlay and geometry", (): void => {
     const config = makeConfig();
-    const result = resolveAt(100, 100, { config });
+    const geometry = resolvePaneCenterGeometry(SQUARE_PANE, config);
     const insetPercent = paneZoneCenterInsetPercent(config.centerRatio, config.centerRatio);
-    // edge threshold ratio is the fractional inset; overlay uses the same value.
     // A symmetric ratio yields equal X / Y insets.
     expect(insetPercent.x).toBeCloseTo(insetPercent.y, 6);
-    expect(result.edgeThresholdRatio * 100).toBeCloseTo(insetPercent.x, 6);
+    expect((geometry.centerLeftPx / SQUARE_PANE.width) * 100).toBeCloseTo(insetPercent.x, 6);
   });
 
-  it("matches the diagnostics geometry used to draw the overlay", (): void => {
-    const config = makeConfig();
-    const diagnostics = resolveDropIntentHitZoneDiagnostics({
-      paneSize: SQUARE_PANE,
-      geometryConfig: config,
-      evaluateZone: allValid,
-    });
-    const geometry = resolvePaneZoneGeometry(SQUARE_PANE, config);
-    expect(diagnostics.geometry).toEqual(geometry);
-    expect(diagnostics.edgeZones.length).toBe(4);
-    expect(diagnostics.centerRectWidthPx).toBe(geometry.centerRightPx - geometry.centerLeftPx);
-  });
-});
-
-describe("resolveDominantEdge (diagnostic)", (): void => {
-  it("reports the edge the cursor leans toward outside the center rect", (): void => {
-    const geometry = resolvePaneZoneGeometry(SQUARE_PANE, makeConfig());
-    expect(resolveDominantEdge({ x: 10, y: 100 }, geometry)).toBe("left");
-    expect(resolveDominantEdge({ x: 190, y: 100 }, geometry)).toBe("right");
-    expect(resolveDominantEdge({ x: 100, y: 10 }, geometry)).toBe("top");
-    expect(resolveDominantEdge({ x: 100, y: 190 }, geometry)).toBe("bottom");
-  });
-
-  it("resolves the symmetric center tie to top (canonical tie-break order)", (): void => {
-    const geometry = resolvePaneZoneGeometry(SQUARE_PANE, makeConfig());
-    // All four normalized penetrations are equal at the centroid; top wins.
-    expect(resolveDominantEdge({ x: 100, y: 100 }, geometry)).toBe("top");
-  });
-
-  it("still names the leaning edge for a point inside the center rect", (): void => {
-    const geometry = resolvePaneZoneGeometry(SQUARE_PANE, makeConfig());
-    // Inside the center rect but pushed toward the right edge.
-    expect(resolveDominantEdge({ x: 130, y: 100 }, geometry)).toBe("right");
-  });
-});
-
-describe("geometric hysteresis (edge <-> edge diagonal)", (): void => {
-  // Square pane @ ratio 0.34: center rect is [66, 134] on both axes. The
-  // top/right boundary is the diagonal x + y = 200; points just past it raw to
-  // "right" while a 6px nudge toward "top" pulls them back across.
-  it("holds the previous edge zone across the diagonal within the band", (): void => {
-    const held = resolveAt(151, 50, { previousZone: "top" });
-    // Raw classification at (151,50) is "right"; hysteresis holds "top".
-    expect(classifyPaneZone({ x: 151, y: 50 }, resolvePaneZoneGeometry(SQUARE_PANE, makeConfig()))).toBe("right");
-    expect(held.zone).toBe("top");
-    expect(held.fallbackReason).toContain("hysteresis-hold");
-  });
-
-  it("switches to the new edge zone once the diagonal crossing exceeds the band", (): void => {
-    const switched = resolveAt(170, 55, { previousZone: "top" });
-    expect(switched.zone).toBe("right");
-    expect(switched.fallbackReason).toBeNull();
+  it("draws one trapezoid per edge and each pane corner on the diagonal to the center's nearest corner", (): void => {
+    const paths = paneZoneClipPaths(0.5, 0.2);
+    expect(Object.keys(paths).sort()).toEqual(["bottom", "left", "right", "top"]);
+    expect(paths.top).toBe("polygon(0% 0%, 100% 0%, 75.0000% 40.0000%, 25.0000% 40.0000%)");
   });
 });
 
 describe("zone / overlay agreement on a NON-square pane", (): void => {
   // Independent re-derivation of the drawn overlay zone from the percent-based
-  // clip-path polygons (NOT reusing classifyPaneZone), so the assertion proves
-  // the resolver-resolved zone equals the drawn-overlay zone — including across
+  // clip-path polygons (NOT reusing paneRegion), so the assertion proves
+  // the region equals the drawn-overlay zone — including across
   // the normalized-penetration boundary, which is the interesting case on a
   // non-square aspect ratio.
   const NON_SQUARE = { width: 300, height: 200 } as const;
@@ -407,7 +214,6 @@ describe("zone / overlay agreement on a NON-square pane", (): void => {
   }
 
   it("agrees with the drawn overlay for points in every region (incl. diagonal boundary)", (): void => {
-    const geometry = resolvePaneZoneGeometry(NON_SQUARE, makeConfig());
     const samplePoints: ReadonlyArray<TilingPanePoint> = [
       { x: 150, y: 100 }, // center
       { x: 150, y: 20 }, // clearly top
@@ -420,84 +226,56 @@ describe("zone / overlay agreement on a NON-square pane", (): void => {
       { x: 250, y: 170 }, // bottom/right corner region
     ];
     for (const point of samplePoints) {
-      expect(classifyPaneZone(point, geometry)).toBe(drawnOverlayZone(point));
+      expect(regionAt(point.x, point.y, { paneSize: NON_SQUARE })).toBe(drawnOverlayZone(point));
     }
   });
 });
 
-describe("group tab strip drop helpers", (): void => {
-  it("pointInClientBounds detects a client point inside bounds", (): void => {
-    expect(pointInClientBounds(50, 50, { left: 0, top: 0, right: 100, bottom: 100 })).toBe(true);
-    expect(pointInClientBounds(150, 50, { left: 0, top: 0, right: 100, bottom: 100 })).toBe(false);
+/**
+ * A group in the drag's hit: its body is a pane like any other (the center swaps, a side goes beside), and a join is
+ * only ever the group's tab strip (a slot per member, giving the index) or a host drop element declared on the pane.
+ */
+describe("group body center is SWAP, never join (body partition stays swap)", (): void => {
+  const CONFIG: TilingLayoutConfig = { gapPx: 6, handleSizePx: 4, minPaneSizePx: 96 };
+  const AREA = { width: 1000, height: 600 };
+  const leaf = (id: string, tileId: string): TilingLayoutNode => ({ kind: "leaf", id, tileId });
+  const LAYOUT: TilingLayoutNode = {
+    kind: "split",
+    id: "root",
+    axis: "horizontal",
+    ratio: 0.3,
+    first: leaf("A", "a"),
+    second: {
+      kind: "group",
+      id: "g",
+      members: [
+        { kind: "leaf", id: "B", tileId: "b" },
+        { kind: "leaf", id: "C", tileId: "c" },
+        { kind: "leaf", id: "D", tileId: "d" },
+      ],
+      activeMemberId: "B",
+    },
+  };
+  const STRIP = { top: 0, height: 30, left: 4, gap: 4, widths: new Map([["b", 100], ["c", 100], ["d", 100]]) };
+  const drag = layoutDrag(LAYOUT, "A", AREA, CONFIG, undefined, { strip: STRIP })!;
+  const g = drag.lift.layout.get("b")!;
+  const centerX = g.x + g.width / 2;
+  const centerY = g.y + g.height / 2;
+
+  it("resolves a center body drop to swap with the group's drawn pane", (): void => {
+    expect(hitRun(drag, "lift").at({ x: centerX, y: centerY }).held).toEqual({ kind: "swap", at: "b" });
   });
 
-  it("resolveGroupTabStripHit returns the first matching strip", (): void => {
-    const hit = resolveGroupTabStripHit(30, 10, [
-      { groupId: "group-a", activeMemberLeafId: "a", bounds: { left: 0, top: 0, right: 40, bottom: 20 } },
-      { groupId: "group-b", activeMemberLeafId: "b", bounds: { left: 50, top: 0, right: 90, bottom: 20 } },
-    ]);
-    expect(hit).toEqual({ groupId: "group-a", activeMemberLeafId: "a" });
+  it("keeps group-body edges as sides (the per-slot edge affordance)", (): void => {
+    expect(hitRun(drag, "lift").at({ x: g.x + g.width - 10, y: centerY }).held).toEqual({ kind: "beside", at: "b", side: "right" });
+    expect(hitRun(drag, "lift").at({ x: centerX, y: g.y + g.height - 10 }).held).toEqual({ kind: "beside", at: "b", side: "bottom" });
   });
 
-  it("buildGroupTabStripMergeIntent produces a valid group-merge center intent", (): void => {
-    const intent = buildGroupTabStripMergeIntent({
-      activeMemberLeafId: "b",
-      evaluateCenter: (): ZoneEvaluation => ({ isValid: true, rejectionReason: null }),
-    });
-    expect(intent.leafId).toBe("b");
-    expect(intent.zone).toBe("center");
-    expect(intent.action).toBe("group-merge");
-    expect(intent.fallbackReason).toBe("group-tab-strip");
-  });
-
-  it("resolveHostGroupDropTargetHit returns the first eligible target", (): void => {
-    const bounds = { left: 0, top: 0, right: 40, bottom: 20 };
-    const hit = resolveHostGroupDropTargetHit(10, 10, "source", [
-      { leafId: "source", bounds: [bounds], groupMemberLeafIds: [] },
-      { leafId: "host", bounds: [bounds], groupMemberLeafIds: ["host", "other"] },
-      { leafId: "later", bounds: [bounds], groupMemberLeafIds: [] },
-    ]);
-    expect(hit).toEqual({ leafId: "host" });
-  });
-
-  it("resolveHostGroupDropTargetHit skips a target that already contains the source", (): void => {
-    const hit = resolveHostGroupDropTargetHit(10, 10, "source", [
-      {
-        leafId: "active",
-        bounds: [{ left: 0, top: 0, right: 40, bottom: 20 }],
-        groupMemberLeafIds: ["active", "source"],
-      },
-    ]);
-    expect(hit).toBeNull();
-  });
-});
-
-describe("group body center is SWAP, never group-merge (body partition stays swap)", (): void => {
-  // Regression guard for the center/swap-zone-hijack bug: a center drop on a
-  // GROUP body must resolve to `swap` (identical to a center drop on a leaf), so
-  // the swap affordance is preserved on every slot. `resolveDropIntent` has no
-  // group awareness at all — `group-merge` is reachable only from the built-in
-  // tab strip or a host `groupDropTargetRef` (`resolveGroupTabStripHit` /
-  // `resolveHostGroupDropTargetHit` → `buildGroupTabStripMergeIntent`), never
-  // from the pane-body partition.
-  it("resolves a center body drop to swap regardless of the target being a group", (): void => {
-    const center = resolveAt(100, 100);
-    expect(center.zone).toBe("center");
-    expect(center.action).toBe("swap");
-  });
-
-  it("keeps group-body edges as edge-insert (the per-slot edge affordance)", (): void => {
-    expect(resolveAt(10, 100).action).toBe("edge-insert");
-    expect(resolveAt(100, 10).action).toBe("edge-insert");
-  });
-
-  it("the pane-body resolver never emits group-merge; the tab strip still does", (): void => {
-    const tabStripMerge = buildGroupTabStripMergeIntent({
-      activeMemberLeafId: "b",
-      evaluateCenter: (): ZoneEvaluation => ({ isValid: true, rejectionReason: null }),
-    });
-    expect(tabStripMerge.action).toBe("group-merge");
-    // The pane-body resolver never emits group-merge for the same center point.
-    expect(resolveAt(100, 100).action).not.toBe("group-merge");
+  it("the body never gives a join; the tab strip does, with the slot under the pointer as its index", (): void => {
+    const bodyHeld = hitRun(drag, "lift").at({ x: centerX, y: centerY }).held;
+    expect(bodyHeld?.kind).not.toBe("join");
+    // Slot i stands before the i-th member: the strip's first tab starts 4 px in, each slot is its tab's width plus the gap.
+    expect(hitRun(drag, "lift").at({ x: g.x + 4 + 20, y: g.y + 10 }).held).toEqual({ kind: "join", at: "b", index: 0 });
+    expect(hitRun(drag, "lift").at({ x: g.x + 4 + 104 + 20, y: g.y + 10 }).held).toEqual({ kind: "join", at: "b", index: 1 });
   });
 });

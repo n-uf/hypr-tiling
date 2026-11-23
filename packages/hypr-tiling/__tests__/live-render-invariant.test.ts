@@ -1,22 +1,17 @@
 import { describe, expect, it } from "@jest/globals";
 import { insertLeafAdjacent, readLeafNodeIds, removeLeafTile, swapLeafTiles } from "../engine/state";
-import {
-  resolveLeafDropPreview,
-  resolveLeafDropPreviewForMode,
-  resolveStableDragHitFootprints,
-} from "../react/tiling-renderer";
+import { resolveLeafDropPreview, resolveLeafDropPreviewForMode } from "../react/tiling-renderer";
 import { deriveCandidateTree } from "../engine/drag-machine";
 import { PLACEMENT_BY_DROP_ZONE } from "../engine/projected-layout";
-import { collectLeafFootprints, footprintsByLeafId } from "../engine/leaf-geometry";
 import type { TilingDropIntentState } from "../engine/drop-intent-resolver";
 import type {
   TilingLayoutConfig,
   TilingLeafDropPreview,
   TilingLeafDropZone,
   TilingLeafNode,
-  TilingPaneFootprint,
   TilingSplitNode,
 } from "../engine/types";
+import { hitRun, layoutDrag } from "./golden/cases";
 
 function leaf(id: string, tileId: string): TilingLeafNode {
   return { kind: "leaf", id, tileId };
@@ -249,62 +244,45 @@ describe("live-mode render invariant — the rendered tree IS the derived candid
   });
 });
 
-describe("stable-reference hit-test geometry — target resolution never chases the reflow", (): void => {
-  // The drop target is resolved against this FROZEN geometry (a pure function of
-  // layout/source/viewport/config), NOT the displayed candidate tree's rects. So
-  // a candidate-tree reflow — which moves panes under the cursor as the resolved
-  // target changes — cannot move a hit zone and flip the target. That is the
-  // structural break of the reflow→retarget→re-reflow oscillation.
+describe("the drag hit's geometry — target resolution never chases the reflow", (): void => {
+  // The drag's hit is built ONCE at the lift on one fixed layout (the lift for Indicator, the base for Snap), NOT the
+  // displayed layout's rects. So a reflow — which moves panes under the cursor as the held place changes — cannot
+  // move a hit zone and flip the place. That is the structural break of the reflow→retarget→re-reflow oscillation.
   const SOURCE_LEAF_ID = "A";
   const CONFIG: TilingLayoutConfig = { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0 };
   const VIEWPORT = { width: 1000, height: 800 };
 
-  function originalFootprints(layout: TilingSplitNode): ReadonlyMap<string, TilingPaneFootprint> {
-    return footprintsByLeafId(collectLeafFootprints(layout, 0, 0, VIEWPORT.width, VIEWPORT.height, CONFIG));
-  }
-
-  it("live mode resolves against the gap-closed base (source removed), independent of any resolved target", (): void => {
+  it("the base basis hit-tests the gap-closed base (source removed), independent of any held place", (): void => {
     const layout: TilingSplitNode = baseLayout();
-    const expected = footprintsByLeafId(
-      collectLeafFootprints(removeLeafTile(layout, SOURCE_LEAF_ID), 0, 0, VIEWPORT.width, VIEWPORT.height, CONFIG),
-    );
-    const geometry = resolveStableDragHitFootprints(
-      true,
-      layout,
-      SOURCE_LEAF_ID,
-      VIEWPORT,
-      CONFIG,
-      originalFootprints(layout),
-    );
+    const drag = layoutDrag(layout, SOURCE_LEAF_ID, VIEWPORT, CONFIG)!;
+    const { hit } = hitRun(drag, "base");
     // The source slot is gone; only the survivors carry hit rects.
-    expect([...geometry.keys()].sort()).toEqual(["B", "C"]);
-    expect(geometry).toEqual(expected);
+    expect([...hit.laid.layout.keys()].sort()).toEqual(["tile-b", "tile-c"]);
+    expect(hit.laid.tree.layout).toEqual(removeLeafTile(layout, SOURCE_LEAF_ID));
+    expect([...hit.laid.layout]).toEqual([...drag.base.layout]);
   });
 
-  it("INVARIANT: the hit geometry is byte-identical regardless of which target/zone is currently resolved", (): void => {
+  it("the lift basis hit-tests the lift (source still in place)", (): void => {
     const layout: TilingSplitNode = baseLayout();
-    // The function signature has NO dropState/candidate parameter, so reflow
-    // literally cannot be an input. We assert the consequence: re-deriving the
-    // candidate tree for two different hovers (the reflow) leaves the SAME hit
-    // geometry — the geometry the resolver uses is frozen for the whole drag.
-    deriveCandidateTree(layout, SOURCE_LEAF_ID, makeDropState("C", "center", "swap"));
-    const geomA = resolveStableDragHitFootprints(true, layout, SOURCE_LEAF_ID, VIEWPORT, CONFIG, originalFootprints(layout));
-    deriveCandidateTree(layout, SOURCE_LEAF_ID, makeDropState("B", "left", "edge-insert"));
-    const geomB = resolveStableDragHitFootprints(true, layout, SOURCE_LEAF_ID, VIEWPORT, CONFIG, originalFootprints(layout));
-    expect(geomA).toEqual(geomB);
+    const drag = layoutDrag(layout, SOURCE_LEAF_ID, VIEWPORT, CONFIG)!;
+    const { hit } = hitRun(drag, "lift");
+    expect([...hit.laid.layout.keys()].sort()).toEqual(["tile-a", "tile-b", "tile-c"]);
+    expect([...hit.laid.layout]).toEqual([...drag.lift.layout]);
   });
 
-  it("preview mode resolves against the ORIGINAL footprints (source still in place)", (): void => {
+  it("INVARIANT: the zone map is the same at every point however the pointer has moved and whatever is held", (): void => {
     const layout: TilingSplitNode = baseLayout();
-    const original = originalFootprints(layout);
-    const geometry = resolveStableDragHitFootprints(false, layout, SOURCE_LEAF_ID, VIEWPORT, CONFIG, original);
-    expect(geometry).toBe(original);
-    expect([...geometry.keys()].sort()).toEqual(["A", "B", "C"]);
-  });
-
-  it("no source held → original footprints (no drag in flight)", (): void => {
-    const layout: TilingSplitNode = baseLayout();
-    const original = originalFootprints(layout);
-    expect(resolveStableDragHitFootprints(true, layout, null, VIEWPORT, CONFIG, original)).toBe(original);
+    for (const basis of ["lift", "base"] as const) {
+      const drag = layoutDrag(layout, SOURCE_LEAF_ID, VIEWPORT, CONFIG)!;
+      const run = hitRun(drag, basis);
+      const grid: Array<{ x: number; y: number }> = [];
+      for (let y = 0; y <= VIEWPORT.height; y += 40) for (let x = 0; x <= VIEWPORT.width; x += 50) grid.push({ x, y });
+      const targets = run.hit.targets;
+      const before: Array<string | null> = grid.map((p): string | null => run.hit.zone(p));
+      // Hold different places in turn (the reflow of each): a swap on B, a side of C, nothing, home.
+      for (const p of [{ x: 750, y: 100 }, { x: 900, y: 700 }, { x: 500, y: 790 }, { x: 100, y: 100 }]) run.at(p);
+      expect(run.hit.targets).toBe(targets);
+      expect(grid.map((p): string | null => run.hit.zone(p))).toEqual(before);
+    }
   });
 });
