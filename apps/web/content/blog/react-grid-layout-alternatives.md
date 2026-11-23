@@ -106,7 +106,7 @@ sources:
   - title: "hypr-tiling documentation"
     url: "https://hypr-tiling.n-uf.com/docs"
     checked: 2026-11-04
-  - title: "@n-uf/hypr-tiling on npm (peer dependencies, latest 26.9.9)"
+  - title: "@n-uf/hypr-tiling on npm (peer dependencies)"
     url: "https://www.npmjs.com/package/@n-uf/hypr-tiling"
     checked: 2026-11-04
   - title: "Hyprland"
@@ -204,7 +204,7 @@ Several of its limits are good reasons to pick something else:
 - **React 19 and the DOM only.** The peer range is `^19`. No React 18, React Native, Vue, Svelte or Angular yet.
 - **Tailwind required.** The package ships no CSS. The renderer emits Tailwind utility classes, so your Tailwind build has to scan the package's dist folder, or the panes render unstyled.
 - **Source-available, not open source.** PolyForm Perimeter 1.0.1 allows internal and commercial use, but not a product that competes with hypr-tiling.
-- **Active development.** Versions are calendar-based (`YY.M.R`; the latest on npm on 4 November 2026 is 26.9.9) and can't signal a breaking change. The README says compatibility may break between releases, so pin an exact version and read the changelog before upgrading.
+- **Active development.** Versions are calendar-based (`YY.M.R`) and can't signal a breaking change. The README says compatibility may break between releases, so pin an exact version and read the changelog before upgrading.
 
 ### react-mosaic and dockview
 
