@@ -190,8 +190,8 @@ import {
   createLayoutTilingDrag,
   deriveDropCommitTree,
   resolveTilingSwapPreview,
-  tilingDragHeldFootprint,
   tilingDragHitFootprints,
+  tilingDragHolds,
   type TilingSwapPreview,
 } from "../engine/tiling-drag-tree";
 import type { PaneRegionOptions } from "@n-uf/placement/tiling";
@@ -960,14 +960,14 @@ export function resolvePointerTargetFromMeasurement(
     config: TilingLayoutConfig;
     viewportSize: { width: number; height: number };
     /**
-     * Where the frame draws the held drop's pane, when the held drop still
-     * keeps the pointer (`point`, viewport layout px) in its own zone there;
-     * else null. Absent: no held drop keeps its zone as drawn.
+     * Whether the held drop keeps the pointer (`point`, viewport layout px):
+     * it is in the held drop's own zone where the frame draws its pane. Then
+     * the held drop is the answer as it is. Absent: nothing keeps it.
      */
-    heldFootprint?: (
+    holdsHeld?: (
       held: TilingDropState,
       point: { x: number; y: number },
-    ) => TilingPaneFootprint | null;
+    ) => boolean;
   },
 ): TilingDropState | null {
   if (!input.isRearrangeEnabled) {
@@ -1136,18 +1136,18 @@ export function resolvePointerTargetFromMeasurement(
       }
     }
   }
-  // A held pane drop keeps its zone where the frame draws its pane (placement's
-  // `holds`): while it does, the zone is judged there. Once it doesn't, the
-  // next drop is acquired on the hit footprints (the base) as below.
-  const heldTarget: TilingDropState | null = input.previousTarget;
-  const heldFootprint: TilingPaneFootprint | null =
-    heldTarget != null && input.heldFootprint != null
-      ? input.heldFootprint(heldTarget, { x: localX, y: localY })
-      : null;
-  let hitLeafId: string | null =
-    heldTarget != null && heldFootprint != null ? heldTarget.leafId : null;
-  let hitFootprint: TilingPaneFootprint | undefined = heldFootprint ?? undefined;
-  for (const leafId of hitLeafId != null ? [] : input.leafIds) {
+  // A held pane drop stays held while the pointer is in its own zone where the
+  // frame draws its pane (placement's `holds`). Once it isn't, the next drop
+  // is acquired on the hit footprints (the base) as below.
+  if (
+    input.previousTarget != null &&
+    input.holdsHeld?.(input.previousTarget, { x: localX, y: localY }) === true
+  ) {
+    return input.previousTarget;
+  }
+  let hitLeafId: string | null = null;
+  let hitFootprint: TilingPaneFootprint | undefined;
+  for (const leafId of input.leafIds) {
     // Skip the source and any statically-gated leaf: a gated target has no
     // trustworthy footprint, so it resolves to no target (→ cancel-on-release
     // / gap-closed candidate) rather than a wrong swap/insert.
@@ -1190,9 +1190,6 @@ export function resolvePointerTargetFromMeasurement(
     input.previousTarget,
     hitLeafId,
   );
-  // Validity judges the move on the target's hit footprint, wherever its zone is judged.
-  const validityFootprint: TilingPaneFootprint =
-    hitFootprints.get(hitLeafId) ?? hitFootprint;
   return resolveDropIntent({
     leafId: hitLeafId,
     paneLocalX: paneLocalPoint.x,
@@ -1209,7 +1206,7 @@ export function resolvePointerTargetFromMeasurement(
         layout: input.layout,
         sourceLeafId: input.sourceLeafId,
         targetLeafId: hitLeafId as string,
-        targetFootprint: validityFootprint,
+        targetFootprint: hitFootprint as TilingPaneFootprint,
         config: input.config,
         viewportWidth: input.viewportSize.width,
         viewportHeight: input.viewportSize.height,
@@ -8001,14 +7998,14 @@ const TilingRendererComponent = React.forwardRef<
           width: viewportSize.width,
           height: viewportSize.height,
         },
-        heldFootprint:
+        holdsHeld:
           liveTilingDrag == null
             ? undefined
             : (
                 held: TilingDropState,
                 point: { x: number; y: number },
-              ): TilingPaneFootprint | null =>
-                tilingDragHeldFootprint(
+              ): boolean =>
+                tilingDragHolds(
                   liveTilingDrag,
                   held,
                   point,
