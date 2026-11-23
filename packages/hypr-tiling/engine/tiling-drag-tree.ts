@@ -347,18 +347,24 @@ export function createLayoutTilingDrag(params: LayoutTilingDragParams): TilingDr
 /**
  * Where a drag's parts sit in a pane, measured once at the lift (container px), so the hit lays them on any rect the
  * pane is drawn at: a group's tab strip (its band from the slot's top, where its first tab starts, the gap between
- * tabs, and each tab's width by tile) and host drop elements (bands as insets from the slot's left, top and right).
+ * tabs, and each tab's width by tile), per group in `strips` (by group id), `strip` for a group not measured; and host
+ * drop elements (bands as insets from the slot's left, top and right), by tile, and by group id for whichever member a
+ * group draws (after a torn tab its next member is drawn, and had no element of its own at the lift).
  * @internal
  */
 export interface TilingDragPartGeometry {
-  readonly strip?: {
-    readonly top: number;
-    readonly height: number;
-    readonly left: number;
-    readonly gap: number;
-    readonly widths: ReadonlyMap<string, number>;
-  };
+  readonly strip?: TilingDragStripGeometry;
+  readonly strips?: ReadonlyMap<string, TilingDragStripGeometry>;
   readonly bands?: ReadonlyMap<string, ReadonlyArray<{ readonly left: number; readonly top: number; readonly right: number; readonly height: number }>>;
+}
+
+/** A group's tab strip as measured at the lift. @internal */
+export interface TilingDragStripGeometry {
+  readonly top: number;
+  readonly height: number;
+  readonly left: number;
+  readonly gap: number;
+  readonly widths: ReadonlyMap<string, number>;
 }
 
 /**
@@ -370,8 +376,8 @@ export interface TilingDragPartGeometry {
 export function tilingDragParts(geometry: TilingDragPartGeometry): (layout: TilingLayoutNode, tile: string, rect: Rect) => readonly TilingPart[] {
   return (layout: TilingLayoutNode, tile: string, rect: Rect): readonly TilingPart[] => {
     const out: TilingPart[] = [];
-    const strip = geometry.strip;
     const group: TilingGroupNode | null = groupOfTile(layout, tile);
+    const strip: TilingDragStripGeometry | undefined = (group != null ? geometry.strips?.get(group.id) : undefined) ?? geometry.strip;
     if (strip != null && group != null && group.members.length >= 2) {
       const band: Rect = { x: rect.x, y: rect.y + strip.top, width: rect.width, height: Math.max(0, Math.min(strip.height, rect.height - strip.top)) };
       const known: number[] = [...strip.widths.values()];
@@ -385,7 +391,7 @@ export function tilingDragParts(geometry: TilingDragPartGeometry): (layout: Tili
       }
       out.push({ key: "strip", rect: band, slots });
     }
-    for (const b of geometry.bands?.get(tile) ?? []) {
+    for (const b of geometry.bands?.get(tile) ?? (group != null ? geometry.bands?.get(group.id) : undefined) ?? []) {
       out.push({ key: "band", rect: { x: rect.x + b.left, y: rect.y + b.top, width: Math.max(0, rect.width - b.left - b.right), height: b.height } });
     }
     return out;
