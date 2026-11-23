@@ -187,9 +187,9 @@ function Host({
       paneIdentity={paneIdentity}
       dragPreview={dragPreview}
       dragPreviewMakesRoom={dragPreviewMakesRoom}
-      // The hold itself, at the lift size: the looks over a target are
+      // The hold itself, at the lift size: the held looks are
       // held-look-renderer.test.tsx's.
-      heldOverTarget="none"
+      heldLook="none"
       externalDragHover={externalDragHover}
       onExternalDrop={onExternalDrop}
       interaction={{

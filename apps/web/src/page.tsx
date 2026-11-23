@@ -11,7 +11,7 @@ import {
   type TilingCommand,
   type TilingCommandHandle,
   type TilingDragPreview,
-  type TilingHeldOverTarget,
+  type TilingHeldLook,
   type TilingGroupTabMember,
   type TilingInteractionCapabilities,
   type TilingPaneTab,
@@ -349,8 +349,8 @@ function HomeTopBar({
   onSkinChange: (next: HomeSkin) => void;
   dragPreview: TilingDragPreview;
   onDragPreviewChange: (next: TilingDragPreview) => void;
-  heldLook: TilingHeldOverTarget;
-  onHeldLookChange: (next: TilingHeldOverTarget) => void;
+  heldLook: TilingHeldLook;
+  onHeldLookChange: (next: TilingHeldLook) => void;
   workspaceTabs: UseTilingWorkspaceTabsResult;
   isMobile: boolean;
   mobileMode: MobileHomeMode;
@@ -848,7 +848,7 @@ export function HomePage({
   // How a pane drag previews its drop: the drop indicator (default) or snap to
   // slot. The bottom bar toggles it; persisted like the mobile mode.
   const [dragPreview, onDragPreviewChange] = useHomeDragPreview();
-  // How a dragged pane looks over a drop target: the renderer's default
+  // How a dragged pane looks while held: the renderer's default
   // ("auto") until the visitor picks another in the top bar.
   const [heldLook, onHeldLookChange] = useHomeHeldLook();
   const isMobile: boolean = useIsMobileHomeViewport();
@@ -1057,7 +1057,7 @@ export function HomePage({
               // The top bar's drop-preview switch: snap to slot (default) or indicator.
               dragPreview={dragPreview}
               // The top bar's held switch; "auto" is the renderer's default, so no prop.
-              heldOverTarget={heldLook === "auto" ? undefined : heldLook}
+              heldLook={heldLook === "auto" ? undefined : heldLook}
               renderTile={(args: TilingRenderTileProps): React.ReactNode =>
                 // Each skin's tile consumes the library `TilingRenderTileProps`
                 // directly — group representation comes from `args.group`. A
