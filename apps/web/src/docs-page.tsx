@@ -1553,26 +1553,59 @@ export function DocsPage({
                 "TilingResizeCapability",
               ]}
             />
+            <SectionLead>
+              How a drag looks is set on the renderer, not in{" "}
+              <Code>interaction</Code>. <Code>dragPreview</Code> picks how a
+              held drop is shown: <Code>&quot;indicator&quot;</Code> (the
+              default) keeps the layout as it was and marks the place,{" "}
+              <Code>&quot;snap&quot;</Code> draws the layout the release would
+              commit. It is more than a look: the drop zones are laid out once,
+              at the lift, on the layout the preview draws, so the same pointer
+              path can hold different places under the two (a release on a given
+              place commits the same tree under either).{" "}
+              <Code>heldLook</Code> picks how the dragged pane looks so it never
+              hides what it is over (<Code>&quot;auto&quot;</Code>,{" "}
+              <Code>&quot;title-bar&quot;</Code>,{" "}
+              <Code>&quot;thumbnail&quot;</Code>, <Code>&quot;fade&quot;</Code>{" "}
+              or <Code>&quot;none&quot;</Code>; a tile can set its own); it
+              changes drawing only. To let users drop a pane on your own UI
+              outside the tiling (a tab, a side panel), report the hover with{" "}
+              <Code>externalDragHover</Code> and take the pane in{" "}
+              <Code>onExternalDrop</Code>; return <Code>false</Code> to refuse
+              it. This page uses all three.
+            </SectionLead>
+            <ReferenceLinks symbols={["TilingDragPreview", "TilingHeldLook", "TilingRendererProps"]} />
 
             <HowTo
               id="howto-save-restore"
               title="Save & restore a layout"
               goal={
                 <>
-                  Persist the arrangement across reloads. Because the tree is plain
-                  JSON you own, this is just save on change and load on mount.
+                  Persist the arrangement across reloads, and heal a saved tree
+                  that no longer matches your tiles.
                 </>
               }
               exampleId="save-restore"
               knobs={
                 <>
-                  Write the layout to storage inside <Code>onLayoutChange</Code>{" "}
-                  and read it back in your <Code>useState</Code> initializer with a
-                  default fallback. Validate the parsed shape before trusting it in
-                  production. No library-specific serializer is involved.
+                  <Code>createPersistedTilingLayout</Code> owns one storage key:{" "}
+                  <Code>load()</Code> reads the saved tree, checks it against{" "}
+                  <Code>expectedTileIds</Code> and returns a repaired copy, or
+                  your <Code>fallbackLayout</Code> when nothing is saved or the
+                  tree can&rsquo;t be repaired; <Code>commit()</Code> repairs and
+                  saves what <Code>onLayoutChange</Code> reports;{" "}
+                  <Code>reset()</Code> saves the fallback. A tree saved before
+                  you added or removed a tile, or by an older release, is healed
+                  this way, as this page heals its own saved workspaces. To store
+                  the JSON elsewhere (your API, a database), pass a{" "}
+                  <Code>storage</Code> with <Code>getItem</Code> /{" "}
+                  <Code>setItem</Code> / <Code>removeItem</Code>, or call{" "}
+                  <Code>assertLayoutIntegrity</Code> and{" "}
+                  <Code>repairLayout</Code> from{" "}
+                  <Code>@n-uf/hypr-tiling/engine</Code> yourself.
                 </>
               }
-              symbols={["TilingLayoutNode", "TilingRendererProps"]}
+              symbols={["createPersistedTilingLayout", "TilingLayoutNode", "TilingRendererProps"]}
             />
 
             <HowTo

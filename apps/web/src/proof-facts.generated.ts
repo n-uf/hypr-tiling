@@ -5,7 +5,9 @@ export interface ProofFacts {
   readonly version: string;
   readonly testSuites: number;
   readonly tests: number;
+  /** dist/index.mjs plus every chunk it loads, gzip bytes. */
   readonly gzipIndexBytes: number;
+  /** dist/engine.mjs plus every chunk it loads, gzip bytes. */
   readonly gzipEngineBytes: number;
   readonly runtimeDependencyCount: number;
   readonly runtimeDependencies: ReadonlyArray<string>;
@@ -16,9 +18,9 @@ export interface ProofFacts {
 
 export const PROOF_FACTS: ProofFacts = {
   version: "26.11.11",
-  testSuites: 78,
-  tests: 1488,
-  gzipIndexBytes: 7076,
+  testSuites: 80,
+  tests: 1478,
+  gzipIndexBytes: 123269,
   gzipEngineBytes: 30167,
   runtimeDependencyCount: 4,
   runtimeDependencies: [

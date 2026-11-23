@@ -756,7 +756,7 @@ export const DOC_PANES: ReadonlyArray<DocPaneSpec> = [
     title: "Proof",
     accent: "amber",
     summary:
-      "Suite and test counts, gzip sizes of dist/index.mjs and dist/engine.mjs, the React-free engine entry, api-extractor reports, prerender paneIdentity, assertLayoutIntegrity and repairLayout, runtime dependencies, calendar version, and the package license.",
+      "Suite and test counts, the gzip size a user downloads for each entry (dist/index.mjs and dist/engine.mjs with the chunks they load), the React-free engine entry, api-extractor reports, prerender paneIdentity, assertLayoutIntegrity and repairLayout, runtime dependencies, calendar version, and the package license.",
     content: null,
   },
   {
@@ -966,7 +966,7 @@ export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
     title: "Save & restore a layout",
     section: "howto",
     summary:
-      "The layout is plain JSON you own, so persistence is just save/load: write it to storage in onLayoutChange, read it back on mount with a default fallback. No library-specific serializer.",
+      "The layout is plain JSON you own. createPersistedTilingLayout saves it to localStorage (or any key/value store) from onLayoutChange and loads it on mount, and it repairs a saved tree that no longer fits your tiles (a tile added or removed since it was saved) through assertLayoutIntegrity and repairLayout, falling back to your default when it can't. Writing the JSON yourself works too; then repair it on load the same way.",
   },
   {
     id: "howto-workspaces",
