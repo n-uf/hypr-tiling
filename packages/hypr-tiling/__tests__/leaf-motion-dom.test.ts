@@ -40,6 +40,7 @@ function frameAt(drawn: Rect, moving: boolean): LeafMotionFrame {
       clipBottom: Math.max(0, TARGET.height - drawn.height),
     },
     pop: null,
+    look: null,
     moving,
   };
 }

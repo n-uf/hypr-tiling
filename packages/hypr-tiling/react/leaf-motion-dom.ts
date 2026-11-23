@@ -274,6 +274,7 @@ function isAtRest(frame: LeafMotionFrame): boolean {
   return (
     !frame.moving &&
     frame.pop == null &&
+    frame.look == null &&
     r.dx === 0 &&
     r.dy === 0 &&
     r.clipRight === 0 &&
@@ -308,14 +309,27 @@ export function writeLeafMotionFrame(wrapper: HTMLElement, frame: LeafMotionFram
   }
   const r = frame.reveal;
   const pop = frame.pop;
-  wrapper.style.transform =
-    pop == null ? `translate(${px(r.dx)}, ${px(r.dy)})` : `translate(${px(r.dx)}, ${px(r.dy)}) scale(${pop.scale})`;
-  if (pop == null) {
-    wrapper.style.removeProperty("transform-origin");
-    wrapper.style.removeProperty("opacity");
+  const look = frame.look;
+  if (look != null) {
+    // A held pane landing from its look: scaled about the drawn rect's
+    // top-left (the wrapper's, once translated), uniformly, and faded.
+    wrapper.style.transform = `translate(${px(r.dx)}, ${px(r.dy)}) scale(${look.scale})`;
+    wrapper.style.transformOrigin = "0 0";
+    if (look.opacity === 1) {
+      wrapper.style.removeProperty("opacity");
+    } else {
+      wrapper.style.opacity = String(look.opacity);
+    }
   } else {
-    wrapper.style.transformOrigin = "50% 50%";
-    wrapper.style.opacity = String(pop.opacity);
+    wrapper.style.transform =
+      pop == null ? `translate(${px(r.dx)}, ${px(r.dy)})` : `translate(${px(r.dx)}, ${px(r.dy)}) scale(${pop.scale})`;
+    if (pop == null) {
+      wrapper.style.removeProperty("transform-origin");
+      wrapper.style.removeProperty("opacity");
+    } else {
+      wrapper.style.transformOrigin = "50% 50%";
+      wrapper.style.opacity = String(pop.opacity);
+    }
   }
   if (moving == null) {
     return;
@@ -370,16 +384,34 @@ export function writeGroupStripMotion(wrapper: HTMLElement, frame: LeafMotionFra
     return;
   }
   if (frame == null || isAtRest(frame)) {
-    if (strip.style.transform !== "" || strip.style.width !== "") {
+    if (strip.style.transform !== "" || strip.style.width !== "" || strip.style.opacity !== "") {
       strip.style.removeProperty("transform");
+      strip.style.removeProperty("transform-origin");
       strip.style.removeProperty("width");
+      strip.style.removeProperty("opacity");
     }
     return;
   }
   const r = frame.reveal;
   const bottom: boolean = strip.getAttribute("data-hpt-group-tab-placement") === "bottom";
-  const dy: number = bottom ? r.dy + (r.height - frame.target.height) : r.dy;
-  strip.style.transform = `translate(${px(r.dx)}, ${px(dy)})`;
+  const look = frame.look;
+  if (look == null) {
+    const dy: number = bottom ? r.dy + (r.height - frame.target.height) : r.dy;
+    strip.style.transform = `translate(${px(r.dx)}, ${px(dy)})`;
+    strip.style.removeProperty("transform-origin");
+    strip.style.removeProperty("opacity");
+  } else {
+    // Landing from a held look: the strip is scaled and faded with the pane,
+    // kept on its (scaled) top or bottom edge.
+    const dy: number = bottom ? r.dy + (r.height * look.scale - frame.target.height) : r.dy;
+    strip.style.transform = `translate(${px(r.dx)}, ${px(dy)}) scale(${look.scale})`;
+    strip.style.transformOrigin = bottom ? "0 0" : "0 100%";
+    if (look.opacity === 1) {
+      strip.style.removeProperty("opacity");
+    } else {
+      strip.style.opacity = String(look.opacity);
+    }
+  }
   strip.style.width = px(r.width);
 }
 
