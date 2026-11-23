@@ -180,6 +180,7 @@ export type DragMachineState = {
     sourceLeafId: string;
     subject?: DragSubject;
     homeFootprint?: TilingPaneFootprint;
+    liftLeavesGap?: boolean;
     anchorFootprint: TilingPaneFootprint;
     pointerAnchorOffset: DragMachinePoint;
     originClient: DragMachinePoint;
@@ -191,13 +192,14 @@ export type DragMachineState = {
     sourceLeafId: string;
     subject?: DragSubject;
     homeFootprint?: TilingPaneFootprint;
+    liftLeavesGap?: boolean;
     anchorFootprint: TilingPaneFootprint;
     pointerAnchorOffset: DragMachinePoint;
     heldFootprint: TilingPaneFootprint;
     resolvedTarget: DragResolvedTarget | null;
-    atHome: boolean;
+    atHome?: boolean;
     leftHome: boolean;
-    homeLost: boolean;
+    homeLost?: boolean;
 } | {
     phase: "settling";
     outcome: DragSettleOutcome;
