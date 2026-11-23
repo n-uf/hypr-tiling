@@ -1,8 +1,6 @@
 import {
   findGroupContainingLeaf,
   findLeafById,
-  insertGroupAdjacent,
-  insertLeafAdjacent,
   mergeDraggedLeafIntoTarget,
   mergeGroupIntoTarget,
   removeGroupNode,
@@ -11,7 +9,7 @@ import {
   swapLeafTiles,
 } from "./state";
 import { inRect } from "@n-uf/motion/drag";
-import { PLACEMENT_BY_DROP_ZONE } from "./projected-layout";
+import { insertDragSubjectAdjacent } from "./projected-layout";
 import type { TilingDropIntentState, TilingEdgeZone } from "./drop-intent-resolver";
 import type {
   TilingExternalDropSubject,
@@ -546,7 +544,9 @@ export function isCommittableTarget(
  *   create `{target, source}` with the source active when the target is a
  *   loose leaf). Same reference when the source is already a member. A
  *   missing target leaf gap-closes.
- * - `edge-insert` → `insertLeafAdjacent` at the resolved edge.
+ * - `edge-insert` → `insertDragSubjectAdjacent` at the resolved edge (the
+ *   pane released, then placed beside the target), the same projection drop
+ *   validity judges.
  */
 export function deriveCandidateTree(
   layout: TilingLayoutNode,
@@ -583,10 +583,7 @@ export function deriveCandidateTree(
     if (edgeZone == null) {
       return removeLeafTile(layout, sourceLeafId);
     }
-    return insertLeafAdjacent(layout, sourceLeafId, resolvedTarget.leafId, PLACEMENT_BY_DROP_ZONE[edgeZone], {
-      preserveParentSplitAxis: false,
-      splitRatio: 0.5,
-    });
+    return insertDragSubjectAdjacent(layout, sourceLeafId, resolvedTarget.leafId, edgeZone);
   }
   return removeLeafTile(layout, sourceLeafId);
 }
@@ -620,10 +617,7 @@ function deriveGroupCandidateTree(
     if (edgeZone == null) {
       return removeGroupNode(layout, groupId);
     }
-    return insertGroupAdjacent(layout, groupId, resolvedTarget.leafId, PLACEMENT_BY_DROP_ZONE[edgeZone], {
-      preserveParentSplitAxis: false,
-      splitRatio: 0.5,
-    });
+    return insertDragSubjectAdjacent(layout, sourceLeafId, resolvedTarget.leafId, edgeZone, "group");
   }
   return removeGroupNode(layout, groupId);
 }

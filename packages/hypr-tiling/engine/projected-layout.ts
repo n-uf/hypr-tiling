@@ -1,5 +1,7 @@
 import {
+  findGroupContainingLeaf,
   findLeafById,
+  insertGroupAdjacent,
   insertLeafAdjacent,
   mergeDraggedLeafIntoTarget,
   readLeafNodeIds,
@@ -12,6 +14,7 @@ import type {
   TilingDropIntentState,
 } from "./drop-intent-resolver";
 import type {
+  TilingGroupNode,
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingMovePlacement,
@@ -45,14 +48,39 @@ export const PLACEMENT_BY_DROP_ZONE: Record<TilingEdgeZone, TilingMovePlacement>
 };
 
 /**
+ * The edge-insert a release commits, the one sequence the commit, the live
+ * candidate tree and drop validity all run: release the dragged subject (the
+ * whole group for `subject: "group"`, else the pane) from where it is, so the
+ * room it held goes back to its neighbours, then place it beside
+ * `targetLeafId` on the `edgeZone` side in a new half-and-half split.
+ * Unchanged when the subject can't be released or the target has no seat.
+ * @internal
+ */
+export function insertDragSubjectAdjacent(
+  layout: TilingLayoutNode,
+  sourceLeafId: string,
+  targetLeafId: string,
+  edgeZone: TilingEdgeZone,
+  subject?: "pane" | "group",
+): TilingLayoutNode {
+  const options = { preserveParentSplitAxis: false, splitRatio: 0.5 };
+  const group: TilingGroupNode | null = subject === "group" ? findGroupContainingLeaf(layout, sourceLeafId) : null;
+  if (group != null) {
+    return insertGroupAdjacent(layout, group.id, targetLeafId, PLACEMENT_BY_DROP_ZONE[edgeZone], options);
+  }
+  return insertLeafAdjacent(layout, sourceLeafId, targetLeafId, PLACEMENT_BY_DROP_ZONE[edgeZone], options);
+}
+
+/**
  * Project the post-drop layout tree using the exact reducers used at commit
- * time (`swapLeafTiles` / `insertLeafAdjacent`), so overlay geometry == result.
+ * time (`swapLeafTiles` / {@link insertDragSubjectAdjacent}), so overlay geometry == result.
  * @internal
  */
 export function resolveProjectedDropLayout(
   layout: TilingLayoutNode,
   sourceLeafId: string | null,
   dropState: TilingDropIntentState | null,
+  subject?: "pane" | "group",
 ): TilingLayoutNode | null {
   if (sourceLeafId == null || dropState == null || sourceLeafId === dropState.leafId) {
     return null;
@@ -83,16 +111,7 @@ export function resolveProjectedDropLayout(
     return null;
   }
 
-  return insertLeafAdjacent(
-    layout,
-    sourceLeafId,
-    dropState.leafId,
-    PLACEMENT_BY_DROP_ZONE[edgeZone],
-    {
-      preserveParentSplitAxis: false,
-      splitRatio: 0.5,
-    },
-  );
+  return insertDragSubjectAdjacent(layout, sourceLeafId, dropState.leafId, edgeZone, subject);
 }
 
 function unionFootprints(footprints: ReadonlyArray<TilingPaneFootprint>): TilingPaneFootprint | null {

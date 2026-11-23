@@ -912,6 +912,72 @@ export function dragHomeColumnCases(): Record<string, unknown> {
   return out;
 }
 
+/**
+ * Dragging forward in a column, recorded from the release after 26.11.10: the subject on top of pane B (a tab group
+ * of three dragged whole, or a single pane), at ratios from short to tall, in a 360 × 784 column with a 180 px minimum.
+ * For each of B's edges as the gap-closed geometry measures B (filling the column): the verdict drop validity gives
+ * for the subject, and the shape and leaf rects of the tree the release commits there. The verdict is that tree's:
+ * the subject is released first, then placed.
+ */
+export function dragForwardColumnCases(): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const area: Rect = { x: 0, y: 0, width: 360, height: 784 };
+  const config: TilingLayoutConfig = { gapPx: 6, handleSizePx: 4, minPaneSizePx: 180 };
+  for (const subject of ["group", "pane"] as const) {
+    for (const ratio of [0.2, 0.25, 0.4, 0.5, 0.6, 0.7, 0.85]) {
+      const layout: TilingLayoutNode = {
+        kind: "split",
+        id: "col",
+        axis: "vertical",
+        ratio,
+        first:
+          subject === "group"
+            ? {
+                kind: "group",
+                id: "g",
+                members: [
+                  { kind: "leaf", id: "A", tileId: "a" },
+                  { kind: "leaf", id: "P", tileId: "p" },
+                  { kind: "leaf", id: "S", tileId: "s" },
+                ],
+                activeMemberId: "A",
+              }
+            : { kind: "leaf", id: "A", tileId: "a" },
+        second: { kind: "leaf", id: "B", tileId: "b" },
+      };
+      const closed = deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: null, subject, homeHeld: false });
+      const b = resolveLayoutGeometry(closed, area, config).leaves.get("B")!;
+      const edges: Record<string, unknown> = {};
+      for (const zone of ["top", "bottom", "left", "right"] as const) {
+        const verdict = evaluateZoneCandidate({
+          zone,
+          layout,
+          sourceLeafId: "A",
+          targetLeafId: "B",
+          targetFootprint: { left: b.x, top: b.y, width: b.width, height: b.height },
+          config,
+          viewportWidth: area.width,
+          viewportHeight: area.height,
+          subject,
+        });
+        const committed = deriveCandidateTree(
+          layout,
+          "A",
+          { ...resolvedSwap, leafId: "B", zone, action: "edge-insert", finalEdge: zone } as DragResolvedTarget,
+          subject,
+        );
+        edges[zone] = {
+          verdict: verdict.isValid ? "valid" : verdict.rejectionReason,
+          committed: shape(committed),
+          rects: [...resolveLayoutGeometry(committed, area, config).leaves].map(([id, r]) => [id, ...rectOf(r)]),
+        };
+      }
+      out[`${subject}/${ratio}`] = edges;
+    }
+  }
+  return out;
+}
+
 /** A committable swap, the drop the return-trip resolver answers everywhere (its `leafId` set per case). */
 const resolvedSwap = {
   zone: "center",
@@ -978,5 +1044,6 @@ export const GOLDEN_SECTIONS: Readonly<Record<string, () => unknown>> = {
   "drag-home": dragHomeCases,
   "drag-home-return": dragHomeReturnCases,
   "drag-home-column": dragHomeColumnCases,
+  "drag-forward-column": dragForwardColumnCases,
   "drag-stage": dragStageCases,
 };
