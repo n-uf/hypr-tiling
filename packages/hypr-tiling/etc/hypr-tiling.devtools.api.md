@@ -51,7 +51,6 @@ export interface TilingDropIntentTuningState {
     centerRatio: number;
     devicePixelRatio: number;
     edgeThresholdRatio: number;
-    hysteresisPx: number;
 }
 
 // @public
@@ -144,6 +143,12 @@ export interface TilingPaneHitZoneCandidateDebugState {
 // @public
 export interface TilingPaneHitZoneOverlayDebugState {
     centerBlockedReason: string | null;
+    centerInsetPercent?: {
+        left: number;
+        top: number;
+        right: number;
+        bottom: number;
+    };
     centerIsValid: boolean;
     centerRatio: number;
     centerRatioX: number;
