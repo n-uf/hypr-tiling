@@ -535,8 +535,10 @@ export function resolveTilingSwapPreview(
 }
 
 /**
- * The layout tree a release on `target` commits: the drag hit's held place's `after(place).tree` (what its frame drew);
- * a drop with no place (not made by the drag's hit) is `deriveCandidateTree`'s.
+ * The layout tree a release on `target` commits: the drag hit's held place's `after(place).tree` (what its frame drew),
+ * from the very drag the frame drew it with (`drag`, with its `min`, still panes and parts) when it is this drag's;
+ * else from a drag made here on the same options (`min`, `still`). A drop with no place (not made by the drag's hit)
+ * is `deriveCandidateTree`'s.
  * @internal
  */
 export function deriveDropCommitTree(params: {
@@ -546,11 +548,25 @@ export function deriveDropCommitTree(params: {
   readonly subject?: DragSubject;
   readonly container: { readonly width: number; readonly height: number };
   readonly config: TilingLayoutConfig;
+  /** The drag the frame drew the held place with: used when it lifted `layout` itself. */
+  readonly drag?: TilingDrag<TilingDragTree, string> | null;
+  readonly still?: (tile: string) => boolean;
 }): TilingLayoutNode {
   const { layout, sourceLeafId, target, subject } = params;
   const place: TilingHeld<string> | undefined = target?.place;
   if (target != null && place != null && place.kind !== "home" && target.leafId !== sourceLeafId) {
-    const drag = createLayoutTilingDrag({ layout, sourceLeafId, subject, container: params.container, config: params.config });
+    const drag =
+      params.drag != null && params.drag.lift.tree.layout === layout
+        ? params.drag
+        : createLayoutTilingDrag({
+            layout,
+            sourceLeafId,
+            subject,
+            container: params.container,
+            config: params.config,
+            min: params.config.minPaneSizePx,
+            ...(params.still != null ? { still: params.still } : {}),
+          });
     const after: TilingAfter<TilingDragTree, string> | null = drag?.after(place) ?? null;
     if (after != null && after.refusal == null && after.tree.layout != null) {
       return after.tree.layout;

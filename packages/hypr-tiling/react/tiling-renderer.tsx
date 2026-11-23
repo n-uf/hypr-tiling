@@ -5224,6 +5224,8 @@ const TilingRendererComponent = React.forwardRef<
         subject: dragState.subject,
         container: viewportSize,
         config,
+        // The drag the frame drew the held place with (kept until idle).
+        drag: dragHitRef.current?.drag ?? null,
       });
     }, [dragState, layout, liveDragModeEnabled, viewportSize, config]);
   // Claimed settle: hold the gap-closed tree (source already detached) so the
@@ -8081,6 +8083,7 @@ const TilingRendererComponent = React.forwardRef<
             subject: dragState.subject,
             container: viewportSizeRef.current,
             config: configRef.current,
+            drag: dragHitRef.current?.drag ?? null,
           })
         : null;
     // Commit-time tree verification: a corrupt candidate (duplicated/orphaned
