@@ -279,7 +279,7 @@ export function dropCases(): Record<string, unknown> {
                 valid.push(-1);
                 continue;
               }
-              const ev = evaluateZoneCandidate({ zone, layout: tree, sourceLeafId: s, targetLeafId: t, targetFootprint: fp, config, viewportWidth: area.width, viewportHeight: area.height, subject: "pane" });
+              const ev = evaluateZoneCandidate({ zone, layout: tree, sourceLeafId: s, targetLeafId: t, targetFootprint: fp, config, viewportWidth: area.width, viewportHeight: area.height });
               valid.push(ev.isValid ? 1 : 0);
             }
           }
@@ -642,7 +642,7 @@ export function dropBoundaryCases(): Record<string, unknown> {
                 : [{ left: 0, top: 0, width: along, height: 300 }, { left: 1.5, top: 2.5, width: along, height: across }];
             for (const targetFootprint of footprints) {
               for (const sourceLeafId of ["A", null]) {
-                const ev = evaluateZoneCandidate({ zone, layout, sourceLeafId, targetLeafId: "B", targetFootprint, config, viewportWidth: 1000, viewportHeight: 700, subject: "pane" });
+                const ev = evaluateZoneCandidate({ zone, layout, sourceLeafId, targetLeafId: "B", targetFootprint, config, viewportWidth: 1000, viewportHeight: 700 });
                 verdicts.push(ev.isValid ? 1 : ev.rejectionReason);
               }
             }
@@ -702,7 +702,7 @@ export function dragHomeCases(): Record<string, string[]> {
           steps.push(state.phase);
           continue;
         }
-        const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: null, homeHeld: state.atHome === true });
+        const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: null, homeHeld: state.atHome });
         steps.push(`dragging/${state.leftHome ? "left" : "home"}/${laid === tree ? "home" : shape(laid)}`);
       }
       out[`${name}/${leafId}`] = steps;
@@ -759,7 +759,7 @@ export function dragHomeReturnCases(): Record<string, string[]> {
             steps.push(`${label}:${state.phase}`);
             return;
           }
-          const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: null, homeHeld: state.atHome === true });
+          const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: null, homeHeld: state.atHome });
           steps.push(
             `${label}:${state.atHome ? "home" : "away"}/${laid === tree ? "home" : shape(laid)}/${state.resolvedTarget?.leafId ?? "-"}`,
           );
@@ -785,8 +785,8 @@ export function dragHomeReturnCases(): Record<string, string[]> {
 /**
  * Back home in a column, recorded from the release after 26.11.10: the dragged subject on top of pane B (a tab group
  * of three dragged whole, or a single pane), at ratios from short to tall, in a 360 × 784 column with a 180 px minimum.
- * Each case records the subject's home, B's rect once the gap closed, the verdict drop validity gives B's top edge
- * for the subject (released first, then placed: valid at every ratio here), and a drag through the input
+ * Each case records the subject's home, B's rect once the gap closed, the verdict the gap-closed geometry gives B's
+ * top edge (for a tall group it is refused: its projection moves only the dragged leaf), and a drag through the input
  * driver: lift on the header, out below the column, over B's lower part (a swap), then back over the header or over
  * B's grown title bar, then released. The resolver answers as that geometry would: a merge over B's title bar, B's
  * top edge (with that verdict) in its top quarter, a swap below.
@@ -833,7 +833,6 @@ export function dragHomeColumnCases(): Record<string, unknown> {
         config,
         viewportWidth: area.width,
         viewportHeight: area.height,
-        subject,
       });
       const answer = (point: DragMachinePoint): DragResolvedTarget | null => {
         if (point.y > area.y + area.height) return null;
@@ -884,7 +883,7 @@ export function dragHomeColumnCases(): Record<string, unknown> {
             steps.push(`${step}:${state.phase}`);
             return;
           }
-          const laid = deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: null, subject: dragSubject, homeHeld: state.atHome === true });
+          const laid = deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: null, subject: dragSubject, homeHeld: state.atHome });
           const t = state.resolvedTarget;
           steps.push(`${step}:${state.atHome ? "home" : "away"}/${laid === layout ? "home" : shape(laid)}/${t == null ? "-" : `${t.leafId} ${t.zone} ${t.action}`}`);
         };
