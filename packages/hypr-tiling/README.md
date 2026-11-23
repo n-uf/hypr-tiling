@@ -182,8 +182,9 @@ export function Workspace(): JSX.Element {
 Because you own the layout tree, you can mutate it from your own code — not just
 through drag/keyboard interaction. The package exports a set of pure layout
 reducers (each takes a layout node and returns a new one, never mutating in
-place) as supported public API. Use these to script layout changes, build custom
-commands, or restore persisted arrangements:
+place), documented here, on the `./engine` entry, which is still `@beta` (see
+below). Use these to script layout changes, build custom commands, or restore
+persisted arrangements:
 
 | Reducer | Purpose |
 | --- | --- |

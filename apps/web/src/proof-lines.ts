@@ -15,9 +15,11 @@ export function proofParagraphs(): ReadonlyArray<DocParagraph> {
     [
       "What a user downloads, gzip: dist/index.mjs with the renderer chunk it loads, ",
       { code: String(facts.gzipIndexBytes) },
-      ` bytes (about ${Math.round(facts.gzipIndexBytes / 1000)} KB). dist/engine.mjs with its chunks, `,
+      ` bytes (about ${Math.round(facts.gzipIndexBytes / 1000)} KB), without its dependencies; with the whole @n-uf/motion and @n-uf/placement modules it imports, `,
+      { code: String(facts.gzipIndexWithLibrariesBytes) },
+      ` bytes (about ${Math.round(facts.gzipIndexWithLibrariesBytes / 1000)} KB, before tree-shaking; React, clsx and tailwind-merge not counted). dist/engine.mjs with its chunks, `,
       { code: String(facts.gzipEngineBytes) },
-      ` bytes (about ${Math.round(facts.gzipEngineBytes / 1000)} KB).`,
+      ` bytes (about ${Math.round(facts.gzipEngineBytes / 1000)} KB), without its dependencies.`,
     ],
     [
       "Engine entry imports in Node with react unresolvable (",

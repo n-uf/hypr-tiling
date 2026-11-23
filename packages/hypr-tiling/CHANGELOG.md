@@ -219,9 +219,11 @@ the version number alone does not flag them.
   places under the indicator and snap. `heldLook` stays drawing only.
   `dragMode` is documented with its real default (`"live"`).
 - The site's proof pane states the size a user downloads: each entry plus the
-  chunks it loads, gzip (about 123 KB for the root entry with its renderer
-  chunk, measured from the build), where it used to give the root facade
-  alone (about 7 KB).
+  chunks it loads, gzip, measured from the build: about 123 KB for the root
+  entry with its renderer chunk and no dependency code, about 183 KB with the
+  whole `@n-uf/motion` and `@n-uf/placement` modules it imports (before
+  tree-shaking; React, clsx and tailwind-merge not counted). It used to give
+  the root facade alone (about 7 KB).
 - The site's docs cover `dragPreview`, `heldLook`, `externalDragHover` /
   `onExternalDrop` and `createPersistedTilingLayout`; the "Save & restore"
   recipe uses `createPersistedTilingLayout`, which heals a saved tree that no
