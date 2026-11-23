@@ -1002,7 +1002,11 @@ interaction={{
   snap-to-slot (`dragPreview`, `dragPreviewMakesRoom`). The pane's own place
   is a drop target for the whole drag: whenever the pointer is over it, at
   the lift or coming back after leaving, that place is open, the other panes
-  are where they were, and a release there puts the layout back. A scroll or
+  are where they were, and a release there puts the layout back (coming
+  back, the place counts once the pointer is 6 px inside it). A tab torn off
+  a group that stays leaves no empty place, so its group holds still only
+  until the pointer first leaves it; after that the group is an ordinary
+  drop target. A scroll or
   resize that moves the viewport, or a new `layout` object mid-drag (a
   change of identity, as everywhere in the renderer), ends it for the rest
   of the drag.
