@@ -96,21 +96,69 @@ the version number alone does not flag them.
   before.
 - **A page scroll or a window resize mid-drag keeps the pane's own place.**
   The hit reads the pointer in the viewport's own pixels, so the place moves
-  with the page; before, either ended the hold for the rest of the drag. A
-  new layout or a new viewport size rebuilds the hit on the new layout.
+  with the page; before, either ended the hold for the rest of the drag. The
+  hit is built once per drag. A new layout or a new viewport size mid-drag
+  (a host update, a window resize) rebuilds it on them, on the same preview
+  and from the tab strips and drop elements measured at the lift, so nothing
+  is read from the page again and the drag goes on; its hold starts afresh.
+  Switching between snap and indicator mid-drag changes nothing until the
+  next drag: the drag keeps the preview it was lifted with.
+- **A tab torn off a group is refused over its own group.** Held over the
+  group it came from, the place is refused (`"self"`) and the cursor shows
+  not-allowed; a release there puts the layout back.
+- **`dragMode: "preview"` draws what a release commits.** Its projected
+  overlays draw the held place's `after(place)` tree from the drag's own hit,
+  the tree the release commits; before, they were projected with the old
+  reducers.
+- **The pane hit-zone debug overlay draws the hit's zones.** A pane next to
+  the dragged one draws its swap across the run and no strip for a side it
+  has no more, instead of the configured 34 % center on every pane.
+  `TilingPaneHitZoneOverlayDebugState` gains an optional
+  `centerInsetPercent`.
 - **Removed: `interaction.slotCommitment` and
   `dropHitZoneGeometry.hysteresisPx`,** with the types
   `TilingSlotCommitmentCapability`, `TilingSlotCommitmentMode` and
   `ResolvedTilingSlotCommitmentCapability`. The hold rule above is fixed, so
   a value passed for either is ignored (TypeScript flags it); the centre
   rectangle's `centerRatio`, `centerRatioX`, `centerRatioY` and `centerMinPx`
-  still shape the regions.
+  still shape the regions. Also removed: `TilingDropIntentBaseConfig.hysteresisPx`
+  and `TilingDropIntentTuningState.hysteresisPx` (the `tuning.hysteresisPx`
+  of a drop state and of the devtools readout).
 - **Engine API:** the `dragging` state of `DragMachineState` no longer has
   `homeLost` (added in 26.11.11), and neither it nor the `armed` state has
   `homeFootprint`; the `HOME_INVALIDATED` event is gone. The pane's own place
   is whatever the drag hit holds, which the machine keeps as `atHome`.
-  `TilingDropIntentState` gains `place`, the hit's held place, and `mark`,
-  the indicator's mark for it.
+  The controller host no longer has `getSlotCommitment`.
+- **Added:** `atHome` on the `TARGET_RESOLVED` event (whether the sample held
+  the pane's own place); `place` (the hit's held place) and `mark` (the
+  indicator's mark for it) on `TilingDropIntentState`; the optional `heldHome`
+  on the controller host, which the input driver reads after each sample;
+  and `parts` and `still` options on the layout drag (each pane's tab strip
+  and host drop elements as declared geometry, and the panes that take no
+  drop).
+- **Removed module exports** (not on a package entry, listed for anyone
+  importing the modules): from the drag machine `shouldReresolveSeatedTarget`,
+  `resolveReleaseCommitSeat`, `CommittableSeatFallback`,
+  `EMPTY_COMMITTABLE_SEAT_FALLBACK`, `foldCommittableSeatFallback`,
+  `SUSTAINED_NULL_SEAT_THRESHOLD`, `DragSlotCommitmentMode`,
+  `DEFAULT_DRAG_SLOT_COMMITMENT_MODE`, `DEFAULT_DRAG_RERESOLVE_DELTA_PX`,
+  `previousZoneSeed`, `isPointInFootprint`, `dragHomeFootprint`,
+  `isDragHomeHeld`, `DragHomeInvalidatedEvent`, `deriveLiveDragTree`,
+  `resolveDragRoomTarget`, `DragSwapFrame` and `swapFrameOf`; from the drop
+  intent resolver `classifyPaneZone`, `resolveDropIntent`,
+  `resolveDropIntentHitZoneDiagnostics`, `resolveDominantEdge`,
+  `resolvePaneZoneGeometry` (now `resolvePaneCenterGeometry`),
+  `resolveGroupTabStripHit`, `resolveGroupTabInsertIndex`,
+  `buildGroupTabStripMergeIntent`, `resolveHostGroupDropTargetHit`,
+  `pointInClientBounds`, `TilingClientRectBounds`,
+  `TilingGroupTabMemberBounds`, `TilingGroupTabStripHitTarget`,
+  `TilingHostGroupDropTargetCandidate` and `TilingHostGroupDropTargetHit`;
+  from drop validity `evaluateZoneCandidate`, `evaluateEdgeInsertCandidate`
+  and `DropZoneEvaluation`; from the input driver
+  `DragInputDriverSlotCommitment`; from the React renderer
+  `resolveStableDragHitFootprints` and `resolvePointerTargetFromMeasurement`,
+  and the whole stable drag measurement module (`createStableDragMeasurement`,
+  `StableDragMeasurementInput`, `StableDragInsertedTabs`, `Bounds`).
 - **Golden answers re-recorded** for the drag: `regions`, `drops`,
   `drop-boundary`, `drag-home`, `drag-home-return`, `drag-home-column` and
   `drag-forward-column`. The tree and the landing rect a drop commits are
