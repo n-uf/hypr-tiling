@@ -30,7 +30,8 @@ the version number alone does not flag them.
   still ends it, now for the rest of the drag even after the pointer has
   left; from then on the old place is resolved like any other.
 - **After a spring-loaded drop onto a workspace tab,** the pane's new seat is
-  its place for the continued drag, the same way.
+  its place for the continued drag, the same way, unless the drop merged the
+  pane into a tab group there: then it is a torn tab, as below.
 - **A tall tab group fits where it fits.** Drag a whole group down past the
   pane below it in its own column and the drop there is no longer refused:
   the room check now frees the space the group leaves before asking whether
