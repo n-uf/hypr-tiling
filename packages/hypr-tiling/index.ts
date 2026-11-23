@@ -286,6 +286,7 @@ export type {
   TilingRendererWorkspaceSetProps,
   TilingRendererModeProps,
   TilingDragPreview,
+  TilingHeldOverTarget,
   TilingClientPoint,
   TilingExternalDragHover,
   TilingExternalDropHover,
