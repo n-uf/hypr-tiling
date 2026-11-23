@@ -14,6 +14,8 @@ import {
   deriveCandidateTree,
   deriveLiveDragTree,
   dragMachineReducer,
+  isCommittableTarget,
+  resolveDragRoomTarget,
   type DragMachinePoint,
   type DragMachineState,
   type DragResolvedTarget,
@@ -717,7 +719,9 @@ export function dragHomeCases(): Record<string, string[]> {
  * taken 1 px past its bottom edge (or its top edge, for a leaf at the bottom of the area), then back over its header
  * (8 px below its top, at its center x), then released there; and the same with the page moving under the drag while
  * the pointer is away (`HOME_INVALIDATED`). Each step gives whether the home is the target, the tree laid out (`home`
- * or its shape), whether a drop target was resolved, and the release's outcome.
+ * or its shape), whether a drop target was resolved, and the release's outcome. The tree laid out is the drop
+ * indicator's frame (`resolveDragRoomTarget`): since the swap preview through placement's `tilingDrag`, a frame held
+ * over a swap draws the swapped tree (the old place reopened, the partner landed there), not the gap-closed one.
  */
 export function dragHomeReturnCases(): Record<string, string[]> {
   const out: Record<string, string[]> = {};
@@ -759,7 +763,7 @@ export function dragHomeReturnCases(): Record<string, string[]> {
             steps.push(`${label}:${state.phase}`);
             return;
           }
-          const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: null, homeHeld: state.atHome });
+          const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: indicatorRoom(state.resolvedTarget, leafId), homeHeld: state.atHome });
           steps.push(
             `${label}:${state.atHome ? "home" : "away"}/${laid === tree ? "home" : shape(laid)}/${state.resolvedTarget?.leafId ?? "-"}`,
           );
@@ -789,7 +793,8 @@ export function dragHomeReturnCases(): Record<string, string[]> {
  * top edge (for a tall group it is refused: its projection moves only the dragged leaf), and a drag through the input
  * driver: lift on the header, out below the column, over B's lower part (a swap), then back over the header or over
  * B's grown title bar, then released. The resolver answers as that geometry would: a merge over B's title bar, B's
- * top edge (with that verdict) in its top quarter, a swap below.
+ * top edge (with that verdict) in its top quarter, a swap below. The tree laid out is the drop indicator's frame
+ * (`resolveDragRoomTarget`): over B's lower part (the swap) it is the swapped tree, A's old place reopened for B.
  */
 export function dragHomeColumnCases(): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -883,7 +888,7 @@ export function dragHomeColumnCases(): Record<string, unknown> {
             steps.push(`${step}:${state.phase}`);
             return;
           }
-          const laid = deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: null, subject: dragSubject, homeHeld: state.atHome });
+          const laid = deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: indicatorRoom(state.resolvedTarget, "A"), subject: dragSubject, homeHeld: state.atHome });
           const t = state.resolvedTarget;
           steps.push(`${step}:${state.atHome ? "home" : "away"}/${laid === layout ? "home" : shape(laid)}/${t == null ? "-" : `${t.leafId} ${t.zone} ${t.action}`}`);
         };
@@ -976,6 +981,12 @@ export function dragForwardColumnCases(): Record<string, unknown> {
     }
   }
   return out;
+}
+
+/** The drop the drop indicator's frame makes room for (no `dragPreviewMakesRoom`): a committable swap, else none. */
+function indicatorRoom(target: DragResolvedTarget | null, sourceLeafId: string): DragResolvedTarget | null {
+  const committable: DragResolvedTarget | null = isCommittableTarget(target, sourceLeafId) ? target : null;
+  return resolveDragRoomTarget({ preview: "indicator", makesRoom: false, snapped: null, committable });
 }
 
 /** A committable swap, the drop the return-trip resolver answers everywhere (its `leafId` set per case). */

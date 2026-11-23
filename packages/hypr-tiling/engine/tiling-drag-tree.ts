@@ -10,6 +10,7 @@ import {
   type TilingSubject,
   type TilingTree,
 } from "@n-uf/placement/tiling";
+import { deriveCandidateTree, type DragResolvedTarget, type DragSubject } from "./drag-machine";
 import { mapLayoutToSplit, sizingSplitOptions } from "./leaf-geometry";
 import {
   extractLeafNode,
@@ -362,4 +363,29 @@ export function resolveTilingSwapPreview(
     return null;
   }
   return { layout: after.tree.layout, partnerTileId: target.tileId, partnerRect, landing: after.landing, after };
+}
+
+/**
+ * The layout tree a release on `target` commits: a swap's is `tilingDrag`'s `after(swap).tree` (what its frame drew,
+ * {@link resolveTilingSwapPreview}); every other drop's, and a swap the library refuses, is `deriveCandidateTree`'s
+ * as before.
+ * @internal
+ */
+export function deriveDropCommitTree(params: {
+  readonly layout: TilingLayoutNode;
+  readonly sourceLeafId: string;
+  readonly target: DragResolvedTarget | null;
+  readonly subject?: DragSubject;
+  readonly container: { readonly width: number; readonly height: number };
+  readonly config: TilingLayoutConfig;
+}): TilingLayoutNode {
+  const { layout, sourceLeafId, target, subject } = params;
+  if (target != null && target.action === "swap" && target.leafId !== sourceLeafId) {
+    const drag = createLayoutTilingDrag({ layout, sourceLeafId, subject, container: params.container, config: params.config });
+    const preview: TilingSwapPreview | null = resolveTilingSwapPreview(drag, target.leafId);
+    if (preview != null) {
+      return preview.layout;
+    }
+  }
+  return deriveCandidateTree(layout, sourceLeafId, target, subject);
 }
