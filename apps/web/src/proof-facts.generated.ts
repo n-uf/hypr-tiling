@@ -16,10 +16,10 @@ export interface ProofFacts {
 
 export const PROOF_FACTS: ProofFacts = {
   version: "26.11.11",
-  testSuites: 74,
-  tests: 1452,
-  gzipIndexBytes: 7100,
-  gzipEngineBytes: 30273,
+  testSuites: 77,
+  tests: 1473,
+  gzipIndexBytes: 7075,
+  gzipEngineBytes: 30167,
   runtimeDependencyCount: 4,
   runtimeDependencies: [
     "@n-uf/motion",
