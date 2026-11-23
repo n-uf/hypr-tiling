@@ -127,7 +127,7 @@ sources:
   - title: "hypr-tiling documentation"
     url: "https://hypr-tiling.n-uf.com/docs"
     checked: 2026-11-03
-  - title: "@n-uf/hypr-tiling on npm (peer dependencies, latest 26.9.9)"
+  - title: "@n-uf/hypr-tiling on npm (peer dependencies)"
     url: "https://www.npmjs.com/package/@n-uf/hypr-tiling"
     checked: 2026-11-03
   - title: "Hyprland"
@@ -223,7 +223,7 @@ Know the limits before you pick it:
 - It ships no CSS. The renderer emits Tailwind utility classes, so your app needs Tailwind with the package's dist folder in the `content` glob (v3) or an `@source` line (v4). Without it the panes render unstyled.
 - There are no floating, free-positioned or pop-out windows, and no docking to the screen's edges.
 - It's source-available under PolyForm Perimeter 1.0.1, not open source. Internal and commercial use is allowed; a product that competes with hypr-tiling is not.
-- Versions are calendar-based (`YY.M.R`, latest on npm today: 26.9.9). The README says it's in active development, releases may break compatibility, and you should pin an exact version and read the changelog before upgrading.
+- Versions are calendar-based (`YY.M.R`). The README says it's in active development, releases may break compatibility, and you should pin an exact version and read the changelog before upgrading.
 
 It makes sense when you want a Hyprland-style tiled screen with keyboard control and workspaces, you're on React 19 with Tailwind, and the licence suits you. The [quickstart](/docs#quickstart) is a single component you can paste in, and the [hypr-tiling site](/) is itself built from the library's panes.
 

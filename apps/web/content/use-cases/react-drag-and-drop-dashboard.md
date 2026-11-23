@@ -40,7 +40,7 @@ sources:
   - title: "hypr-tiling documentation (live)"
     url: "https://hypr-tiling.n-uf.com/docs"
     checked: 2026-11-03
-  - title: "@n-uf/hypr-tiling on npm (latest 26.9.9, peers, licence field)"
+  - title: "@n-uf/hypr-tiling on npm (peers, licence field)"
     url: "https://www.npmjs.com/package/@n-uf/hypr-tiling"
     checked: 2026-11-03
   - title: "PolyForm Perimeter License 1.0.1"
@@ -92,7 +92,7 @@ Install the package with its React 19 peers:
 pnpm add @n-uf/hypr-tiling react react-dom
 ```
 
-On 2026-11-03 the latest version on npm is 26.9.9. Versions follow the calendar (`YY.M.R`), so the number can't warn you about a breaking change, and the README says the library is in active development. Pin an exact version and read the changelog before you upgrade.
+Versions follow the calendar (`YY.M.R`), so the number can't warn you about a breaking change, and the README says the library is in active development. Pin an exact version and read the changelog before you upgrade.
 
 The package ships no CSS, and this is the step people miss. The renderer emits Tailwind utility classes, so your Tailwind build has to scan the package. In v4 that's one `@source` line; in v3 the same path goes in the `content` array:
 

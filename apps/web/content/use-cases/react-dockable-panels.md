@@ -43,7 +43,7 @@ sources:
   - title: "hypr-tiling documentation (live: guides, API reference for keymap, touchDrag, grouping)"
     url: "https://hypr-tiling.n-uf.com/docs"
     checked: 2026-11-04
-  - title: "@n-uf/hypr-tiling on npm (latest 26.9.9, peers, licence field)"
+  - title: "@n-uf/hypr-tiling on npm (peers, licence field)"
     url: "https://registry.npmjs.org/@n-uf/hypr-tiling"
     checked: 2026-11-04
   - title: "PolyForm Perimeter License 1.0.1"
@@ -116,7 +116,7 @@ Install the package with its React 19 peers:
 pnpm add @n-uf/hypr-tiling react react-dom
 ```
 
-On 4 November 2026 the latest version on npm is 26.9.9. Versions follow the calendar (`YY.M.R`), and the README says releases may break compatibility, so pin an exact version. The package ships no CSS: the renderer emits Tailwind utility classes, so your Tailwind build has to scan the package's `dist` folder (an `@source` line in v4, the `content` array in v3) or the panes render unstyled. The [quickstart](/docs#quickstart) walks through it.
+Versions follow the calendar (`YY.M.R`), and the README says releases may break compatibility, so pin an exact version. The package ships no CSS: the renderer emits Tailwind utility classes, so your Tailwind build has to scan the package's `dist` folder (an `@source` line in v4, the `content` array in v3) or the panes render unstyled. The [quickstart](/docs#quickstart) walks through it.
 
 The layout below is the docs' initial-layout example with the tiles given some content. Files sit on the left; the editor sits above a group that holds Terminal and Problems behind a tab strip:
 
