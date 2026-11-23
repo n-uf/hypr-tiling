@@ -539,6 +539,9 @@ describe("held look — the tile spec beats the renderer prop", (): void => {
 });
 
 describe("held look — motion", (): void => {
+  // Glides and the handover frame read frame by frame: on the driven clock, not a loaded machine's wall clock.
+  useDrivenClock();
+
   it("at the lift the pane glides from full size into its fold, then keeps it in free space", async (): Promise<void> => {
     restGeometry();
     const { container } = render(<Host animate />);
@@ -1014,6 +1017,10 @@ describe("held look — a handover that is not taken does not wait for a later l
 });
 
 describe("held look — drawing only: the drop is the same in every look", (): void => {
+  // Every test here reads a handover frame or a settle frame by frame: on the driven clock, so a loaded machine's
+  // wall clock (a CI runner) cannot let the settle start before the first read (0.637 seen against 0.45).
+  useDrivenClock();
+
   it("every look commits the same layout for the same drop", async (): Promise<void> => {
     const committed: string[] = [];
     for (const look of ["auto", "title-bar", "thumbnail", "fade", "none"] as const) {
