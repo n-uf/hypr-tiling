@@ -481,8 +481,9 @@ export function isDragHomeHeld(
  * The tree a live drag lays out now. While the home is the target (`homeHeld`, see {@link isDragHomeHeld}) it is the
  * layout at the lift: the pane's own place is open and every other pane is where it was. Elsewhere it is the
  * candidate tree for the room target ({@link deriveCandidateTree}), which with no target is the tree with the dragged
- * subject taken out and its gap closed. A swap room target drawn as `swapFrame: "room"` (see {@link swapFrameOf}) is
- * the layout at the lift too: the old place reopens and nothing moves before the release.
+ * subject taken out and its gap closed. A `swapFrame: "room"` drag (the indicator, see {@link swapFrameOf}) is the
+ * layout at the lift for the whole drag: the pane's own place stays open, nothing moves before the release, and its
+ * zones are judged where they are drawn.
  */
 export function deriveLiveDragTree(params: {
   readonly layout: TilingLayoutNode;
@@ -495,7 +496,7 @@ export function deriveLiveDragTree(params: {
   if (params.homeHeld) {
     return params.layout;
   }
-  if (params.swapFrame === "room" && params.roomTarget?.action === "swap" && params.roomTarget.leafId !== params.sourceLeafId) {
+  if (params.swapFrame === "room") {
     return params.layout;
   }
   return deriveCandidateTree(params.layout, params.sourceLeafId, params.roomTarget, params.subject);
@@ -503,8 +504,8 @@ export function deriveLiveDragTree(params: {
 
 /**
  * How a frame held over a swap draws it. The release commits the swap either way.
- * - `"room"`: the swap target stays in its own slot and nothing moves; only the dragged pane's old place reopens
- *   (the neighbour that grew into it at the lift gives the room back), marked as where the partner will go.
+ * - `"room"`: nothing moves during the drag: the layout stays as at the lift, the dragged pane's own place open, and
+ *   a held swap marks that place as where the partner will go.
  * - `"landed"`: the swap drawn done, the partner landed in the old place (`after(swap)`).
  */
 export type DragSwapFrame = "room" | "landed";
