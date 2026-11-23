@@ -16,9 +16,9 @@ export interface ProofFacts {
 
 export const PROOF_FACTS: ProofFacts = {
   version: "26.11.11",
-  testSuites: 77,
-  tests: 1473,
-  gzipIndexBytes: 7075,
+  testSuites: 78,
+  tests: 1488,
+  gzipIndexBytes: 7076,
   gzipEngineBytes: 30167,
   runtimeDependencyCount: 4,
   runtimeDependencies: [
