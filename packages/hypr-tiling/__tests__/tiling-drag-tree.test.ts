@@ -20,6 +20,7 @@ import {
   resolveTilingSwapPreview,
   tilingDragParts,
   tilingDragSplitOptions,
+  tilingHitPaneCenter,
   tilingDragSubjectOf,
   type TilingDragTree,
 } from "../engine/tiling-drag-tree";
@@ -328,6 +329,39 @@ describe("deriveDropPreviewTree: dragMode preview draws the tree a release commi
       }
     }
     expect(checked).toBeGreaterThan(20);
+  });
+});
+
+describe("tilingHitPaneCenter: the debug overlay's center is the hit's", () => {
+  const leaf = (id: string): TilingLeafNode => ({ kind: "leaf", id, tileId: `t${id}` }) as TilingLeafNode;
+  const regions = { regions: { centerX: 0.34, centerY: 0.34 } };
+
+  it("a run neighbor's swap spans the run's share across it and reaches the edges of its gone sides", () => {
+    const layout = { kind: "split", id: "r", axis: "horizontal", ratio: 0.5, first: leaf("A"), second: leaf("B") } as TilingLayoutNode;
+    const hit = createLayoutTilingDrag({ layout, sourceLeafId: "A", container: AREA, config: CONFIG, min: CONFIG.minPaneSizePx })!.hit("lift", regions);
+    const rect = resolveLeafRects(layout, AREA, CONFIG).get("B")!;
+    const center = tilingHitPaneCenter(hit, rect)!;
+    const spans = [(center.right - center.left) / rect.width, (center.bottom - center.top) / rect.height].sort((a, b) => a - b);
+    expect(spans[1]).toBe(1);
+    expect(spans[0]).toBeCloseTo(0.56, 1);
+  });
+
+  it("a pane that is no run neighbor keeps the configured center, and home has none", () => {
+    const layout = {
+      kind: "split",
+      id: "r",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: leaf("A"),
+      second: { kind: "split", id: "s", axis: "vertical", ratio: 0.5, first: leaf("B"), second: { kind: "split", id: "u", axis: "horizontal", ratio: 0.5, first: leaf("C"), second: leaf("D") } },
+    } as TilingLayoutNode;
+    const hit = createLayoutTilingDrag({ layout, sourceLeafId: "C", container: AREA, config: CONFIG, min: CONFIG.minPaneSizePx })!.hit("lift", regions);
+    const rects = resolveLeafRects(layout, AREA, CONFIG);
+    const a = rects.get("A")!;
+    const center = tilingHitPaneCenter(hit, a)!;
+    expect((center.right - center.left) / a.width).toBeCloseTo(0.34, 1);
+    expect((center.bottom - center.top) / a.height).toBeCloseTo(0.34, 1);
+    expect(tilingHitPaneCenter(hit, rects.get("C")!)).toBeNull();
   });
 });
 
