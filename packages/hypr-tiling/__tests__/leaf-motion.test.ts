@@ -327,6 +327,91 @@ describe("leaf motion — open (pop-in) and leaving leaves", () => {
   });
 });
 
+describe("leaf motion — a held pane lands from its look (handover)", () => {
+  it("puts the leaf at the rect with the look, then settles the look to null, scale and opacity monotonic to 1", () => {
+    const h: Harness = harness();
+    h.motion.target("a", A);
+    h.motion.handover("a", B, { scale: 0.6, opacity: 0.5 });
+    expect(h.motion.drawn("a")).toEqual(B);
+    expect(h.motion.frame("a")!.look).toEqual({ scale: 0.6, opacity: 0.5 });
+    expect(h.motion.active).toBe(true);
+    h.motion.flush();
+    h.clock.runUntilIdle();
+    const looks: Array<{ scale: number; opacity: number }> = [];
+    for (const w of h.writes) {
+      for (const f of w.frames) {
+        if (f.look != null) {
+          looks.push({ scale: f.look.scale, opacity: f.look.opacity });
+        }
+      }
+    }
+    expect(looks.length).toBeGreaterThan(2);
+    expect(looks[0]).toEqual({ scale: 0.6, opacity: 0.5 });
+    for (let i = 1; i < looks.length; i++) {
+      expect(looks[i]!.scale).toBeGreaterThanOrEqual(looks[i - 1]!.scale);
+      expect(looks[i]!.opacity).toBeGreaterThanOrEqual(looks[i - 1]!.opacity);
+      expect(looks[i]!.scale).toBeLessThanOrEqual(1);
+      expect(looks[i]!.opacity).toBeLessThanOrEqual(1);
+    }
+    expect(h.motion.frame("a")!.look).toBeNull();
+    // The last write drew it at full size and solid, and the motion is at rest.
+    expect(h.writes[h.writes.length - 1]!.frames.find((f) => f.id === "a")!.look).toBeNull();
+    expect(h.motion.active).toBe(false);
+  });
+
+  it("a next target glides the rect into place while the look settles: the drawn rect never jumps", () => {
+    const h: Harness = harness();
+    h.motion.target("a", A);
+    h.motion.handover("a", B, { scale: 0.7, opacity: 0.6 });
+    h.motion.target("a", C);
+    h.motion.flush();
+    h.clock.runUntilIdle();
+    expect(checkNoJumps(samplesOf(h, "a"), SETTLE_TEMPO.default).failures).toEqual([]);
+    expect(h.motion.drawn("a")).toEqual(C);
+    expect(h.motion.frame("a")!.look).toBeNull();
+  });
+
+  it("reduced motion is a no-op: the leaf is put at the rect with no look and nothing moves", () => {
+    const h: Harness = harness();
+    h.motion.target("a", A);
+    h.reduced = true;
+    h.motion.handover("a", B, { scale: 0.6, opacity: 0.5 });
+    expect(h.motion.drawn("a")).toEqual(B);
+    expect(h.motion.frame("a")!.look).toBeNull();
+    expect(h.motion.active).toBe(false);
+  });
+
+  it("a look that is already full and solid is no handover", () => {
+    const h: Harness = harness();
+    h.motion.target("a", A);
+    h.motion.handover("a", B, { scale: 1, opacity: 1 });
+    expect(h.motion.frame("a")!.look).toBeNull();
+    expect(h.motion.active).toBe(false);
+  });
+
+  it("endHandover clears the look at once and writes the frame without it", () => {
+    const h: Harness = harness();
+    h.motion.target("a", A);
+    h.motion.handover("a", B, { scale: 0.6, opacity: 0.5 });
+    h.motion.flush();
+    expect(h.writes[h.writes.length - 1]!.frames[0]!.look).not.toBeNull();
+    h.motion.endHandover("a");
+    expect(h.motion.frame("a")!.look).toBeNull();
+    h.motion.flush();
+    const last: LeafMotionFrame = h.writes[h.writes.length - 1]!.frames[0]!;
+    expect(last.id).toBe("a");
+    expect(last.look).toBeNull();
+    h.clock.runUntilIdle();
+    expect(h.motion.active).toBe(false);
+    // A leaf with no look, and an unknown leaf, are left alone.
+    const writes: number = h.writes.length;
+    h.motion.endHandover("a");
+    h.motion.endHandover("nope");
+    h.motion.flush();
+    expect(h.writes).toHaveLength(writes);
+  });
+});
+
 describe("leaf motion — a divider drag", () => {
   it("never toggles active and never asks for a frame: every held move is drawn by its flush", () => {
     const h: Harness = harness();
