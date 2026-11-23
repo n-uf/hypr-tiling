@@ -1,8 +1,4 @@
-import {
-  DEFAULT_DRAG_RERESOLVE_DELTA_PX,
-  DEFAULT_DRAG_SLOT_COMMITMENT_MODE,
-  DEFAULT_TOUCH_LONG_PRESS_MS,
-} from "./drag-machine";
+import { DEFAULT_TOUCH_LONG_PRESS_MS } from "./drag-machine";
 import { DRAG_RECOVERY_DEFAULT_MAX_DRAGGING_IDLE_MS } from "./drag-recovery";
 import { TILING_DROP_INTENT_CONFIG } from "./drop-intent-resolver";
 import { TILING_KEYMAP_DEFAULTS, resolveKeymap } from "./pane-switching";
@@ -110,10 +106,6 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
   resizeHandlesVisible: true,
   rearrange: true,
   dragMode: "live",
-  slotCommitment: {
-    mode: DEFAULT_DRAG_SLOT_COMMITMENT_MODE,
-    reresolveDeltaPx: DEFAULT_DRAG_RERESOLVE_DELTA_PX,
-  },
   touchDrag: {
     enable: true,
     longPressMs: DEFAULT_TOUCH_LONG_PRESS_MS,
@@ -144,7 +136,6 @@ export const TILING_INTERACTION_CAPABILITY_DEFAULTS: ResolvedTilingInteractionCa
     centerRatioX: TILING_DROP_INTENT_CONFIG.centerRatio,
     centerRatioY: TILING_DROP_INTENT_CONFIG.centerRatio,
     centerMinPx: TILING_DROP_INTENT_CONFIG.centerMinPx,
-    hysteresisPx: TILING_DROP_INTENT_CONFIG.hysteresisPx,
   },
   keymap: TILING_KEYMAP_DEFAULTS,
   keyBindings: { bindings: [], replaceDefaults: false },
@@ -249,14 +240,6 @@ export function resolveInteractionCapabilities(
       ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.resizeHandlesVisible,
     rearrange: capabilities?.rearrange ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.rearrange,
     dragMode: capabilities?.dragMode ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.dragMode,
-    slotCommitment: {
-      mode:
-        capabilities?.slotCommitment?.mode
-        ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.slotCommitment.mode,
-      reresolveDeltaPx:
-        capabilities?.slotCommitment?.reresolveDeltaPx
-        ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.slotCommitment.reresolveDeltaPx,
-    },
     touchDrag: {
       enable: capabilities?.touchDrag?.enable ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.touchDrag.enable,
       // Negative long-press is nonsensical (a timer cannot fire before t=0); clamp
@@ -498,8 +481,6 @@ function resolveDropHitZoneGeometry(
     centerRatioY,
     centerMinPx:
       geometry?.centerMinPx ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.dropHitZoneGeometry.centerMinPx,
-    hysteresisPx:
-      geometry?.hysteresisPx ?? TILING_INTERACTION_CAPABILITY_DEFAULTS.dropHitZoneGeometry.hysteresisPx,
   };
 }
 

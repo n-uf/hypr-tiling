@@ -30,7 +30,6 @@ import type {
   ResolvedTilingKeyChordModifiers,
   TilingDragMode,
   TilingResizeCapability,
-  TilingSlotCommitmentMode,
 } from "../engine/types";
 
 /**
@@ -173,23 +172,6 @@ interface DragModeOption {
 const DRAG_MODE_OPTIONS: ReadonlyArray<DragModeOption> = [
   { value: "live", label: "live", title: "Hyprland-style: the real pane is lifted on pickup and held under the pointer, the others close the gap, and the drop commits once on release (reverts on cancel/Escape)" },
   { value: "preview", label: "preview", title: "Non-committing preview via translucent projected landing overlays (S' / T' / successor); layout tree untouched until drop" },
-];
-
-interface SlotCommitmentOption {
-  value: TilingSlotCommitmentMode;
-  label: string;
-  title: string;
-}
-
-/**
- * Segmented-control options for the live-drag target re-resolution policy once
- * a target is seated. "delta-responsive" (default) re-aims once the cursor
- * travels past the delta threshold; "zone-exit-hold" pins the seated target
- * until the cursor leaves the seated pane (sticky).
- */
-const SLOT_COMMITMENT_OPTIONS: ReadonlyArray<SlotCommitmentOption> = [
-  { value: "delta-responsive", label: "delta", title: "Delta-responsive (default): once a target is seated, it re-evaluates the target eagerly once the cursor travels beyond the re-aim delta (24px) from the seat anchor — re-aim without fully exiting the pane" },
-  { value: "zone-exit-hold", label: "hold", title: "Zone-exit hold (anchored / sticky): once a target is seated it stays pinned through small cursor movements; the target re-resolves only when the cursor crosses OUT of the seated pane's hit zone" },
 ];
 
 interface LiveStatusVisibilityOption {
@@ -1363,27 +1345,6 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
               title="Floor (CSS px) for the center rectangle extent so tiny panes keep a usable swap target when width * centerRatio would collapse it."
             />
           </div>
-          <div className="min-w-0 max-w-full overflow-hidden rounded border border-white/10 bg-slate-950/70 p-2">
-            <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400">
-              hysteresis: {props.interactionCapabilities.dropHitZoneGeometry.hysteresisPx}px
-            </label>
-            <RangeSlider
-              min={0}
-              max={24}
-              step={1}
-              value={props.interactionCapabilities.dropHitZoneGeometry.hysteresisPx}
-              onChange={(value: number): void => props.setInteractionCapabilities(
-                (previous: ResolvedTilingInteractionCapabilities): ResolvedTilingInteractionCapabilities => ({
-                  ...previous,
-                  dropHitZoneGeometry: {
-                    ...previous.dropHitZoneGeometry,
-                    hysteresisPx: value,
-                  },
-                }),
-              )}
-              title="Boundary stickiness (pane-local CSS px): once the cursor is in a zone it must cross the boundary by this much before the classification switches. 0 disables hysteresis."
-            />
-          </div>
         </div>
       ) : null}
     </div>
@@ -1618,45 +1579,6 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                               ? "border-cyan-300/70 bg-cyan-500/20 text-cyan-100"
                               : "border-white/10 bg-slate-950 text-slate-400 hover:border-white/25"
                           } ${props.interactionCapabilities.rearrange ? "" : "opacity-40"}`}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="pl-5">
-                  <div
-                    className="mb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400"
-                    title="Live-drag target re-resolution once a target is seated: delta-responsive (default) re-aims once the cursor moves past the 24px delta; zone-exit-hold pins the seated target until the cursor leaves the seated pane."
-                  >
-                    slot commitment
-                  </div>
-                  <div className="grid grid-cols-2 gap-1" role="group" aria-label="slot commitment">
-                    {SLOT_COMMITMENT_OPTIONS.map((option: SlotCommitmentOption): React.ReactElement => {
-                      const isActive: boolean = props.interactionCapabilities.slotCommitment.mode === option.value;
-                      const isDisabled: boolean =
-                        !props.interactionCapabilities.rearrange
-                        || props.interactionCapabilities.dragMode !== "live";
-                      return (
-                        <button
-                          key={`slot-commitment-${option.value}`}
-                          type="button"
-                          aria-pressed={isActive}
-                          disabled={isDisabled}
-                          title={option.title}
-                          onClick={(): void => props.setInteractionCapabilities(
-                            (previous: ResolvedTilingInteractionCapabilities): ResolvedTilingInteractionCapabilities => ({
-                              ...previous,
-                              slotCommitment: { ...previous.slotCommitment, mode: option.value },
-                            }),
-                          )}
-                          className={`rounded border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/55 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950 motion-reduce:transition-none ${
-                            isActive
-                              ? "border-cyan-300/70 bg-cyan-500/20 text-cyan-100"
-                              : "border-white/10 bg-slate-950 text-slate-400 hover:border-white/25"
-                          } ${isDisabled ? "opacity-40" : ""}`}
                         >
                           {option.label}
                         </button>

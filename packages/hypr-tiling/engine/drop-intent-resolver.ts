@@ -1,4 +1,4 @@
-import { paneCenter, paneRegion, type PaneCenter } from "@n-uf/placement/tiling";
+import { paneCenter, type TilingHeld, type TilingMark } from "@n-uf/placement/tiling";
 import type {
   TilingDropAction,
   TilingDropIntentTuningState,
@@ -10,32 +10,13 @@ import type {
 export type TilingEdgeZone = Exclude<TilingLeafDropZone, "center">;
 
 /**
- * Single-source-of-truth hit-zone model.
+ * The drop state a drag carries, and the hit-zone geometry its overlays draw.
  *
- * Coordinate convention: every input is expressed in **pane-local CSS pixels**,
- * with the origin at the pane's top-left corner (x grows right, y grows down).
- * The pane's measured `getBoundingClientRect()` defines that origin, so the
- * resolver and the visual overlay both operate in the identical frame — there is
- * no client/page/container offset left implicit. Callers convert raw client
- * coordinates with `toPaneLocalPoint` before resolving.
- *
- * The pane partitions into exactly five non-overlapping regions that tile the
- * full pane with no gaps:
- *   - a center rectangle (swap intent), and
- *   - four edge trapezoids (left/right/top/bottom insert intent) formed by the
- *     diagonals from each pane corner to the nearest center-rectangle corner.
- *
- * Both `classifyPaneZone` (resolution) and `paneZoneClipPaths` (overlay drawing)
- * derive from this one geometry, so the resolved zone is exactly the drawn zone
- * under the cursor. The center rectangle and the classification are
- * `@n-uf/placement/tiling`'s `paneCenter` and `paneRegion`; this module maps
- * the hit-zone config onto their options and keeps the diagnostics.
+ * Which place the pointer is over is not decided here: `@n-uf/placement/tiling`'s drag hit (`tilingDrag(...).hit`)
+ * decides it, on one layout fixed at the lift, with its one hold rule; `engine/tiling-drag-tree.ts` turns what it reads
+ * into this state. The pane's five regions (a center rectangle for a swap, four edge trapezoids for a side) are
+ * placement's `paneRegion`; `paneZoneClipPaths` draws them for the debug overlay from the same ratios.
  */
-
-interface TilingDropIntentEvaluation {
-  isValid: boolean;
-  rejectionReason: string | null;
-}
 
 export interface TilingPaneSize {
   width: number;
@@ -52,7 +33,7 @@ export interface TilingClientRectOrigin {
   top: number;
 }
 
-/** Base drop hit-zone geometry: center swap fraction, floor, and hysteresis. */
+/** Base drop hit-zone geometry: the center swap fraction and its floor. */
 export interface TilingDropIntentBaseConfig {
   /**
    * Fraction of each pane axis spanned by the center (swap) rectangle. Acts as
@@ -66,8 +47,6 @@ export interface TilingDropIntentBaseConfig {
   centerRatioY?: number;
   /** Floor for the center rectangle extent so tiny panes keep a usable swap zone. */
   centerMinPx: number;
-  /** Boundary stickiness (pane-local px) used to suppress sub-pixel flicker. */
-  hysteresisPx: number;
 }
 
 /** Per-axis swap-zone fractions (`x` = width, `y` = height), both clamped to `[0.05, 0.95]`. */
@@ -79,8 +58,7 @@ export interface TilingCenterRatios {
 /**
  * Resolve the per-axis center ratios from a base config: a per-axis override
  * (`centerRatioX` / `centerRatioY`) wins, else the symmetric `centerRatio`.
- * Both are clamped to `[0.05, 0.95]` — the same clamp `resolvePaneZoneGeometry`
- * and `paneZoneClipPaths` apply, surfaced once so callers agree.
+ * Both are clamped to `[0.05, 0.95]`, as `paneZoneClipPaths` clamps them.
  */
 export function resolveCenterRatios(config: TilingDropIntentBaseConfig): TilingCenterRatios {
   return {
@@ -105,9 +83,8 @@ export interface TilingPaneZoneGeometry {
 }
 
 /**
- * The resolver's full drop-intent result for one pane hover: the resolved zone
- * and action plus the geometry/diagnostic fields that explain how it was
- * reached. Emitted (as {@link TilingDropIntentDebugState}) to `onDropIntentChange`.
+ * A drag's drop on one pane: the place the drag's hit holds there, as the drag machine and the renderer read it, plus
+ * the geometry fields the debug readouts show. Emitted (as {@link TilingDropIntentDebugState}) to `onDropIntentChange`.
  */
 export interface TilingDropIntentState {
   /** The hovered leaf this resolution targets. */
@@ -154,21 +131,13 @@ export interface TilingDropIntentState {
   tuning: TilingDropIntentTuningState;
   /**
    * Member index a `group-merge` inserts at, when the pointer is over a
-   * built-in strip tab. Omitted for host drop targets (those append) and
-   * for a strip hit that did not resolve a tab.
+   * strip tab. Omitted for a join with no index (it appends).
    */
   memberInsertIndex?: number;
-}
-
-interface TilingDropIntentResolutionInput {
-  leafId: string;
-  paneLocalX: number;
-  paneLocalY: number;
-  paneSize: TilingPaneSize;
-  axisPath: ReadonlyArray<TilingSplitAxis>;
-  geometryConfig: TilingZoneGeometryConfig;
-  previousZone?: TilingLeafDropZone | null;
-  evaluateZone: (zone: TilingLeafDropZone) => TilingDropIntentEvaluation;
+  /** The drag hit's held place (keyed by tile id) this drop is: what a release commits, `after(place)`. */
+  place?: TilingHeld<string>;
+  /** Indicator's mark for it: a region of the lift layout (viewport px), or null. */
+  mark?: TilingMark<string> | null;
 }
 
 export interface TilingDropIntentHitZoneDiagnosticEntry {
@@ -192,28 +161,15 @@ export interface TilingDropIntentHitZoneDiagnostics {
 }
 
 /**
- * The default drop hit-zone geometry: a `0.34` center swap fraction, a `24`px
- * center floor, and `6`px boundary hysteresis. The baseline
- * `dropHitZoneGeometry` capability resolves to these values.
+ * The default drop hit-zone geometry: a `0.34` center swap fraction and a `24`px
+ * center floor. The baseline `dropHitZoneGeometry` capability resolves to these values.
  */
 export const TILING_DROP_INTENT_CONFIG: TilingDropIntentBaseConfig = {
   centerRatio: 0.34,
   centerMinPx: 24,
-  hysteresisPx: 6,
 };
 
-/**
- * Canonical edge-zone enumeration order, single source of truth.
- *
- * This order is the resolver's intentional **tie-break order**: when penetration
- * scores tie at a corner the first-enumerated zone wins (top before right before
- * bottom before left), so an exact diagonal corner resolves to `top`
- * deterministically. It also fixes the order of `rejectedSplitReasons` and the
- * diagnostics `edgeZones` array. The renderer imports this constant for any
- * enumeration that must agree with resolution; it keeps a separately-named
- * overlay *paint* order constant where the DOM paint sequence intentionally
- * differs (see `DROP_EDGE_ZONE_PAINT_ORDER` in the renderer).
- */
+/** The edge zones in placement's tie-break order (top, right, bottom, left). */
 export const DROP_EDGE_ZONES: ReadonlyArray<TilingEdgeZone> = ["top", "right", "bottom", "left"];
 
 function clamp(value: number, min: number, max: number): number {
@@ -231,112 +187,29 @@ export function toPaneLocalPoint(
   };
 }
 
-/**
- * The center (swap) rectangle of a pane, placement's `paneCenter`: each axis
- * spans its center ratio (clamped `[0.05, 0.95]`) of the pane, at least
- * `centerMinPx` and at most the pane, with every boundary snapped to the
- * device-pixel grid (the browser rasterizes CSS boundaries to device pixels,
- * so "measured == rendered" on HiDPI/Retina).
- */
-export function resolvePaneZoneGeometry(
-  size: TilingPaneSize,
-  config: TilingZoneGeometryConfig,
-): TilingPaneZoneGeometry {
-  const devicePixelRatio: number = config.devicePixelRatio > 0 ? config.devicePixelRatio : 1;
+/** The center (swap) rectangle of a pane of `paneSize`, placement's `paneCenter` under `config`. */
+export function resolvePaneCenterGeometry(paneSize: TilingPaneSize, config: TilingZoneGeometryConfig): TilingPaneZoneGeometry {
   const ratios: TilingCenterRatios = resolveCenterRatios(config);
-  const center: PaneCenter = paneCenter(size, {
+  const c = paneCenter(paneSize, {
     centerX: ratios.x,
     centerY: ratios.y,
     centerMin: config.centerMinPx,
-    pixelRatio: devicePixelRatio,
+    pixelRatio: config.devicePixelRatio > 0 ? config.devicePixelRatio : 1,
   });
-
   return {
-    width: center.width,
-    height: center.height,
-    centerLeftPx: center.left,
-    centerTopPx: center.top,
-    centerRightPx: center.right,
-    centerBottomPx: center.bottom,
-    devicePixelRatio,
+    width: c.width,
+    height: c.height,
+    centerLeftPx: c.left,
+    centerTopPx: c.top,
+    centerRightPx: c.right,
+    centerBottomPx: c.bottom,
+    devicePixelRatio: config.devicePixelRatio,
   };
-}
-
-interface TilingEdgePenetration {
-  zone: TilingEdgeZone;
-  penetration: number;
-}
-
-function edgePenetrations(point: TilingPanePoint, geometry: TilingPaneZoneGeometry): ReadonlyArray<TilingEdgePenetration> {
-  const leftGapPx: number = Math.max(geometry.centerLeftPx, 1);
-  const rightGapPx: number = Math.max(geometry.width - geometry.centerRightPx, 1);
-  const topGapPx: number = Math.max(geometry.centerTopPx, 1);
-  const bottomGapPx: number = Math.max(geometry.height - geometry.centerBottomPx, 1);
-  return [
-    { zone: "top", penetration: (geometry.centerTopPx - point.y) / topGapPx },
-    { zone: "right", penetration: (point.x - geometry.centerRightPx) / rightGapPx },
-    { zone: "bottom", penetration: (point.y - geometry.centerBottomPx) / bottomGapPx },
-    { zone: "left", penetration: (geometry.centerLeftPx - point.x) / leftGapPx },
-  ];
-}
-
-/**
- * The edge with the deepest normalized penetration, ignoring the center rect.
- *
- * Diagnostic-only: the resolved `dominantEdge` feeds the debug/observability
- * telemetry panels exclusively — no drop-resolution logic consumes it (the
- * committed zone comes from `classifyPaneZone`). It is retained because it is
- * cheap (one pass over four edges) and gives operators a "which edge is the
- * cursor leaning toward" signal independent of the hysteresis-held zone; it is
- * unit-tested so the diagnostic stays trustworthy.
- */
-export function resolveDominantEdge(point: TilingPanePoint, geometry: TilingPaneZoneGeometry): TilingEdgeZone {
-  let bestZone: TilingEdgeZone = "top";
-  let bestPenetration: number = Number.NEGATIVE_INFINITY;
-  for (const entry of edgePenetrations(point, geometry)) {
-    if (entry.penetration > bestPenetration) {
-      bestPenetration = entry.penetration;
-      bestZone = entry.zone;
-    }
-  }
-  return bestZone;
-}
-
-/**
- * Deterministically classify a pane-local point into a drop zone: placement's
- * `paneRegion` over the pane, with the center rectangle `geometry` already has.
- *
- * The base partition is a pure function of position (no seed/fallback ordering):
- * inside the center rectangle is `center`, else the deepest normalized
- * penetration toward a side wins (ties top → right → bottom → left). The only
- * stabilization is a small geometric hysteresis: once the cursor is in
- * `previousZone`, it must cross the boundary by `hysteresisPx` (measured toward
- * that zone; default 0, no hold) before the classification switches. This
- * prevents corner/divider flicker without time-based debounce.
- */
-export function classifyPaneZone(
-  point: TilingPanePoint,
-  geometry: TilingPaneZoneGeometry,
-  options?: { previousZone?: TilingLeafDropZone | null; hysteresisPx?: number },
-): TilingLeafDropZone {
-  const center: PaneCenter = {
-    width: geometry.width,
-    height: geometry.height,
-    left: geometry.centerLeftPx,
-    top: geometry.centerTopPx,
-    right: geometry.centerRightPx,
-    bottom: geometry.centerBottomPx,
-  };
-  return paneRegion({ x: 0, y: 0, width: geometry.width, height: geometry.height }, point, options?.previousZone ?? null, {
-    paneCenter: center,
-    hysteresis: Math.max(0, options?.hysteresisPx ?? 0),
-  });
 }
 
 /**
  * CSS `clip-path` polygons (percent-based, so exact for any pane size) for the
- * four edge trapezoids. The overlay draws these; classification uses the same
- * ratio-defined boundaries, guaranteeing visual/resolver agreement.
+ * four edge trapezoids, for the debug overlay.
  */
 export function paneZoneClipPaths(centerRatioX: number, centerRatioY: number): Record<TilingEdgeZone, string> {
   const ratioX: number = clamp(centerRatioX, 0.05, 0.95);
@@ -359,358 +232,4 @@ export function paneZoneCenterInsetPercent(centerRatioX: number, centerRatioY: n
     x: (((1 - clamp(centerRatioX, 0.05, 0.95)) / 2) * 100),
     y: (((1 - clamp(centerRatioY, 0.05, 0.95)) / 2) * 100),
   };
-}
-
-function edgeDistanceToPaneEdgePx(
-  zone: TilingEdgeZone,
-  point: TilingPanePoint,
-  geometry: TilingPaneZoneGeometry,
-): number {
-  if (zone === "left") {
-    return Math.max(0, point.x);
-  }
-  if (zone === "right") {
-    return Math.max(0, geometry.width - point.x);
-  }
-  if (zone === "top") {
-    return Math.max(0, point.y);
-  }
-  return Math.max(0, geometry.height - point.y);
-}
-
-function resolveTuning(config: TilingZoneGeometryConfig): TilingDropIntentTuningState {
-  // The tuning telemetry carries a single representative `centerRatio` (the X /
-  // width axis); the per-axis Y value is consumed by the geometry directly. For
-  // a symmetric config (the default) X == Y, so this is exact; for an
-  // asymmetric per-axis config it reports the X axis.
-  const centerRatio: number = resolveCenterRatios(config).x;
-  return {
-    centerRatio,
-    edgeThresholdRatio: (1 - centerRatio) / 2,
-    hysteresisPx: Math.max(0, config.hysteresisPx),
-    devicePixelRatio: config.devicePixelRatio > 0 ? config.devicePixelRatio : 1,
-  };
-}
-
-export function resolveDropIntent(input: TilingDropIntentResolutionInput): TilingDropIntentState {
-  const { leafId, paneLocalX, paneLocalY, paneSize, axisPath, geometryConfig, evaluateZone } = input;
-  const geometry: TilingPaneZoneGeometry = resolvePaneZoneGeometry(paneSize, geometryConfig);
-  const point: TilingPanePoint = { x: paneLocalX, y: paneLocalY };
-  const tuning: TilingDropIntentTuningState = resolveTuning(geometryConfig);
-
-  // Two classifications are both required and return semantically distinct
-  // values: `rawZone` is the pure position-only partition (no hysteresis), and
-  // `zone` is the resolved partition after geometric hysteresis may hold the
-  // previous zone. `heldByHysteresis` (and the `fallbackReason` it drives) is
-  // exactly the divergence between them, so neither call can be dropped without
-  // losing the hold signal. The redundant inner re-run of the raw partition is
-  // an O(4) micro-cost kept inside `classifyPaneZone` (placement's `paneRegion`)
-  // to preserve it as the single source of truth for the partition rather than
-  // inlining the geometry here.
-  const rawZone: TilingLeafDropZone = classifyPaneZone(point, geometry);
-  const zone: TilingLeafDropZone = classifyPaneZone(point, geometry, {
-    previousZone: input.previousZone ?? null,
-    hysteresisPx: geometryConfig.hysteresisPx,
-  });
-  const heldByHysteresis: boolean = zone !== rawZone;
-
-  const paneCenterX: number = geometry.width / 2;
-  const paneCenterY: number = geometry.height / 2;
-  const centerDistancePx: number = Math.hypot(point.x - paneCenterX, point.y - paneCenterY);
-  const nearestEdgeDistancePx: number = Math.max(
-    0,
-    Math.min(point.x, geometry.width - point.x, point.y, geometry.height - point.y),
-  );
-  // Diagnostic-only signal (telemetry panels); not consumed by drop resolution.
-  const dominantEdge: TilingEdgeZone = resolveDominantEdge(point, geometry);
-
-  const rejectedSplitReasons: Array<string> = [];
-  for (const edgeZone of DROP_EDGE_ZONES) {
-    const edgeEvaluation: TilingDropIntentEvaluation = evaluateZone(edgeZone);
-    if (!edgeEvaluation.isValid) {
-      rejectedSplitReasons.push(edgeEvaluation.rejectionReason ?? `${edgeZone} rejected`);
-    }
-  }
-
-  const isCenter: boolean = zone === "center";
-  const evaluation: TilingDropIntentEvaluation = evaluateZone(zone);
-  const isValid: boolean = evaluation.isValid;
-  // A center drop on a pane body — leaf OR group — is always `swap`. Add-to-group
-  // (`group-merge`) is never produced by this body partition. It is reachable
-  // only from a distinct hit target resolved BEFORE the body: the built-in group
-  // tab strip (`resolveGroupTabStripHit`) or a host-registered group drop target
-  // (`resolveHostGroupDropTargetHit`). Both build the same intent via
-  // `buildGroupTabStripMergeIntent`. The center (swap) zone stays identical on
-  // every slot.
-  const action: TilingDropAction = isCenter
-    ? (isValid ? "swap" : "none")
-    : (isValid ? "edge-insert" : "none");
-  const finalEdge: TilingEdgeZone | null = !isCenter && isValid ? (zone as TilingEdgeZone) : null;
-  const selectedSplitZone: TilingEdgeZone | null = isCenter ? null : (zone as TilingEdgeZone);
-  const selectedSplitDistancePx: number | null = isCenter
-    ? null
-    : edgeDistanceToPaneEdgePx(zone as TilingEdgeZone, point, geometry);
-  const blockedReason: string | null = isValid
-    ? null
-    : (evaluation.rejectionReason ?? `${zone}-blocked`);
-
-  return {
-    leafId,
-    zone,
-    action,
-    dominantEdge,
-    finalEdge,
-    fallbackReason: heldByHysteresis ? `hysteresis-hold:${rawZone}->${zone}` : null,
-    blockedReason,
-    axisPath,
-    edgeThresholdRatio: tuning.edgeThresholdRatio,
-    centerRectWidthPx: geometry.centerRightPx - geometry.centerLeftPx,
-    centerRectHeightPx: geometry.centerBottomPx - geometry.centerTopPx,
-    centerDistancePx,
-    nearestEdgeDistancePx,
-    paneLocalX: point.x,
-    paneLocalY: point.y,
-    targetSplitId: null,
-    targetSplitPlacement: null,
-    selectedSplitZone,
-    selectedSplitDistancePx,
-    rejectedSplitReasons,
-    tuning,
-  };
-}
-
-export function resolveDropIntentHitZoneDiagnostics(input: {
-  paneSize: TilingPaneSize;
-  geometryConfig: TilingZoneGeometryConfig;
-  evaluateZone: (zone: TilingLeafDropZone) => TilingDropIntentEvaluation;
-}): TilingDropIntentHitZoneDiagnostics {
-  const geometry: TilingPaneZoneGeometry = resolvePaneZoneGeometry(input.paneSize, input.geometryConfig);
-  const tuning: TilingDropIntentTuningState = resolveTuning(input.geometryConfig);
-  const ratios: TilingCenterRatios = resolveCenterRatios(input.geometryConfig);
-  const edgeZones: ReadonlyArray<TilingDropIntentHitZoneDiagnosticEntry> = DROP_EDGE_ZONES.map(
-    (zone: TilingEdgeZone): TilingDropIntentHitZoneDiagnosticEntry => {
-      const evaluation: TilingDropIntentEvaluation = input.evaluateZone(zone);
-      return {
-        zone,
-        isValid: evaluation.isValid,
-        rejectionReason: evaluation.rejectionReason,
-      };
-    },
-  );
-
-  return {
-    geometry,
-    centerRatio: tuning.centerRatio,
-    centerRatioX: ratios.x,
-    centerRatioY: ratios.y,
-    edgeThresholdRatio: tuning.edgeThresholdRatio,
-    centerRectWidthPx: geometry.centerRightPx - geometry.centerLeftPx,
-    centerRectHeightPx: geometry.centerBottomPx - geometry.centerTopPx,
-    edgeZones,
-  };
-}
-
-/** Client-space axis-aligned bounds (e.g. from `getBoundingClientRect`). */
-export interface TilingClientRectBounds {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-}
-
-/** A group tab strip hit during drag — merge into this group. */
-export interface TilingGroupTabStripHitTarget {
-  groupId: string;
-  activeMemberLeafId: string;
-}
-
-/** Whether `(clientX, clientY)` lies inside `bounds`. */
-export function pointInClientBounds(
-  clientX: number,
-  clientY: number,
-  bounds: TilingClientRectBounds,
-): boolean {
-  return (
-    clientX >= bounds.left &&
-    clientX <= bounds.right &&
-    clientY >= bounds.top &&
-    clientY <= bounds.bottom
-  );
-}
-
-/**
- * First group tab strip whose bounds contain the client point. `candidates` are
- * checked in order (topmost / DOM order should be listed first by the caller).
- */
-export function resolveGroupTabStripHit(
-  clientX: number,
-  clientY: number,
-  candidates: ReadonlyArray<{
-    groupId: string;
-    activeMemberLeafId: string;
-    bounds: TilingClientRectBounds | null;
-  }>,
-): TilingGroupTabStripHitTarget | null {
-  for (const candidate of candidates) {
-    if (candidate.bounds != null && pointInClientBounds(clientX, clientY, candidate.bounds)) {
-      return {
-        groupId: candidate.groupId,
-        activeMemberLeafId: candidate.activeMemberLeafId,
-      };
-    }
-  }
-  return null;
-}
-
-const GROUP_TAB_STRIP_MERGE_TUNING: TilingDropIntentTuningState = {
-  centerRatio: TILING_DROP_INTENT_CONFIG.centerRatio,
-  edgeThresholdRatio: (1 - TILING_DROP_INTENT_CONFIG.centerRatio) / 2,
-  hysteresisPx: 0,
-  devicePixelRatio: 1,
-};
-
-/**
- * A host-registered group-drop target hit during drag — merge into this pane.
- * `leafId` is the pane the host attached `groupDropTargetRef` to (a loose leaf,
- * or a group's active member).
- */
-export interface TilingHostGroupDropTargetHit {
-  leafId: string;
-}
-
-/**
- * One pane's host group-drop target(s) for {@link resolveHostGroupDropTargetHit}.
- * `bounds` may list several elements (title bar and chip strip) that share the
- * pane's ref callback. `groupMemberLeafIds` is empty for a loose leaf.
- */
-export interface TilingHostGroupDropTargetCandidate {
-  leafId: string;
-  bounds: ReadonlyArray<TilingClientRectBounds>;
-  groupMemberLeafIds: ReadonlyArray<string>;
-}
-
-/**
- * First eligible host group-drop target whose bounds contain the client point.
- *
- * Eligibility matches the built-in tab strip, plus an already-member guard:
- * the drag source's own target is skipped, and so is a target whose group
- * already contains the source. Skipped candidates fall through (the caller
- * continues with pane-body zones). `candidates` are checked in order.
- */
-export function resolveHostGroupDropTargetHit(
-  clientX: number,
-  clientY: number,
-  sourceLeafId: string,
-  candidates: ReadonlyArray<TilingHostGroupDropTargetCandidate>,
-): TilingHostGroupDropTargetHit | null {
-  for (const candidate of candidates) {
-    const containsPoint: boolean = candidate.bounds.some(
-      (bounds: TilingClientRectBounds): boolean => pointInClientBounds(clientX, clientY, bounds),
-    );
-    if (!containsPoint) {
-      continue;
-    }
-    if (candidate.leafId === sourceLeafId) {
-      continue;
-    }
-    if (candidate.groupMemberLeafIds.includes(sourceLeafId)) {
-      continue;
-    }
-    return { leafId: candidate.leafId };
-  }
-  return null;
-}
-
-/**
- * Build a `group-merge` drop intent for a tab-strip or host-target hit (center
- * zone, no geometry partition). Validity comes from the caller's
- * `evaluateCenter` closure (same SSOT as pane-body center drops).
- * `fallbackReason` defaults to `"group-tab-strip"`; host targets pass
- * `"host-group-drop-target"`.
- */
-/**
- * One built-in strip tab's client bounds, in member order. `index` is the
- * insert slot a drop on that tab requests (the hovered member shifts right).
- */
-export interface TilingGroupTabMemberBounds {
-  index: number;
-  bounds: TilingClientRectBounds;
-}
-
-/**
- * Member index to insert at when the pointer is over a built-in strip.
- * A point inside a tab returns that tab's index. A point in the tab band
- * but past the last tab's midpoint appends (`last index + 1`). A point
- * outside the tab band returns `undefined` (caller appends).
- */
-export function resolveGroupTabInsertIndex(
-  clientX: number,
-  clientY: number,
-  tabs: ReadonlyArray<TilingGroupTabMemberBounds>,
-): number | undefined {
-  if (tabs.length === 0) {
-    return undefined;
-  }
-  for (const tab of tabs) {
-    if (pointInClientBounds(clientX, clientY, tab.bounds)) {
-      return tab.index;
-    }
-  }
-  const inBand: boolean = tabs.some(
-    (tab: TilingGroupTabMemberBounds): boolean =>
-      clientY >= tab.bounds.top && clientY <= tab.bounds.bottom,
-  );
-  if (!inBand) {
-    return undefined;
-  }
-  const sorted: TilingGroupTabMemberBounds[] = tabs.slice().sort(
-    (left: TilingGroupTabMemberBounds, right: TilingGroupTabMemberBounds): number =>
-      left.bounds.left - right.bounds.left,
-  );
-  for (const tab of sorted) {
-    const mid: number = (tab.bounds.left + tab.bounds.right) / 2;
-    if (clientX < mid) {
-      return tab.index;
-    }
-  }
-  const last: TilingGroupTabMemberBounds = sorted[sorted.length - 1];
-  return last.index + 1;
-}
-
-export function buildGroupTabStripMergeIntent(input: {
-  activeMemberLeafId: string;
-  evaluateCenter: () => TilingDropIntentEvaluation;
-  fallbackReason?: string;
-  /** Insert slot from {@link resolveGroupTabInsertIndex}. Omitted → append. */
-  memberInsertIndex?: number;
-}): TilingDropIntentState {
-  const evaluation: TilingDropIntentEvaluation = input.evaluateCenter();
-  const isValid: boolean = evaluation.isValid;
-  const intent: TilingDropIntentState = {
-    leafId: input.activeMemberLeafId,
-    zone: "center",
-    action: isValid ? "group-merge" : "none",
-    dominantEdge: "top",
-    finalEdge: null,
-    fallbackReason: input.fallbackReason ?? "group-tab-strip",
-    blockedReason: isValid ? null : (evaluation.rejectionReason ?? "group-tab-strip-blocked"),
-    axisPath: [],
-    edgeThresholdRatio: GROUP_TAB_STRIP_MERGE_TUNING.edgeThresholdRatio,
-    centerRectWidthPx: 0,
-    centerRectHeightPx: 0,
-    centerDistancePx: 0,
-    nearestEdgeDistancePx: 0,
-    paneLocalX: 0,
-    paneLocalY: 0,
-    targetSplitId: null,
-    targetSplitPlacement: null,
-    selectedSplitZone: null,
-    selectedSplitDistancePx: null,
-    rejectedSplitReasons: [],
-    tuning: GROUP_TAB_STRIP_MERGE_TUNING,
-  };
-  if (input.memberInsertIndex != null && Number.isFinite(input.memberInsertIndex)) {
-    intent.memberInsertIndex = input.memberInsertIndex;
-  }
-  return intent;
 }

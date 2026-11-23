@@ -24,7 +24,6 @@ import {
 import {
   clampHeldRectToStage,
   findLeafByTileId,
-  resolveDragLandingRect,
   type DragLandingGroupStrip,
 } from "../engine/drag-landing";
 import {
@@ -32,18 +31,13 @@ import {
   activeResolvedTarget,
   canRearmDrag,
   createFrameCoalescer,
-  deriveLiveDragTree,
   detachDragSubject,
   isCommittableTarget,
   presentationDragSourceLeafId,
   presentationResolvedTarget,
-  previousZoneSeed,
   resolveDragCommitFocusLeafId,
   resolveDragLandingLeafId,
-  resolveDragRoomTarget,
   resolveExternalDropSubject,
-  swapFrameOf,
-  type DragSwapFrame,
   type DragMachinePoint,
   type DragMachineState,
   type DragPointerType,
@@ -66,23 +60,26 @@ import type {
   TilingZoneGeometryConfig,
 } from "../engine/drop-intent-resolver";
 import {
+  DROP_EDGE_ZONES,
   TILING_DROP_INTENT_CONFIG,
-  buildGroupTabStripMergeIntent,
   paneZoneCenterInsetPercent,
   paneZoneClipPaths,
-  resolveDropIntent,
-  resolveDropIntentHitZoneDiagnostics,
-  resolveGroupTabInsertIndex,
-  resolveGroupTabStripHit,
-  resolveHostGroupDropTargetHit,
+  resolveCenterRatios,
+  resolvePaneCenterGeometry,
   toPaneLocalPoint,
-  type TilingHostGroupDropTargetCandidate,
-  type TilingHostGroupDropTargetHit,
 } from "../engine/drop-intent-resolver";
+import { collectStaticGatedLeafIds } from "../engine/drop-validity";
+import { createDragIntent, type DragIntent } from "@n-uf/motion/drag";
 import {
-  collectStaticGatedLeafIds,
-  evaluateZoneCandidate,
-} from "../engine/drop-validity";
+  paneRegion,
+  type TilingAfter,
+  type TilingBasis,
+  type TilingDrag,
+  type TilingHeld,
+  type TilingHit,
+  type TilingHitRead,
+  type TilingHitTarget,
+} from "@n-uf/placement/tiling";
 import { SETTLE_TEMPO } from "@n-uf/motion";
 import { prefersReducedMotion as readPrefersReducedMotion } from "@n-uf/motion/browser";
 import {
@@ -188,6 +185,12 @@ import {
   createLayoutTilingDrag,
   deriveDropCommitTree,
   resolveTilingSwapPreview,
+  tilingDragParts,
+  tilingDragZoneRefusals,
+  tilingDropStateOf,
+  tilingRefusedDropStateOf,
+  type TilingDragPartGeometry,
+  type TilingDragTree,
   type TilingSwapPreview,
 } from "../engine/tiling-drag-tree";
 import type { TilingGrowConstraints } from "../engine/state";
@@ -264,7 +267,6 @@ import type {
   ResolvedTilingInteractionCapabilities,
   ResolvedTilingWorkspaceSwitchCapability,
   ResolvedTilingKeymap,
-  ResolvedTilingSlotCommitmentCapability,
   TilingCommand,
   TilingCommandHandle,
   TilingDefaultTileProps,
@@ -326,11 +328,6 @@ import {
   type TabStripItem,
 } from "./group-tab-strip";
 import { createDomMeasurementPort } from "./dom-measurement-port";
-import {
-  createStableDragMeasurement,
-  type Bounds as StableDragBounds,
-  type StableDragInsertedTabs,
-} from "./stable-drag-measurement";
 import { createDomPointerCapturePort } from "./dom-pointer-capture-port";
 import { WORKSPACE_TRANSITION_LAYER_ATTR } from "./dom-view-capture";
 import {
@@ -419,7 +416,6 @@ function currentGeometryConfig(
     centerRatioX: geometry.centerRatioX,
     centerRatioY: geometry.centerRatioY,
     centerMinPx: geometry.centerMinPx,
-    hysteresisPx: geometry.hysteresisPx,
     devicePixelRatio: devicePixelRatio > 0 ? devicePixelRatio : 1,
   };
 }
@@ -692,14 +688,200 @@ export function resolveRearmHandle(
   return { element, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
 }
 /**
- * Snap preview: the pointer must be this far inside a landing slot (CSS px,
- * at most a quarter of the slot's smaller side) before the pane snaps into it;
- * it stays snapped while the pointer is in that slot and the drop resolved at
- * the pointer is still that drop. A different drop under the pointer (a tab
- * strip, a merge zone, another slot) takes over at once, so the committed drop
- * never depends on the path the pointer took.
+ * Snap preview's seat look: the dragged pane settles into its landing once the
+ * pointer is this far inside it (CSS px, at most a quarter of the landing's
+ * smaller side), and stays settled while the pointer is in it and the held
+ * place is the same. A look only: the room is made, and a release commits,
+ * from the first frame the place is held.
  */
 const DRAG_SNAP_INSET_PX: number = 24;
+
+/** What a drag's hit is built from, as the render last saw it. */
+interface DragHitInputs {
+  readonly layout: TilingLayoutNode;
+  readonly config: TilingLayoutConfig;
+  readonly width: number;
+  readonly height: number;
+  readonly basis: TilingBasis;
+  readonly geometry: ResolvedTilingDropHitZoneGeometryCapability;
+  readonly gated: ReadonlySet<string>;
+  /** Every pane's slot at the lift (viewport layout px), by leaf id. */
+  readonly footprints: ReadonlyMap<string, TilingPaneFootprint>;
+}
+
+/** One drag's hit: built at the lift, with the intent the pointer goes through, and whether it holds home now. */
+interface DragHitSession {
+  readonly layout: TilingLayoutNode;
+  readonly config: TilingLayoutConfig;
+  readonly sourceLeafId: string;
+  readonly subject: DragSubject | undefined;
+  readonly basis: TilingBasis;
+  readonly width: number;
+  readonly height: number;
+  readonly drag: TilingDrag<TilingDragTree, string>;
+  readonly hit: TilingHit<TilingDragTree, string>;
+  readonly intent: DragIntent<TilingHitTarget<string>>;
+  atHome: boolean;
+}
+
+/** A client rect in viewport layout px, through the viewport's frame. */
+function viewportRectOf(frame: ViewportClientFrame, r: { left: number; top: number; right: number; bottom: number }): TilingRect {
+  const a: DragMachinePoint = clientToViewportPoint(frame, { x: r.left, y: r.top });
+  const b: DragMachinePoint = clientToViewportPoint(frame, { x: r.right, y: r.bottom });
+  return { x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y };
+}
+
+/**
+ * The drag's parts, measured ONCE at the lift from the DOM as it stands then: each group's tab strip (its band from
+ * the slot's top, where its first tab starts, the gap between tabs, and each tab's width by tile) and each pane's
+ * host drop elements (`groupDropTargetRef`, as insets from its slot's edges). The hit lays them on whatever rect its
+ * layout draws the pane at; nothing is measured again during the drag.
+ */
+function measureDragPartGeometry(
+  port: MeasurementPort,
+  inputs: DragHitInputs,
+  frame: ViewportClientFrame,
+): TilingDragPartGeometry {
+  let strip: TilingDragPartGeometry["strip"];
+  const widths: Map<string, number> = new Map<string, number>();
+  for (const group of collectGroups(inputs.layout)) {
+    const slot: TilingPaneFootprint | undefined = inputs.footprints.get(group.activeMemberId);
+    const stripRect: DOMRect | null = port.measureGroupTabStripRect(group.id);
+    if (slot == null || stripRect == null) {
+      continue;
+    }
+    const band: TilingRect = viewportRectOf(frame, stripRect);
+    const tabs: TilingRect[] = port
+      .measureGroupTabMemberRects(group.id)
+      .map((t): TilingRect & { index: number } => ({ ...viewportRectOf(frame, t), index: t.index }))
+      .sort((p: TilingRect, q: TilingRect): number => p.x - q.x);
+    tabs.forEach((t: TilingRect & { index?: number }): void => {
+      const member: TilingLeafNode | undefined = group.members[t.index ?? -1];
+      if (member != null) {
+        widths.set(member.tileId, t.width);
+      }
+    });
+    if (strip == null) {
+      const gaps: number[] = tabs.slice(1).map((t: TilingRect, i: number): number => t.x - (tabs[i]!.x + tabs[i]!.width));
+      strip = {
+        top: band.y - slot.top,
+        height: band.height,
+        left: tabs.length > 0 ? tabs[0]!.x - band.x : 0,
+        gap: gaps.length > 0 ? Math.max(0, gaps.reduce((s: number, g: number): number => s + g, 0) / gaps.length) : 0,
+        widths,
+      };
+    }
+  }
+  const bands: Map<string, Array<{ left: number; top: number; right: number; height: number }>> = new Map();
+  const tileOfLeaf = (id: string): string | null => findLeafById(inputs.layout, id)?.tileId ?? null;
+  for (const leafId of inputs.footprints.keys()) {
+    const slot: TilingPaneFootprint | undefined = inputs.footprints.get(leafId);
+    const tile: string | null = tileOfLeaf(leafId);
+    if (slot == null || tile == null) {
+      continue;
+    }
+    for (const r of port.measureGroupDropTargetRects(leafId)) {
+      const v: TilingRect = viewportRectOf(frame, r);
+      const list = bands.get(tile) ?? [];
+      const top: number = v.y - slot.top;
+      // An element in the pane's title bar (its top lies within its own height
+      // of the slot's top) declares the whole title bar: the full width, from
+      // the pane's top edge to the element's bottom, so no side band wraps it.
+      list.push(
+        top <= v.height
+          ? { left: 0, top: 0, right: 0, height: top + v.height }
+          : { left: v.x - slot.left, top, right: slot.left + slot.width - (v.x + v.width), height: v.height },
+      );
+      bands.set(tile, list);
+    }
+  }
+  return { ...(strip != null ? { strip } : {}), bands };
+}
+
+/** The drag of `sourceLeafId` with its hit on the inputs' basis, and the drag intent the pointer goes through. */
+function createDragHitSession(
+  inputs: DragHitInputs,
+  sourceLeafId: string,
+  subject: DragSubject | undefined,
+  parts: TilingDragPartGeometry,
+): DragHitSession | null {
+  const gatedTiles: Set<string> = new Set<string>();
+  for (const id of inputs.gated) {
+    const tile: string | undefined = findLeafById(inputs.layout, id)?.tileId;
+    if (tile != null) {
+      gatedTiles.add(tile);
+    }
+  }
+  const drag: TilingDrag<TilingDragTree, string> | null = createLayoutTilingDrag({
+    layout: inputs.layout,
+    sourceLeafId,
+    subject,
+    container: { width: inputs.width, height: inputs.height },
+    config: inputs.config,
+    min: inputs.config.minPaneSizePx,
+    still: (tile: string): boolean => gatedTiles.has(tile),
+    parts: tilingDragParts(parts),
+  });
+  if (drag == null) {
+    return null;
+  }
+  const g = currentGeometryConfig(inputs.geometry);
+  const hit: TilingHit<TilingDragTree, string> = drag.hit(inputs.basis, {
+    regions: { centerX: g.centerRatioX ?? g.centerRatio, centerY: g.centerRatioY ?? g.centerRatio, centerMin: g.centerMinPx, pixelRatio: g.devicePixelRatio },
+  });
+  return {
+    layout: inputs.layout,
+    config: inputs.config,
+    sourceLeafId,
+    subject,
+    basis: inputs.basis,
+    width: inputs.width,
+    height: inputs.height,
+    drag,
+    hit,
+    intent: createDragIntent<TilingHitTarget<string>>({ ...hit.intent }),
+    atHome: false,
+  };
+}
+
+/** One pointer sample (viewport layout px) through the session's intent, read by its hit, as the drop state the drag machine keeps. */
+function readDragHit(session: DragHitSession, point: DragMachinePoint, devicePixelRatio: number): TilingDropState | null {
+  const frame = session.intent.update(point, performance.now(), session.hit.targets);
+  const read: TilingHitRead<string> = session.hit.read(frame, point);
+  session.atHome = read.held?.kind === "home";
+  const lift: TilingLayoutNode = session.drag.lift.tree.layout ?? session.layout;
+  if (read.held != null && read.held.kind !== "home") {
+    return tilingDropStateOf(lift, read.held, read.mark, devicePixelRatio);
+  }
+  if (read.refused != null && read.refused.kind !== "home") {
+    return tilingRefusedDropStateOf(lift, read.refused, session.drag.after(read.refused).refusal?.code ?? "refused", devicePixelRatio);
+  }
+  return null;
+}
+
+/** The debug overlay's zones of a pane of `paneSize`: placement's center, and each region's refusal by the drag's own rule. */
+function debugHitZoneDiagnostics(
+  paneSize: { width: number; height: number },
+  geometryConfig: TilingZoneGeometryConfig,
+  refusals: Readonly<Record<"center" | TilingEdgeZone, string | null>> | null,
+): TilingDropIntentHitZoneDiagnostics {
+  const geometry = resolvePaneCenterGeometry(paneSize, geometryConfig);
+  const ratios = resolveCenterRatios(geometryConfig);
+  return {
+    geometry,
+    centerRatio: ratios.x,
+    centerRatioX: ratios.x,
+    centerRatioY: ratios.y,
+    edgeThresholdRatio: (1 - ratios.x) / 2,
+    centerRectWidthPx: geometry.centerRightPx - geometry.centerLeftPx,
+    centerRectHeightPx: geometry.centerBottomPx - geometry.centerTopPx,
+    edgeZones: DROP_EDGE_ZONES.map((zone: TilingEdgeZone) => ({
+      zone,
+      isValid: refusals == null || refusals[zone] == null,
+      rejectionReason: refusals?.[zone] ?? null,
+    })),
+  };
+}
 
 /** What decides the tree a drop target commits: equal keys are the same drop. */
 function dropTargetKey(target: TilingDropState | null): string {
@@ -913,274 +1095,6 @@ function readSplitPathToLeaf(
   );
 }
 
-/**
- * Pure, host-port-driven core of `resolvePointerTarget` (Stage-3 measurement
- * lift). All DOM geometry comes from the injected {@link MeasurementPort}, so the
- * hit resolution is unit-testable against synthetic rects. Behavior is identical
- * to the former inline closure: viewport-missing → `null`; tab-strip hits, then
- * host group-drop targets, take priority over the group body; the source +
- * statically-gated leaves are skipped; a footprint miss → `null`; otherwise
- * the resolved drop intent.
- */
-export function resolvePointerTargetFromMeasurement(
-  measurement: MeasurementPort,
-  input: {
-    clientX: number;
-    clientY: number;
-    sourceLeafId: string;
-    /** What the drag moves (absent: the one pane); drop validity judges that subject's move. */
-    subject?: DragSubject;
-    previousTarget: TilingDropState | null;
-    isRearrangeEnabled: boolean;
-    groupingEnabled: boolean;
-    dropHitZoneGeometry: ResolvedTilingDropHitZoneGeometryCapability;
-    liveDragModeEnabled: boolean;
-    liveHitFootprintsById: ReadonlyMap<string, TilingPaneFootprint>;
-    leafFootprintsById: ReadonlyMap<string, TilingPaneFootprint>;
-    leafIds: ReadonlyArray<string>;
-    rearrangeGatedLeafIds: ReadonlySet<string>;
-    layout: TilingLayoutNode;
-    config: TilingLayoutConfig;
-    viewportSize: { width: number; height: number };
-  },
-): TilingDropState | null {
-  if (!input.isRearrangeEnabled) {
-    return null;
-  }
-  const viewportRect: DOMRect | null = measurement.measureViewportRect();
-  if (viewportRect == null) {
-    return null;
-  }
-  // Footprints are viewport layout px; a scaled ancestor makes a client px
-  // smaller or larger than one.
-  const scale: number =
-    input.viewportSize.width > 0 && viewportRect.width > 0
-      ? viewportRect.width / input.viewportSize.width
-      : 1;
-  const localX: number = (input.clientX - viewportRect.left) / scale;
-  const localY: number = (input.clientY - viewportRect.top) / scale;
-  const hitFootprints: ReadonlyMap<string, TilingPaneFootprint> =
-    input.liveDragModeEnabled
-      ? input.liveHitFootprintsById
-      : input.leafFootprintsById;
-  // Distinct merge targets are resolved BEFORE the pane-body partition, so they
-  // win over both the centre swap and any edge band they overlap — the same
-  // way the built-in strip wins over the group body. Order: built-in tab strip,
-  // then host `groupDropTargetRef` elements. Pixels neither covers fall through
-  // to edge-insert / centre-swap. Ineligible host targets (the source pane, or
-  // a group that already contains the source) are skipped so the body zones run.
-  if (input.groupingEnabled) {
-    const tabStripHit = resolveGroupTabStripHit(
-      input.clientX,
-      input.clientY,
-      collectGroups(input.layout).map((group: TilingGroupNode) => {
-        const stripRect: DOMRect | null = measurement.measureGroupTabStripRect(
-          group.id,
-        );
-        return {
-          groupId: group.id,
-          activeMemberLeafId: group.activeMemberId,
-          bounds:
-            stripRect == null
-              ? null
-              : {
-                  left: stripRect.left,
-                  top: stripRect.top,
-                  right: stripRect.right,
-                  bottom: stripRect.bottom,
-                },
-        };
-      }),
-    );
-    if (
-      tabStripHit != null &&
-      tabStripHit.activeMemberLeafId !== input.sourceLeafId
-    ) {
-      const targetFootprint: TilingPaneFootprint | undefined =
-        hitFootprints.get(tabStripHit.activeMemberLeafId);
-      if (targetFootprint != null) {
-        const memberRects: ReadonlyArray<{
-          index: number;
-          left: number;
-          top: number;
-          right: number;
-          bottom: number;
-        }> = measurement.measureGroupTabMemberRects(tabStripHit.groupId);
-        const memberInsertIndex: number | undefined = resolveGroupTabInsertIndex(
-          input.clientX,
-          input.clientY,
-          memberRects.map(
-            (rect: {
-              index: number;
-              left: number;
-              top: number;
-              right: number;
-              bottom: number;
-            }): {
-              index: number;
-              bounds: { left: number; top: number; right: number; bottom: number };
-            } => ({
-              index: rect.index,
-              bounds: {
-                left: rect.left,
-                top: rect.top,
-                right: rect.right,
-                bottom: rect.bottom,
-              },
-            }),
-          ),
-        );
-        return buildGroupTabStripMergeIntent({
-          activeMemberLeafId: tabStripHit.activeMemberLeafId,
-          memberInsertIndex,
-          evaluateCenter: (): {
-            isValid: boolean;
-            rejectionReason: string | null;
-          } =>
-            evaluateZoneCandidate({
-              zone: "center",
-              layout: input.layout,
-              sourceLeafId: input.sourceLeafId,
-              targetLeafId: tabStripHit.activeMemberLeafId,
-              targetFootprint,
-              config: input.config,
-              viewportWidth: input.viewportSize.width,
-              viewportHeight: input.viewportSize.height,
-              subject: input.subject,
-            }),
-        });
-      }
-    }
-    const hostDropHit: TilingHostGroupDropTargetHit | null =
-      resolveHostGroupDropTargetHit(
-      input.clientX,
-      input.clientY,
-      input.sourceLeafId,
-      input.leafIds.map((leafId: string): TilingHostGroupDropTargetCandidate => {
-        const group: TilingGroupNode | null = findGroupContainingLeaf(
-          input.layout,
-          leafId,
-        );
-        return {
-          leafId,
-          bounds: measurement.measureGroupDropTargetRects(leafId).map(
-            (rect: DOMRect): {
-              left: number;
-              top: number;
-              right: number;
-              bottom: number;
-            } => ({
-              left: rect.left,
-              top: rect.top,
-              right: rect.right,
-              bottom: rect.bottom,
-            }),
-          ),
-          groupMemberLeafIds:
-            group == null
-              ? []
-              : group.members.map((member: TilingLeafNode): string => member.id),
-        };
-      }),
-    );
-    if (hostDropHit != null) {
-      const targetFootprint: TilingPaneFootprint | undefined = hitFootprints.get(
-        hostDropHit.leafId,
-      );
-      if (targetFootprint != null) {
-        return buildGroupTabStripMergeIntent({
-          activeMemberLeafId: hostDropHit.leafId,
-          fallbackReason: "host-group-drop-target",
-          evaluateCenter: (): {
-            isValid: boolean;
-            rejectionReason: string | null;
-          } =>
-            evaluateZoneCandidate({
-              zone: "center",
-              layout: input.layout,
-              sourceLeafId: input.sourceLeafId,
-              targetLeafId: hostDropHit.leafId,
-              targetFootprint,
-              config: input.config,
-              viewportWidth: input.viewportSize.width,
-              viewportHeight: input.viewportSize.height,
-              subject: input.subject,
-            }),
-        });
-      }
-    }
-  }
-  let hitLeafId: string | null = null;
-  let hitFootprint: TilingPaneFootprint | undefined;
-  for (const leafId of input.leafIds) {
-    // Skip the source and any statically-gated leaf: a gated target has no
-    // trustworthy footprint, so it resolves to no target (→ cancel-on-release
-    // / gap-closed candidate) rather than a wrong swap/insert.
-    if (
-      leafId === input.sourceLeafId ||
-      input.rearrangeGatedLeafIds.has(leafId)
-    ) {
-      continue;
-    }
-    const footprint: TilingPaneFootprint | undefined =
-      hitFootprints.get(leafId);
-    if (
-      footprint != null &&
-      localX >= footprint.left &&
-      localX <= footprint.left + footprint.width &&
-      localY >= footprint.top &&
-      localY <= footprint.top + footprint.height
-    ) {
-      hitLeafId = leafId;
-      hitFootprint = footprint;
-      break;
-    }
-  }
-  if (hitLeafId == null || hitFootprint == null) {
-    return null;
-  }
-  const splitPath: ReadonlyArray<TilingSplitPathEntry> =
-    readSplitPathToLeaf(input.layout, hitLeafId) ?? [];
-  const axisPath: ReadonlyArray<TilingSplitAxis> = splitPath.map(
-    (pathEntry: TilingSplitPathEntry): TilingSplitAxis => pathEntry.axis,
-  );
-  const paneLocalPoint = toPaneLocalPoint(
-    { x: localX, y: localY },
-    { left: hitFootprint.left, top: hitFootprint.top },
-  );
-  // Seed the geometric hysteresis band from the prior resolved zone (only for
-  // the same hovered leaf) so zone flips must overcome the band — the
-  // anti-thrash damper that makes live reflow stable.
-  const previousZone: TilingLeafDropZone | null = previousZoneSeed(
-    input.previousTarget,
-    hitLeafId,
-  );
-  return resolveDropIntent({
-    leafId: hitLeafId,
-    paneLocalX: paneLocalPoint.x,
-    paneLocalY: paneLocalPoint.y,
-    paneSize: { width: hitFootprint.width, height: hitFootprint.height },
-    axisPath,
-    geometryConfig: currentGeometryConfig(input.dropHitZoneGeometry),
-    previousZone,
-    evaluateZone: (
-      zone: TilingLeafDropZone,
-    ): { isValid: boolean; rejectionReason: string | null } =>
-      evaluateZoneCandidate({
-        zone,
-        layout: input.layout,
-        sourceLeafId: input.sourceLeafId,
-        targetLeafId: hitLeafId as string,
-        targetFootprint: hitFootprint as TilingPaneFootprint,
-        config: input.config,
-        viewportWidth: input.viewportSize.width,
-        viewportHeight: input.viewportSize.height,
-        subject: input.subject,
-      }),
-  });
-}
-
-
 export function resolveLeafDropPreview(
   leafId: string,
   dragSourceLeafId: string | null,
@@ -1311,51 +1225,6 @@ export function resolveSplitDividerRenderMode(
   return input.resizeHandlesVisible
     ? "render-divider-disabled-visible"
     : "render-divider-disabled-hidden";
-}
-
-/**
- * STABLE-REFERENCE hit-test geometry for live-drag target resolution. Drop
- * targets are resolved against THIS frozen pane geometry, NEVER against the
- * displayed candidate tree's reflowing rects. The result is a pure function of
- * (`layout`, `sourceLeafId`, viewport, `config`) — none of which change while a
- * drag is in flight — so it is computed once per drag and stays constant as the
- * cursor moves. This is the structural break of the reflow→retarget→re-reflow
- * feedback loop (the "losing the mouse" / flicker oscillation): because the
- * geometry is independent of the resolved target, candidate-tree reflow can
- * never move a drop zone under the cursor and flip the target.
- *
- * In live mode the base is the gap-closed tree (`removeLeafTile`): the source is
- * detached once on pickup, so the surviving panes' frozen rects match what the
- * user sees beneath the lifted pane when no target is yet resolved — a closer
- * visual/hit correspondence than the raw pre-pickup rects (where the source slot
- * is still occupied). In preview mode the tree never detaches, so the original
- * footprints are the stable reference. Either way the geometry is frozen for the
- * whole drag. Extracted as a pure function so the "independent of candidate
- * reflow" invariant is unit-testable without a DOM.
- */
-export function resolveStableDragHitFootprints(
-  liveDragModeEnabled: boolean,
-  layout: TilingLayoutNode,
-  dragSourceLeafId: string | null,
-  viewport: { width: number; height: number },
-  config: TilingLayoutConfig,
-  originalFootprints: ReadonlyMap<string, TilingPaneFootprint>,
-  subject?: DragSubject,
-): ReadonlyMap<string, TilingPaneFootprint> {
-  if (!liveDragModeEnabled || dragSourceLeafId == null) {
-    return originalFootprints;
-  }
-  const gapClosed: TilingLayoutNode = detachDragSubject(layout, dragSourceLeafId, subject);
-  return footprintsByLeafId(
-    collectLeafFootprints(
-      gapClosed,
-      0,
-      0,
-      viewport.width,
-      viewport.height,
-      config,
-    ),
-  );
 }
 
 /** The viewport's client rect (window-client px), as the drag compares it. */
@@ -4626,14 +4495,10 @@ const TilingRendererComponent = React.forwardRef<
             sourceLeafId,
             previousTarget,
           ) ?? null,
+        heldHome: (): boolean => controllerHostRef.current?.heldHome?.() ?? false,
         capturePointer: (pointerId: number): void => {
           controllerHostRef.current?.capturePointer(pointerId);
         },
-        getSlotCommitment: () =>
-          controllerHostRef.current?.getSlotCommitment() ?? {
-            mode: "delta-responsive",
-            reresolveDeltaPx: 24,
-          },
       },
     });
   }
@@ -4974,17 +4839,6 @@ const TilingRendererComponent = React.forwardRef<
     dragStateRef.current = dragState;
   }, [dragState]);
 
-  // Latest slot-commitment policy mirrored to a ref so the coalescer (subscribed
-  // once per drag) reads runtime mode/delta changes (e.g. a host toggle)
-  // without re-subscribing.
-  const slotCommitmentRef =
-    React.useRef<ResolvedTilingSlotCommitmentCapability>(
-      interactionCapabilities.slotCommitment,
-    );
-  React.useEffect((): void => {
-    slotCommitmentRef.current = interactionCapabilities.slotCommitment;
-  }, [interactionCapabilities.slotCommitment]);
-
   // Latest touch long-press delay mirrored to a ref so the input-layer effect
   // (subscribed once per drag, keyed on the owning pointer id) arms the
   // long-press timer with the current value without re-subscribing on a runtime
@@ -5221,72 +5075,117 @@ const TilingRendererComponent = React.forwardRef<
       ? dropState
       : null;
   const isSnapPreview: boolean = dragPreview === "snap";
-  // A committable swap makes room in both previews (its room is the pane's
-  // old place); otherwise snap makes room for the snapped drop, the indicator
-  // only with `dragPreviewMakesRoom`.
-  const roomTarget: TilingDropState | null = !isLiveDragging
-    ? null
-    : resolveDragRoomTarget({
-        preview: isSnapPreview ? "snap" : "indicator",
-        makesRoom: dragPreviewMakesRoom,
-        snapped: snappedTarget,
-        committable: committableDropState,
-      });
-  const roomTargetKey: string = dropTargetKey(roomTarget);
-  // While the home is the target (the pointer over the pane's place at the
-  // lift, for the whole drag), the layout is the one at the lift, the pane's
-  // place open.
+  // ── The drag's hit (`@n-uf/placement/tiling`'s `tilingDrag(...).hit`) ──────
+  // Built ONCE at the lift, on one layout fixed for the whole drag: the lift
+  // for the indicator (it marks places over the layout as it was, the pane's
+  // place open), the base for snap to slot and `dragPreviewMakesRoom` (they
+  // draw the held place landed). Its parts (group tab strips, host drop
+  // elements) are declared geometry, measured once here from the DOM as it
+  // stands at the lift; nothing is measured again during the drag. Each
+  // pointer sample goes through motion's drag intent with the hit's own
+  // options, and the hit reads the frame back: the held place (home
+  // included), the refused one, and the indicator's mark.
+  const dragHitBasis: TilingBasis =
+    liveDragModeEnabled && (isSnapPreview || dragPreviewMakesRoom) ? "base" : "lift";
+  const dragHitInputsRef = React.useRef<DragHitInputs | null>(null);
+  dragHitInputsRef.current = {
+    layout,
+    config,
+    width: viewportSize.width,
+    height: viewportSize.height,
+    basis: dragHitBasis,
+    geometry: interactionCapabilities.dropHitZoneGeometry,
+    gated: rearrangeGatedLeafIds,
+    footprints: leafFootprintsById,
+  };
+  const dragHitRef = React.useRef<DragHitSession | null>(null);
+  const ensureDragHit = (sourceLeafId: string, subject: DragSubject | undefined): DragHitSession | null => {
+    const inputs: DragHitInputs | null = dragHitInputsRef.current;
+    if (inputs == null) {
+      return null;
+    }
+    const known: DragHitSession | null = dragHitRef.current;
+    if (
+      known != null &&
+      known.layout === inputs.layout &&
+      known.sourceLeafId === sourceLeafId &&
+      known.subject === subject &&
+      known.basis === inputs.basis &&
+      known.width === inputs.width &&
+      known.height === inputs.height &&
+      known.config === inputs.config
+    ) {
+      return known;
+    }
+    dragHitRef.current = createDragHitSession(
+      inputs,
+      sourceLeafId,
+      subject,
+      measureDragPartGeometry(measurementPort, inputs, viewportClientFrame()),
+    );
+    return dragHitRef.current;
+  };
+  React.useEffect((): void => {
+    if (dragState.phase === "idle") {
+      dragHitRef.current = null;
+    }
+  }, [dragState.phase]);
+  // While the hit holds home (the pane's place at the lift, or a place whose
+  // release gives the lift back), the layout is the one at the lift.
   const dragHomeHeld: boolean =
     isLiveDragging && dragState.phase === "dragging" && dragState.atHome;
   // The drag as placement's `tilingDrag` lays it out, over hypr-tiling's own
-  // tree adapter: fixed for the drag (the layout, the subject, the stage).
-  const liveTilingDrag = React.useMemo(
-    () =>
-      isLiveDragging && dragSourceLeafId != null
-        ? createLayoutTilingDrag({
-            layout,
-            sourceLeafId: dragSourceLeafId,
-            subject: dragSubject,
-            container: viewportSize,
-            config,
-          })
-        : null,
-    [isLiveDragging, layout, dragSourceLeafId, dragSubject, viewportSize, config],
-  );
+  // tree adapter: the hit's, fixed for the drag.
+  const liveTilingDrag: TilingDrag<TilingDragTree, string> | null =
+    isLiveDragging && dragSourceLeafId != null
+      ? (ensureDragHit(dragSourceLeafId, dragSubject)?.drag ?? null)
+      : null;
+  // The held place: home, the committable drop's, or none.
+  const heldPlace: TilingHeld<string> | null = !isLiveDragging
+    ? null
+    : dragHomeHeld
+      ? { kind: "home" }
+      : (committableDropState?.place ?? null);
+  const heldPlaceKey: string = dragHomeHeld ? "home" : dropTargetKey(committableDropState);
+  const dragHeldLabel: string | undefined =
+    dragState.phase !== "dragging"
+      ? undefined
+      : dragState.atHome
+        ? "home"
+        : committableDropState?.place != null && committableDropState.place.kind !== "home"
+          ? `${committableDropState.place.kind}:${committableDropState.place.at}${committableDropState.place.kind === "beside" ? `:${committableDropState.place.side}` : committableDropState.place.kind === "join" && committableDropState.place.index !== undefined ? `:${committableDropState.place.index}` : ""}`
+          : dropState?.blockedReason != null
+            ? `refused:${dropState.blockedReason}`
+            : "none";
   // A held swap, as `tilingDrag` lays it out: the pane's old place reopened
-  // (the neighbour that grew into it at the lift gives the room back) with
-  // the partner landed there, and the pane's landing in the partner's place.
-  // The release commits this tree. Snap draws it landed; the indicator keeps
-  // the target in its slot and draws only the room (the layout at the lift,
-  // the pane's slot empty), with the wash where the partner will go.
-  const swapFrame: DragSwapFrame = swapFrameOf({
-    preview: isSnapPreview ? "snap" : "indicator",
-    makesRoom: dragPreviewMakesRoom,
-  });
+  // with the partner landed there. Snap draws it landed; the indicator keeps
+  // the lift and draws the wash where the partner will go.
   const swapPreview: TilingSwapPreview | null = React.useMemo(
     (): TilingSwapPreview | null =>
-      roomTarget != null && roomTarget.action === "swap" && !dragHomeHeld
-        ? resolveTilingSwapPreview(liveTilingDrag, roomTarget.leafId)
+      committableDropState != null && committableDropState.action === "swap" && !dragHomeHeld
+        ? resolveTilingSwapPreview(liveTilingDrag, committableDropState.leafId)
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [liveTilingDrag, roomTargetKey, dragHomeHeld],
+    [liveTilingDrag, heldPlaceKey, dragHomeHeld],
   );
+  // What a frame draws: the indicator, the lift for the whole drag; snap to
+  // slot (and `dragPreviewMakesRoom`), `after(held)` from the first frame a
+  // place is held, the lift at home, the base with nothing held.
   const liveDragDisplayLayout: TilingLayoutNode = React.useMemo(
-    (): TilingLayoutNode =>
-      swapPreview != null && swapFrame === "landed"
-        ? swapPreview.layout
-        : deriveLiveDragTree({
-            layout,
-            sourceLeafId: dragSourceLeafId,
-            roomTarget,
-            subject: dragSubject,
-            homeHeld: dragHomeHeld,
-            swapFrame,
-          }),
-    // `roomTarget` identity changes on every pointer move, so key on what
+    (): TilingLayoutNode => {
+      if (liveTilingDrag == null || dragHitBasis === "lift" || heldPlace?.kind === "home") {
+        return layout;
+      }
+      const after: TilingAfter<TilingDragTree, string> | null = heldPlace == null ? null : liveTilingDrag.after(heldPlace);
+      if (after != null && after.refusal == null && after.tree.layout != null) {
+        return after.tree.layout;
+      }
+      return liveTilingDrag.base.tree.layout ?? layout;
+    },
+    // `heldPlace` identity changes on every pointer move, so key on what
     // decides the tree instead — identical resolves are free.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [layout, dragSourceLeafId, dragSubject, roomTargetKey, dragHomeHeld, swapPreview, swapFrame],
+    [layout, liveTilingDrag, dragHitBasis, heldPlaceKey],
   );
   // The home footprint is client px measured at the press. A layout change or
   // a viewport resize mid-drag moves the pane's place under it, so the home
@@ -5395,29 +5294,16 @@ const TilingRendererComponent = React.forwardRef<
       groupTabStripOptions.placement,
     ],
   );
-  // Where a drop on `target` lands the dragged pane (viewport px), or `null`.
-  // The indicator, the snap slot and the committed layout all come from the
-  // same candidate tree, so they agree by construction.
-  const resolveDropLandingRect = React.useCallback(
-    (sourceLeafId: string, target: TilingDropState | null): TilingRect | null =>
-      resolveDragLandingRect({
-        layout,
-        sourceLeafId,
-        target,
-        container: viewportSize,
-        config,
-        groupStrip: dragLandingGroupStrip,
-        subject: dragSubject,
-      }),
-    [layout, viewportSize, config, dragLandingGroupStrip, dragSubject],
-  );
-  const resolveDropLandingRectRef = React.useRef(resolveDropLandingRect);
-  resolveDropLandingRectRef.current = resolveDropLandingRect;
-  // Indicator mode: the exact rect the pane would land in now.
-  const dropIndicatorRect: TilingRect | null =
-    isPaneHeld && !isSnapPreview && dragSourceLeafId != null
-      ? resolveDropLandingRect(dragSourceLeafId, committableDropState)
-      : null;
+  // The indicator: the mark, a region of the lift layout (the target's half
+  // for a side, its outline for a swap or a join), never a landed rect; with
+  // `dragPreviewMakesRoom` (the base drawn landed) the landing itself.
+  const dropIndicatorRect: TilingRect | null = !isPaneHeld || isSnapPreview || dragSourceLeafId == null
+    ? null
+    : dragHitBasis === "lift"
+      ? (committableDropState?.mark?.rect ?? null)
+      : heldPlace != null && heldPlace.kind !== "home" && liveTilingDrag != null
+        ? liveTilingDrag.after(heldPlace).landing
+        : null;
   // Where the lifted wrapper is laid out (viewport layout px): the pane's
   // place at the lift, at its lift size; and the grab offset the pointer holds
   // it by (layout px). The footprint and the offset are client px measured at
@@ -6007,36 +5893,6 @@ const TilingRendererComponent = React.forwardRef<
       setRaisedTileId(null);
     }
   });
-  // Hit-test footprints for pointer-capture target resolution. In live mode the
-  // displayed base is the gap-closed tree (source detached), so resolve against
-  // THOSE positions (stable per source — derived once on pickup, never from the
-  // reflowing candidate, so there is no moving-target feedback loop). In preview
-  // mode the tree is unchanged, so resolve against the original footprints. The
-  // memo deps are exactly the stable-reference inputs (layout / source / viewport
-  // / config) — `dropState`/candidate is deliberately ABSENT, so reflow cannot
-  // shift the hit geometry. See `resolveStableDragHitFootprints`.
-  const liveHitFootprintsById: ReadonlyMap<string, TilingPaneFootprint> =
-    React.useMemo(
-      (): ReadonlyMap<string, TilingPaneFootprint> =>
-        resolveStableDragHitFootprints(
-          liveDragModeEnabled,
-          layout,
-          dragSourceLeafId,
-          viewportSize,
-          config,
-          leafFootprintsById,
-          dragSubject,
-        ),
-      [
-        config,
-        dragSourceLeafId,
-        dragSubject,
-        layout,
-        leafFootprintsById,
-        liveDragModeEnabled,
-        viewportSize,
-      ],
-    );
   const projectedLandingOverlays: ReadonlyArray<TilingProjectedLandingOverlay> =
     React.useMemo(
       (): ReadonlyArray<TilingProjectedLandingOverlay> =>
@@ -6076,6 +5932,18 @@ const TilingRendererComponent = React.forwardRef<
       null;
     const hitZoneByLeafId: Map<string, TilingPaneHitZoneOverlayDebugState> =
       new Map<string, TilingPaneHitZoneOverlayDebugState>();
+    // Which places take a drop is the drag's own rule (`after(place).refusal`).
+    const debugDrag: TilingDrag<TilingDragTree, string> | null =
+      hitZoneSourceLeafId == null
+        ? null
+        : createLayoutTilingDrag({
+            layout,
+            sourceLeafId: hitZoneSourceLeafId,
+            subject: dragSubject,
+            container: viewportSize,
+            config,
+            min: config.minPaneSizePx,
+          });
     for (const leafId of leafIds) {
       // A statically-gated leaf is not a drop participant — no hit zones for it.
       if (rearrangeGatedLeafIds.has(leafId)) {
@@ -6087,29 +5955,11 @@ const TilingRendererComponent = React.forwardRef<
         continue;
       }
       const hitZoneDiagnostics: TilingDropIntentHitZoneDiagnostics =
-        resolveDropIntentHitZoneDiagnostics({
-          paneSize: {
-            width: targetFootprint.width,
-            height: targetFootprint.height,
-          },
-          geometryConfig: currentGeometryConfig(
-            interactionCapabilities.dropHitZoneGeometry,
-          ),
-          evaluateZone: (
-            zone: TilingLeafDropZone,
-          ): { isValid: boolean; rejectionReason: string | null } =>
-            evaluateZoneCandidate({
-              zone,
-              layout,
-              sourceLeafId: hitZoneSourceLeafId,
-              targetLeafId: leafId,
-              targetFootprint,
-              config,
-              viewportWidth: viewportSize.width,
-              viewportHeight: viewportSize.height,
-              subject: dragSubject,
-            }),
-        });
+        debugHitZoneDiagnostics(
+          { width: targetFootprint.width, height: targetFootprint.height },
+          currentGeometryConfig(interactionCapabilities.dropHitZoneGeometry),
+          tilingDragZoneRefusals(debugDrag, leafId),
+        );
       const edgeCandidates: ReadonlyArray<TilingPaneHitZoneCandidateDebugState> =
         hitZoneDiagnostics.edgeZones.map(
           (edgeZoneDiagnostic): TilingPaneHitZoneCandidateDebugState => ({
@@ -7831,153 +7681,43 @@ const TilingRendererComponent = React.forwardRef<
     }
   }, [activeMaximizedLeafId]);
 
-  // Pointer-capture target resolution. With `setPointerCapture`, pointer events
-  // route to the captured root regardless of what element is under the cursor —
-  // so we hit-test the pointer against STABLE viewport-local footprints (the
-  // gap-closed base in live mode, the original layout in preview mode) rather
-  // than the element under the cursor. Resolving against a stable footprint map
-  // (never the reflowing candidate) is what makes reflow moving panes under the
-  // cursor unable to lose or hijack the drag. Returns `null` over the source / a
-  // gap / outside any pane (→ cancel-on-release / gap-closed candidate).
+  // Pointer-capture target resolution: the drag's hit. With `setPointerCapture`,
+  // pointer events route to the captured root regardless of what element is
+  // under the cursor, so the pointer (client px, through the viewport's frame
+  // into layout px) goes to the hit built at the lift (`ensureDragHit`) through
+  // motion's drag intent, and the hit reads what it holds: a drop (its place and
+  // the indicator's mark), home, a refused place, or nothing. The hit's zones
+  // are fixed for the drag, so nothing the frame draws can move a zone under
+  // the cursor.
   //
-  // The DOM-measured targets (group tab strips and their tabs, host
-  // `groupDropTargetRef` elements) move with the panes while a preview makes
-  // room for the dragged pane; they are mapped back to where they sit with no
-  // room made, so the drop the pointer is over never depends on where the
-  // pane has settled on its way there.
-  // A held swap makes room in the indicator preview too (its old place reopens).
-  const dragMakesRoom: boolean =
-    liveDragModeEnabled &&
-    (dragPreview === "snap" || dragPreviewMakesRoom || roomTarget?.action === "swap");
-  const dragInsertedTabs: StableDragInsertedTabs | null =
-    roomTarget != null && roomTarget.action === "group-merge"
-      ? {
-          targetLeafId: roomTarget.leafId,
-          insertIndex: roomTarget.memberInsertIndex,
-          count: dragSubjectGroup?.members.length ?? 1,
-        }
-      : null;
-  const dragInsertedTabsKey: string =
-    dragInsertedTabs == null
-      ? ""
-      : `${dragInsertedTabs.targetLeafId}|${dragInsertedTabs.insertIndex ?? ""}|${dragInsertedTabs.count}`;
-  // The host drop target rects of this drag (see `createStableDragMeasurement`).
-  const dragHostTargetCacheRef = React.useRef<
-    Map<string, ReadonlyArray<StableDragBounds>>
-  >(new Map<string, ReadonlyArray<StableDragBounds>>());
-  React.useEffect((): void => {
-    if (!isLiveDragging) {
-      dragHostTargetCacheRef.current.clear();
-    }
-  }, [isLiveDragging]);
-  // The tree with the dragged subject taken out: the one the stable footprints
-  // are laid out from, so its groups have the members they have with no room made.
-  const dragBaseLayout: TilingLayoutNode = React.useMemo(
-    (): TilingLayoutNode =>
-      dragSourceLeafId == null
-        ? layout
-        : detachDragSubject(layout, dragSourceLeafId, dragSubject),
-    [layout, dragSourceLeafId, dragSubject],
-  );
-  const dragMeasurementPort: MeasurementPort = React.useMemo(
-    (): MeasurementPort =>
-      dragMakesRoom
-        ? createStableDragMeasurement(measurementPort, {
-            footprints: liveHitFootprintsById,
-            layout: dragBaseLayout,
-            viewportSize,
-            groupStrip: dragLandingGroupStrip,
-            insertedTabs: dragInsertedTabs,
-            hostTargetCache: dragHostTargetCacheRef.current,
-          })
-        : measurementPort,
-    // `dragInsertedTabs` is rebuilt every render; its key decides it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      dragMakesRoom,
-      measurementPort,
-      liveHitFootprintsById,
-      dragBaseLayout,
-      viewportSize,
-      dragLandingGroupStrip,
-      dragInsertedTabsKey,
-    ],
-  );
-  const resolvePointerTarget = React.useCallback(
-    (
-      clientX: number,
-      clientY: number,
-      sourceLeafId: string,
-      previousTarget: TilingDropState | null,
-    ): TilingDropState | null =>
-      resolvePointerTargetFromMeasurement(dragMeasurementPort, {
-        clientX,
-        clientY,
-        sourceLeafId,
-        subject: dragSubject,
-        previousTarget,
-        isRearrangeEnabled,
-        groupingEnabled: isGroupingEnabled,
-        dropHitZoneGeometry: interactionCapabilities.dropHitZoneGeometry,
-        liveDragModeEnabled,
-        liveHitFootprintsById,
-        leafFootprintsById,
-        leafIds,
-        rearrangeGatedLeafIds,
-        layout,
-        config,
-        viewportSize: {
-          width: viewportSize.width,
-          height: viewportSize.height,
-        },
-      }),
-    [
-      config,
-      dragSubject,
-      isRearrangeEnabled,
-      isGroupingEnabled,
-      interactionCapabilities.dropHitZoneGeometry,
-      layout,
-      leafFootprintsById,
-      leafIds,
-      liveDragModeEnabled,
-      liveHitFootprintsById,
-      rearrangeGatedLeafIds,
-      viewportSize.height,
-      viewportSize.width,
-      dragMeasurementPort,
-    ],
-  );
-  // Mirror the latest `resolvePointerTarget` into a ref so the once-created
-  // input driver always resolves through the LIVE callback (its identity churns
-  // as `layout` / `viewportSize` / capabilities change) without re-creating the
-  // driver and losing the in-flight seat/latch state.
-  const resolvePointerTargetRef = React.useRef(resolvePointerTarget);
-  resolvePointerTargetRef.current = resolvePointerTarget;
-
-  // Populate the interaction controller's host seam now that
-  // `resolvePointerTarget` exists. Assigned on every render (identity-stable
-  // reads through live refs / the stable pointer-capture port) so the once-
-  // created driver always resolves through the LIVE callback without re-creating
-  // the driver and losing the in-flight seat/latch. The driver only INVOKES
-  // these during an active drag — long after the first render populates the ref.
+  // Populate the interaction controller's host seam. Assigned on every render
+  // (reads through live refs / the stable pointer-capture port) so the
+  // once-created driver always resolves through the live inputs without
+  // re-creating the driver. The driver only INVOKES these during an active drag.
   controllerHostRef.current = {
     resolveTarget: (
       clientX: number,
       clientY: number,
       sourceLeafId: string,
-      previousTarget: TilingDropState | null,
     ): TilingDropState | null => {
-      // The drop is resolved at the pointer alone, the same in every drop
-      // preview: the snap preview's slot does not hold a drop the pointer has
-      // moved off.
-      return resolvePointerTargetRef.current(
-        clientX,
-        clientY,
+      if (!isRearrangeEnabled) {
+        return null;
+      }
+      const live: DragMachineState = controller.getState().drag;
+      const session: DragHitSession | null = ensureDragHit(
         sourceLeafId,
-        previousTarget,
+        live.phase === "armed" || live.phase === "dragging" ? live.subject : undefined,
+      );
+      if (session == null) {
+        return null;
+      }
+      return readDragHit(
+        session,
+        clientToViewportPoint(viewportClientFrame(), { x: clientX, y: clientY }),
+        currentGeometryConfig(interactionCapabilities.dropHitZoneGeometry).devicePixelRatio,
       );
     },
+    heldHome: (): boolean => dragHitRef.current?.atHome ?? false,
     capturePointer: (pointerId: number): void => {
       // Mirror the captured-id bookkeeping only when the (best-effort) root
       // capture actually ran — the port swallows a thrown/absent capture.
@@ -7985,10 +7725,6 @@ const TilingRendererComponent = React.forwardRef<
         capturedPointerIdRef.current = pointerId;
       }
     },
-    getSlotCommitment: () => ({
-      mode: slotCommitmentRef.current.mode,
-      reresolveDeltaPx: slotCommitmentRef.current.reresolveDeltaPx,
-    }),
   };
   // The framework-free FSM input driver (owns the seat/latch cluster + the
   // lifted `processPointerSample` + release-latch pipeline), obtained from the
@@ -8033,17 +7769,16 @@ const TilingRendererComponent = React.forwardRef<
     // would still be `armed` (or hold a stale target) and POINTER_UP would
     // settle as a click/cancel, reverting the pane to its origin.
 
-    // Snap preview hysteresis, after each processed sample: the pane snaps
-    // into the resolved drop's landing slot once the pointer is well inside it
-    // (min(24 px, a quarter of its smaller side)) and stays while the pointer
-    // is in that slot and the drop resolved at the pointer is still that drop;
-    // the others make room meanwhile (the render reads `snappedTarget`). The
-    // hysteresis is visual only: it never holds a drop the pointer is no
-    // longer over, so a release commits what the pointer is over.
+    // Snap preview's seat, after each processed sample: a look of the dragged
+    // pane only. The others make room for the held place from the first frame
+    // it is held (the render draws `after(held)`); the pane itself settles into
+    // its landing once the pointer is well inside it (min(24 px, a quarter of
+    // its smaller side)) and stays settled while the pointer is in it and the
+    // place is the same. It gates nothing: a release commits the held place.
     const updateSnap = (client: DragMachinePoint): void => {
       const current = snappedRef.current;
       const live: DragMachineState = controller.getState().drag;
-      if (dragPreviewRef.current !== "snap" || live.phase !== "dragging") {
+      if (dragPreviewRef.current !== "snap" || live.phase !== "dragging" || live.atHome) {
         if (current != null) {
           snappedRef.current = null;
           setSnappedTarget(null);
@@ -8054,40 +7789,18 @@ const TilingRendererComponent = React.forwardRef<
         viewportClientFrame(),
         client,
       );
-      let next =
-        current != null &&
-        dropTargetKey(live.resolvedTarget) === dropTargetKey(current.target) &&
-        isInsideRect(current.slot, x, y, 0)
-          ? current
+      const target: TilingDropState | null = live.resolvedTarget;
+      const place = target?.place;
+      const slot: TilingRect | null =
+        place != null && place.kind !== "home"
+          ? (dragHitRef.current?.drag.after(place).landing ?? null)
           : null;
-      if (next == null && (!live.atHome || current != null)) {
-        const target: TilingDropState | null = live.resolvedTarget;
-        const slot: TilingRect | null = resolveDropLandingRectRef.current(
-          live.sourceLeafId,
-          target,
-        );
-        if (target != null && slot != null) {
-          // Another drop under the pointer takes the pane at once if it lands
-          // in the very slot the pane is in (the pane stays put), or once the
-          // pointer is well inside its slot.
-          const sameSlot: boolean =
-            current != null &&
-            isInsideRect(slot, x, y, 0) &&
-            Math.abs(slot.x - current.slot.x) < 0.5 &&
-            Math.abs(slot.y - current.slot.y) < 0.5 &&
-            Math.abs(slot.width - current.slot.width) < 0.5 &&
-            Math.abs(slot.height - current.slot.height) < 0.5;
-          if (
-            sameSlot ||
-            isInsideRect(
-              slot,
-              x,
-              y,
-              Math.min(DRAG_SNAP_INSET_PX, Math.min(slot.width, slot.height) / 4),
-            )
-          ) {
-            next = { target, slot };
-          }
+      let next: { readonly target: TilingDropState; readonly slot: TilingRect } | null = null;
+      if (target != null && slot != null) {
+        const same: boolean = current != null && dropTargetKey(current.target) === dropTargetKey(target);
+        const inset: number = same ? 0 : Math.min(DRAG_SNAP_INSET_PX, Math.min(slot.width, slot.height) / 4);
+        if (isInsideRect(slot, x, y, inset)) {
+          next = same && current != null ? current : { target, slot };
         }
       }
       if (next !== current) {
@@ -8400,7 +8113,6 @@ const TilingRendererComponent = React.forwardRef<
     onLiveHitLogChange,
     placeHeldPane,
     placeLiftedLayer,
-    resolvePointerTarget,
   ]);
 
   // The single teardown path. On `settling` the renderer runs the commit OR the
@@ -8786,25 +8498,25 @@ const TilingRendererComponent = React.forwardRef<
         dragSourceLeafId == null
           ? null
           : (leafFootprintsById.get(dragSourceLeafId) ?? null);
+      // Which regions take a drop is the drag's own rule (`after(place).refusal`).
       const hitZoneDiagnostics: TilingDropIntentHitZoneDiagnostics =
-        resolveDropIntentHitZoneDiagnostics({
+        debugHitZoneDiagnostics(
           paneSize,
           geometryConfig,
-          evaluateZone: (
-            zone: TilingLeafDropZone,
-          ): { isValid: boolean; rejectionReason: string | null } =>
-            evaluateZoneCandidate({
-              zone,
-              layout,
-              sourceLeafId: resolverSourceLeafId,
-              targetLeafId: hoveredLeafId,
-              targetFootprint,
-              config,
-              viewportWidth: viewportSize.width,
-              viewportHeight: viewportSize.height,
-              subject: dragSourceLeafId != null ? dragSubject : undefined,
-            }),
-        });
+          resolverSourceLeafId == null
+            ? null
+            : tilingDragZoneRefusals(
+                createLayoutTilingDrag({
+                  layout,
+                  sourceLeafId: resolverSourceLeafId,
+                  subject: dragSourceLeafId != null ? dragSubject : undefined,
+                  container: viewportSize,
+                  config,
+                  min: config.minPaneSizePx,
+                }),
+                hoveredLeafId,
+              ),
+        );
       const edgeDiagnostics: TilingLiveHitLogState["edgeDiagnostics"] =
         hitZoneDiagnostics.edgeZones.map((edgeZoneDiagnostic) => ({
           zone: edgeZoneDiagnostic.zone,
@@ -8841,40 +8553,16 @@ const TilingRendererComponent = React.forwardRef<
         };
       }
 
-      const splitPath: ReadonlyArray<TilingSplitPathEntry> =
-        readSplitPathToLeaf(layout, hoveredLeafId) ?? [];
-      const axisPath: ReadonlyArray<TilingSplitAxis> = splitPath.map(
-        (pathEntry: TilingSplitPathEntry): TilingSplitAxis => pathEntry.axis,
+      // The drop the drag's hit holds on this pane, when it holds one; else the
+      // region under the pointer (placement's `paneRegion`, no hold).
+      const region = paneRegion(
+        { x: 0, y: 0, width: paneSize.width, height: paneSize.height },
+        paneLocalPoint,
+        null,
+        { paneCenter: { width: paneSize.width, height: paneSize.height, left: hitZoneDiagnostics.geometry.centerLeftPx, top: hitZoneDiagnostics.geometry.centerTopPx, right: hitZoneDiagnostics.geometry.centerRightPx, bottom: hitZoneDiagnostics.geometry.centerBottomPx } },
       );
-      const previousZone: TilingLeafDropZone | null = previousZoneSeed(
-        dropState,
-        hoveredLeafId,
-      );
-      const resolvedIntent: TilingDropState = resolveDropIntent({
-        leafId: hoveredLeafId,
-        paneLocalX: paneLocalPoint.x,
-        paneLocalY: paneLocalPoint.y,
-        paneSize,
-        axisPath,
-        geometryConfig,
-        previousZone,
-        evaluateZone: (
-          zone: TilingLeafDropZone,
-        ): { isValid: boolean; rejectionReason: string | null } =>
-          evaluateZoneCandidate({
-            zone,
-            layout,
-            sourceLeafId: resolverSourceLeafId,
-            targetLeafId: hoveredLeafId,
-            targetFootprint,
-            config,
-            viewportWidth: viewportSize.width,
-            viewportHeight: viewportSize.height,
-            subject: dragSourceLeafId != null ? dragSubject : undefined,
-          }),
-      });
-      const intent: TilingDropIntentDebugState =
-        toDropIntentDebugState(resolvedIntent);
+      const intent: TilingDropIntentDebugState | null =
+        dropState != null && dropState.leafId === hoveredLeafId ? toDropIntentDebugState(dropState) : null;
 
       return {
         hoveredLeafId,
@@ -8884,7 +8572,7 @@ const TilingRendererComponent = React.forwardRef<
         sourcePaneFootprint: targetFootprint,
         dragSourcePaneFootprint,
         isDragging: dragSourceLeafId != null,
-        resolverZone: intent.zone,
+        resolverZone: intent?.zone ?? region,
         centerRatio: hitZoneDiagnostics.centerRatio,
         edgeThresholdRatio: hitZoneDiagnostics.edgeThresholdRatio,
         centerRectWidthPx: hitZoneDiagnostics.centerRectWidthPx,
@@ -10535,6 +10223,9 @@ const TilingRendererComponent = React.forwardRef<
         <div
           ref={viewportRef}
           data-hpt-viewport=""
+          // The place the drag's hit holds now (home, a place, or nothing): for
+          // checks and devtools, the same value the frame draws.
+          data-hpt-drag-held={dragHeldLabel}
           className={theme.root.viewport}
           // While dragging, the reflowing candidate-tree layer is made inert so
           // native hit-testing / `elementFromPoint` can NEVER re-target to a pane
