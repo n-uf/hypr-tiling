@@ -16,6 +16,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import * as React from "react";
 import { act, cleanup, render } from "@testing-library/react";
+import type { FrameLoop } from "@n-uf/motion";
 import { TilingRenderer, resolveRearmHandle } from "../react/tiling-renderer";
 import { HELD_FADE_OPACITY, HELD_THUMBNAIL_SCALE } from "../engine/held-look";
 import type {
@@ -191,7 +192,54 @@ function liftedGeometry(): void {
   GEOMETRY.set("b", { x: 0, y: 0, width: 1000, height: 600 });
 }
 
-const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * A test on a driven clock (`useDrivenClock`): jest's fake timers are on, and `wait` advances them by `ms`, frame by
+ * frame, instead of waiting on the wall clock. A frame-by-frame bound is then a property of the motion, not of how
+ * loaded the machine running the suite is.
+ *
+ * The renderer's leaf motion and held look step on one module-wide frame loop (`leafMotionFrameLoop`) whose browser
+ * clock keeps the `requestAnimationFrame` it found when the loop was made. A driven test gets a loop of its own,
+ * made after the fake timers are on, so it steps on the fake frames; every other test keeps the shared one.
+ */
+const CLOCK: { driven: boolean; loop: FrameLoop | null } = { driven: false, loop: null };
+
+jest.mock("../react/leaf-motion-dom", (): unknown => {
+  const actual = jest.requireActual<typeof import("../react/leaf-motion-dom")>("../react/leaf-motion-dom");
+  const { createFrameLoop } = jest.requireActual<typeof import("@n-uf/motion")>("@n-uf/motion");
+  const { createBrowserClock } = jest.requireActual<typeof import("@n-uf/motion/browser")>("@n-uf/motion/browser");
+  return {
+    ...actual,
+    leafMotionFrameLoop: (): FrameLoop => {
+      if (!CLOCK.driven) {
+        return actual.leafMotionFrameLoop();
+      }
+      CLOCK.loop ??= createFrameLoop({ clock: createBrowserClock() });
+      return CLOCK.loop;
+    },
+  };
+});
+
+const wait = (ms: number): Promise<void> =>
+  CLOCK.driven
+    ? Promise.resolve().then((): void => {
+        jest.advanceTimersByTime(ms);
+      })
+    : new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Fake timers on for the tests of this `describe`, off again after each; `wait` (and so `frames`) drives them. */
+function useDrivenClock(): void {
+  beforeEach((): void => {
+    // The clock and the frames only: React's `act` queues its own work on microtasks and `nextTick`.
+    jest.useFakeTimers({ doNotFake: ["nextTick", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval"] });
+    CLOCK.driven = true;
+    CLOCK.loop = null;
+  });
+  afterEach((): void => {
+    CLOCK.driven = false;
+    CLOCK.loop = null;
+    jest.useRealTimers();
+  });
+}
 
 function Host({
   onLayoutReported,
@@ -1014,45 +1062,49 @@ describe("held look — drawing only: the drop is the same in every look", (): v
     expect(frame.style.display).toBe("none");
   });
 
-  it("a thumbnail dropped into a slot of another size than the lift: the box seen is continuous across the handover frame, then glides to the slot", async (): Promise<void> => {
-    restGeometry();
-    const { container } = render(<Host heldLook="thumbnail" animate />);
-    await liftA(container);
-    liftedGeometry();
-    // Over b's centre, clear of the stage's edge: the thumbnail is not clamped.
-    await moveTo(600, 300, 0);
-    await frames(500);
-    const before: Box = liftedSeenBox(container);
-    expect(before.width).toBeCloseTo(500 * HELD_THUMBNAIL_SCALE, 1);
-    expect(before.height).toBeCloseTo(FULL_HEIGHT * HELD_THUMBNAIL_SCALE, 1);
-    // The slot it lands in is smaller than the pane was, and elsewhere.
-    const SLOT: Box = { x: 650, y: 100, width: 300, height: 400 };
-    GEOMETRY.set("a", SLOT);
-    GEOMETRY.set("b", { x: 0, y: 0, width: 650, height: 600 });
-    await act(async (): Promise<void> => {
-      pointer(window, "pointerup", 600, 300);
+  describe("on a driven clock (a frame-by-frame bound: the wall clock of a loaded machine must not decide it)", (): void => {
+    useDrivenClock();
+
+    it("a thumbnail dropped into a slot of another size than the lift: the box seen is continuous across the handover frame, then glides to the slot", async (): Promise<void> => {
+      restGeometry();
+      const { container } = render(<Host heldLook="thumbnail" animate />);
+      await liftA(container);
+      liftedGeometry();
+      // Over b's centre, clear of the stage's edge: the thumbnail is not clamped.
+      await moveTo(600, 300, 0);
+      await frames(500);
+      const before: Box = liftedSeenBox(container);
+      expect(before.width).toBeCloseTo(500 * HELD_THUMBNAIL_SCALE, 1);
+      expect(before.height).toBeCloseTo(FULL_HEIGHT * HELD_THUMBNAIL_SCALE, 1);
+      // The slot it lands in is smaller than the pane was, and elsewhere.
+      const SLOT: Box = { x: 650, y: 100, width: 300, height: 400 };
+      GEOMETRY.set("a", SLOT);
+      GEOMETRY.set("b", { x: 0, y: 0, width: 650, height: 600 });
+      await act(async (): Promise<void> => {
+        pointer(window, "pointerup", 600, 300);
+      });
+      expect(container.querySelector("[data-hpt-lifted]")).toBeNull();
+      const a: HTMLElement = container.querySelector<HTMLElement>('[data-hpt-leaf="a"]')!;
+      const handover: Box = landedSeenBox(container, SLOT);
+      // The handover frame: the same box, to the pixel (no jump in size, scale or place).
+      expect(handover.x).toBeCloseTo(before.x, 1);
+      expect(handover.y).toBeCloseTo(before.y, 1);
+      expect(handover.width).toBeCloseTo(before.width, 1);
+      expect(handover.height).toBeCloseTo(before.height, 1);
+      // Then it glides to the slot: the box stays between where it was seen and the slot (the width product of the
+      // shrinking drawn rect and the growing scale may pass the slot by a pixel), and it ends there.
+      for (let i = 0; i < 60; i++) {
+        await frames(16);
+        const box: Box = landedSeenBox(container, SLOT);
+        expect(box.width).toBeGreaterThanOrEqual(Math.min(before.width, SLOT.width) - 1);
+        expect(box.width).toBeLessThanOrEqual(Math.max(before.width, SLOT.width) + 2);
+        expect(box.height).toBeGreaterThanOrEqual(Math.min(before.height, SLOT.height) - 1);
+        expect(box.height).toBeLessThanOrEqual(Math.max(before.height, SLOT.height) + 2);
+      }
+      await frames(600);
+      expect(a.style.transform).toBe("");
+      expect(landedSeenBox(container, SLOT)).toMatchObject({ x: SLOT.x, y: SLOT.y, width: SLOT.width, height: SLOT.height });
     });
-    expect(container.querySelector("[data-hpt-lifted]")).toBeNull();
-    const a: HTMLElement = container.querySelector<HTMLElement>('[data-hpt-leaf="a"]')!;
-    const handover: Box = landedSeenBox(container, SLOT);
-    // The handover frame: the same box, to the pixel (no jump in size, scale or place).
-    expect(handover.x).toBeCloseTo(before.x, 1);
-    expect(handover.y).toBeCloseTo(before.y, 1);
-    expect(handover.width).toBeCloseTo(before.width, 1);
-    expect(handover.height).toBeCloseTo(before.height, 1);
-    // Then it glides to the slot: the box stays between where it was seen and the slot (the width product of the
-    // shrinking drawn rect and the growing scale may pass the slot by a pixel), and it ends there.
-    for (let i = 0; i < 60; i++) {
-      await frames(16);
-      const box: Box = landedSeenBox(container, SLOT);
-      expect(box.width).toBeGreaterThanOrEqual(Math.min(before.width, SLOT.width) - 1);
-      expect(box.width).toBeLessThanOrEqual(Math.max(before.width, SLOT.width) + 2);
-      expect(box.height).toBeGreaterThanOrEqual(Math.min(before.height, SLOT.height) - 1);
-      expect(box.height).toBeLessThanOrEqual(Math.max(before.height, SLOT.height) + 2);
-    }
-    await frames(600);
-    expect(a.style.transform).toBe("");
-    expect(landedSeenBox(container, SLOT)).toMatchObject({ x: SLOT.x, y: SLOT.y, width: SLOT.width, height: SLOT.height });
   });
 
   it("a fade drop lands from the fade: the same opacity at the handover, settling to solid", async (): Promise<void> => {
