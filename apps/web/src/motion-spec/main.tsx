@@ -6,6 +6,7 @@ import {
   type TilingCommand,
   type TilingCommandHandle,
   type TilingDragPreview,
+  type TilingHeldOverTarget,
   type TilingLayoutNode,
   type TilingRenderTileProps,
   type TilingTile,
@@ -19,7 +20,11 @@ import "../index.css";
  * homepage uses); the default is the library's built-in pane and theme. The
  * drag preview starts from `?preview=snap` / `?room=1` and can be switched
  * with `__motionLab.setDragPreview`. `?identity=slot` renders panes in place
- * (`paneIdentity: "slot"`) instead of one stable instance per tile.
+ * (`paneIdentity: "slot"`) instead of one stable instance per tile. The held
+ * pane's look over a target (`heldOverTarget`) starts from `?held=<look>`
+ * (the renderer's default when absent) and is switched with
+ * `__motionLab.setHeldOverTarget`; `__motionLab.setTitleBars(false)` renders
+ * panes with no title bar (the whole pane is the drag handle).
  */
 
 const ROWS: ReadonlyArray<string> = [
@@ -60,6 +65,16 @@ interface MotionLab {
   dispatch(command: TilingCommand): void;
   /** Switch the drag preview (and, for the indicator, whether the others make room). */
   setDragPreview(preview: TilingDragPreview, makesRoom?: boolean): void;
+  /** Set the held pane's look over a target (`undefined`: the renderer's default). */
+  setHeldOverTarget(look: TilingHeldOverTarget | undefined): void;
+  /** Panes with a title bar (the default) or without one (the whole pane is the handle). */
+  setTitleBars(on: boolean): void;
+}
+
+const HELD_LOOKS: ReadonlyArray<TilingHeldOverTarget> = ["auto", "title-bar", "thumbnail", "fade", "none"];
+
+function isHeldOverTarget(value: string | null): value is TilingHeldOverTarget {
+  return HELD_LOOKS.some((look: TilingHeldOverTarget): boolean => look === value);
 }
 
 function tileIdsOf(node: TilingLayoutNode): string[] {
@@ -122,6 +137,40 @@ function CustomPane(args: TilingRenderTileProps): React.ReactElement {
   );
 }
 
+/** A pane with no title bar: the whole pane picks it up. */
+function BarePane(args: TilingRenderTileProps): React.ReactElement {
+  return (
+    <article
+      data-leaf-id={args.leafId}
+      onFocus={args.onFocus}
+      onClick={args.onFocus}
+      onPointerDown={args.onHandlePointerDown}
+      style={{
+        boxSizing: "border-box",
+        height: "100%",
+        width: "100%",
+        overflow: "hidden",
+        padding: "10px 12px",
+        borderRadius: 12,
+        border: "1px solid rgba(255,255,255,0.14)",
+        background: "linear-gradient(160deg, #24303d, #131820)",
+        color: "#e2e8f0",
+        font: "13px/1.5 ui-sans-serif, system-ui, sans-serif",
+        touchAction: "none",
+        cursor: "grab",
+        userSelect: "none",
+      }}
+    >
+      <strong>{args.tile.title}</strong>
+      {ROWS.map((row: string): React.ReactElement => (
+        <p key={row} style={{ margin: "6px 0 0" }}>
+          {row}
+        </p>
+      ))}
+    </article>
+  );
+}
+
 function MotionScene(): React.ReactElement {
   const [layout, setLayout] = React.useState<TilingLayoutNode>(INITIAL_LAYOUT);
   const [maximizedLeafId, setMaximizedLeafId] = React.useState<string | null>(null);
@@ -138,6 +187,11 @@ function MotionScene(): React.ReactElement {
   // `?identity=slot`: panes render in place (the server-rendered default), so a
   // lifted pane is a fresh mount; the default keeps one instance per tile.
   const paneIdentity: "stable" | "slot" = search.get("identity") === "slot" ? "slot" : "stable";
+  const heldParam: string | null = search.get("held");
+  const [heldOverTarget, setHeldOverTarget] = React.useState<TilingHeldOverTarget | undefined>(
+    isHeldOverTarget(heldParam) ? heldParam : undefined,
+  );
+  const [titleBars, setTitleBars] = React.useState<boolean>(true);
   const tiles: ReadonlyArray<TilingTile> = React.useMemo((): ReadonlyArray<TilingTile> => {
     const shown: Set<string> = new Set<string>(tileIdsOf(layout));
     return TILES.filter((tile: TilingTile): boolean => shown.has(tile.id));
@@ -153,6 +207,8 @@ function MotionScene(): React.ReactElement {
         setDragPreview(preview);
         setMakesRoom(room);
       },
+      setHeldOverTarget: (look: TilingHeldOverTarget | undefined): void => setHeldOverTarget(look),
+      setTitleBars: (on: boolean): void => setTitleBars(on),
     };
   }, []);
 
@@ -169,7 +225,14 @@ function MotionScene(): React.ReactElement {
         dragPreview={dragPreview}
         dragPreviewMakesRoom={makesRoom}
         paneIdentity={paneIdentity}
-        renderTile={custom ? (args: TilingRenderTileProps): React.ReactNode => <CustomPane {...args} /> : undefined}
+        heldOverTarget={heldOverTarget}
+        renderTile={
+          !titleBars
+            ? (args: TilingRenderTileProps): React.ReactNode => <BarePane {...args} />
+            : custom
+              ? (args: TilingRenderTileProps): React.ReactNode => <CustomPane {...args} />
+              : undefined
+        }
       />
     </div>
   );
