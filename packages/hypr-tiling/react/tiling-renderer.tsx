@@ -188,7 +188,6 @@ import {
   createLayoutTilingDrag,
   deriveDropCommitTree,
   resolveTilingSwapPreview,
-  tilingDragHitFootprints,
   type TilingSwapPreview,
 } from "../engine/tiling-drag-tree";
 import type { TilingGrowConstraints } from "../engine/state";
@@ -937,12 +936,6 @@ export function resolvePointerTargetFromMeasurement(
     dropHitZoneGeometry: ResolvedTilingDropHitZoneGeometryCapability;
     liveDragModeEnabled: boolean;
     liveHitFootprintsById: ReadonlyMap<string, TilingPaneFootprint>;
-    /**
-     * Where each target sits with the subject released (the base): an edge
-     * insert's room is judged there, as the commit releases the subject
-     * first. Absent: the hit footprints.
-     */
-    liveRoomFootprintsById?: ReadonlyMap<string, TilingPaneFootprint>;
     leafFootprintsById: ReadonlyMap<string, TilingPaneFootprint>;
     leafIds: ReadonlyArray<string>;
     rearrangeGatedLeafIds: ReadonlySet<string>;
@@ -1178,9 +1171,7 @@ export function resolvePointerTargetFromMeasurement(
         layout: input.layout,
         sourceLeafId: input.sourceLeafId,
         targetLeafId: hitLeafId as string,
-        targetFootprint:
-          input.liveRoomFootprintsById?.get(hitLeafId as string) ??
-          (hitFootprint as TilingPaneFootprint),
+        targetFootprint: hitFootprint as TilingPaneFootprint,
         config: input.config,
         viewportWidth: input.viewportSize.width,
         viewportHeight: input.viewportSize.height,
@@ -6024,26 +6015,18 @@ const TilingRendererComponent = React.forwardRef<
   // memo deps are exactly the stable-reference inputs (layout / source / viewport
   // / config) — `dropState`/candidate is deliberately ABSENT, so reflow cannot
   // shift the hit geometry. See `resolveStableDragHitFootprints`.
-  // While the drag runs through `tilingDrag`, its targets on the layout the
-  // frame draws: the lift layout when nothing moves until the release (the
-  // indicator's "room" frame), else the base.
   const liveHitFootprintsById: ReadonlyMap<string, TilingPaneFootprint> =
     React.useMemo(
       (): ReadonlyMap<string, TilingPaneFootprint> =>
-        liveTilingDrag != null
-          ? tilingDragHitFootprints(
-              liveTilingDrag,
-              swapFrame === "room" ? "lift" : "base",
-            )
-          : resolveStableDragHitFootprints(
-              liveDragModeEnabled,
-              layout,
-              dragSourceLeafId,
-              viewportSize,
-              config,
-              leafFootprintsById,
-              dragSubject,
-            ),
+        resolveStableDragHitFootprints(
+          liveDragModeEnabled,
+          layout,
+          dragSourceLeafId,
+          viewportSize,
+          config,
+          leafFootprintsById,
+          dragSubject,
+        ),
       [
         config,
         dragSourceLeafId,
@@ -6051,20 +6034,8 @@ const TilingRendererComponent = React.forwardRef<
         layout,
         leafFootprintsById,
         liveDragModeEnabled,
-        liveTilingDrag,
-        swapFrame,
         viewportSize,
       ],
-    );
-  // Where each target sits with the subject released: an edge insert's room is
-  // judged there (the commit releases the subject first), wherever it is hit.
-  const liveRoomFootprintsById: ReadonlyMap<string, TilingPaneFootprint> | undefined =
-    React.useMemo(
-      (): ReadonlyMap<string, TilingPaneFootprint> | undefined =>
-        liveTilingDrag != null
-          ? tilingDragHitFootprints(liveTilingDrag, "base")
-          : undefined,
-      [liveTilingDrag],
     );
   const projectedLandingOverlays: ReadonlyArray<TilingProjectedLandingOverlay> =
     React.useMemo(
@@ -7950,7 +7921,6 @@ const TilingRendererComponent = React.forwardRef<
         dropHitZoneGeometry: interactionCapabilities.dropHitZoneGeometry,
         liveDragModeEnabled,
         liveHitFootprintsById,
-        liveRoomFootprintsById,
         leafFootprintsById,
         leafIds,
         rearrangeGatedLeafIds,
@@ -7972,7 +7942,6 @@ const TilingRendererComponent = React.forwardRef<
       leafIds,
       liveDragModeEnabled,
       liveHitFootprintsById,
-      liveRoomFootprintsById,
       rearrangeGatedLeafIds,
       viewportSize.height,
       viewportSize.width,

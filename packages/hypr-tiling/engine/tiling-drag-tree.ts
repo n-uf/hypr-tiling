@@ -24,7 +24,7 @@ import {
   swapGroupWithSlot,
   swapLeafTiles,
 } from "./state";
-import type { TilingGroupNode, TilingLayoutConfig, TilingLayoutNode, TilingLeafNode, TilingPaneFootprint, TilingSplitNode } from "./types";
+import type { TilingGroupNode, TilingLayoutConfig, TilingLayoutNode, TilingLeafNode, TilingSplitNode } from "./types";
 
 /**
  * hypr-tiling's tree as `@n-uf/placement/tiling`'s drag reads and changes it: the layout tree and its own reducers,
@@ -388,26 +388,4 @@ export function deriveDropCommitTree(params: {
     }
   }
   return deriveCandidateTree(layout, sourceLeafId, target, subject);
-}
-
-/** A rect as a footprint (container px). */
-const footprintOf = (rect: Rect): TilingPaneFootprint => ({ left: rect.x, top: rect.y, width: rect.width, height: rect.height });
-
-/**
- * The drag's hit footprints by leaf id: `tilingDrag`'s targets on the layout the frame draws, each at its rect there,
- * keyed by the leaf it is drawn on. `"lift"`: nothing moves until the release (the subject's place stays open), so
- * every zone is judged where it is drawn at the lift. `"base"`: the others close the gap, and a drop is acquired on
- * the tree with the subject released.
- * @internal
- */
-export function tilingDragHitFootprints(drag: TilingDrag<TilingDragTree, string>, on: "lift" | "base"): ReadonlyMap<string, TilingPaneFootprint> {
-  const laid = on === "lift" ? drag.lift : drag.base;
-  const out = new Map<string, TilingPaneFootprint>();
-  for (const target of drag.targetsOn(laid.layout)) {
-    const leaf: TilingLeafNode | null = leafOfTile(laid.tree.layout, target.pane);
-    if (leaf != null) {
-      out.set(leaf.id, footprintOf(target.hit));
-    }
-  }
-  return out;
 }
