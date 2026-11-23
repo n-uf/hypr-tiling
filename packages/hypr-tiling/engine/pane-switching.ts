@@ -48,7 +48,7 @@ export const TILING_KEYMAP_DEFAULTS: ResolvedTilingKeymap = {
   // macOS Alt+` is a dead key in `event.key`, but `event.code` is always
   // `"Backquote"`, so matching on the physical code keeps it layout-independent.
   focusCurrentOrLast: { code: "Backquote", alt: true, ctrl: false, meta: false, shift: false },
-  // Master/stack layout commands (HT-LAYOUT-MASTER-STACK). All Alt-based +
+  // Master/stack layout commands. All Alt-based +
   // exact-modifier so they never collide with bare keys or browser/OS shortcuts.
   cycleLayoutMode: { code: "KeyL", alt: true, ctrl: false, meta: false, shift: false },
   // Alt+Shift+O (not bare Alt+O): Chrome/Edge on Windows/Linux reserve Alt+O for
@@ -59,7 +59,7 @@ export const TILING_KEYMAP_DEFAULTS: ResolvedTilingKeymap = {
   decrementMasterCount: { code: "Minus", alt: true, ctrl: false, meta: false, shift: false },
   incrementMasterRatio: { code: "Period", alt: true, ctrl: false, meta: false, shift: false },
   decrementMasterRatio: { code: "Comma", alt: true, ctrl: false, meta: false, shift: false },
-  // Grouping / tabbed-stacking (HT-GROUP-TABBED-STACKING). All Alt-based +
+  // Grouping / tabbed-stacking. All Alt-based +
   // exact-modifier so they never collide with bare keys or browser/OS shortcuts.
   toggleGroup: { code: "KeyG", alt: true, ctrl: false, meta: false, shift: false },
   groupTabNext: { code: "KeyK", alt: true, ctrl: false, meta: false, shift: false },
@@ -265,7 +265,7 @@ export function matchKeymapAction(
       }
     }
   }
-  // Master/stack layout chords (HT-LAYOUT-MASTER-STACK). Matched unconditionally
+  // Master/stack layout chords. Matched unconditionally
   // here; the `layoutEnabled` capability gate is applied at dispatch
   // (`isCommandEnabled`), so a disabled layout capability stays browser-graceful
   // (the renderer's command tail skips `preventDefault` on the no-op).
@@ -287,7 +287,7 @@ export function matchKeymapAction(
   if (matchKeyChord(event, keymap.decrementMasterRatio)) {
     return { kind: "adjust-master-ratio", delta: -0.05 };
   }
-  // Grouping / tabbed-stacking chords (HT-GROUP-TABBED-STACKING). Matched
+  // Grouping / tabbed-stacking chords. Matched
   // unconditionally; the `groupingEnabled` capability gate is applied at dispatch
   // (`isCommandEnabled`), so a disabled grouping capability stays browser-graceful.
   if (matchKeyChord(event, keymap.toggleGroup)) {

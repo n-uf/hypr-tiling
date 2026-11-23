@@ -9,8 +9,8 @@ import type { TilingCommand } from "./types";
 
 /**
  * Workspace swipe navigation — the pure gesture FSM behind trackpad / touch
- * swiping between workspaces in set mode (`_agent/workspace-navigation-plan.md`
- * N1). Modelled on `engine/drag-machine.ts`: a reducer over a discriminated
+ * swiping between workspaces in set mode (`_agent/workspace-navigation-plan.md`,
+ * the swipe). Modelled on `engine/drag-machine.ts`: a reducer over a discriminated
  * state union, no timers, no DOM, no side effects. The host (the set-mode
  * wrapper through `react/use-workspace-swipe.ts`) feeds it wheel / touch
  * samples that the input ports have already annotated with the facts only the
@@ -29,7 +29,7 @@ import type { TilingCommand } from "./types";
  *   └──────────────────────────────────────── SETTLE_DONE (cancel) ◄──────────────┘
  * ```
  *
- * `settling` lasts as long as the wrapper's switch transition (N2): with
+ * `settling` lasts as long as the wrapper's switch transition: with
  * `switch.transition` on, the set-mode renderer holds `SETTLE_DONE` until the
  * stage has animated to the incoming view (commit) or back to the outgoing one
  * (cancel); with `"none"` the wrapper dispatches `SETTLE_DONE` at once.

@@ -31,8 +31,8 @@ const MAX_RATIO: number = 0.95;
  * Unit-interval clamp for ratios a caller already floor-constrained (via
  * {@link clampByMinSize} + {@link RatioSafetyBounds}). The historical
  * hardcoded 5%/95% soft net must NOT live here — it re-raised chrome-floor
- * size-outs (HT-RESIZE-FLOOR) above the titlebar extent after the interactive
- * path had correctly neutralized the safety net (HT-RATIO-UNIT-CLAMP).
+ * size-outs (the resize floor) above the titlebar extent after the interactive
+ * path had correctly neutralized the safety net (the ratio's unit clamp).
  */
 const MIN_STORED_RATIO: number = 0;
 const MAX_STORED_RATIO: number = 1;
@@ -62,7 +62,7 @@ function clampStoredSplitRatio(value: number): number {
  * Return a copy of the tree with split node `splitId`'s divider `ratio` set
  * (clamped to the unit interval). Per-side body/chrome floors are the
  * caller's job via {@link clampByMinSize} — this reducer must not re-impose
- * the soft 5%/95% net (HT-RATIO-UNIT-CLAMP / HT-RESIZE-FLOOR). Unchanged when
+ * the soft 5%/95% net (the unit clamp and the resize floor). Unchanged when
  * no split with that id exists.
  */
 export function updateSplitRatio(
@@ -172,7 +172,7 @@ function writeLeafSizing(
  * sizing to preserve it becomes fully flexible (`sizing: undefined`, matching the
  * `setLeafSizing` "no static dims → undefined" convention).
  *
- * HT-PANE-COLLAPSE coherence: a COLLAPSED leaf's along-axis pin IS the collapse
+ * Pane collapse coherence: a COLLAPSED leaf's along-axis pin IS the collapse
  * pin (`collapseLeafNode` always pins the dimension along ITS PARENT split's
  * axis — see there). When this demotion fires on a collapsed leaf it means a
  * both-static-along-axis backstop (or an unfit-pin backstop, see
@@ -215,7 +215,7 @@ export function demoteAlongAxisStatic(
 
 /**
  * Re-pin a COLLAPSED leaf's along-axis dimension to the axis of its CURRENT
- * immediate parent split (HT-PANE-COLLAPSE-DRAG). `collapseLeafNode` pins
+ * immediate parent split (a collapsed pane's drag). `collapseLeafNode` pins
  * whichever dimension runs ALONG the parent split's axis AT COLLAPSE TIME
  * (`collapsedDimension`) — but a drag re-parent (`insertLeafAdjacent`,
  * `moveLeafToRoot`, `moveLeafToSplitContainer`, or an edge-insert that
@@ -262,7 +262,7 @@ function reconcileCollapsedLeafAxis(
 
 /**
  * Whether both children are LEAVES currently `collapsed: true` — the
- * both-collapsed-siblings edge case (HT-PANE-COLLAPSE-VOID). Unlike an
+ * both-collapsed-siblings edge case (the collapse void). Unlike an
  * arbitrary both-static-along-axis pair, a collapsed leaf's pin has a defined
  * un-collapse escape (`collapsedRestore`), so this combination is allowed to
  * persist deliberately (see {@link normalizeStaticAxisFill}) instead of being
@@ -293,7 +293,7 @@ function isBothCollapsedLeaves(
  * pin) so the split becomes `{content, fill}` and the axis re-absorbs any
  * container delta.
  *
- * EXCEPTION — both-collapsed siblings (HT-PANE-COLLAPSE-VOID): when both
+ * EXCEPTION — both-collapsed siblings (the collapse void): when both
  * children are LEAVES currently `collapsed: true`, the pair is exempted from
  * demotion. Preferring "both stay collapsed" over silently un-collapsing
  * whichever one lost the coin flip is the locked design for this edge case: the
@@ -319,7 +319,7 @@ export function normalizeStaticAxisFill(node: TilingLayoutNode): TilingLayoutNod
     return node;
   }
 
-  // HT-PANE-COLLAPSE-DRAG: re-pin a DIRECT-CHILD collapsed leaf to the axis it
+  // A collapsed pane's drag: re-pin a DIRECT-CHILD collapsed leaf to the axis it
   // is ACTUALLY under before recursing. A drag re-parent (`insertLeafAdjacent`
   // / `moveLeafTo*`) can land a collapsed leaf under a split whose axis
   // differs from the axis it collapsed under — see `reconcileCollapsedLeafAxis`.
@@ -363,7 +363,7 @@ export function setLeafSizing(
 }
 
 /**
- * Collapse a leaf to titlebar-only (HT-PANE-COLLAPSE, axis-aware): pin the
+ * Collapse a leaf to titlebar-only (axis-aware): pin the
  * dimension that runs ALONG `parentAxis` — the immediate parent split's axis —
  * STATIC to `collapsedExtentPx` (the chrome/header extent), so the flexible
  * sibling reclaims exactly the space the collapse frees:
@@ -477,7 +477,7 @@ const ROOT_LEAF_COLLAPSE_AXIS: TilingSplitAxis = "vertical";
 
 /**
  * Immutably set a single leaf's COLLAPSED (titlebar-only) state
- * (HT-PANE-COLLAPSE, axis-aware). Collapsing pins the leaf's dimension ALONG
+ * (axis-aware). Collapsing pins the leaf's dimension ALONG
  * its immediate parent split's axis (height under a `vertical`/stacked parent,
  * width under a `horizontal`/side-by-side parent — see {@link collapseLeafNode})
  * to `collapsedExtentPx` and remembers its prior sizing; expanding restores
@@ -485,8 +485,8 @@ const ROOT_LEAF_COLLAPSE_AXIS: TilingSplitAxis = "vertical";
  * so a collapse that creates a both-static-along-axis edge (e.g. two stacked —
  * or two side-by-side — siblings both collapsed) still satisfies the "one child
  * flexes along the split axis" invariant for every OTHER static combination —
- * but the both-COLLAPSED-siblings edge is explicitly exempted (HT-PANE-COLLAPSE-
- * VOID): both stay collapsed, and the leftover axis space is an intentional
+ * but the both-COLLAPSED-siblings edge is explicitly exempted (the collapse
+ * void): both stay collapsed, and the leftover axis space is an intentional
  * split slack void rather than either sibling silently losing its collapse
  * state.
  */
@@ -513,7 +513,7 @@ export function isLeafCollapsed(node: TilingLayoutNode, leafId: string): boolean
 }
 
 /**
- * Toggle a single leaf's collapsed state (HT-PANE-COLLAPSE) — collapse it when
+ * Toggle a single leaf's collapsed state — collapse it when
  * expanded, expand it when collapsed. A missing leaf id is a no-op (returns the
  * same tree reference).
  */
@@ -605,7 +605,7 @@ export function diffCollapsedLeaves(
 
 /**
  * Re-assert every COLLAPSED leaf's along-axis pin to `collapsedExtentPx`
- * (HT-PANE-COLLAPSE-PIN-REASSERT). Collapse pins bake the chrome extent that
+ * (the pin reassert). Collapse pins bake the chrome extent that
  * was current at collapse / axis-reconcile time; a later config change (or a
  * persisted tree hydrated under a different `collapsedExtentPx`) leaves a
  * stale pin that diverges from the live chrome. Walk the tree and rewrite
@@ -873,8 +873,8 @@ export function findGroupById(
  * - every split has BOTH children present and individually valid, with a finite
  *   `ratio` in the closed interval `[0, 1]` (what `updateSplitRatio` stores);
  * - NO leaf id appears more than once across the whole tree (the single-instance
- *   invariant at the data layer — a duplicated dragged leaf is exactly the BUG-1
- *   class this rejects);
+ *   invariant at the data layer — a duplicated dragged leaf is exactly the
+ *   class of bug this rejects);
  * - NO `tileId` appears more than once (at most one tile per slot — two leaves
  *   claiming the same host tile leaves another tile unplaced / void).
  *
@@ -1662,7 +1662,7 @@ export function adjustSplitRatio(
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// HT-GROUP-TABBED-STACKING — group/member reducers
+// Tab groups (tabbed stacking) — group/member reducers
 // ───────────────────────────────────────────────────────────────────────────
 
 /**

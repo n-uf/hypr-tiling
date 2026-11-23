@@ -142,7 +142,7 @@ function alongAxisPinPx(node: TilingLayoutNode, axis: TilingSplitAxis): number |
 }
 
 /**
- * Unit-interval clamp for ratios normalize keeps on the tree (HT-RATIO-UNIT-CLAMP).
+ * Unit-interval clamp for ratios normalize keeps on the tree.
  * Soft 5%/95% used to live here and silently undid chrome-floor size-outs after
  * {@link clampByMinSize} had already neutralized the safety net — keep only the
  * unit interval; per-side floors remain {@link clampByMinSize}'s job.
@@ -184,7 +184,7 @@ function reconcileBinarySplitAxis(
   const firstPin: number | null = firstStatic ? alongAxisPinPx(first, node.axis) : null;
   const secondPin: number | null = secondStatic ? alongAxisPinPx(second, node.axis) : null;
 
-  // Both-collapsed siblings (HT-PANE-COLLAPSE-VOID): each keeps its OWN pin —
+  // Both-collapsed siblings (the collapse void): each keeps its OWN pin —
   // never the single-pin branches below, which would hand the second child
   // "whatever's left after the first's pin" instead of its actual collapse
   // extent. The leftover axis space is an intentional split slack void, not a
@@ -677,7 +677,7 @@ function geometryNormalizeLayout(
 ): TilingLayoutNode {
   const collapsedExtentPx: number =
     config.collapsedExtentPx ?? TILING_DEFAULT_COLLAPSED_EXTENT_PX;
-  // HT-PANE-COLLAPSE-PIN-REASSERT: rewrite stale collapse pins to the live
+  // Pin reassert: rewrite stale collapse pins to the live
   // chrome extent before axis-fill / ratio reconcile so hydrate and settle
   // keep collapse geometry ≡ current config (see `reassertCollapsedExtentPins`).
   const pinReasserted: TilingLayoutNode = reassertCollapsedExtentPins(
@@ -894,7 +894,7 @@ function walkFillSlack(
   let secondPx: number;
   let usedGutterPx: number = gutterPx;
 
-  // Both-collapsed siblings (HT-PANE-COLLAPSE-VOID): each keeps its OWN pin;
+  // Both-collapsed siblings (the collapse void): each keeps its OWN pin;
   // the leftover axis space is an intentional split slack void, so it is
   // deliberately excluded from the slack measurement below (recurse into
   // children with their own pinned extents and return early).

@@ -490,7 +490,7 @@ export type TilingCommand =
   | { kind: "insert-adjacent"; sourceLeafId: string; targetLeafId: string; placement: TilingMovePlacement }
   | { kind: "acquire-space"; leafId?: string; direction: TilingFocusDirection }
   | { kind: "set-sizing"; leafId?: string; mode: TilingTitleBarSizingMode }
-  // collapse-to-titlebar (HT-PANE-COLLAPSE). `leafId` omitted → the focused leaf
+  // collapse-to-titlebar. `leafId` omitted → the focused leaf
   // (the "act on the focused pane" ergonomic). `toggle-collapse` flips the
   // leaf's collapsed state; `set-collapsed` sets it explicitly (idempotent).
   | { kind: "toggle-collapse"; leafId?: string }
@@ -506,7 +506,7 @@ export type TilingCommand =
   | { kind: "set-master-orientation"; splitId?: string; orientation: TilingMasterOrientation }
   | { kind: "cycle-master-orientation"; splitId?: string }
   | { kind: "adjust-master-ratio"; splitId?: string; delta: number }
-  // grouping / tabbed-stacking (HT-GROUP-TABBED-STACKING).
+  // grouping / tabbed-stacking.
   // `hostLeafId` (the clicked pane for the header Group button, or the resolved
   // host for Alt+G) is the slot the merged flat group occupies and the active
   // tab; omitted → the first resolvable id in `leafIds`.
@@ -759,7 +759,7 @@ export interface TilingPaneTitleBarControlsCapability {
   acquireSpace?: boolean;
   /**
    * Render the per-pane COLLAPSE-to-titlebar control + enable the
-   * `toggle-collapse` / `set-collapsed` commands (HT-PANE-COLLAPSE). Default
+   * `toggle-collapse` / `set-collapsed` commands. Default
    * `false` — collapse is OPT-IN for backward compatibility (an existing
    * consumer's title-bars keep exactly today's control set until it turns this
    * on), mirroring the `paneSwitching.showContentToggle` opt-in exception.
@@ -1056,7 +1056,7 @@ export interface TilingInteractionCapabilities {
    */
   keyBindings?: TilingKeyBindings;
   /**
-   * Master/stack layout engine (HT-LAYOUT-MASTER-STACK). When `true` (default),
+   * Master/stack layout engine. When `true` (default),
    * the layout-mode + master commands (`cycle-layout-mode`,
    * `adjust-master-count`, `cycle-master-orientation`, `adjust-master-ratio`, …)
    * and their default keybindings are live, and a subtree set to
@@ -1066,7 +1066,7 @@ export interface TilingInteractionCapabilities {
    */
   masterLayout?: boolean;
   /**
-   * Group / tabbed-stacking (HT-GROUP-TABBED-STACKING). A bare boolean is
+   * Group / tabbed-stacking. A bare boolean is
    * shorthand for `{ enable }`; the object form additionally governs the
    * per-group tab strip via `showGroupTabStrip` (see
    * {@link TilingGroupingCapability}). Default `true` (grouping enabled, strip
@@ -1106,12 +1106,12 @@ export interface TilingWorkspacesCapability {
    */
   followMovedLeaf?: boolean;
   /**
-   * Gesture switching between neighbouring workspaces (N1). Both inputs are
+   * Gesture switching between neighbouring workspaces. Both inputs are
    * opt-in (default `false`); see {@link TilingWorkspaceSwitchCapability}.
    */
   switch?: TilingWorkspaceSwitchCapability;
   /**
-   * Spring-loaded workspace-tab drop (N3): hold a dragged pane over another
+   * Spring-loaded workspace-tab drop: hold a dragged pane over another
    * workspace's tab for `dwellMs` (default `500`) and the pane commits into
    * that workspace (`moveLeafToWorkspace`), the set switches there
    * (`onWorkspaceSwitch({ via: "spring-load" })`) and the drag continues on
@@ -1184,7 +1184,7 @@ export interface ResolvedTilingWorkspacesCapability {
 }
 
 /**
- * Group / tabbed-stacking capability (HT-GROUP-TABBED-STACKING), the object
+ * Group / tabbed-stacking capability, the object
  * form of the `grouping` capability. A bare boolean at the `grouping` slot is
  * shorthand for `{ enable }`.
  */
@@ -1515,9 +1515,9 @@ export interface TilingTile {
 
 /**
  * Which floor an interactive resize (pointer drag / keyboard) bounds a pane
- * to (HT-RESIZE-FLOOR):
+ * to:
  *
- * - `"chrome"` (LIBRARY DEFAULT, HT-RESIZE-FLOOR-DEFAULT) — "size-out": the
+ * - `"chrome"` (LIBRARY DEFAULT) — "size-out": the
  *   gutter may shrink all the way to the collapsed titlebar-only extent
  *   ({@link TilingLayoutConfig.collapsedExtentPx}), REPLACING the body floor
  *   for this leaf entirely (not layered on top of it). This is purely a
@@ -1538,7 +1538,7 @@ export interface TilingTile {
 export type TilingResizeFloor = "body" | "chrome";
 
 /**
- * Collapsed pane body MOUNT policy (HT-COLLAPSE-BODY-MODE) — lib-controlled,
+ * Collapsed pane body MOUNT policy — lib-controlled,
  * not a per-consumer `renderTile` decision (see {@link TilingPaneBody}, which
  * is the ONE place this policy takes effect):
  *
@@ -1601,16 +1601,15 @@ export interface TilingLeafNode {
   minBBoxPx?: TilingMinBBoxPx;
   /**
    * Per-leaf override of which floor an interactive resize bounds this pane
-   * to (HT-RESIZE-FLOOR) — wins over {@link TilingLayoutConfig.resizeFloor}.
+   * to — wins over {@link TilingLayoutConfig.resizeFloor}.
    * Undefined falls through to the config default, itself defaulting to
-   * `"chrome"` (HT-RESIZE-FLOOR-DEFAULT). Set `"body"` here to opt this leaf
+   * `"chrome"`. Set `"body"` here to opt this leaf
    * back into the content floor. See {@link TilingResizeFloor} for the two
    * modes.
    */
   resizeFloor?: TilingResizeFloor;
   /**
-   * Whether this leaf is COLLAPSED to titlebar-only (HT-PANE-COLLAPSE,
-   * axis-aware). A collapsed leaf is pinned STATIC, to the chrome/titlebar
+   * Whether this leaf is COLLAPSED to titlebar-only (axis-aware). A collapsed leaf is pinned STATIC, to the chrome/titlebar
    * extent (`collapsedExtentPx`, see {@link TilingLayoutConfig}), in the
    * dimension that runs ALONG its immediate PARENT split's axis:
    *
@@ -1701,7 +1700,7 @@ export interface TilingSplitNode {
 }
 
 /**
- * A group/member slot (HT-GROUP-TABBED-STACKING): N leaves share ONE layout slot
+ * A group/member slot: N leaves share ONE layout slot
  * as a stacked group with a tab strip — only `activeMemberId` renders / is
  * hit-tested, the tabs switch the active member. A group is a SLOT (like a leaf),
  * so a slot in either dwindle or master layout can hold a group. Members are
@@ -1748,7 +1747,7 @@ export interface TilingLayoutConfig {
   handleSizePx: number;
   /**
    * Collapsed titlebar-only extent (CSS px) — the along-parent-split-axis
-   * extent a leaf is pinned to when COLLAPSED (HT-PANE-COLLAPSE): `height`
+   * extent a leaf is pinned to when COLLAPSED: `height`
    * under a stacked (vertical) parent, `width` under a side-by-side
    * (horizontal) parent (see {@link TilingLeafNode.collapsed}). Sized to the
    * pane's chrome/header extent so a collapsed pane shows just its title bar.
@@ -1758,15 +1757,15 @@ export interface TilingLayoutConfig {
   collapsedExtentPx?: number;
   /**
    * Library-wide default for which floor an interactive resize bounds a pane
-   * to (HT-RESIZE-FLOOR) — a direct-child leaf's own
+   * to — a direct-child leaf's own
    * {@link TilingLeafNode.resizeFloor} wins over this. Undefined →
-   * `"chrome"` (HT-RESIZE-FLOOR-DEFAULT, size-out to the collapsed titlebar
+   * `"chrome"` (size-out to the collapsed titlebar
    * extent). Set `"body"` here to restore the old content-floor behavior
    * library-wide. See {@link TilingResizeFloor} for the two modes.
    */
   resizeFloor?: TilingResizeFloor;
   /**
-   * Collapsed pane body mount policy (HT-COLLAPSE-BODY-MODE) — see
+   * Collapsed pane body mount policy — see
    * {@link TilingCollapseBodyMode}. Undefined → `"keep-mounted"`.
    */
   collapseBodyMode?: TilingCollapseBodyMode;
@@ -1946,7 +1945,7 @@ export interface TilingRenderTileProps {
    * to their minimum). Emits via `onLayoutChange` (controlled).
    */
   onAcquireSpace: (direction: TilingFocusDirection) => void;
-  /** Whether THIS pane is currently collapsed to titlebar-only (HT-PANE-COLLAPSE). */
+  /** Whether THIS pane is currently collapsed to titlebar-only. */
   isCollapsed: boolean;
   /**
    * Which dimension collapse pinned (`"width"` under a `horizontal`/
@@ -2126,7 +2125,7 @@ export type TilingLeafDropZone = "center" | "left" | "right" | "top" | "bottom";
 /**
  * Resolved pane-body render decision:
  * - `"render-content"` — paint the tile body. Also resolved for a COLLAPSED
- *   pane under the default `collapseBodyMode: "keep-mounted"` (HT-COLLAPSE-BODY-MODE)
+ *   pane under the default `collapseBodyMode: "keep-mounted"`
  *   — {@link TilingPaneBody} still visually hides it via its own independent
  *   `display: none` gate.
  * - `"render-empty"` — body removed from the tree (content toggle off, OR a
@@ -2980,7 +2979,7 @@ export interface TilingRendererCommonProps {
   /** Notified whenever the maximized pane changes (`null` on restore). */
   onMaximizedLeafChange?: (leafId: string | null) => void;
   /**
-   * Notified whenever a pane's COLLAPSE state changes (HT-PANE-COLLAPSE) —
+   * Notified whenever a pane's COLLAPSE state changes —
    * fired on every `toggle-collapse` / `set-collapsed` that actually flips a
    * leaf, from the title-bar control, a keyboard binding, or an imperative
    * `dispatch`. The event-driven hook a host uses to react to collapse/expand
@@ -3176,7 +3175,7 @@ export interface TilingRendererObservabilityProps {
 
 /**
  * Live pointer/keyboard resize gesture state for one split divider. The two
- * floors are resolved PER SIDE (HT-MIN-BBOX-PX) — `resolveAlongAxisMinPaneSizePx`
+ * floors are resolved PER SIDE — `resolveAlongAxisMinPaneSizePx`
  * — so a leaf-owned {@link TilingLeafNode.minBBoxPx} on only one side does not
  * force the other side up to match.
  */
@@ -3192,7 +3191,7 @@ export interface TilingSplitResizeState {
   /** Resolved along-axis floor (CSS px) for the split's SECOND child. */
   secondMinPaneSizePx: number;
   /**
-   * Ratio-clamp safety bounds (HT-RESIZE-FLOOR) resolved at gesture start —
+   * Ratio-clamp safety bounds (the resize floor) resolved at gesture start —
    * neutralized when either side resolved a "chrome" resize floor, so a
    * legitimately small chrome floor stays reachable for the gesture's
    * duration.

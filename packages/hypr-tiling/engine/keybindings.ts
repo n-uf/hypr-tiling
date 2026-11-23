@@ -1,5 +1,5 @@
 /**
- * Public keyboard-binding registry (HT-API-COMMAND-KEYBOARD-SURFACE, half B).
+ * Public keyboard-binding registry (the keyboard half of the command and keyboard API).
  *
  * The chord→command registration surface — the Hyprland `bind` analog. Distinct
  * from the fixed `TilingKeymap` chord overrides (which only RE-CHORD the built-in
@@ -81,7 +81,7 @@ export function defaultKeyBindings(keymap: ResolvedTilingKeymap): ReadonlyArray<
     { chord: keymap.focusDown, command: { kind: "focus-direction", direction: "down" } },
     { chord: keymap.enterMoveMode, command: { kind: "enter-move-mode" } },
     { chord: keymap.focusCurrentOrLast, command: { kind: "focus-current-or-last" } },
-    // Master/stack layout commands (HT-LAYOUT-MASTER-STACK). The `splitId` is
+    // Master/stack layout commands. The `splitId` is
     // omitted so each resolves against the ROOT split at dispatch time.
     { chord: keymap.cycleLayoutMode, command: { kind: "cycle-layout-mode" } },
     { chord: keymap.cycleMasterOrientation, command: { kind: "cycle-master-orientation" } },
@@ -89,7 +89,7 @@ export function defaultKeyBindings(keymap: ResolvedTilingKeymap): ReadonlyArray<
     { chord: keymap.decrementMasterCount, command: { kind: "adjust-master-count", delta: -1 } },
     { chord: keymap.incrementMasterRatio, command: { kind: "adjust-master-ratio", delta: 0.05 } },
     { chord: keymap.decrementMasterRatio, command: { kind: "adjust-master-ratio", delta: -0.05 } },
-    // Grouping / tabbed-stacking commands (HT-GROUP-TABBED-STACKING). `toggle-group`
+    // Grouping / tabbed-stacking commands. `toggle-group`
     // resolves against the focused pane; the tab-cycle chords against the focused
     // group, all at dispatch time.
     { chord: keymap.toggleGroup, command: { kind: "toggle-group" } },

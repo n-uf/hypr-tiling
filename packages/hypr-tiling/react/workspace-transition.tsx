@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * Workspace-switch transition stage (N2): freeze the outgoing viewport as a
+ * Workspace-switch transition stage: freeze the outgoing viewport as a
  * DOM clone and slide / fade it against the live incoming tree.
  *
- * Designed to be wired into `TilingWorkspaceSetRendererComponent` after N1
- * lands — this module does not import the renderer. Call `begin` **before**
+ * Wired into `TilingWorkspaceSetRendererComponent` alongside the swipe; this
+ * module does not import the renderer. Call `begin` **before**
  * updating `activeId` (the outgoing tree unmounts on the switch; the clone
  * is the only remaining paint of it).
  */
@@ -74,7 +74,7 @@ export interface UseWorkspaceTransitionResult {
     mode?: TilingWorkspaceTransitionMode;
   }) => void;
   /**
-   * Scrub with N1 swipe progress (`−1..1`). No timer while progress is
+   * Scrub with swipe progress (`−1..1`). No timer while progress is
    * being fed. No-op until `begin`.
    */
   readonly scrub: (progress: number) => void;
@@ -103,7 +103,7 @@ export interface UseWorkspaceTransitionResult {
  * Props of {@link WorkspaceTransitionStage}. The stage wraps the live
  * incoming tree and paints the clone as an absolutely positioned overlay.
  * Imperative control is the ref ({@link UseWorkspaceTransitionResult});
- * `progress` is the N1 swipe feed (non-null → `scrub`).
+ * `progress` is the swipe feed (non-null → `scrub`).
  */
 export interface WorkspaceTransitionStageProps {
   /** Viewport cloned on `begin`. Typically an ancestor of this stage. */
@@ -209,7 +209,7 @@ function disposeClone(node: HTMLElement | null): void {
 
 /**
  * Imperative workspace-switch transition. `begin` freezes the outgoing
- * viewport; `scrub` follows N1 swipe progress; `finish` runs the timed
+ * viewport; `scrub` follows swipe progress; `finish` runs the timed
  * commit / cancel curve and drops the clone.
  */
 export function useWorkspaceTransition(
@@ -455,7 +455,7 @@ const INCOMING_BASE_STYLE: React.CSSProperties = {
 /**
  * Visual workspace-switch stage: an absolutely positioned overlay (the
  * frozen outgoing clone) over the live incoming tree. Drive it through the
- * imperative ref (`begin` / `scrub` / `finish`) or feed N1 `progress`.
+ * imperative ref (`begin` / `scrub` / `finish`) or feed swipe `progress`.
  */
 export const WorkspaceTransitionStage = React.forwardRef<
   UseWorkspaceTransitionResult,

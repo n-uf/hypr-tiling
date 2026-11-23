@@ -1,5 +1,5 @@
 /**
- * Public command contract (HT-API-COMMAND-KEYBOARD-SURFACE, half A).
+ * Public command contract (the command half of the command and keyboard API).
  *
  * `TilingCommand` (in `types.ts`) is the public API's typed dispatch-style command set
  * — the Hyprland `dispatch` analog. This module holds the PURE logic around it:
@@ -39,9 +39,9 @@ export interface TilingCommandGates {
   collapseEnabled: boolean;
   /** Divider resize (`set-split-ratio` / `toggle-split-axis`) commands. */
   resizeEnabled: boolean;
-  /** Master/stack layout-mode commands (HT-LAYOUT-MASTER-STACK). */
+  /** Master/stack layout-mode commands. */
   layoutEnabled: boolean;
-  /** Group / tabbed-stacking commands (HT-GROUP-TABBED-STACKING). */
+  /** Group / tabbed-stacking commands. */
   groupingEnabled: boolean;
   /**
    * Workspace-set navigation and reset commands (`switch-workspace`,

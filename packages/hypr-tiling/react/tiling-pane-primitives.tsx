@@ -173,7 +173,7 @@ export interface TilingPaneTitleBarContentProps extends React.HTMLAttributes<HTM
  * A press anywhere ELSE in the slot — decorative labels, badges, a selected-
  * case id, any non-interactive content — falls through untouched, so the
  * titlebar stays draggable from the whole slot minus its actual controls
- * (HT-TITLEBAR-DRAG-THRU: a blanket stop here previously turned any non-empty
+ * (a blanket stop here previously turned any non-empty
  * `titleBarContent` into a dead zone that swallowed drag pickup entirely, even
  * where nothing inside it was interactive).
  *
@@ -216,7 +216,7 @@ export interface TilingPaneBodyProps extends React.HTMLAttributes<HTMLDivElement
  * with the renderer's hidden-body semantics (the content toggle, collapse).
  * Bring your own `className` / `style`.
  *
- * HT-PANE-COLLAPSE: while `pane.isCollapsed` is true (and the pane is NOT
+ * Collapse: while `pane.isCollapsed` is true (and the pane is NOT
  * maximized — see below) the wrapper is forced to `display: none` (merged into
  * any consumer `style`) rather than merely emptying its children. A collapsed
  * leaf is pinned to the chrome extent (titlebar-only, along its parent split's
@@ -225,14 +225,14 @@ export interface TilingPaneBodyProps extends React.HTMLAttributes<HTMLDivElement
  * as a dead strip beside/below the titlebar. Hiding the box entirely removes
  * that strip so the collapsed pane is exactly titlebar-sized.
  *
- * HT-COLLAPSE-BODY-MODE: this `display: none` hide is INDEPENDENT of whether
+ * Collapsed body mode: this `display: none` hide is INDEPENDENT of whether
  * children are mounted. With the default `collapseBodyMode: "keep-mounted"`,
  * `resolvePaneBodyRenderMode` resolves `"render-content"` while collapsed, so
  * children stay mounted (state/scroll/focus survive collapse/expand) behind
  * the `display: none` wrapper; `"unmount"` resolves `"render-empty"` instead,
  * removing children from the tree exactly like the legacy behavior.
  *
- * HT-PANE-COLLAPSE + maximize: `pane.isMaximized` SUSPENDS the `display: none`
+ * Collapse + maximize: `pane.isMaximized` SUSPENDS the `display: none`
  * gate for exactly this leaf, matching `resolvePaneBodyRenderMode`'s own
  * maximize override — otherwise a maximized collapsed pane would render
  * `render-content` children into a wrapper still forced invisible, i.e. a

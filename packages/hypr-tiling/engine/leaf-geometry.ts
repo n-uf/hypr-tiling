@@ -48,7 +48,7 @@ import type {
  * - `fixed`: a child static ALONG the split with a usable px pin takes it when
  *   it fits (`pin + gutter < extent`); a static child with no usable pin reports
  *   length 0, so the split falls back to its ratio. Two collapsed leaves each
- *   keep their pin (HT-PANE-COLLAPSE-VOID).
+ *   keep their pin (the collapse void).
  * - `fixedAcross`: a child static on the CROSS axis takes its pin across, from
  *   the start (the renderer's `align-self: flex-start`).
  * - `floor`: each side's along-axis floor by hypr-tiling's own precedence
@@ -376,7 +376,7 @@ export function resolveMasterParams(node: TilingSplitNode, slotCount: number): M
 }
 
 /**
- * Master/stack geometry (HT-LAYOUT-MASTER-STACK): placement's `masterStack`
+ * Master/stack geometry: placement's `masterStack`
  * over the ordered `slots` — `params.count` master tiles in a master area of
  * `params.ratio` of the extent less one gap (`config.gapPx`, never the handle),
  * the rest in a stack, each area divided equally with gaps. Left and right make

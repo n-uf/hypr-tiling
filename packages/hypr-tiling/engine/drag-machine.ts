@@ -238,7 +238,7 @@ export type DragMachineEvent =
 /**
  * `REARM` — start a NEW drag on `sourceLeafId` at the CURRENT pointer position
  * without a fresh `pointerdown`. The spring-loaded workspace-tab drop
- * (`engine/workspace-spring-load.ts`, plan N3) ends the running drag as a
+ * (`engine/workspace-spring-load.ts`) ends the running drag as a
  * `claimed` external commit (`moveLeafToWorkspace`), the set switches to the
  * destination workspace, and the still-held pointer must keep dragging the
  * leaf from its NEW seat — so the machine needs an edge from `idle` straight
@@ -249,7 +249,7 @@ export type DragMachineEvent =
  * phase, so a `REARM` can never fork a live drag or skip a pending settle
  * teardown (the settle effect must have run `SETTLE_DONE` first — that is
  * where the renderer releases the old seat / latch cluster and strips the old
- * tree's transient styles, INV-R1). The event carries a footprint measured on
+ * tree's transient styles). The event carries a footprint measured on
  * the NEW tree: nothing from the previous drag's `anchorFootprint`,
  * `resolvedTarget` or `heldFootprint` survives into the re-armed state, so a
  * cancel after a rearm settles the leaf on its new seat, never in the old

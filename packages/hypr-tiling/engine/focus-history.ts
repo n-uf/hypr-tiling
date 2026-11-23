@@ -1,6 +1,6 @@
 /**
  * MRU focus history — the pure model behind the "focus current-or-last" toggle
- * (HT-NAV-MRU-FOCUS-TOGGLE; Hyprland `focuscurrentorlast` analog).
+ * (Hyprland `focuscurrentorlast` analog).
  *
  * hypr-tiling cycles a fixed reading-order ring (`resolveCycledPaneId`) with no
  * memory of WHICH pane was focused before the current one. This module adds a
@@ -13,7 +13,7 @@
  *
  * Cross-ref: `_agent/command-keyboard-api-design.md` §4;
  * `_agent/comparative-analysis/parity-report.md` §5 #8 (MRU focus-toggle gap);
- * `_agent/programme-debt/D-a11y-navigation.md` (HT-NAV-MRU-FOCUS-TOGGLE).
+ * `_agent/programme-debt/D-a11y-navigation.md` (the MRU focus toggle).
  */
 
 /**
