@@ -11,6 +11,7 @@ import {
   type TilingCommand,
   type TilingCommandHandle,
   type TilingDragPreview,
+  type TilingHeldOverTarget,
   type TilingGroupTabMember,
   type TilingInteractionCapabilities,
   type TilingPaneTab,
@@ -74,6 +75,7 @@ import { MobileTopStrip } from "./mobile-home/top-strip";
 import { useMobileHomeMode } from "./mobile-home/mode-storage";
 import { useHomeDragPreview } from "./drag-preview-storage";
 import { DragPreviewSwitch } from "./drag-preview-switch";
+import { HeldLookSwitch, useHomeHeldLook } from "./held-look-switch";
 import { type MobileHomeMode } from "./mobile-home/types";
 import {
   useIsCoarsePointer,
@@ -340,11 +342,15 @@ function HomeTopBar({
   onRestoreSnapshot,
   dragPreview,
   onDragPreviewChange,
+  heldLook,
+  onHeldLookChange,
 }: {
   skin: HomeSkin;
   onSkinChange: (next: HomeSkin) => void;
   dragPreview: TilingDragPreview;
   onDragPreviewChange: (next: TilingDragPreview) => void;
+  heldLook: TilingHeldOverTarget;
+  onHeldLookChange: (next: TilingHeldOverTarget) => void;
   workspaceTabs: UseTilingWorkspaceTabsResult;
   isMobile: boolean;
   mobileMode: MobileHomeMode;
@@ -424,6 +430,16 @@ function HomeTopBar({
         preview={dragPreview}
         onChange={onDragPreviewChange}
         className={`ml-auto ${tokens.switchGroup} max-lg:hidden`}
+        labelClassName={tokens.switchLabel}
+        activeClassName={tokens.switchActive}
+        inactiveClassName={tokens.switchInactive}
+      />
+      {/* The held look's five pills need the widest bar: from xl up (the drag keeps the stored or
+          default look either way). */}
+      <HeldLookSwitch
+        look={heldLook}
+        onChange={onHeldLookChange}
+        className={`${tokens.switchGroup} max-xl:hidden`}
         labelClassName={tokens.switchLabel}
         activeClassName={tokens.switchActive}
         inactiveClassName={tokens.switchInactive}
@@ -833,6 +849,9 @@ export function HomePage({
   // How a pane drag previews its drop: the drop indicator (default) or snap to
   // slot. The bottom bar toggles it; persisted like the mobile mode.
   const [dragPreview, onDragPreviewChange] = useHomeDragPreview();
+  // How a dragged pane looks over a drop target: the renderer's default
+  // ("auto") until the visitor picks another in the top bar.
+  const [heldLook, onHeldLookChange] = useHomeHeldLook();
   const isMobile: boolean = useIsMobileHomeViewport();
   const isReadMode: boolean = isMobile && mobileMode === "read";
   const isCoarsePointer: boolean = useIsCoarsePointer();
@@ -983,6 +1002,8 @@ export function HomePage({
           onRestoreSnapshot={restoreSnapshot}
           dragPreview={dragPreview}
           onDragPreviewChange={onDragPreviewChange}
+          heldLook={heldLook}
+          onHeldLookChange={onHeldLookChange}
         />
         <div
           className="min-h-0 min-w-0 flex-1"
@@ -1036,6 +1057,8 @@ export function HomePage({
               onWorkspaceSwitch={onWorkspaceSwitch}
               // The top bar's drop-preview switch: snap to slot (default) or indicator.
               dragPreview={dragPreview}
+              // The top bar's held switch; "auto" is the renderer's default, so no prop.
+              heldOverTarget={heldLook === "auto" ? undefined : heldLook}
               renderTile={(args: TilingRenderTileProps): React.ReactNode =>
                 // Each skin's tile consumes the library `TilingRenderTileProps`
                 // directly — group representation comes from `args.group`. A

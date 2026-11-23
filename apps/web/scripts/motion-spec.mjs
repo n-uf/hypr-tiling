@@ -188,6 +188,8 @@ function installProbe() {
     }
     const indicator = document.querySelector("[data-hpt-drop-indicator]");
     const stage = document.querySelector("[data-hpt-viewport]");
+    // The held pane's look layer: which look, over a target or not, what it draws.
+    const look = document.querySelector("[data-hpt-held-look]");
     probe.frames.push({
       t: time,
       write: probe.writes,
@@ -195,6 +197,15 @@ function installProbe() {
       stage: stage == null ? null : pageRect(stage.getBoundingClientRect()),
       indicator: indicator == null ? null : pageRect(indicator.getBoundingClientRect()),
       onTop: onTop(),
+      look:
+        look == null
+          ? null
+          : {
+              look: look.getAttribute("data-hpt-held-look"),
+              over: look.hasAttribute("data-hpt-held-over-target"),
+              transform: look.style.transform,
+              opacity: look.style.opacity,
+            },
     });
   };
   window.__HPT_MOTION_PROBE__ = probe;
@@ -515,6 +526,13 @@ async function dragScenario(name, { preview, tileId, homeTileId, start: startAt,
   if (only != null && !name.includes(only)) return;
   await page.evaluate((next) => window.__motionLab.setLayout(next), layout);
   await page.evaluate((p) => window.__motionLab.setDragPreview(p), preview);
+  // These scenarios check the hold itself at the lift size (held 1:1, the
+  // stage clamp, the drop settle): the held pane keeps its full look over a
+  // target. The looks have their own scenarios (heldLookScenario).
+  await page.evaluate(() => {
+    window.__motionLab.setHeldOverTarget("none");
+    window.__motionLab.setTitleBars(true);
+  });
   await waitIdle();
   if (setup != null) {
     await setup();
@@ -1210,6 +1228,241 @@ if (shotsDir != null) {
   await page.screenshot({ path: resolve(shotsDir, `swap-rest-${tilesMode}.png`) });
   console.log(`screenshots in ${shotsDir}`);
 }
+
+// ── The held pane's look over a target (heldOverTarget) ─────────────────────
+
+/** The look a pane gets: auto is the title bar for a pane with one, else a thumbnail. */
+const resolvedLook = (look, titleBars) => (look === "auto" || look === "title-bar" ? (titleBars ? "title-bar" : "thumbnail") : look);
+const HELD_THUMBNAIL_SCALE = 0.4;
+const HELD_FADE_OPACITY = "0.45";
+/** Layouts each drop committed, per preview and kind of pane: every look must commit the same one. */
+const lookCommits = new Map();
+
+/**
+ * Alpha held over bravo's middle (a swap), then back over its home, released
+ * there, then dragged over bravo again and dropped. The look must change only
+ * over the target and glide there and back (monotonic, no overshoot), the
+ * grab point stays on the pointer on every frame (indicator: held 1:1, the
+ * seen box kept inside the stage), home shows the full pane, the release at
+ * home changes nothing, and the drop commits what every other look commits.
+ */
+async function heldLookScenario({ preview, look, titleBars }) {
+  const name = `held look ${look} (${titleBars ? "title bar" : "no title bar"})`;
+  if (only != null && !name.includes(only)) return;
+  const want = resolvedLook(look, titleBars);
+  await page.evaluate((next) => window.__motionLab.setLayout(next), INITIAL);
+  await page.evaluate(
+    ([p, l, b]) => {
+      window.__motionLab.setDragPreview(p);
+      window.__motionLab.setHeldOverTarget(l);
+      window.__motionLab.setTitleBars(b);
+    },
+    [preview, look, titleBars],
+  );
+  await waitIdle();
+  await page.waitForTimeout(100);
+  const before = await page.evaluate(() => JSON.stringify(window.__motionLab.layout()));
+  const rest = await restRects();
+  const home = rest.a;
+  // Where the title bar ends (page px from the pane's top), from the header the drag picks the pane up by.
+  const titleBottom = await page.evaluate(() => {
+    const pane = document.querySelector('[data-hpt-leaf="a"]');
+    const header = pane?.querySelector("article header");
+    return header == null ? null : header.getBoundingClientRect().bottom - pane.getBoundingClientRect().top;
+  });
+  const grab = { x: 60, y: 14 };
+  const start = { x: home.x + grab.x, y: home.y + grab.y };
+  // The drop: over bravo's middle (a swap). Snap settles the pane into the
+  // slot once the pointer is well inside it (the pane then IS the landing
+  // mark, at full size), so its look is checked just inside bravo's left edge,
+  // over that target but not yet snapped.
+  const drop = { x: rest.b.x + rest.b.width * 0.5, y: rest.b.y + rest.b.height * 0.5 };
+  const target = preview === "snap" ? { x: rest.b.x + 10, y: drop.y } : drop;
+  const lines = [];
+  const add = (kind, failures, note = "") => lines.push({ kind, failures, note });
+  const reset = () =>
+    page.evaluate(() => {
+      window.__HPT_MOTION_PROBE__.samples = [];
+      window.__HPT_MOTION_PROBE__.frames = [];
+    });
+  const collect = () => page.evaluate(() => ({ samples: window.__HPT_MOTION_PROBE__.samples, frames: window.__HPT_MOTION_PROBE__.frames }));
+  const heldNow = () =>
+    page.evaluate(() => {
+      const pane = document.querySelector('[data-hpt-lifted] [data-hpt-leaf="a"]');
+      const layer = document.querySelector("[data-hpt-held-look]");
+      const lifted = document.querySelector("[data-hpt-lifted]");
+      const indicator = document.querySelector("[data-hpt-drop-indicator]");
+      if (pane == null) return null;
+      const frame = pane.querySelector(":scope > [data-hpt-leaf-frame]");
+      const b = (pane.style.transform !== "" && frame != null ? frame : pane).getBoundingClientRect();
+      return {
+        rect: { x: b.left + window.scrollX, y: b.top + window.scrollY, width: b.width, height: b.height },
+        over: layer?.hasAttribute("data-hpt-held-over-target") ?? false,
+        look: layer?.getAttribute("data-hpt-held-look") ?? null,
+        transform: layer?.style.transform ?? "",
+        opacity: layer?.style.opacity ?? "",
+        indicatorAbove: indicator != null && lifted != null && Number(indicator.style.zIndex) > Number(lifted.style.zIndex),
+      };
+    });
+  /** The grab point on the pointer: what is seen is pointer − grab · scale, kept inside the stage. */
+  const grabFailures = (samples, frames) => {
+    const held = [];
+    for (const s of samples) {
+      if (s.id !== "a" || !s.lifted || s.rect == null || s.empty || s.frameNotDrawn) continue;
+      const frame = frames.find((f) => f.write === s.write) ?? null;
+      const p = frame?.pointer;
+      if (p == null || frame.stage == null) continue;
+      const scale = s.rect.width / home.width;
+      const seen = { x: p.x - grab.x * scale, y: p.y - grab.y * scale, width: home.width * scale, height: s.rect.height };
+      held.push({ t: s.t, rect: s.rect, expected: clampInto(seen, frame.stage) });
+    }
+    if (held.length < 5) return [`only ${held.length} held frames sampled`];
+    return checkHeld(held, 1.5).failures;
+  };
+  /** What a look may draw on any frame. */
+  const shapeFailures = (samples) => {
+    const failures = [];
+    for (const s of samples) {
+      if (s.id !== "a" || !s.lifted || s.rect == null || s.empty || s.frameNotDrawn) continue;
+      const scale = s.rect.width / home.width;
+      const tag = `t=${Math.round(s.t)} ${rectText(s.rect)}`;
+      if (want === "title-bar") {
+        if (Math.abs(scale - 1) > 0.01) failures.push(`${tag}: a fold never scales`);
+        if (s.rect.height < titleBottom - 1 || s.rect.height > home.height + 1) failures.push(`${tag}: height outside title bar..full`);
+      } else if (want === "thumbnail") {
+        if (Math.abs(s.rect.height / home.height - scale) > 0.01) failures.push(`${tag}: not a uniform scale`);
+        if (scale < HELD_THUMBNAIL_SCALE - 0.01 || scale > 1.01) failures.push(`${tag}: scale ${scale.toFixed(3)} outside ${HELD_THUMBNAIL_SCALE}..1`);
+      } else if (!near({ ...s.rect, x: 0, y: 0 }, { ...home, x: 0, y: 0 }, 1)) {
+        failures.push(`${tag}: ${want} keeps the full size`);
+      }
+    }
+    return failures;
+  };
+  /** A size that settles toward `goal` while the pointer rests: monotonic, never past it. */
+  const settleFailures = (values, goal, what) => {
+    const failures = [];
+    if (values.length === 0) return failures;
+    const down = values[0] >= goal;
+    for (let i = 1; i < values.length; i++) {
+      if (down ? values[i] > values[i - 1] + 0.5 : values[i] < values[i - 1] - 0.5) failures.push(`${what}: turned back at frame ${i} (${values[i - 1].toFixed(1)} → ${values[i].toFixed(1)})`);
+      if (down ? values[i] < goal - 1 : values[i] > goal + 1) failures.push(`${what}: passed ${goal.toFixed(1)} (${values[i].toFixed(1)})`);
+    }
+    return failures.slice(0, 4);
+  };
+  const sizeOf = (s) => (want === "thumbnail" ? s.rect.width : s.rect.height);
+
+  // 1. Over the target, then rest there.
+  await page.mouse.move(start.x, start.y);
+  await reset();
+  await page.mouse.down();
+  await glideMouse(start, target, 30);
+  const restStart = await page.evaluate(() => window.__HPT_MOTION_PROBE__.writes);
+  await page.waitForTimeout(450);
+  await nextFrame();
+  const over = await heldNow();
+  if (shotsDir != null) {
+    mkdirSync(shotsDir, { recursive: true });
+    await page.screenshot({ path: resolve(shotsDir, `held-${look}-${titleBars ? "title-bar" : "no-title-bar"}-${preview}.png`) });
+  }
+  // 2. Back over its home, rest there.
+  const overEnd = await page.evaluate(() => window.__HPT_MOTION_PROBE__.writes);
+  await glideMouse(target, start, 30);
+  const homeStart = await page.evaluate(() => window.__HPT_MOTION_PROBE__.writes);
+  await page.waitForTimeout(450);
+  await nextFrame();
+  const atHome = await heldNow();
+  const trip = await collect();
+  await page.mouse.up();
+  await waitIdle();
+  const afterHome = await page.evaluate(() => JSON.stringify(window.__motionLab.layout()));
+
+  const lifted = (s) => s.id === "a" && s.lifted && s.rect != null && !s.empty && !s.frameNotDrawn;
+  // From the first frame over the target (the look starts gliding then, while
+  // the pointer still moves) until the pointer heads home.
+  const firstOverWrite = trip.frames.find((f) => f.look != null && f.look.over)?.write ?? restStart;
+  const mineOver = trip.samples.filter((s) => lifted(s) && s.write >= firstOverWrite && s.write <= overEnd);
+  const mineHome = trip.samples.filter((s) => lifted(s) && s.write > overEnd);
+  const overFrames = trip.frames.filter((f) => f.look != null && f.look.over);
+  if (overFrames.length === 0) add("over a target", ["the drag never had a target"]);
+  if (trip.frames.some((f) => f.look != null && f.look.look !== want)) add("look", [`resolved to ${trip.frames.find((f) => f.look != null && f.look.look !== want).look.look}, want ${want}`]);
+  {
+    // Snap holds the pane settling toward the pointer (not 1:1): the grab
+    // point is checked where it is held 1:1, the shape everywhere.
+    add("shape", shapeFailures(trip.samples).slice(0, 6));
+    if (preview === "indicator") add("grab point on the pointer", grabFailures(trip.samples, trip.frames));
+    // At rest over the target: the look, fully.
+    const failures = [];
+    if (over == null) failures.push("not held over the target");
+    else {
+      if (!over.over) failures.push("not over a target at rest");
+      if (want === "title-bar" && Math.abs(over.rect.height - titleBottom) > 1.5) failures.push(`folded to ${over.rect.height.toFixed(1)}, title bar ends at ${titleBottom.toFixed(1)}`);
+      if (want === "thumbnail" && Math.abs(over.rect.width - home.width * HELD_THUMBNAIL_SCALE) > 1.5) failures.push(`thumbnail ${over.rect.width.toFixed(1)} wide, want ${(home.width * HELD_THUMBNAIL_SCALE).toFixed(1)}`);
+      if (want === "fade" && over.opacity !== HELD_FADE_OPACITY) failures.push(`fade: opacity ${over.opacity || "1"}`);
+      if (want === "fade" && preview === "indicator" && !over.indicatorAbove) failures.push("fade: the drop indicator is not above the pane");
+      if ((want === "fade" || want === "none") && !near({ ...over.rect, x: 0, y: 0 }, { ...home, x: 0, y: 0 }, 1)) failures.push(`${want}: drawn ${rectText(over.rect)}, not full size`);
+      if (want === "none" && (over.opacity !== "" || over.transform !== "" || over.indicatorAbove)) failures.push("none: the look changed");
+    }
+    add("at rest over the target", failures, over == null ? "" : rectText(over.rect));
+    if (want === "title-bar" || want === "thumbnail") {
+      const goal = want === "thumbnail" ? home.width * HELD_THUMBNAIL_SCALE : titleBottom;
+      add("glides into the look", settleFailures(mineOver.map(sizeOf), goal, want));
+      add("glides back out at home", settleFailures(mineHome.map(sizeOf), want === "thumbnail" ? home.width : home.height, want));
+      // A glide, not a jump: frames between the full pane and the look, both ways.
+      const full = want === "thumbnail" ? home.width : home.height;
+      const between = (values) => values.filter((v) => v > goal + 1 && v < full - 1).length;
+      if (between(mineOver.map(sizeOf)) < 2) add("glides into the look", [`only ${between(mineOver.map(sizeOf))} frames between full and the look`]);
+      if (between(mineHome.map(sizeOf)) < 2) add("glides back out at home", [`only ${between(mineHome.map(sizeOf))} frames between the look and full`]);
+    }
+  }
+  // Home: the full pane, and a release there changes nothing.
+  const homeFailures = [];
+  if (atHome == null) homeFailures.push("not held at home");
+  else {
+    if (atHome.over) homeFailures.push("over a target at home");
+    if (!near({ ...atHome.rect, x: 0, y: 0 }, { ...home, x: 0, y: 0 }, 1)) homeFailures.push(`drawn ${rectText(atHome.rect)} at home, not full`);
+    if (atHome.transform !== "" || atHome.opacity !== "") homeFailures.push("the look stayed on at home");
+  }
+  if (afterHome !== before) homeFailures.push("the release at home changed the layout");
+  add("home: full pane, nothing committed", homeFailures);
+
+  // 3. The drop: the same layout whatever the look.
+  await reset();
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await glideMouse(start, drop, 30);
+  await page.waitForTimeout(300);
+  await page.mouse.up();
+  await waitIdle();
+  const { left } = await page.evaluate((leftoversSource) => ({ left: new Function(`return (${leftoversSource})();`)() }), leftovers.toString());
+  const dropped = await page.evaluate(() => JSON.stringify(window.__motionLab.layout()));
+  const key = `${preview}|${titleBars}`;
+  if (!lookCommits.has(key)) lookCommits.set(key, dropped);
+  add(
+    "drop commits the same as every look",
+    [...(dropped === before ? ["the drop committed nothing"] : []), ...(dropped !== lookCommits.get(key) ? ["a different layout than another look committed"] : []), ...left],
+  );
+
+  const ok = lines.every((line) => line.failures.length === 0);
+  failed ||= !ok;
+  results.push({ name, ok, lines });
+  console.log(`${ok ? "PASS" : "FAIL"} ${name} [${preview}]`);
+  for (const line of lines) {
+    console.log(`  a: ${line.kind}${line.note ? ` (${line.note})` : ""}`);
+    for (const failure of line.failures.slice(0, 8)) console.log(`    ✗ ${failure}`);
+  }
+}
+
+for (const preview of ["indicator", "snap"]) {
+  for (const titleBars of [true, false]) {
+    for (const look of ["none", "auto", "title-bar", "thumbnail", "fade"]) {
+      await heldLookScenario({ preview, look, titleBars });
+    }
+  }
+}
+await page.evaluate(() => {
+  window.__motionLab.setHeldOverTarget(undefined);
+  window.__motionLab.setTitleBars(true);
+});
 
 // paneIdentity "slot" (the server-rendered default): the lifted pane is a
 // fresh mount, held and dropped the same way.
