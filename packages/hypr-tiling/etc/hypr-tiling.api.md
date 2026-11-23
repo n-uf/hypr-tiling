@@ -234,7 +234,6 @@ export interface ResolvedTilingDropHitZoneGeometryCapability {
     centerRatio: number;
     centerRatioX: number;
     centerRatioY: number;
-    hysteresisPx: number;
 }
 
 // @public
@@ -295,7 +294,6 @@ export interface ResolvedTilingInteractionCapabilities {
     rearrange: boolean;
     resize: TilingResizeCapability;
     resizeHandlesVisible: boolean;
-    slotCommitment: ResolvedTilingSlotCommitmentCapability;
     touchDrag: ResolvedTilingTouchDragCapability;
     workspaces: ResolvedTilingWorkspacesCapability;
 }
@@ -377,12 +375,6 @@ export interface ResolvedTilingPaneTitleBarControlsCapability {
     acquireSpace: boolean;
     collapse: boolean;
     sizing: boolean;
-}
-
-// @public
-export interface ResolvedTilingSlotCommitmentCapability {
-    mode: TilingSlotCommitmentMode;
-    reresolveDeltaPx: number;
 }
 
 // @public
@@ -781,7 +773,6 @@ export interface TilingDropHitZoneGeometryCapability {
     centerRatio?: number;
     centerRatioX?: number;
     centerRatioY?: number;
-    hysteresisPx?: number;
 }
 
 // @public
@@ -909,7 +900,6 @@ export interface TilingInteractionCapabilities {
     rearrange?: boolean;
     resize?: TilingResizeCapability;
     resizeHandlesVisible?: boolean;
-    slotCommitment?: TilingSlotCommitmentCapability;
     touchDrag?: TilingTouchDragCapability;
     workspaces?: boolean | TilingWorkspacesCapability;
 }
@@ -1291,15 +1281,6 @@ export interface TilingRevealTileResult {
     readonly set: TilingWorkspaceSet;
     readonly workspaceId: TilingWorkspaceId;
 }
-
-// @public
-export interface TilingSlotCommitmentCapability {
-    mode?: TilingSlotCommitmentMode;
-    reresolveDeltaPx?: number;
-}
-
-// @public
-export type TilingSlotCommitmentMode = "zone-exit-hold" | "delta-responsive";
 
 // @public
 export type TilingSplitAxis = "horizontal" | "vertical";

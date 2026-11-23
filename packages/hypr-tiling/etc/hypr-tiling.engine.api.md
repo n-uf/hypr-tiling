@@ -5,6 +5,8 @@
 ```ts
 
 import * as React_2 from 'react';
+import { TilingHeld } from '@n-uf/placement/tiling';
+import { TilingMark } from '@n-uf/placement/tiling';
 
 // @public
 export function accentHue(accent: TilingTileAccent | undefined): TilingAccentHue;
@@ -179,7 +181,6 @@ export type DragMachineState = {
     touchDrag: boolean;
     sourceLeafId: string;
     subject?: DragSubject;
-    homeFootprint?: TilingPaneFootprint;
     anchorFootprint: TilingPaneFootprint;
     pointerAnchorOffset: DragMachinePoint;
     originClient: DragMachinePoint;
@@ -190,14 +191,12 @@ export type DragMachineState = {
     touchDrag: boolean;
     sourceLeafId: string;
     subject?: DragSubject;
-    homeFootprint?: TilingPaneFootprint;
     anchorFootprint: TilingPaneFootprint;
     pointerAnchorOffset: DragMachinePoint;
     heldFootprint: TilingPaneFootprint;
     resolvedTarget: DragResolvedTarget | null;
     atHome: boolean;
     leftHome: boolean;
-    homeLost: boolean;
 } | {
     phase: "settling";
     outcome: DragSettleOutcome;
@@ -728,7 +727,6 @@ export interface TilingDropIntentBaseConfig {
     centerRatio: number;
     centerRatioX?: number;
     centerRatioY?: number;
-    hysteresisPx: number;
 }
 
 // @public
@@ -744,10 +742,12 @@ export interface TilingDropIntentState {
     fallbackReason: string | null;
     finalEdge: TilingEdgeZone | null;
     leafId: string;
+    mark?: TilingMark<string> | null;
     memberInsertIndex?: number;
     nearestEdgeDistancePx: number;
     paneLocalX: number;
     paneLocalY: number;
+    place?: TilingHeld<string>;
     rejectedSplitReasons: ReadonlyArray<string>;
     selectedSplitDistancePx: number | null;
     selectedSplitZone: TilingEdgeZone | null;
