@@ -35,7 +35,6 @@ import {
   deriveCandidateTree,
   deriveLiveDragTree,
   detachDragSubject,
-  dragLiftLeavesGap,
   isCommittableTarget,
   presentationDragSourceLeafId,
   presentationResolvedTarget,
@@ -923,7 +922,7 @@ export function resolvePointerTargetFromMeasurement(
               config: input.config,
               viewportWidth: input.viewportSize.width,
               viewportHeight: input.viewportSize.height,
-              subject: input.subject ?? "pane",
+              subject: input.subject,
             }),
         });
       }
@@ -981,7 +980,7 @@ export function resolvePointerTargetFromMeasurement(
               config: input.config,
               viewportWidth: input.viewportSize.width,
               viewportHeight: input.viewportSize.height,
-              subject: input.subject ?? "pane",
+              subject: input.subject,
             }),
         });
       }
@@ -1052,7 +1051,7 @@ export function resolvePointerTargetFromMeasurement(
         config: input.config,
         viewportWidth: input.viewportSize.width,
         viewportHeight: input.viewportSize.height,
-        subject: input.subject ?? "pane",
+        subject: input.subject,
       }),
   });
 }
@@ -5098,10 +5097,10 @@ const TilingRendererComponent = React.forwardRef<
         : null;
   const roomTargetKey: string = dropTargetKey(roomTarget);
   // While the home is the target (the pointer over the pane's place at the
-  // lift; see `isDragHomeHeld`), the layout is the one at the lift, the pane's
+  // lift, for the whole drag), the layout is the one at the lift, the pane's
   // place open.
   const dragHomeHeld: boolean =
-    isLiveDragging && dragState.phase === "dragging" && dragState.atHome === true;
+    isLiveDragging && dragState.phase === "dragging" && dragState.atHome;
   const liveDragDisplayLayout: TilingLayoutNode = React.useMemo(
     (): TilingLayoutNode =>
       deriveLiveDragTree({
@@ -5136,7 +5135,7 @@ const TilingRendererComponent = React.forwardRef<
       return;
     }
     if (
-      dragState.homeLost !== true &&
+      !dragState.homeLost &&
       (basis.layout !== layout ||
         basis.width !== viewportSize.width ||
         basis.height !== viewportSize.height)
@@ -5146,7 +5145,7 @@ const TilingRendererComponent = React.forwardRef<
   }, [
     dispatchDrag,
     dragState.phase,
-    dragState.phase === "dragging" && dragState.homeLost === true,
+    dragState.phase === "dragging" && dragState.homeLost,
     layout,
     viewportSize.height,
     viewportSize.width,
@@ -7661,7 +7660,7 @@ const TilingRendererComponent = React.forwardRef<
         isInsideRect(current.slot, x, y, 0)
           ? current
           : null;
-      if (next == null && (live.atHome !== true || current != null)) {
+      if (next == null && (!live.atHome || current != null)) {
         const target: TilingDropState | null = live.resolvedTarget;
         const slot: TilingRect | null = resolveDropLandingRectRef.current(
           live.sourceLeafId,
@@ -8220,11 +8219,6 @@ const TilingRendererComponent = React.forwardRef<
       pointerType: request.pointerType,
       sourceLeafId: request.leafId,
       ...(rearmGroup != null ? { subject: "group" as const } : {}),
-      liftLeavesGap: dragLiftLeavesGap(
-        layout,
-        request.leafId,
-        rearmGroup != null ? "group" : "pane",
-      ),
       tileId: leaf.tileId,
       anchorFootprint: {
         left: rearmFrame.left,
@@ -8400,7 +8394,7 @@ const TilingRendererComponent = React.forwardRef<
               config,
               viewportWidth: viewportSize.width,
               viewportHeight: viewportSize.height,
-              subject: dragSubject,
+              subject: dragSourceLeafId != null ? dragSubject : undefined,
             }),
         });
       const edgeDiagnostics: TilingLiveHitLogState["edgeDiagnostics"] =
@@ -8468,7 +8462,7 @@ const TilingRendererComponent = React.forwardRef<
             config,
             viewportWidth: viewportSize.width,
             viewportHeight: viewportSize.height,
-            subject: dragSubject,
+            subject: dragSourceLeafId != null ? dragSubject : undefined,
           }),
       });
       const intent: TilingDropIntentDebugState =
@@ -8657,11 +8651,6 @@ const TilingRendererComponent = React.forwardRef<
                 height: frameRect.height,
               },
             }),
-        liftLeavesGap: dragLiftLeavesGap(
-          layout,
-          sourceLeafId,
-          tabMemberId == null ? "group" : "pane",
-        ),
         anchorFootprint: {
           left: anchor.left,
           top: anchor.top,
@@ -8683,7 +8672,6 @@ const TilingRendererComponent = React.forwardRef<
       groupFrameClientRect,
       interactionCapabilities.touchDrag.enable,
       isLeafRearrangeEligible,
-      layout,
       onLiveHitLogChange,
       setFocusedLeaf,
     ],
@@ -8933,11 +8921,6 @@ const TilingRendererComponent = React.forwardRef<
               pointerType: resolveDragPointerType(event.pointerType),
               sourceLeafId: node.id,
               ...(isGroupedPane ? { subject: "group" as const } : {}),
-              liftLeavesGap: dragLiftLeavesGap(
-                layout,
-                node.id,
-                isGroupedPane ? "group" : "pane",
-              ),
               anchorFootprint: {
                 left: sourcePaneRect.left,
                 top: sourcePaneRect.top,

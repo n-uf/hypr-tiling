@@ -162,7 +162,6 @@ describe("evaluateEdgeInsertCandidate — span + min-pane validity", (): void =>
       config: CONFIG,
       viewportWidth: VIEWPORT_WIDTH,
       viewportHeight: VIEWPORT_HEIGHT,
-      subject: "pane",
     });
     expect(result.isValid).toBe(true);
     expect(result.rejectionReason).toBeNull();
@@ -178,7 +177,6 @@ describe("evaluateEdgeInsertCandidate — span + min-pane validity", (): void =>
       config: CONFIG,
       viewportWidth: VIEWPORT_WIDTH,
       viewportHeight: VIEWPORT_HEIGHT,
-      subject: "pane",
     });
     expect(result.isValid).toBe(false);
     expect(result.rejectionReason).toContain("axis span");
@@ -194,7 +192,6 @@ describe("evaluateEdgeInsertCandidate — span + min-pane validity", (): void =>
       config: CONFIG,
       viewportWidth: VIEWPORT_WIDTH,
       viewportHeight: VIEWPORT_HEIGHT,
-      subject: "pane",
     });
     expect(result.isValid).toBe(false);
     expect(result.rejectionReason).toContain("cross span");
@@ -210,7 +207,6 @@ describe("evaluateEdgeInsertCandidate — span + min-pane validity", (): void =>
       config: CONFIG,
       viewportWidth: VIEWPORT_WIDTH,
       viewportHeight: VIEWPORT_HEIGHT,
-      subject: "pane",
     });
     // Big viewport, generous min → the projected A|B split clears the floor.
     expect(result.isValid).toBe(true);
@@ -222,7 +218,7 @@ describe("evaluateEdgeInsertCandidate — span boundary and reasons", (): void =
   // A fractional gutter: 2 × 4 + 0.2 = 8.2 exactly; halving 8.2 and taking half the gutter comes out an ulp under 4.
   const fractional: TilingLayoutConfig = { gapPx: 0, handleSizePx: 0.2, minPaneSizePx: 4 };
   const evaluate = (sourceLeafId: string | null, footprint: TilingPaneFootprint, config: TilingLayoutConfig = fractional) =>
-    evaluateEdgeInsertCandidate({ candidateZone: "left", layout, sourceLeafId, targetLeafId: "B", targetFootprint: footprint, config, viewportWidth: 1000, viewportHeight: 700, subject: "pane" });
+    evaluateEdgeInsertCandidate({ candidateZone: "left", layout, sourceLeafId, targetLeafId: "B", targetFootprint: footprint, config, viewportWidth: 1000, viewportHeight: 700 });
 
   it("accepts a target exactly two minimums plus the gutter wide, with and without a source", (): void => {
     for (const sourceLeafId of ["A", null]) {
@@ -261,7 +257,6 @@ describe("evaluateZoneCandidate — center swap eligibility", (): void => {
       config: CONFIG,
       viewportWidth: VIEWPORT_WIDTH,
       viewportHeight: VIEWPORT_HEIGHT,
-      subject: "pane",
     });
     expect(result.isValid).toBe(false);
     expect(result.rejectionReason).toContain("same source and target");
@@ -277,7 +272,6 @@ describe("evaluateZoneCandidate — center swap eligibility", (): void => {
       config: CONFIG,
       viewportWidth: VIEWPORT_WIDTH,
       viewportHeight: VIEWPORT_HEIGHT,
-      subject: "pane",
     });
     expect(result.isValid).toBe(true);
   });
@@ -287,7 +281,7 @@ describe("evaluateEdgeInsertCandidate — the projected fit", (): void => {
   const layout: TilingLayoutNode = hsplit(0.5, leaf("A"), leaf("B"));
   const roomy: TilingPaneFootprint = { left: 0, top: 0, width: 500, height: 400 };
   const evaluate = (targetLeafId: string, viewportWidth: number, viewportHeight: number) =>
-    evaluateEdgeInsertCandidate({ candidateZone: "left", layout, sourceLeafId: "A", targetLeafId, targetFootprint: roomy, config: CONFIG, viewportWidth, viewportHeight, subject: "pane" });
+    evaluateEdgeInsertCandidate({ candidateZone: "left", layout, sourceLeafId: "A", targetLeafId, targetFootprint: roomy, config: CONFIG, viewportWidth, viewportHeight });
 
   it("passes with a zero viewport (nothing to validate yet)", (): void => {
     expect(evaluate("B", 0, 0)).toEqual({ isValid: true, rejectionReason: null });

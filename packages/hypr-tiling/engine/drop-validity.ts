@@ -59,11 +59,8 @@ export function evaluateEdgeInsertCandidate({
   config: TilingLayoutConfig;
   viewportWidth: number;
   viewportHeight: number;
-  /**
-   * What the drag moves: the whole group of `sourceLeafId` for `"group"`, else the pane. Required, so no caller
-   * judges a group drag as a pane's.
-   */
-  subject: "pane" | "group";
+  /** What the drag moves: the whole group of `sourceLeafId` for `"group"`, else the pane. */
+  subject?: "pane" | "group";
 }): DropZoneEvaluation {
   const splitterCostPx: number = config.gapPx + config.handleSizePx;
   const minPaneSizePx: number = config.minPaneSizePx;
@@ -144,11 +141,8 @@ export function evaluateZoneCandidate({
   config: TilingLayoutConfig;
   viewportWidth: number;
   viewportHeight: number;
-  /**
-   * What the drag moves: the whole group of `sourceLeafId` for `"group"`, else the pane. Required, so no caller
-   * judges a group drag as a pane's.
-   */
-  subject: "pane" | "group";
+  /** What the drag moves: the whole group of `sourceLeafId` for `"group"`, else the pane. */
+  subject?: "pane" | "group";
 }): DropZoneEvaluation {
   if (zone === "center") {
     if (sourceLeafId != null && sourceLeafId === targetLeafId) {

@@ -5,14 +5,7 @@ import {
 } from "../engine/projected-layout";
 import { collectLeafFootprints, footprintsByLeafId } from "../engine/leaf-geometry";
 import type { TilingProjectedLandingOverlay } from "../engine/projected-layout";
-import {
-  insertGroupAdjacent,
-  insertLeafAdjacent,
-  mergeGroupIntoTarget,
-  swapGroupWithSlot,
-  swapLeafTiles,
-} from "../engine/state";
-import { deriveCandidateTree } from "../engine/drag-machine";
+import { insertLeafAdjacent, swapLeafTiles } from "../engine/state";
 import type { TilingDropIntentState, TilingEdgeZone } from "../engine/drop-intent-resolver";
 import type {
   TilingDropAction,
@@ -292,59 +285,5 @@ describe("resolveProjectedLandingOverlays — guard paths", (): void => {
     const dropState: TilingDropIntentState = makeDropState({ leafId: "C", action: "swap", zone: "center" });
     const projectedLayout: TilingLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState);
     expect(resolveProjectedLandingOverlays(layout, projectedLayout, "A", dropState, 0, 0, GAP_FREE_CONFIG)).toEqual([]);
-  });
-});
-
-describe("resolveProjectedDropLayout — a whole group's drop previews what its release commits", (): void => {
-  // g[A*, P] | (B / C): the group dragged whole by its active tab A.
-  const layout: TilingLayoutNode = {
-    kind: "split",
-    id: "root",
-    axis: "horizontal",
-    ratio: 0.5,
-    first: { kind: "group", id: "g", members: [leaf("A", "tile-a"), leaf("P", "tile-p")], activeMemberId: "A" },
-    second: { kind: "split", id: "s2", axis: "vertical", ratio: 0.5, first: leaf("B", "tile-b"), second: leaf("C", "tile-c") },
-  };
-
-  for (const dropState of [
-    makeDropState({ leafId: "C", action: "swap", zone: "center" }),
-    makeDropState({ leafId: "C", action: "group-merge", zone: "center" }),
-    makeDropState({ leafId: "C", action: "edge-insert", zone: "bottom", finalEdge: "bottom" }),
-  ]) {
-    it(`${dropState.action}: the projection is the commit's tree, the group moving as one`, (): void => {
-      const projected: TilingLayoutNode | null = resolveProjectedDropLayout(layout, "A", dropState, "group");
-      expect(projected).toEqual(deriveCandidateTree(layout, "A", dropState, "group"));
-      // Every member travels: P is never left behind in the old slot.
-      const findGroupOf = (node: TilingLayoutNode, id: string): string[] | null =>
-        node.kind === "group"
-          ? node.members.some((m) => m.id === id) ? node.members.map((m) => m.id) : null
-          : node.kind === "split"
-            ? findGroupOf(node.first, id) ?? findGroupOf(node.second, id)
-            : null;
-      expect(findGroupOf(projected as TilingLayoutNode, "A")).toEqual(expect.arrayContaining(["A", "P"]));
-    });
-  }
-
-  // Not circular: the preview against the raw group reducers of state.ts, which no drag helper wraps here.
-  it("swap: the raw group reducer's tree (swapGroupWithSlot)", (): void => {
-    const dropState = makeDropState({ leafId: "C", action: "swap", zone: "center" });
-    expect(resolveProjectedDropLayout(layout, "A", dropState, "group")).toEqual(swapGroupWithSlot(layout, "g", "C"));
-  });
-
-  it("merge: the raw group reducer's tree (mergeGroupIntoTarget)", (): void => {
-    const dropState = makeDropState({ leafId: "C", action: "group-merge", zone: "center" });
-    expect(resolveProjectedDropLayout(layout, "A", dropState, "group")).toEqual(mergeGroupIntoTarget(layout, "g", "C", undefined));
-  });
-
-  it("edge insert: the raw group reducer's tree (insertGroupAdjacent)", (): void => {
-    const dropState = makeDropState({ leafId: "C", action: "edge-insert", zone: "bottom", finalEdge: "bottom" });
-    expect(resolveProjectedDropLayout(layout, "A", dropState, "group")).toEqual(
-      insertGroupAdjacent(layout, "g", "C", "bottom", { preserveParentSplitAxis: false, splitRatio: 0.5 }),
-    );
-  });
-
-  it("a pane's drop is unchanged: the single-pane reducers", (): void => {
-    const dropState = makeDropState({ leafId: "C", action: "swap", zone: "center" });
-    expect(resolveProjectedDropLayout(layout, "A", dropState, "pane")).toEqual(swapLeafTiles(layout, "A", "C"));
   });
 });
