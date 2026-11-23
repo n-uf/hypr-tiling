@@ -7,6 +7,27 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
+## Unreleased
+
+### Dragging a pane
+
+- **Its own place is a drop target for the whole drag.** Drag a pane away
+  and back over the spot it came from (for a tab group dragged whole or a
+  tab torn off it, the whole group): the panes that grew into that spot give
+  the room back, the cursor no longer shows "can't drop here", and a release
+  there puts the layout back exactly as it was. Before, once the pointer had
+  left, coming back met the neighbour's grown pane instead: a refused drop
+  over a tall tab group's old place, a new split or a merge into the
+  neighbour's title bar elsewhere.
+- **A page scroll, a resize or a layout change of the viewport mid-drag**
+  still ends it, now for the rest of the drag even after the pointer has
+  left; from then on the old place is resolved like any other.
+- **After a spring-loaded drop onto a workspace tab,** the pane's new seat is
+  its place for the continued drag, the same way.
+- **Engine API:** the `dragging` state of `DragMachineState` gains `atHome`
+  (the pane's place is the target now) and `homeLost` (the page moved under
+  the drag). `leftHome` keeps its meaning and decides nothing any more.
+
 ## 26.11.10 — 2026-11-22
 
 ### `@n-uf/motion` and `@n-uf/placement` 26.11.56
