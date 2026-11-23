@@ -14,9 +14,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
 import * as React from "react";
 import { act, cleanup, render } from "@testing-library/react";
-import { TilingRenderer } from "../react/tiling-renderer";
-import { swapLeafTiles } from "../engine/state";
-import { deriveDropCommitTree } from "../engine/tiling-drag-tree";
+import { TilingRenderer, TilingRendererWithObservability } from "../react/tiling-renderer";
+import { findLeafById, swapLeafTiles } from "../engine/state";
+import { createLayoutTilingDrag, deriveDropCommitTree } from "../engine/tiling-drag-tree";
 import type { DragResolvedTarget } from "../engine/drag-machine";
 import type { TilingDragPreview, TilingHeldLook, TilingLayoutNode, TilingLeafNode, TilingTile } from "../engine/types";
 
@@ -162,10 +162,12 @@ function Host({
   onLayoutReported,
   preview,
   heldLook,
+  dragMode = "live",
 }: {
   onLayoutReported: (next: TilingLayoutNode) => void;
   preview: TilingDragPreview;
   heldLook: TilingHeldLook;
+  dragMode?: "live" | "preview";
 }): React.ReactElement {
   const [layout, setLayout] = React.useState<TilingLayoutNode>(LAYOUT);
   return (
@@ -176,6 +178,7 @@ function Host({
       dragPreview={preview}
       heldLook={heldLook}
       interaction={{
+        dragMode,
         dragRecovery: { enable: false },
         customCursor: false,
         paneSwitching: { showTabStrip: false, showSwitcherOverlay: false },
@@ -221,9 +224,9 @@ function drawnOrder(container: HTMLElement): string[] {
 const washOf = (container: HTMLElement): HTMLElement | null => container.querySelector<HTMLElement>("[data-hpt-swap-wash]");
 
 /** Press 02's title bar, lift it, and hold it over the middle of 03. */
-async function holdTwoOverThree(args: { preview: TilingDragPreview; heldLook: TilingHeldLook; changes: TilingLayoutNode[] }) {
+async function holdTwoOverThree(args: { preview: TilingDragPreview; heldLook: TilingHeldLook; changes: TilingLayoutNode[]; dragMode?: "live" | "preview" }) {
   restGeometry();
-  const view = render(<Host preview={args.preview} heldLook={args.heldLook} onLayoutReported={(next): void => void args.changes.push(next)} />);
+  const view = render(<Host preview={args.preview} heldLook={args.heldLook} dragMode={args.dragMode} onLayoutReported={(next): void => void args.changes.push(next)} />);
   const grip: Element | null = view.container.querySelector('[data-hpt-leaf="two"] article header');
   expect(grip).not.toBeNull();
   await act(async (): Promise<void> => {
@@ -353,8 +356,64 @@ describe("a held swap reopens the old place, marks where the partner lands, and 
   });
 });
 
+describe("the pane hit-zone debug overlay draws the hit's zones", (): void => {
+  it("for 02 as the source: 01, its run neighbor, has its swap across the run's 56 % and no strip along it; 03 keeps the configured center", (): void => {
+    restGeometry();
+    const { container } = render(
+      <TilingRendererWithObservability
+        layout={LAYOUT}
+        tiles={TILES}
+        config={CONFIG}
+        onLayoutChange={(): void => undefined}
+        showPaneHitZones
+        paneHitZoneSourceLeafId="L2"
+        interaction={{ dragRecovery: { enable: false }, customCursor: false, paneSwitching: { showTabStrip: false, showSwitcherOverlay: false } }}
+      />,
+    );
+    const inset = (leafId: string): Record<"left" | "right" | "top" | "bottom", number> => {
+      const center: HTMLElement | null = container.querySelector<HTMLElement>(`[data-hpt-hit-zone-center="${leafId}"]`);
+      expect(center).not.toBeNull();
+      return { left: parseFloat(center!.style.left), right: parseFloat(center!.style.right), top: parseFloat(center!.style.top), bottom: parseFloat(center!.style.bottom) };
+    };
+    const one = inset("L1");
+    // 01 above 02 in one column: no top or bottom strip; across, the middle 56 % is the swap.
+    expect(one.top).toBe(0);
+    expect(one.bottom).toBe(0);
+    expect(one.left).toBeCloseTo(22, 0);
+    expect(one.right).toBeCloseTo(22, 0);
+    const three = inset("L3");
+    // 03 is no run neighbor: the configured 34 % center, about 33 % in from each side.
+    expect(three.left).toBeCloseTo(33, 0);
+    expect(three.top).toBeCloseTo(33, 0);
+  });
+});
+
+describe('dragMode "preview": the overlays draw after(held).layout, the layout a release commits', (): void => {
+  it("02 over 03: each projected overlay is where after(swap) lays its leaf out, and the release commits that tree", async (): Promise<void> => {
+    const changes: TilingLayoutNode[] = [];
+    const { container } = await holdTwoOverThree({ preview: "indicator", heldLook: "title-bar", changes, dragMode: "preview" });
+    const after = createLayoutTilingDrag({ layout: LAYOUT, sourceLeafId: "L2", container: CONTAINER, config: CONFIG, min: CONFIG.minPaneSizePx })!.after({ kind: "swap", at: "three" });
+    const overlays: HTMLElement[] = [...container.querySelectorAll<HTMLElement>("[data-hpt-projected-leaf]")];
+    expect(overlays.length).toBeGreaterThan(0);
+    for (const overlay of overlays) {
+      const leafId: string = overlay.getAttribute("data-hpt-projected-leaf")!;
+      const tile: string = (findLeafById(after.tree.layout!, leafId) as TilingLeafNode).tileId;
+      const expected = after.layout.get(tile)!;
+      expect(parseFloat(overlay.style.left)).toBeCloseTo(expected.x, 3);
+      expect(parseFloat(overlay.style.top)).toBeCloseTo(expected.y, 3);
+      expect(parseFloat(overlay.style.width)).toBeCloseTo(expected.width, 3);
+      expect(parseFloat(overlay.style.height)).toBeCloseTo(expected.height, 3);
+    }
+    await act(async (): Promise<void> => {
+      pointer(window, "pointerup", 750, 300);
+      await wait(20);
+    });
+    expect(changes).toEqual([after.tree.layout]);
+  });
+});
+
 describe("the commit tree", (): void => {
-  const swap = { leafId: "L3", action: "swap", zone: "center", place: { kind: "swap", at: "three" } } as unknown as DragResolvedTarget;
+  const swap ={ leafId: "L3", action: "swap", zone: "center", place: { kind: "swap", at: "three" } } as unknown as DragResolvedTarget;
 
   it("a swap commits tilingDrag's after(swap).tree, the swap reducer's tree", (): void => {
     const committed = deriveDropCommitTree({ layout: LAYOUT, sourceLeafId: "L2", target: swap, container: CONTAINER, config: CONFIG });
