@@ -303,6 +303,46 @@ The container must not sit under a `transform` / `filter` /
 `backdrop-filter` / `perspective` / `contain: paint` ancestor. Overlay
 z-indexes (220 / 230) are relative to that container's stacking context.
 
+### The held pane over a target (`heldOverTarget`)
+
+While a dragged pane is over a drop target (a drop the release would
+commit), it changes look so it never hides what it is over: the target and
+the drop indicator. Over its own place, a refused place or free space it is
+drawn in full again. The change glides both ways on the pane motion's settle
+curve (it snaps under `prefers-reduced-motion` or with
+`dragAnimationEnabled: false`), the pointer keeps its grab point on the pane
+in every look, and it works in both drop previews. It is drawing only:
+targets, validity and the committed layout are the same in every look.
+
+| `heldOverTarget` | Over a target |
+|---|---|
+| `"auto"` (default) | `"title-bar"` if the pane draws a title bar, else `"thumbnail"` |
+| `"title-bar"` | folds to its own title bar at the pointer |
+| `"thumbnail"` | scales down to about 40 % around the grab point |
+| `"fade"` | stays full size at about 45 % opacity; the drop indicator draws above it |
+| `"none"` | full size and solid (the look before this option) |
+
+A pane draws a title bar when the element its drag was picked up by (the one
+wired to `onHandlePointerDown`: the built-in pane's header, a
+`TilingDragHandle`, a group's tab strip) is a strip along the top of what is
+held, shorter than half of it. A custom pane that is dragged by its whole
+body has none, so `"auto"` (and `"title-bar"`) give it a thumbnail.
+
+A tile can choose its own look; when set, it beats the renderer's prop for
+that pane (its `"auto"` included):
+
+```tsx
+const tiles: TilingTile[] = [
+  { id: "chart", title: "Chart", heldOverTarget: "fade" }, // this pane fades
+  { id: "notes", title: "Notes" }, // follows the renderer
+];
+
+<TilingRenderer tiles={tiles} heldOverTarget="thumbnail" /* … */ />;
+```
+
+A `dragMode: "preview"` drag holds no pane under the pointer (the source
+stays dimmed in its slot), so the option changes nothing there.
+
 ### Stable pane identity (`paneIdentity`)
 
 By default on a client-only mount, a pane's React instance survives every layout
@@ -1009,7 +1049,9 @@ interaction={{
   drop target. A scroll or
   resize that moves the viewport, or a new `layout` object mid-drag (a
   change of identity, as everywhere in the renderer), ends it for the rest
-  of the drag.
+  of the drag. Over a drop target the held pane folds to its title bar,
+  shrinks to a thumbnail or fades, so it never hides the target
+  (`heldOverTarget`, per tile too).
 - **External drop** — host-reported `externalDragHover`, and `onExternalDrop`
   claim-before-settle.
   In set mode a `kind: "workspace-tab"` hover is an engine-owned drop target.

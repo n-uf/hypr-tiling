@@ -7,6 +7,32 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
+## Unreleased
+
+### Dragging a pane
+
+- **The held pane no longer hides what it is over.** While a dragged pane
+  is over a drop target, it changes look: by default it folds to its own
+  title bar at the pointer, or, for a pane without one, shrinks to a
+  thumbnail around the grab point. Over its own place, a refused place or
+  free space it is drawn in full again. The change glides both ways on the
+  pane motion's settle curve and snaps under reduced motion; the pointer
+  keeps its grab point on the pane in every look, in both drop previews.
+  Before, the full-size pane covered the target and the drop indicator.
+- **`heldOverTarget`** on `TilingRenderer` picks the look:
+  `"auto"` (default), `"title-bar"`, `"thumbnail"`, `"fade"` (about 45 %
+  opacity, with the drop indicator drawn above the pane) or `"none"` (the
+  look before this release). The same field on a tile picks that pane's
+  look and beats the renderer's prop. New type `TilingHeldOverTarget`.
+- **Whether a pane has a title bar** comes from the element its drag was
+  picked up by: a strip along the top of the pane (the built-in header, a
+  `TilingDragHandle`, a group's tab strip) is its title bar; a pane dragged
+  by its whole body has none.
+- **Drawing only.** Drop targets, validity and the committed layout are the
+  same in every look (the golden drag and drop fixtures are unchanged). A
+  `dragMode: "preview"` drag holds no pane under the pointer, so nothing
+  changes there.
+
 ## 26.11.11 — 2026-11-22
 
 ### Dragging a pane
