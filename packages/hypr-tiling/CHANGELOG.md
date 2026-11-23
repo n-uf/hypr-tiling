@@ -165,6 +165,70 @@ the version number alone does not flag them.
   unchanged in every recorded case; the verdicts are the hit's refusals, and
   the home sections record both previews through the hit.
 
+### Moving a pane from the keyboard or a command
+
+- **One rule for every move.** Keyboard move mode's commit and the commands
+  `swap-panes` and `insert-adjacent` now commit what a pointer drag of the
+  same pane to the same place commits (the tree `@n-uf/placement`'s tiling
+  drag gives for that place), on the same stage, minimum size and still
+  panes, reconciled as a drop is. Move mode still moves a pane's whole tab
+  group, as its title bar drags it.
+- **Refused where a drag is refused.** A keyboard move or a move command that
+  would leave a pane under `minPaneSizePx`, needs more room than the target
+  has, lands on a statically sized pane, or moves a statically sized pane, now
+  does nothing: no `onLayoutChange`, and a dispatched command reports no
+  effect, so its key is left to the browser. In move mode an arrow never aims
+  a refused place (the aim stays where it was), and Enter on a place that
+  became refused leaves move mode with the layout unchanged. Before, both
+  went through the layout reducers and were never refused.
+- **A keyboard side insert splits along the side.** Moving a pane onto a
+  neighbour's top or bottom now stacks the two (left or right puts them side
+  by side), as a drag to that side does. Before, the keyboard kept the axis of
+  the split the target sat in, so "up" could place the pane beside the target.
+- **`swap-panes` and `insert-adjacent` are reconciled** like any drop
+  (`normalizeLayout`, then the idle settle); before, they stored the reducer's
+  tree as it came.
+- **The engine's reducers are unchanged** and stay the host's own edits: they
+  are never refused.
+- **A release with no held place commits nothing.** A drop state without a
+  place from the drag's hit, or on a refused place, no longer falls back to
+  the reducers' tree.
+- **Removed module internals** (not on a package entry, listed for anyone
+  importing the modules): `deriveCandidateTree` from the drag machine; the
+  whole `engine/projected-layout.ts` (`PLACEMENT_BY_DROP_ZONE`,
+  `insertDragSubjectAdjacent`, `resolveProjectedDropLayout`; its
+  `resolveProjectedLandingOverlays` now lives in `engine/drag-landing.ts`);
+  the whole `engine/drop-validity.ts` (`collectStaticGatedLeafIds` now lives
+  in `engine/tiling-drag-tree.ts`); and `resolveDragLandingRect` (the landing
+  is `after(place).landing`). Added there: `resolveTilingMove`,
+  `tilingMovePlaceOf`, `tilingStillTiles` and the `TilingKeyboardMove` type.
+- **Golden answers re-recorded:** `edits` (the keyboard rows: 76 now split
+  along the side's axis, 98 now refused) and `drops` (1,038 places the drag
+  refuses now commit nothing, where the reducers' tree used to be recorded).
+
+### Docs
+
+- The README's reducer example imports from `@n-uf/hypr-tiling/engine`,
+  where the reducers are exported (the root never exported them), and says
+  that entry is `@beta`.
+- `split-container-insert` is gone from the README and the articles: no drop
+  produces it. The value stays in `TilingDropAction`, documented as
+  deprecated, until the next breaking release.
+- `dragPreview` is documented as more than a look: the drop zones are laid out
+  on the layout the preview draws, so one pointer path can hold different
+  places under the indicator and snap. `heldLook` stays drawing only.
+  `dragMode` is documented with its real default (`"live"`).
+- The site's proof pane states the size a user downloads: each entry plus the
+  chunks it loads, gzip (about 123 KB for the root entry with its renderer
+  chunk, measured from the build), where it used to give the root facade
+  alone (about 7 KB).
+- The site's docs cover `dragPreview`, `heldLook`, `externalDragHover` /
+  `onExternalDrop` and `createPersistedTilingLayout`; the "Save & restore"
+  recipe uses `createPersistedTilingLayout`, which heals a saved tree that no
+  longer matches the tiles, as the home page heals its own.
+- The articles' "latest on npm" and the site's changelog summary are brought
+  up to 26.11.11.
+
 ## 26.11.11 — 2026-11-22
 
 ### Dragging a pane
