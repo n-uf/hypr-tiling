@@ -215,6 +215,7 @@ export type DragPointerType = "mouse" | "pen" | "touch";
 export interface DragRearmEvent {
     anchorFootprint: TilingPaneFootprint;
     client: DragMachinePoint;
+    liftLeavesGap?: boolean;
     pointerAnchorOffset?: DragMachinePoint;
     pointerId: number;
     pointerType: DragPointerType;
