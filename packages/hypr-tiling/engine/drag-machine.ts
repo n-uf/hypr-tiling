@@ -497,6 +497,32 @@ export function deriveLiveDragTree(params: {
 }
 
 /**
+ * The drop a live drag's frame makes room for: the tree it lays out is {@link deriveLiveDragTree} for it.
+ *
+ * - A committable **swap** opens its room in both drop previews. Its room is the subject's old place, which the gap
+ *   closed at the lift: the neighbour that grew into it gives the room back and the partner is drawn landed there,
+ *   so the frame draws exactly what the release commits (placement's `tilingDrag` rule for a held swap).
+ * - Otherwise `"snap"` makes room for the drop the pane has snapped into (`snapped`), and `"indicator"` for the
+ *   committable drop only with `makesRoom` (`dragPreviewMakesRoom`); with neither, no room: the gap stays closed.
+ */
+export function resolveDragRoomTarget(params: {
+  readonly preview: "indicator" | "snap";
+  readonly makesRoom: boolean;
+  /** The drop the snap preview has settled the pane into, or null. */
+  readonly snapped: DragResolvedTarget | null;
+  /** The drop under the pointer when a release there commits ({@link isCommittableTarget}), else null. */
+  readonly committable: DragResolvedTarget | null;
+}): DragResolvedTarget | null {
+  if (params.committable?.action === "swap") {
+    return params.committable;
+  }
+  if (params.preview === "snap") {
+    return params.snapped;
+  }
+  return params.makesRoom ? params.committable : null;
+}
+
+/**
  * The single edge zone a commit / candidate-edge-insert uses for a target —
  * matches the legacy `handleLeafDrop` precedence (`finalEdge ?? selectedSplitZone`).
  */

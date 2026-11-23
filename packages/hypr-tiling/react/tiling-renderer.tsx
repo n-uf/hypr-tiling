@@ -32,7 +32,6 @@ import {
   activeResolvedTarget,
   canRearmDrag,
   createFrameCoalescer,
-  deriveCandidateTree,
   deriveLiveDragTree,
   detachDragSubject,
   isCommittableTarget,
@@ -41,6 +40,7 @@ import {
   previousZoneSeed,
   resolveDragCommitFocusLeafId,
   resolveDragLandingLeafId,
+  resolveDragRoomTarget,
   resolveExternalDropSubject,
   type DragMachinePoint,
   type DragMachineState,
@@ -182,6 +182,12 @@ import {
   resolveProjectedLandingOverlays,
 } from "../engine/projected-layout";
 import type { SchedulerPort } from "../engine/scheduler-port";
+import {
+  createLayoutTilingDrag,
+  deriveDropCommitTree,
+  resolveTilingSwapPreview,
+  type TilingSwapPreview,
+} from "../engine/tiling-drag-tree";
 import type { TilingGrowConstraints } from "../engine/state";
 import {
   addLeafToGroup,
@@ -580,6 +586,13 @@ const DROP_INDICATOR_Z_INDEX: number = 40;
 const RAISED_PANE_Z_INDEX: number = 50;
 /** The held look `"fade"`: the drop indicator draws above the faded pane. */
 const DROP_INDICATOR_OVER_FADED_PANE_Z_INDEX: number = RAISED_PANE_Z_INDEX + 1;
+/** A held swap's wash (where the partner lands) draws above the held pane, whatever its held look. */
+const SWAP_WASH_Z_INDEX: number = RAISED_PANE_Z_INDEX + 2;
+/**
+ * The swap's colour: the default drop indicator's orange. A host sets
+ * `--hpt-swap-color` on the renderer (or an ancestor) to change it.
+ */
+const SWAP_COLOR: string = "var(--hpt-swap-color, rgb(251 146 60))";
 
 /** What the held look reads of a lift: the frame, the pane in it, the grab point, the title bar. */
 function heldLookGeometryOf(lift: {
@@ -5206,32 +5219,65 @@ const TilingRendererComponent = React.forwardRef<
       ? dropState
       : null;
   const isSnapPreview: boolean = dragPreview === "snap";
+  // A committable swap makes room in both previews (its room is the pane's
+  // old place); otherwise snap makes room for the snapped drop, the indicator
+  // only with `dragPreviewMakesRoom`.
   const roomTarget: TilingDropState | null = !isLiveDragging
     ? null
-    : isSnapPreview
-      ? snappedTarget
-      : dragPreviewMakesRoom
-        ? committableDropState
-        : null;
+    : resolveDragRoomTarget({
+        preview: isSnapPreview ? "snap" : "indicator",
+        makesRoom: dragPreviewMakesRoom,
+        snapped: snappedTarget,
+        committable: committableDropState,
+      });
   const roomTargetKey: string = dropTargetKey(roomTarget);
   // While the home is the target (the pointer over the pane's place at the
   // lift, for the whole drag), the layout is the one at the lift, the pane's
   // place open.
   const dragHomeHeld: boolean =
     isLiveDragging && dragState.phase === "dragging" && dragState.atHome;
+  // The drag as placement's `tilingDrag` lays it out, over hypr-tiling's own
+  // tree adapter: fixed for the drag (the layout, the subject, the stage).
+  const liveTilingDrag = React.useMemo(
+    () =>
+      isLiveDragging && dragSourceLeafId != null
+        ? createLayoutTilingDrag({
+            layout,
+            sourceLeafId: dragSourceLeafId,
+            subject: dragSubject,
+            container: viewportSize,
+            config,
+          })
+        : null,
+    [isLiveDragging, layout, dragSourceLeafId, dragSubject, viewportSize, config],
+  );
+  // A held swap, as `tilingDrag` lays it out: the pane's old place reopened
+  // (the neighbour that grew into it at the lift gives the room back) with
+  // the partner landed there, and the pane's landing in the partner's place.
+  // The frame draws this tree, and the release commits it.
+  const swapPreview: TilingSwapPreview | null = React.useMemo(
+    (): TilingSwapPreview | null =>
+      roomTarget != null && roomTarget.action === "swap" && !dragHomeHeld
+        ? resolveTilingSwapPreview(liveTilingDrag, roomTarget.leafId)
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [liveTilingDrag, roomTargetKey, dragHomeHeld],
+  );
   const liveDragDisplayLayout: TilingLayoutNode = React.useMemo(
     (): TilingLayoutNode =>
-      deriveLiveDragTree({
-        layout,
-        sourceLeafId: dragSourceLeafId,
-        roomTarget,
-        subject: dragSubject,
-        homeHeld: dragHomeHeld,
-      }),
+      swapPreview != null
+        ? swapPreview.layout
+        : deriveLiveDragTree({
+            layout,
+            sourceLeafId: dragSourceLeafId,
+            roomTarget,
+            subject: dragSubject,
+            homeHeld: dragHomeHeld,
+          }),
     // `roomTarget` identity changes on every pointer move, so key on what
     // decides the tree instead — identical resolves are free.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [layout, dragSourceLeafId, dragSubject, roomTargetKey, dragHomeHeld],
+    [layout, dragSourceLeafId, dragSubject, roomTargetKey, dragHomeHeld, swapPreview],
   );
   // The home footprint is client px measured at the press. A layout change or
   // a viewport resize mid-drag moves the pane's place under it, so the home
@@ -5295,13 +5341,15 @@ const TilingRendererComponent = React.forwardRef<
       ) {
         return null;
       }
-      return deriveCandidateTree(
+      return deriveDropCommitTree({
         layout,
-        dragState.sourceLeafId,
-        dragState.resolvedTarget,
-        dragState.subject,
-      );
-    }, [dragState, layout, liveDragModeEnabled]);
+        sourceLeafId: dragState.sourceLeafId,
+        target: dragState.resolvedTarget,
+        subject: dragState.subject,
+        container: viewportSize,
+        config,
+      });
+    }, [dragState, layout, liveDragModeEnabled, viewportSize, config]);
   // Claimed settle: hold the gap-closed tree (source already detached) so the
   // leaf does not flash back while the host's synchronous `onExternalDrop`
   // layout update lands. A no-op if the host already removed it in the same
@@ -7788,8 +7836,10 @@ const TilingRendererComponent = React.forwardRef<
   // room for the dragged pane; they are mapped back to where they sit with no
   // room made, so the drop the pointer is over never depends on where the
   // pane has settled on its way there.
+  // A held swap makes room in the indicator preview too (its old place reopens).
   const dragMakesRoom: boolean =
-    liveDragModeEnabled && (dragPreview === "snap" || dragPreviewMakesRoom);
+    liveDragModeEnabled &&
+    (dragPreview === "snap" || dragPreviewMakesRoom || roomTarget?.action === "swap");
   const dragInsertedTabs: StableDragInsertedTabs | null =
     roomTarget != null && roomTarget.action === "group-merge"
       ? {
@@ -8369,14 +8419,17 @@ const TilingRendererComponent = React.forwardRef<
     // The survivors need no teardown here: they glide on the leaf motion, which
     // carries on from where each leaf is drawn into whatever layout the settle
     // commits (or back into the untouched layout on a cancel).
+    // A swap commits `tilingDrag`'s `after(swap).tree`, the tree its frame drew.
     const committedTree: TilingLayoutNode | null =
       dragState.outcome === "commit" && dragState.resolvedTarget != null
-        ? deriveCandidateTree(
+        ? deriveDropCommitTree({
             layout,
-            dragState.sourceLeafId,
-            dragState.resolvedTarget,
-            dragState.subject,
-          )
+            sourceLeafId: dragState.sourceLeafId,
+            target: dragState.resolvedTarget,
+            subject: dragState.subject,
+            container: viewportSizeRef.current,
+            config: configRef.current,
+          })
         : null;
     // Commit-time tree verification: a corrupt candidate (duplicated/orphaned
     // leaf, NaN ratio, missing split child) is REFUSED — the drag falls back to
@@ -10291,6 +10344,55 @@ const TilingRendererComponent = React.forwardRef<
         }}
       />
     ) : null;
+  // A held swap, in both previews: where the partner lands (the pane's old
+  // place, reopened) is marked by a tinted wash in the swap colour with ⇄ and
+  // the partner's name. No frame, outline or shadow; above the held pane, so
+  // no held look hides it.
+  const swapWashTitle: string | null =
+    swapPreview == null
+      ? null
+      : (resolveTile(tiles, swapPreview.partnerTileId)?.title ?? swapPreview.partnerTileId);
+  const swapWashElement: React.ReactElement | null =
+    isLiveDragging && swapPreview != null ? (
+      <div
+        className="pointer-events-none absolute"
+        data-hpt-swap-wash=""
+        data-hpt-swap-partner={swapPreview.partnerTileId}
+        aria-hidden
+        style={{
+          left: swapPreview.partnerRect.x,
+          top: swapPreview.partnerRect.y,
+          width: swapPreview.partnerRect.width,
+          height: swapPreview.partnerRect.height,
+          zIndex: SWAP_WASH_Z_INDEX,
+          boxSizing: "border-box",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+          padding: 12,
+          border: "none",
+          outline: "none",
+          boxShadow: "none",
+          borderRadius: 8,
+          background: `color-mix(in srgb, ${SWAP_COLOR} 26%, transparent)`,
+          backdropFilter: "blur(3px)",
+          WebkitBackdropFilter: "blur(3px)",
+          color: SWAP_COLOR,
+          fontWeight: 650,
+          fontSize: 14,
+          lineHeight: 1.25,
+          textAlign: "center",
+          overflow: "hidden",
+        }}
+      >
+        <span style={{ fontSize: 18 }}>⇄</span>
+        <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {swapWashTitle}
+        </span>
+      </div>
+    ) : null;
   const stablePaneEntries: Map<string, StablePaneEntry> =
     stablePaneEntriesRef.current;
   // H6 `inactiveWorkspaces: "keep-mounted"`: a pool tile seated only in an
@@ -10470,6 +10572,7 @@ const TilingRendererComponent = React.forwardRef<
           ) : null}
           {dropIndicatorElement}
           {liftedElement}
+          {swapWashElement}
           {dragCursorEnabled ? (
             <DragCursorOverlay
               pointer={dragPointer}
