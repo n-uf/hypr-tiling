@@ -1015,7 +1015,7 @@ export const DOCS_GUIDE_TOPICS: ReadonlyArray<DocsGuideTopic> = [
     title: "Changelog",
     section: "changelog",
     summary:
-      "Release notes for @n-uf/hypr-tiling, newest first, rendered from packages/hypr-tiling/CHANGELOG.md. Calendar versioning (YY.M.R) cannot signal a SemVer major — breaking changes are flagged in the notes. Includes Unreleased plus 26.9.9 (built-in group tab strip canonical: placement, theme tokens, eject/ungroup, drop-to-insert; multiSelectionCount; preview.mode \"group-merge\"), 26.9.8 (host group-drop target, onClearMultiSelection), 26.9.7 (reset-workspace / reset-workspaces, workspaceDefaults), 26.9.6 (drag-source pool parking, tab-drop follow), 26.9.5 (swipe gates), 26.9.4 (workspace navigation), 26.9.3 (TilingWorkspaceSet), 26.9.2 (compact ghost, external drop claim, titlebar-only pane collapse), 26.9.1 (overlay portal), 26.9.0 (dragChrome, paneIdentity), 26.7.2 (persisted layout, titlebar slot, layout integrity), 26.7.1, and 26.7.0.",
+      "Release notes for @n-uf/hypr-tiling, newest first, rendered from packages/hypr-tiling/CHANGELOG.md. Calendar versioning (YY.M.R) cannot signal a SemVer major — breaking changes are flagged in the notes.",
   },
   {
     id: "reference",
