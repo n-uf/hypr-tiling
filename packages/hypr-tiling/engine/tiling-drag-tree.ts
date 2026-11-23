@@ -6,11 +6,15 @@ import {
   type TilingAfter,
   type TilingDrag,
   type TilingDragOptions,
+  type TilingHeld,
+  type TilingMark,
+  type TilingPart,
   type TilingStack,
   type TilingSubject,
   type TilingTree,
 } from "@n-uf/placement/tiling";
 import { deriveCandidateTree, type DragResolvedTarget, type DragSubject } from "./drag-machine";
+import type { TilingDropIntentState, TilingEdgeZone } from "./drop-intent-resolver";
 import { mapLayoutToSplit, sizingSplitOptions } from "./leaf-geometry";
 import {
   extractLeafNode,
@@ -140,6 +144,11 @@ export interface TilingDragOpsOptions {
    * exactly the swap reducer's. The renderer still reconciles a committed tree (`normalizeLayout`) when it stores it.
    */
   readonly normalize?: (layout: TilingLayoutNode) => TilingLayoutNode;
+  /**
+   * The parts of the pane drawn as `tile` in `layout`, laid on `rect` (its rect there, container px): a group's tab
+   * strip, a host drop element. Read once per drag by the drag's hit. Default: none.
+   */
+  readonly parts?: (layout: TilingLayoutNode, tile: string, rect: Rect) => readonly TilingPart[];
 }
 
 /**
@@ -162,7 +171,14 @@ export interface TilingDragOpsOptions {
 export function createTilingDragOps(options: TilingDragOpsOptions = {}): TilingTree<TilingDragTree, string> {
   const placeOptions = { preserveParentSplitAxis: false, splitRatio: 0.5 };
   const normalize = options.normalize;
+  const parts = options.parts;
   const ops: TilingTree<TilingDragTree, string> = {
+    ...(parts != null
+      ? {
+          parts: (tree: TilingDragTree, pane: string, rect: Rect): readonly TilingPart[] =>
+            tree.layout == null ? [] : parts(tree.layout, pane, rect),
+        }
+      : {}),
     split: (tree: TilingDragTree): Split<string> | null => (tree.layout == null ? null : splitOfLayout(tree.layout)),
     stackOf: (tree: TilingDragTree, pane: string): TilingStack<string> | null => {
       const group: TilingGroupNode | null = groupOfTile(tree.layout, pane);
@@ -295,10 +311,15 @@ export interface LayoutTilingDragParams {
   readonly container: { readonly width: number; readonly height: number };
   readonly config: TilingLayoutConfig;
   /**
-   * The least pane width and height a held place keeps (`tilingDrag`'s `min`). Default 0: drop validity stays the
-   * renderer's own (a swap is always valid there), so the drag refuses no swap it would commit.
+   * The least pane width and height a held place keeps (`tilingDrag`'s `min`): a side needs room for two panes of it
+   * in its target, and every change keeps the subject and its target at least this size. Default 0 (no refusal for
+   * room or fit).
    */
   readonly min?: number;
+  /** Tiles whose panes take no drop (a statically gated leaf's). */
+  readonly still?: (tile: string) => boolean;
+  /** The panes' parts, as {@link TilingDragOpsOptions.parts}. */
+  readonly parts?: TilingDragOpsOptions["parts"];
 }
 
 /**
@@ -315,11 +336,159 @@ export function createLayoutTilingDrag(params: LayoutTilingDragParams): TilingDr
   const area: Rect = { x: 0, y: 0, width: Math.max(0, params.container.width), height: Math.max(0, params.container.height) };
   const options: TilingDragOptions<TilingDragTree, string> = {
     ...tilingDragSplitOptions(params.config),
-    ops: createTilingDragOps(),
+    ops: createTilingDragOps(params.parts != null ? { parts: params.parts } : {}),
     area,
     min: params.min ?? 0,
+    ...(params.still != null ? { still: params.still } : {}),
   };
   return tilingDrag<TilingDragTree, string>({ layout: params.layout }, subject, options);
+}
+
+/**
+ * Where a drag's parts sit in a pane, measured once at the lift (container px), so the hit lays them on any rect the
+ * pane is drawn at: a group's tab strip (its band from the slot's top, where its first tab starts, the gap between
+ * tabs, and each tab's width by tile) and host drop elements (bands as insets from the slot's left, top and right).
+ * @internal
+ */
+export interface TilingDragPartGeometry {
+  readonly strip?: {
+    readonly top: number;
+    readonly height: number;
+    readonly left: number;
+    readonly gap: number;
+    readonly widths: ReadonlyMap<string, number>;
+  };
+  readonly bands?: ReadonlyMap<string, ReadonlyArray<{ readonly left: number; readonly top: number; readonly right: number; readonly height: number }>>;
+}
+
+/**
+ * The parts of a pane, from {@link TilingDragPartGeometry}: a group of two or more members has its strip (a join), a
+ * slot per member left to right, each its tab's width and the gap after it (a member with no measured width takes the
+ * mean); a tile with host bands has one part per band (a join, no index).
+ * @internal
+ */
+export function tilingDragParts(geometry: TilingDragPartGeometry): (layout: TilingLayoutNode, tile: string, rect: Rect) => readonly TilingPart[] {
+  return (layout: TilingLayoutNode, tile: string, rect: Rect): readonly TilingPart[] => {
+    const out: TilingPart[] = [];
+    const strip = geometry.strip;
+    const group: TilingGroupNode | null = groupOfTile(layout, tile);
+    if (strip != null && group != null && group.members.length >= 2) {
+      const band: Rect = { x: rect.x, y: rect.y + strip.top, width: rect.width, height: Math.max(0, Math.min(strip.height, rect.height - strip.top)) };
+      const known: number[] = [...strip.widths.values()];
+      const mean: number = known.length > 0 ? known.reduce((s: number, w: number): number => s + w, 0) / known.length : 120;
+      const slots: Rect[] = [];
+      let x: number = band.x + strip.left;
+      for (const member of group.members) {
+        const width: number = Math.max(0, Math.min((strip.widths.get(member.tileId) ?? mean) + strip.gap, band.x + band.width - x));
+        slots.push({ x, y: band.y, width, height: band.height });
+        x += width;
+      }
+      out.push({ key: "strip", rect: band, slots });
+    }
+    for (const b of geometry.bands?.get(tile) ?? []) {
+      out.push({ key: "band", rect: { x: rect.x + b.left, y: rect.y + b.top, width: Math.max(0, rect.width - b.left - b.right), height: b.height } });
+    }
+    return out;
+  };
+}
+
+/**
+ * The drop state of a held place of the drag hit (`place`, keyed by tile id) on `layout` (the lift tree), with its
+ * Indicator mark: the leaf the place names (`at`'s leaf), its zone and action, a join's member index.
+ * @internal
+ */
+export function tilingDropStateOf(
+  layout: TilingLayoutNode,
+  place: Exclude<TilingHeld<string>, { kind: "home" }>,
+  mark: TilingMark<string> | null,
+  devicePixelRatio: number,
+): TilingDropIntentState | null {
+  const leaf: TilingLeafNode | null = leafOfTile(layout, place.at);
+  if (leaf == null) {
+    return null;
+  }
+  const side: TilingEdgeZone | null = place.kind === "beside" ? place.side : null;
+  return {
+    ...dropStateBase(leaf.id, devicePixelRatio),
+    zone: side ?? "center",
+    action: place.kind === "swap" ? "swap" : place.kind === "beside" ? "edge-insert" : "group-merge",
+    dominantEdge: side ?? "top",
+    finalEdge: side,
+    fallbackReason: place.kind === "join" ? "pane-part" : null,
+    ...(place.kind === "join" && place.index !== undefined ? { memberInsertIndex: place.index } : {}),
+    place,
+    mark,
+  };
+}
+
+/**
+ * The drop state of a refused place under the pointer (`after(place).refusal`): no drop (`action: "none"`), its code
+ * as the blocked reason, so the cursor says it takes nothing there.
+ * @internal
+ */
+export function tilingRefusedDropStateOf(
+  layout: TilingLayoutNode,
+  place: Exclude<TilingHeld<string>, { kind: "home" }>,
+  code: string,
+  devicePixelRatio: number,
+): TilingDropIntentState | null {
+  const leaf: TilingLeafNode | null = leafOfTile(layout, place.at);
+  if (leaf == null) {
+    return null;
+  }
+  const side: TilingEdgeZone | null = place.kind === "beside" ? place.side : null;
+  return { ...dropStateBase(leaf.id, devicePixelRatio), zone: side ?? "center", dominantEdge: side ?? "top", blockedReason: code };
+}
+
+function dropStateBase(leafId: string, devicePixelRatio: number): TilingDropIntentState {
+  return {
+    leafId,
+    zone: "center",
+    action: "none",
+    dominantEdge: "top",
+    finalEdge: null,
+    fallbackReason: null,
+    blockedReason: null,
+    axisPath: [],
+    edgeThresholdRatio: 0,
+    centerRectWidthPx: 0,
+    centerRectHeightPx: 0,
+    centerDistancePx: 0,
+    nearestEdgeDistancePx: 0,
+    paneLocalX: 0,
+    paneLocalY: 0,
+    targetSplitId: null,
+    targetSplitPlacement: null,
+    selectedSplitZone: null,
+    selectedSplitDistancePx: null,
+    rejectedSplitReasons: [],
+    tuning: { centerRatio: 0, edgeThresholdRatio: 0, hysteresisPx: 0, devicePixelRatio },
+  };
+}
+
+/**
+ * Each region of the pane drawn on `leafId` as a place of `drag`: its refusal code, or null when a release there
+ * commits (`after(place).refusal`), for the debug overlay. Null when the leaf is not drawn in the drag's base.
+ * @internal
+ */
+export function tilingDragZoneRefusals(
+  drag: TilingDrag<TilingDragTree, string> | null,
+  leafId: string,
+): Readonly<Record<"center" | TilingEdgeZone, string | null>> | null {
+  const lift: TilingLayoutNode | null = drag?.lift.tree.layout ?? null;
+  const leaf: TilingLeafNode | null = lift == null ? null : leafOfLeafId(lift, leafId);
+  if (drag == null || leaf == null) {
+    return null;
+  }
+  const at: string = leaf.tileId;
+  const code = (held: TilingHeld<string>): string | null => drag.after(held).refusal?.code ?? null;
+  return {
+    center: code({ kind: "swap", at }),
+    top: code({ kind: "beside", at, side: "top" }),
+    right: code({ kind: "beside", at, side: "right" }),
+    bottom: code({ kind: "beside", at, side: "bottom" }),
+    left: code({ kind: "beside", at, side: "left" }),
+  };
 }
 
 /** A swap as a frame holding it draws it, and as its release commits it. @internal */
@@ -366,9 +535,8 @@ export function resolveTilingSwapPreview(
 }
 
 /**
- * The layout tree a release on `target` commits: a swap's is `tilingDrag`'s `after(swap).tree` (what its frame drew,
- * {@link resolveTilingSwapPreview}); every other drop's, and a swap the library refuses, is `deriveCandidateTree`'s
- * as before.
+ * The layout tree a release on `target` commits: the drag hit's held place's `after(place).tree` (what its frame drew);
+ * a drop with no place (not made by the drag's hit) is `deriveCandidateTree`'s.
  * @internal
  */
 export function deriveDropCommitTree(params: {
@@ -380,11 +548,12 @@ export function deriveDropCommitTree(params: {
   readonly config: TilingLayoutConfig;
 }): TilingLayoutNode {
   const { layout, sourceLeafId, target, subject } = params;
-  if (target != null && target.action === "swap" && target.leafId !== sourceLeafId) {
+  const place: TilingHeld<string> | undefined = target?.place;
+  if (target != null && place != null && place.kind !== "home" && target.leafId !== sourceLeafId) {
     const drag = createLayoutTilingDrag({ layout, sourceLeafId, subject, container: params.container, config: params.config });
-    const preview: TilingSwapPreview | null = resolveTilingSwapPreview(drag, target.leafId);
-    if (preview != null) {
-      return preview.layout;
+    const after: TilingAfter<TilingDragTree, string> | null = drag?.after(place) ?? null;
+    if (after != null && after.refusal == null && after.tree.layout != null) {
+      return after.tree.layout;
     }
   }
   return deriveCandidateTree(layout, sourceLeafId, target, subject);

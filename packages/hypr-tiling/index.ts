@@ -261,8 +261,6 @@ export type {
   TilingPaneSwitchingCapability,
   TilingPaneTitleBarControlsCapability,
   TilingResizeCapability,
-  TilingSlotCommitmentCapability,
-  TilingSlotCommitmentMode,
   TilingTouchDragCapability,
   ResolvedTilingInteractionCapabilities,
   ResolvedTilingDragRecoveryCapability,
@@ -275,7 +273,6 @@ export type {
   ResolvedTilingMaximizeCapability,
   ResolvedTilingPaneSwitchingCapability,
   ResolvedTilingPaneTitleBarControlsCapability,
-  ResolvedTilingSlotCommitmentCapability,
   ResolvedTilingTouchDragCapability,
   // Commands
   TilingCommand,

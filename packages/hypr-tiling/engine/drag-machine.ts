@@ -8,14 +8,12 @@ import {
   swapGroupWithSlot,
   swapLeafTiles,
 } from "./state";
-import { inRect } from "@n-uf/motion/drag";
 import { insertDragSubjectAdjacent } from "./projected-layout";
 import type { TilingDropIntentState, TilingEdgeZone } from "./drop-intent-resolver";
 import type {
   TilingExternalDropSubject,
   TilingGroupNode,
   TilingLayoutNode,
-  TilingLeafDropZone,
   TilingLeafNode,
   TilingPaneFootprint,
 } from "./types";
@@ -201,10 +199,9 @@ export type DragMachineState =
       heldFootprint: TilingPaneFootprint;
       resolvedTarget: DragResolvedTarget | null;
       /**
-       * Whether the home (the pane's place at the lift, see
-       * {@link dragHomeFootprint}) is the drop target now: the pointer is over
-       * it and `homeLost` is false. It is a target for the whole drag, whenever
-       * the pointer comes back over it: while it is, the layout is the one at
+       * Whether the drag hit holds home now (its last `TARGET_RESOLVED`): the
+       * pane's place at the lift, or a place whose release gives the lift back,
+       * held by the hit's one hold rule. While it is, the layout is the one at
        * the lift and a release there is a cancel (that layout comes back).
        */
       atHome: boolean;
@@ -248,7 +245,13 @@ export type DragMachineEvent =
     }
   | { type: "POINTER_MOVE"; pointerId: number; client: DragMachinePoint }
   | { type: "LONG_PRESS"; pointerId: number }
-  | { type: "TARGET_RESOLVED"; pointerId: number; resolvedTarget: DragResolvedTarget | null }
+  | {
+      type: "TARGET_RESOLVED";
+      pointerId: number;
+      resolvedTarget: DragResolvedTarget | null;
+      /** Whether the drag hit holds home at this sample (absent: unchanged). */
+      atHome?: boolean;
+    }
   | { type: "POINTER_UP"; pointerId: number; claimed?: boolean }
   | { type: "POINTER_CANCEL"; pointerId?: number }
   | { type: "ESCAPE" }
@@ -432,115 +435,6 @@ export function heldFootprintAt(
     width: anchorFootprint.width,
     height: anchorFootprint.height,
   };
-}
-
-/**
- * Whether `client` is inside `footprint` (edges included): the pointer is still over the pane's home. The test is
- * `@n-uf/motion`'s `inRect` with no margin, the rule its drag intent holds a home by (a release over home lands
- * nowhere).
- */
-export function isPointInFootprint(footprint: TilingPaneFootprint, client: DragMachinePoint): boolean {
-  return inRect({ x: footprint.left, y: footprint.top, width: footprint.width, height: footprint.height }, client);
-}
-
-/** A drag's home: `homeFootprint` (a tab torn off its group: the whole group), else `anchorFootprint`. */
-export function dragHomeFootprint(state: {
-  readonly homeFootprint?: TilingPaneFootprint;
-  readonly anchorFootprint: TilingPaneFootprint;
-}): TilingPaneFootprint {
-  return state.homeFootprint ?? state.anchorFootprint;
-}
-
-/**
- * Whether the home is the drop target with the pointer at `client`: the pointer is inside the drag's home
- * ({@link dragHomeFootprint}, edges included) and the home is not lost (`homeLost`, see `HOME_INVALIDATED`). It is
- * `atHome` after a move to `client`. The home is a target for the whole drag: the pointer may leave it and come back.
- *
- * The home is tested in the geometry of the lift, the layout the drag lays out while it is the target, so it does
- * not flicker: whether the pointer is over it never depends on what the others did meanwhile.
- *
- * While the home is the target nothing else is (the layout is the one at the lift, the pane's place open, so the
- * others give back any room they took), no drop target is resolved (the cursor is never "invalid" there), and a
- * release puts the layout back. That is `@n-uf/motion`'s home rule (its drag intent picks no target over home and a
- * release there does nothing); hypr-tiling's own drop resolution runs wherever else the pointer is.
- *
- * The home is about the tree's own drops only: a host hover or claim at the release (`POINTER_UP` with
- * `claimed: true`, a host `onExternalDrop` or a workspace tab) still wins over it, inside home too.
- */
-export function isDragHomeHeld(
-  state: Extract<DragMachineState, { phase: "armed" | "dragging" }>,
-  client: DragMachinePoint,
-): boolean {
-  if (state.phase === "dragging" && state.homeLost) {
-    return false;
-  }
-  return isPointInFootprint(dragHomeFootprint(state), client);
-}
-
-/**
- * The tree a live drag lays out now. While the home is the target (`homeHeld`, see {@link isDragHomeHeld}) it is the
- * layout at the lift: the pane's own place is open and every other pane is where it was. Elsewhere it is the
- * candidate tree for the room target ({@link deriveCandidateTree}), which with no target is the tree with the dragged
- * subject taken out and its gap closed. A swap room target drawn as `swapFrame: "room"` (see {@link swapFrameOf}) is
- * the layout at the lift too: the old place reopens and nothing moves before the release.
- */
-export function deriveLiveDragTree(params: {
-  readonly layout: TilingLayoutNode;
-  readonly sourceLeafId: string | null;
-  readonly roomTarget: DragResolvedTarget | null;
-  readonly subject?: DragSubject;
-  readonly homeHeld: boolean;
-  readonly swapFrame?: DragSwapFrame;
-}): TilingLayoutNode {
-  if (params.homeHeld) {
-    return params.layout;
-  }
-  if (params.swapFrame === "room" && params.roomTarget?.action === "swap" && params.roomTarget.leafId !== params.sourceLeafId) {
-    return params.layout;
-  }
-  return deriveCandidateTree(params.layout, params.sourceLeafId, params.roomTarget, params.subject);
-}
-
-/**
- * How a frame held over a swap draws it. The release commits the swap either way.
- * - `"room"`: the swap target stays in its own slot and nothing moves; only the dragged pane's old place reopens
- *   (the neighbour that grew into it at the lift gives the room back), marked as where the partner will go.
- * - `"landed"`: the swap drawn done, the partner landed in the old place (`after(swap)`).
- */
-export type DragSwapFrame = "room" | "landed";
-
-/**
- * The swap frame of a drop preview: the indicator draws `"room"` (the target keeps its slot, the marks are the
- * promise); snap to slot, and the indicator with `dragPreviewMakesRoom` (a live reorder), draw `"landed"`.
- */
-export function swapFrameOf(params: { readonly preview: "indicator" | "snap"; readonly makesRoom: boolean }): DragSwapFrame {
-  return params.preview === "snap" || params.makesRoom ? "landed" : "room";
-}
-
-/**
- * The drop a live drag's frame makes room for: the tree it lays out is {@link deriveLiveDragTree} for it.
- *
- * - A committable **swap** opens its room in both drop previews. Its room is the subject's old place, which the gap
- *   closed at the lift: the neighbour that grew into it gives the room back. The indicator keeps the target in its
- *   slot and marks the reopened place; snap draws the partner landed there ({@link swapFrameOf}).
- * - Otherwise `"snap"` makes room for the drop the pane has snapped into (`snapped`), and `"indicator"` for the
- *   committable drop only with `makesRoom` (`dragPreviewMakesRoom`); with neither, no room: the gap stays closed.
- */
-export function resolveDragRoomTarget(params: {
-  readonly preview: "indicator" | "snap";
-  readonly makesRoom: boolean;
-  /** The drop the snap preview has settled the pane into, or null. */
-  readonly snapped: DragResolvedTarget | null;
-  /** The drop under the pointer when a release there commits ({@link isCommittableTarget}), else null. */
-  readonly committable: DragResolvedTarget | null;
-}): DragResolvedTarget | null {
-  if (params.committable?.action === "swap") {
-    return params.committable;
-  }
-  if (params.preview === "snap") {
-    return params.snapped;
-  }
-  return params.makesRoom ? params.committable : null;
 }
 
 /**
@@ -762,73 +656,10 @@ export function resolveDragCommitFocusLeafId(
 }
 
 /**
- * Slot re-resolution / commitment policy once a committable target is seated.
- * - `zone-exit-hold` (anchored / sticky): the seated target is pinned through
- *   small cursor movements; it re-resolves ONLY when the cursor crosses OUT of
- *   the seated target's (frozen) hit footprint. High hysteresis.
- * - `delta-responsive` (DEFAULT): the seated target re-resolves eagerly once the
- *   cursor travels beyond `reresolveDeltaPx` from the seat anchor, OR when it
- *   exits the seated footprint — whichever comes first. More responsive re-aim.
- */
-export type DragSlotCommitmentMode = "zone-exit-hold" | "delta-responsive";
-
-/** Default slot-commitment policy: the more responsive delta-driven re-aim. */
-export const DEFAULT_DRAG_SLOT_COMMITMENT_MODE: DragSlotCommitmentMode = "delta-responsive";
-
-/**
- * Default movement-delta (CSS px) before `delta-responsive` re-resolves a seated
- * target without requiring a full zone exit. Coarser than the 6px geometric zone
- * hysteresis (`TILING_DROP_INTENT_CONFIG.hysteresisPx`) on purpose — this gates
- * WHETHER to re-run resolution while seated, not WHICH edge resolves, so the two
- * dampers operate on different axes and never double-count.
- */
-export const DEFAULT_DRAG_RERESOLVE_DELTA_PX: number = 24;
-
-/**
- * Whether a seated target should re-resolve given the commitment policy. Pure so
- * both modes are unit-testable without a DOM. The renderer's coalescer consults
- * this before adopting a freshly-resolved target while a slot is already seated:
- * `false` holds the seated slot (no retarget, seat anchor unchanged); `true`
- * adopts the fresh resolution (and re-anchors the seat on a non-null target).
- *
- * The delta gate is NOT fed into `resolveDropIntent`'s `previousZone` — a
- * `delta-responsive` re-resolution still runs the normal 6px geometric
- * hysteresis once it fires, so the coarse "should I re-aim" delta and the fine
- * "which edge" hysteresis never apply to the same decision.
- */
-export function shouldReresolveSeatedTarget(params: {
-  mode: DragSlotCommitmentMode;
-  seatAnchor: DragMachinePoint;
-  currentClient: DragMachinePoint;
-  reresolveDeltaPx: number;
-  cursorWithinSeatedFootprint: boolean;
-}): boolean {
-  if (!params.cursorWithinSeatedFootprint) {
-    return true;
-  }
-  if (params.mode === "zone-exit-hold") {
-    return false;
-  }
-  const dx: number = params.currentClient.x - params.seatAnchor.x;
-  const dy: number = params.currentClient.y - params.seatAnchor.y;
-  return Math.hypot(dx, dy) >= params.reresolveDeltaPx;
-}
-
-/**
- * The single authoritative committable seat captured from a freshly-resolved
- * target during `dragging`. Returns the target verbatim iff it is a committable
- * drop for `sourceLeafId`, else `null`.
- *
- * The renderer mirrors this into a synchronous ref (`committableSeatRef`) on
- * EVERY processed pointer sample, so the RELEASE path commits the exact seat the
- * drop preview showed WITHOUT re-resolving the release coordinates.
- * Release-time re-resolution is the snap-back hazard this closes: re-resolving
- * the drop target from the raw `pointerup` coordinates can resolve `null` (the
- * cursor is over a layout gap or off the gap-closed hit footprint) or a different
- * target, clobbering the seated committable target, so `POINTER_UP` settles as a
- * cancel and the deliberately-seated drop reverts. Because the ref is written
- * synchronously in the same task as the move/release sample, it is also immune to
- * the React passive-effect lag of the FSM-state mirror (`dragStateRef`).
+ * The single authoritative committable seat captured from a sample during `dragging`: the drop the drag hit holds now
+ * (`TilingDropIntentState.place`), verbatim iff it is a committable drop for `sourceLeafId`, else `null`. A release
+ * commits exactly this, what the last frame showed: there is no fallback to an earlier seat (a release with nothing
+ * held puts the layout back).
  *
  * Pairs with `isCommittableTarget` (the commit predicate `dragMachineReducer`
  * applies at `POINTER_UP`): `deriveCommittableSeat` is the capture rule, the
@@ -839,82 +670,6 @@ export function deriveCommittableSeat(
   sourceLeafId: string,
 ): DragResolvedTarget | null {
   return isCommittableTarget(resolvedTarget, sourceLeafId) ? resolvedTarget : null;
-}
-
-/**
- * The "last committable seat" fallback the release latch falls back to when the
- * FINAL processed move transiently clears the live `committableSeatRef`. It
- * carries the most-recent NON-NULL committable seat AND a run-length of
- * consecutive null seats since, so the fallback can DECAY: a single null
- * (a sub-pixel / footprint-edge jitter clear on the very last move) preserves
- * the seat, but a SUSTAINED null run (the user genuinely travelled off all
- * targets and held there) drops it so the release correctly cancels.
- */
-export interface CommittableSeatFallback {
-  lastCommittableSeat: DragResolvedTarget | null;
-  consecutiveNullSeats: number;
-}
-
-/** The pristine fallback at pickup / settle — no seat, no null run. */
-export const EMPTY_COMMITTABLE_SEAT_FALLBACK: CommittableSeatFallback = {
-  lastCommittableSeat: null,
-  consecutiveNullSeats: 0,
-};
-
-/**
- * Consecutive null-seat samples that classify a seat clear as a GENUINE leave
- * (vs a single transient final-move clear). A value of 2 means: the first null
- * after a committable seat is treated as transient (the fallback survives, so a
- * release on the very next sample still commits the seat the user dwelled on),
- * but a second consecutive null is a sustained leave and the fallback is dropped.
- */
-export const SUSTAINED_NULL_SEAT_THRESHOLD: number = 2;
-
-/**
- * Fold a freshly-captured committable seat into the fallback. A non-null seat
- * both refreshes `lastCommittableSeat` and resets the null run. A null seat
- * increments the run; once it reaches `sustainedNullThreshold` the fallback is
- * dropped (genuine leave), otherwise the prior seat is preserved (transient
- * clear). Pure + total so the renderer can mirror it into a single ref per
- * processed sample and the release latch reads a trustworthy fallback.
- */
-export function foldCommittableSeatFallback(
-  previous: CommittableSeatFallback,
-  currentSeat: DragResolvedTarget | null,
-  sustainedNullThreshold: number = SUSTAINED_NULL_SEAT_THRESHOLD,
-): CommittableSeatFallback {
-  if (currentSeat != null) {
-    return { lastCommittableSeat: currentSeat, consecutiveNullSeats: 0 };
-  }
-  const consecutiveNullSeats: number = previous.consecutiveNullSeats + 1;
-  if (consecutiveNullSeats >= sustainedNullThreshold) {
-    return { lastCommittableSeat: null, consecutiveNullSeats };
-  }
-  return {
-    lastCommittableSeat: previous.lastCommittableSeat,
-    consecutiveNullSeats,
-  };
-}
-
-/**
- * The committable seat to LATCH at `pointerup` — the heart of the commit-latch
- * snap-back fix. Prefers the seat captured on the final processed sample
- * (`currentSeat`); if that sample transiently cleared the seat to `null`, falls
- * back to the most-recent-non-null committable seat tracked across the drag
- * (`fallback.lastCommittableSeat`). When the user genuinely left all targets the
- * fallback has already decayed to `null` (see `foldCommittableSeatFallback`), so
- * the latch stays `null` and the release correctly cancels — no false commit.
- *
- * Once the renderer latches this value at the START of `handlePointerUp`, any
- * later cancel source (M3 watchdog expiry, `lostpointercapture`, `blur`,
- * `visibilitychange`) must NO-OP (`shouldSuppressCompetingCancel`), so a
- * frame-starved / first-terminal-event-wins cancel cannot override the commit.
- */
-export function resolveReleaseCommitSeat(
-  currentSeat: DragResolvedTarget | null,
-  fallback: CommittableSeatFallback,
-): DragResolvedTarget | null {
-  return currentSeat ?? fallback.lastCommittableSeat;
 }
 
 /**
@@ -933,22 +688,6 @@ export function shouldSuppressCompetingCancel(
   committableSeat: DragResolvedTarget | null,
 ): boolean {
   return releaseCommitLatched != null || committableSeat != null;
-}
-
-/**
- * The hysteresis seed (`previousZone`) for re-resolving intent over a target —
- * the prior resolved zone IFF the prior target is the same leaf, else `null`.
- * Subsumes the old `stableDropStateRef`: the FSM's `resolvedTarget` IS the stable
- * zone source, so zone flips must overcome the geometric hysteresis band.
- */
-export function previousZoneSeed(
-  resolvedTarget: DragResolvedTarget | null,
-  hoveredLeafId: string,
-): TilingLeafDropZone | null {
-  if (resolvedTarget == null || resolvedTarget.leafId !== hoveredLeafId) {
-    return null;
-  }
-  return resolvedTarget.zone;
 }
 
 /** True when an event targets a pointer the machine is NOT currently tracking. */
@@ -988,17 +727,14 @@ function armedFrom(event: Extract<DragMachineEvent, { type: "POINTER_DOWN" }>): 
   };
 }
 
-/** The dragging state after the pointer moved to `client`: held there, and whether the home is the target there. */
+/** The dragging state after the pointer moved to `client`: held there. Home is the drag hit's (`TARGET_RESOLVED`). */
 function movedTo(
   state: Extract<DragMachineState, { phase: "dragging" }>,
   client: DragMachinePoint,
 ): DragMachineState {
-  const atHome: boolean = isDragHomeHeld(state, client);
   return {
     ...state,
     heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, client),
-    atHome,
-    leftHome: state.leftHome || !atHome,
   };
 }
 
@@ -1038,8 +774,9 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
           pointerAnchorOffset,
           heldFootprint: heldFootprintAt(event.anchorFootprint, pointerAnchorOffset, event.client),
           resolvedTarget: null,
-          atHome: isPointInFootprint(event.anchorFootprint, event.client),
-          leftHome: !isPointInFootprint(event.anchorFootprint, event.client),
+          // The drag hit says where home is from its first sample (`TARGET_RESOLVED`).
+          atHome: true,
+          leftHome: false,
           homeLost: false,
         };
       }
@@ -1080,8 +817,9 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             pointerAnchorOffset: state.pointerAnchorOffset,
             heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, event.client),
             resolvedTarget: null,
-            atHome: isDragHomeHeld(state, event.client),
-            leftHome: !isDragHomeHeld(state, event.client),
+            // The drag hit says where home is from its first sample (`TARGET_RESOLVED`).
+            atHome: true,
+            leftHome: false,
             homeLost: false,
           };
         }
@@ -1131,7 +869,15 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
         case "POINTER_MOVE":
           return movedTo(state, event.client);
         case "TARGET_RESOLVED":
-          return { ...state, resolvedTarget: event.resolvedTarget };
+          if (event.atHome == null || state.homeLost) {
+            return { ...state, resolvedTarget: event.resolvedTarget };
+          }
+          return {
+            ...state,
+            resolvedTarget: event.resolvedTarget,
+            atHome: event.atHome,
+            leftHome: state.leftHome || !event.atHome,
+          };
         case "HOME_INVALIDATED":
           return state.homeLost ? state : { ...state, atHome: false, leftHome: true, homeLost: true };
         case "POINTER_UP":

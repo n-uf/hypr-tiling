@@ -157,42 +157,6 @@ export type TilingResizeCapability = "both" | "horizontal" | "vertical" | "none"
 export type TilingDragMode = "preview" | "live";
 
 /**
- * Live-drag target re-resolution / commitment policy once a committable target
- * is seated:
- *
- * - `"zone-exit-hold"` — anchored / sticky: the seated slot is pinned through
- *   small cursor movements and re-resolves only when the cursor crosses OUT of
- *   the seated target's hit footprint (high hysteresis).
- * - `"delta-responsive"` — DEFAULT: the seated slot re-resolves eagerly once the
- *   cursor travels beyond `reresolveDeltaPx` from the seat anchor (or exits the
- *   footprint), so the user can re-aim without fully exiting the pane.
- *
- * Only meaningful in `dragMode: "live"`.
- */
-export type TilingSlotCommitmentMode = "zone-exit-hold" | "delta-responsive";
-
-/**
- * Live-drag slot-commitment configuration. `mode` selects the re-resolution
- * policy; `reresolveDeltaPx` is the `delta-responsive` movement threshold (CSS
- * px) — a coarse "should I re-aim" gate distinct from the fine 6px geometric
- * zone hysteresis, so the two never double-count.
- */
-export interface TilingSlotCommitmentCapability {
-  /** Re-resolution policy once a target is seated. Default `"delta-responsive"`. */
-  mode?: TilingSlotCommitmentMode;
-  /** `delta-responsive` re-aim threshold in CSS px. Default `24`. */
-  reresolveDeltaPx?: number;
-}
-
-/** Fully-resolved slot-commitment configuration (no optional fields). */
-export interface ResolvedTilingSlotCommitmentCapability {
-  /** Resolved re-resolution policy once a target is seated. */
-  mode: TilingSlotCommitmentMode;
-  /** Resolved `delta-responsive` re-aim threshold in CSS px. */
-  reresolveDeltaPx: number;
-}
-
-/**
  * Touch-drag hardening configuration. The drag FSM runs on Pointer Events, so it
  * already covers touch uniformly with mouse/pen — this capability tunes the
  * touch-only choreography that must differ from mouse:
@@ -980,13 +944,6 @@ export interface TilingDropHitZoneGeometryCapability {
    * Default `24`.
    */
   centerMinPx?: number;
-  /**
-   * Boundary stickiness (pane-local CSS px): once the cursor is in a zone it
-   * must cross the boundary by this much before the classification switches,
-   * suppressing sub-pixel flicker at the trapezoid edges. `0` disables
-   * hysteresis. Default `6`.
-   */
-  hysteresisPx?: number;
 }
 
 /**
@@ -1005,8 +962,6 @@ export interface ResolvedTilingDropHitZoneGeometryCapability {
   centerRatioY: number;
   /** Resolved floor (CSS px) for the center rectangle extent. */
   centerMinPx: number;
-  /** Resolved boundary stickiness (pane-local CSS px). */
-  hysteresisPx: number;
 }
 
 /**
@@ -1039,12 +994,6 @@ export interface TilingInteractionCapabilities {
    * for static-pane layouts (drag-rearrange is auto-gated off there).
    */
   dragMode?: TilingDragMode;
-  /**
-   * Live-drag target re-resolution / commitment policy once a target is
-   * seated. Only meaningful in `dragMode: "live"`. Default
-   * all-resolved (`mode: "delta-responsive"`, `reresolveDeltaPx: 24`).
-   */
-  slotCommitment?: TilingSlotCommitmentCapability;
   /**
    * Touch-drag hardening (touch enable + long-press disambiguation). Only
    * meaningful when `rearrange` is enabled. Default all-resolved
@@ -1436,8 +1385,6 @@ export interface ResolvedTilingInteractionCapabilities {
   rearrange: boolean;
   /** Resolved drag feedback mode (`"preview"` vs `"live"`). */
   dragMode: TilingDragMode;
-  /** Resolved live-drag slot-commitment configuration. */
-  slotCommitment: ResolvedTilingSlotCommitmentCapability;
   /** Resolved touch-drag hardening configuration. */
   touchDrag: ResolvedTilingTouchDragCapability;
   /** Resolved drag self-healing recovery configuration. */

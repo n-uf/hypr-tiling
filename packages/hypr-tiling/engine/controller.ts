@@ -6,11 +6,7 @@ import {
   dragMachineReducer,
 } from "./drag-machine";
 import { EMPTY_FOCUS_HISTORY, type FocusHistory } from "./focus-history";
-import {
-  type DragInputDriver,
-  type DragInputDriverSlotCommitment,
-  createDragInputDriver,
-} from "./input-driver";
+import { type DragInputDriver, createDragInputDriver } from "./input-driver";
 import type { TilingMoveModeState, TilingPaneSwitcherState } from "./types";
 
 /**
@@ -36,8 +32,7 @@ function resolveSliceUpdate<T>(
 /**
  * The runtime seam the controller's {@link DragInputDriver} resolves through —
  * the host-supplied subset of capabilities the framework-free interaction core
- * cannot provide itself (DOM hit-testing, pointer capture, the live
- * slot-commitment policy). Mirrors {@link DragInputDriverHost} minus the
+ * cannot provide itself (the drag's hit, pointer capture). Mirrors {@link DragInputDriverHost} minus the
  * FSM-state accessors (`getState`/`dispatch`), which the controller owns and
  * wires internally. The renderer supplies a DOM-backed host; a headless adapter
  * supplies a scripted stub — neither is touched by `engine/`.
@@ -49,8 +44,9 @@ export interface TilingControllerHost {
     sourceLeafId: string,
     previousTarget: DragResolvedTarget | null,
   ): DragResolvedTarget | null;
+  /** Whether the last resolved sample held home (the drag hit's); absent: never. */
+  heldHome?(): boolean;
   capturePointer(pointerId: number): void;
-  getSlotCommitment(): DragInputDriverSlotCommitment;
 }
 
 /**
@@ -298,11 +294,10 @@ export function createTilingController(
       previousTarget: DragResolvedTarget | null,
     ): DragResolvedTarget | null =>
       config.host.resolveTarget(clientX, clientY, sourceLeafId, previousTarget),
+    heldHome: (): boolean => config.host.heldHome?.() ?? false,
     capturePointer: (pointerId: number): void => {
       config.host.capturePointer(pointerId);
     },
-    getSlotCommitment: (): DragInputDriverSlotCommitment =>
-      config.host.getSlotCommitment(),
   });
 
   const getState = (): TilingControllerState => snapshot;
