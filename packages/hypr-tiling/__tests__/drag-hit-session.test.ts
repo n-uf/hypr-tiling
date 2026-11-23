@@ -65,13 +65,13 @@ describe("the drag's hit session", (): void => {
     const reshaped = { ...(layout as object), second: { ...right, axis: "horizontal" } } as TilingLayoutNode;
     const moved = nextDragHitSession(first, inputsOf({ layout: reshaped, basis: "lift" }), "la", undefined, m.measure)!;
     expect(moved).not.toBe(first);
-    expect(moved.hit.laid.layout.get("b")).not.toEqual(first.hit.laid.layout.get("b"));
+    expect(moved.drag[moved.hit.basis].layout.get("b")).not.toEqual(first.drag[first.hit.basis].layout.get("b"));
     expect(moved.parts).toBe(first.parts);
     expect(moved.basis).toBe("base");
     const resized = nextDragHitSession(moved, inputsOf({ layout: moved.layout, width: 1200 }), "la", undefined, m.measure)!;
     expect(resized).not.toBe(moved);
     expect(resized.parts).toBe(first.parts);
-    expect(resized.hit.laid.layout.get("b")!.width).toBeGreaterThan(moved.hit.laid.layout.get("b")!.width);
+    expect(resized.drag[resized.hit.basis].layout.get("b")!.width).toBeGreaterThan(moved.drag[moved.hit.basis].layout.get("b")!.width);
     const other = nextDragHitSession(resized, inputsOf({ layout: resized.layout, width: 1200, config: { ...config, gapPx: 12 } }), "la", undefined, m.measure)!;
     expect(other).not.toBe(resized);
     expect(m.calls()).toBe(1);

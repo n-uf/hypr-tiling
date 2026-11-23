@@ -255,18 +255,22 @@ describe("the drag hit's geometry — target resolution never chases the reflow"
     const layout: TilingSplitNode = baseLayout();
     const drag = layoutDrag(layout, SOURCE_LEAF_ID, VIEWPORT, CONFIG)!;
     const { hit } = hitRun(drag, "base");
-    // The source slot is gone; only the survivors carry hit rects.
-    expect([...hit.laid.layout.keys()].sort()).toEqual(["tile-b", "tile-c"]);
-    expect(hit.laid.tree.layout).toEqual(removeLeafTile(layout, SOURCE_LEAF_ID));
-    expect([...hit.laid.layout]).toEqual([...drag.base.layout]);
+    // The source slot is gone; only the survivors carry body targets, each at its base rect.
+    const bodies = hit.targets.filter((t) => !t.part && !t.home);
+    expect(bodies.map((t) => t.pane).sort()).toEqual(["tile-b", "tile-c"]);
+    expect(drag.base.tree.layout).toEqual(removeLeafTile(layout, SOURCE_LEAF_ID));
+    for (const t of bodies) expect(t.hit).toEqual(drag.base.layout.get(t.pane));
   });
 
   it("the lift basis hit-tests the lift (source still in place)", (): void => {
     const layout: TilingSplitNode = baseLayout();
     const drag = layoutDrag(layout, SOURCE_LEAF_ID, VIEWPORT, CONFIG)!;
     const { hit } = hitRun(drag, "lift");
-    expect([...hit.laid.layout.keys()].sort()).toEqual(["tile-a", "tile-b", "tile-c"]);
-    expect([...hit.laid.layout]).toEqual([...drag.lift.layout]);
+    // The source's own slot is home, not a body; the others are at their lift rects.
+    const bodies = hit.targets.filter((t) => !t.part && !t.home);
+    expect(bodies.map((t) => t.pane).sort()).toEqual(["tile-b", "tile-c"]);
+    for (const t of bodies) expect(t.hit).toEqual(drag.lift.layout.get(t.pane));
+    expect(hit.targets.find((t) => t.home)?.hit).toEqual(drag.lift.layout.get("tile-a"));
   });
 
   it("INVARIANT: the zone map is the same at every point however the pointer has moved and whatever is held", (): void => {
@@ -277,11 +281,11 @@ describe("the drag hit's geometry — target resolution never chases the reflow"
       const grid: Array<{ x: number; y: number }> = [];
       for (let y = 0; y <= VIEWPORT.height; y += 40) for (let x = 0; x <= VIEWPORT.width; x += 50) grid.push({ x, y });
       const targets = run.hit.targets;
-      const before: Array<string | null> = grid.map((p): string | null => run.hit.zone(p));
+      const before: Array<string | null> = grid.map((p): string | null => run.hit.placeAt(p));
       // Hold different places in turn (the reflow of each): a swap on B, a side of C, nothing, home.
       for (const p of [{ x: 750, y: 100 }, { x: 900, y: 700 }, { x: 500, y: 790 }, { x: 100, y: 100 }]) run.at(p);
       expect(run.hit.targets).toBe(targets);
-      expect(grid.map((p): string | null => run.hit.zone(p))).toEqual(before);
+      expect(grid.map((p): string | null => run.hit.placeAt(p))).toEqual(before);
     }
   });
 });
