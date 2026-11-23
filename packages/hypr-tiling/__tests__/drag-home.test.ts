@@ -140,6 +140,43 @@ describe("drag home — the rule", (): void => {
   });
 });
 
+describe("drag home — back home after leaving", (): void => {
+  it("the home is a drop target for the whole drag: back over it, nothing is resolved and the original tree is laid out", (): void => {
+    // Outside home the gap-closed geometry puts a refused zone under the pane's old place.
+    const h = harness(() => target("B", "top", "none", true));
+    h.press({ x: 150, y: 110 });
+    h.driver.processPointerSample({ x: 150, y: 120 });
+    h.driver.processPointerSample({ x: 150, y: 400 });
+    expect(h.asked).toEqual([{ x: 150, y: 400 }]);
+    // Back over the pane's place at the lift (its header).
+    h.driver.processPointerSample({ x: 150, y: 110 });
+    const state = h.state();
+    if (state.phase !== "dragging") throw new Error("not dragging");
+    expect(h.asked).toEqual([{ x: 150, y: 400 }]);
+    expect(isDragHomeHeld(state, { x: 150, y: 110 })).toBe(true);
+    expect(state.resolvedTarget).toBeNull();
+    expect(resolveDragCursorPresentation(state.resolvedTarget, "A").kind).not.toBe("invalid");
+    expect(
+      deriveLiveDragTree({ layout: LAYOUT, sourceLeafId: "A", roomTarget: null, homeHeld: isDragHomeHeld(state, { x: 150, y: 110 }) }),
+    ).toBe(LAYOUT);
+  });
+
+  it("a release back home restores the layout, even after a committable seat outside", (): void => {
+    const h = harness((point) => (point.y > 250 ? target("B", "center", "swap") : null));
+    h.press({ x: 150, y: 110 });
+    h.driver.processPointerSample({ x: 150, y: 120 });
+    h.driver.processPointerSample({ x: 150, y: 400 });
+    expect(h.driver.committableSeat?.leafId).toBe("B");
+    h.driver.processPointerSample({ x: 150, y: 110 });
+    expect(h.driver.committableSeat).toBeNull();
+    expect(h.driver.latchRelease()).toBeNull();
+    h.driver.processPointerSample({ x: 150, y: 110 }, true);
+    h.dispatch({ type: "POINTER_UP", pointerId: 1 });
+    const settled = h.state();
+    expect(settled.phase === "settling" && settled.outcome).toBe("cancel");
+  });
+});
+
 describe("drag home — the page moved under the drag", (): void => {
   it("HOME_INVALIDATED ends the hold for good: targets resolve again and the gap closes, inside the old rect too", (): void => {
     const h = harness(() => target("B", "center", "swap"));
