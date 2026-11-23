@@ -10041,7 +10041,7 @@ const TilingRendererComponent = React.forwardRef<
         }}
       />
     ) : null;
-  // A held swap, in both previews: where the partner lands (the pane's old
+  // A held swap, in the indicator: where the partner lands (the pane's old
   // place, reopened) is marked by a tinted wash in the swap colour with ⇄ and
   // the partner's name. No frame, outline or shadow; above the held pane, so
   // no held look hides it.
@@ -10050,7 +10050,8 @@ const TilingRendererComponent = React.forwardRef<
       ? null
       : (resolveTile(tiles, swapPreview.partnerTileId)?.title ?? swapPreview.partnerTileId);
   const swapWashElement: React.ReactElement | null =
-    isLiveDragging && swapPreview != null ? (
+    // Indicator only: snap to slot draws a held swap landed, the partner plainly in the old place.
+    isLiveDragging && swapPreview != null && !isSnapPreview ? (
       <div
         className="pointer-events-none absolute"
         data-hpt-swap-wash=""
