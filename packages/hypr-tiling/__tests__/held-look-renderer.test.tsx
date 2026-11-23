@@ -13,19 +13,24 @@
  * `HEADER.px` strip along its top (or the whole pane: no title bar), and the
  * viewport is 1000×600 at the origin.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import * as React from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { TilingRenderer, resolveRearmHandle } from "../react/tiling-renderer";
 import { HELD_FADE_OPACITY, HELD_THUMBNAIL_SCALE } from "../engine/held-look";
 import type {
+  TilingClientPoint,
   TilingDragPreview,
+  TilingExternalDragHover,
   TilingHeldLook,
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,
+  TilingPaneIdentityMode,
+  TilingRenderTileProps,
   TilingTile,
 } from "../engine/types";
+import type { TilingWorkspaceSet } from "../engine/workspace-set";
 
 interface Box {
   x: number;
@@ -39,6 +44,8 @@ const CONTAINER: { width: number; height: number } = { width: 1000, height: 600 
 /** The pane header's height (a title bar), or `null`: the header is the whole pane (no title bar). */
 const HEADER: { px: number | null } = { px: 40 };
 const MEDIA: { reducedMotion: boolean } = { reducedMotion: false };
+/** A small grip's side (px): too small to be a title bar. */
+const GRIP_PX: number = 16;
 
 function boxOf(element: HTMLElement): Box | null {
   const id: string | null = element.getAttribute("data-hpt-leaf");
@@ -72,8 +79,25 @@ beforeAll((): void => {
       const y: number = box?.y ?? 0;
       const width: number = box?.width ?? CONTAINER.width;
       const fullHeight: number = box?.height ?? CONTAINER.height;
-      const height: number = box != null && this.tagName === "HEADER" && HEADER.px != null ? HEADER.px : fullHeight;
-      return { x, y, left: x, top: y, width, height, right: x + width, bottom: y + height, toJSON: (): void => undefined } as DOMRect;
+      // A small grip (`data-test-grip`): a square at the pane's top-left, not a strip across it.
+      const isGrip: boolean = this instanceof HTMLElement && this.hasAttribute("data-test-grip");
+      const height: number = isGrip
+        ? GRIP_PX
+        : box != null && this.tagName === "HEADER" && HEADER.px != null
+          ? HEADER.px
+          : fullHeight;
+      const rectWidth: number = isGrip ? GRIP_PX : width;
+      return {
+        x,
+        y,
+        left: x,
+        top: y,
+        width: rectWidth,
+        height,
+        right: x + rectWidth,
+        bottom: y + height,
+        toJSON: (): void => undefined,
+      } as DOMRect;
     },
   });
   window.matchMedia = ((query: string) => ({
@@ -550,6 +574,157 @@ describe("held look — a spring-load rearm measures the handle on the new seat"
       seat.remove();
       elsewhere.remove();
     }
+  });
+});
+
+describe("held look — a spring-load rearm switches the held look from the handle measured on the new seat", (): void => {
+  const WS_TILES: ReadonlyArray<TilingTile> = [...TILES, { id: "c", title: "gamma" }];
+  const DWELL_MS: number = 100;
+
+  beforeEach((): void => {
+    jest.useFakeTimers();
+  });
+  afterEach((): void => {
+    jest.useRealTimers();
+  });
+
+  /** main: a | b, ops: c. */
+  const wsSet = (): TilingWorkspaceSet => ({
+    workspaces: [
+      { id: "main", name: "Main", layout: LAYOUT },
+      { id: "ops", name: "Ops", layout: leaf("C", "c") },
+    ],
+    activeId: "main",
+  });
+
+  /** The tab strip occupies y <= 30: a parked pointer there is over the `ops` tab. */
+  const tabStrip = (point: TilingClientPoint): TilingExternalDragHover | null =>
+    point.y > 30 ? null : { kind: "workspace-tab", targetId: "tab:ops", workspaceId: "ops", point };
+
+  /** A pane whose drag handle is a title strip (`header`) or a small grip. */
+  const handleTile =
+    (handle: "header" | "grip") =>
+    (args: TilingRenderTileProps): React.ReactNode => (
+      <article data-leaf-id={args.leafId}>
+        {handle === "header" ? (
+          <header onPointerDown={args.onHandlePointerDown}>{args.tile.title}</header>
+        ) : (
+          <div data-test-grip="" onPointerDown={args.onHandlePointerDown} />
+        )}
+      </article>
+    );
+
+  function WsHost({
+    handle,
+    paneIdentity,
+    onChange,
+  }: {
+    handle: "header" | "grip";
+    paneIdentity?: TilingPaneIdentityMode;
+    onChange?: (next: TilingWorkspaceSet) => void;
+  }): React.ReactElement {
+    const [set, setSet] = React.useState<TilingWorkspaceSet>(wsSet);
+    return (
+      <div data-host-active={set.activeId}>
+        <TilingRenderer
+          workspaces={set}
+          tiles={WS_TILES}
+          config={CONFIG}
+          paneIdentity={paneIdentity}
+          renderTile={handleTile(handle)}
+          dragAnimationEnabled={false}
+          interaction={{
+            dragRecovery: { enable: false },
+            customCursor: false,
+            paneSwitching: { showTabStrip: false, showSwitcherOverlay: false },
+            workspaces: { springLoad: { dwellMs: DWELL_MS } },
+          }}
+          resolveExternalDragHover={tabStrip}
+          onWorkspacesChange={(next: TilingWorkspaceSet): void => {
+            onChange?.(next);
+            setSet(next);
+          }}
+        />
+      </div>
+    );
+  }
+
+  /** a | b in main; c takes the right half in ops (a's own seat stays the left half). */
+  const wsGeometry = (): void => {
+    restGeometry();
+    GEOMETRY.set("c", { x: 500, y: 0, width: 500, height: 600 });
+  };
+
+  const activeOf = (container: HTMLElement): string | null =>
+    container.querySelector("[data-host-active]")?.getAttribute("data-host-active") ?? null;
+
+  const heldLookOf = (container: HTMLElement): string | null =>
+    lookLayer(container)?.getAttribute("data-hpt-held-look") ?? null;
+
+  /**
+   * Pick `a` up by its handle, park over the `ops` tab until the rearm, and
+   * report the look before and after (`afterPark` runs once parked: the
+   * destination's own geometry).
+   */
+  function springLoad(
+    container: HTMLElement,
+    selector: string,
+    afterPark?: () => void,
+  ): { before: string | null; after: string | null; active: string | null } {
+    const handle: HTMLElement | null = container.querySelector<HTMLElement>(`[data-hpt-leaf="a"] ${selector}`);
+    if (handle == null) {
+      throw new Error(`no handle ${selector} for a`);
+    }
+    // Fake timers drive the dwell (a window timer) and the input coalescer's frames: deterministic.
+    const advance = (ms: number): void => {
+      act((): void => {
+        jest.advanceTimersByTime(ms);
+      });
+    };
+    act((): void => {
+      pointer(handle, "pointerdown", 100, 20);
+    });
+    advance(40);
+    act((): void => {
+      pointer(window, "pointermove", 140, 60);
+    });
+    advance(40);
+    const before: string | null = heldLookOf(container);
+    act((): void => {
+      pointer(window, "pointermove", 320, 24);
+    });
+    advance(40);
+    afterPark?.();
+    advance(DWELL_MS + 40);
+    advance(100);
+    return {
+      before,
+      after: heldLookOf(container),
+      active: activeOf(container),
+    };
+  }
+
+  it("a header handle keeps the title-bar look across the rearm", (): void => {
+    wsGeometry();
+    const { container } = render(<WsHost handle="header" />);
+    const seen = springLoad(container, "header");
+    expect(seen).toEqual({ before: "title-bar", after: "title-bar", active: "ops" });
+  });
+
+  it("a small grip gives a thumbnail before and after the rearm", (): void => {
+    wsGeometry();
+    const { container } = render(<WsHost handle="grip" />);
+    const seen = springLoad(container, "[data-test-grip]");
+    expect(seen).toEqual({ before: "thumbnail", after: "thumbnail", active: "ops" });
+  });
+
+  it("the handle is measured again on the new seat: a header that is the whole pane there switches the look to a thumbnail", (): void => {
+    wsGeometry();
+    const { container } = render(<WsHost handle="header" />);
+    const seen = springLoad(container, "header", (): void => {
+      HEADER.px = null;
+    });
+    expect(seen).toEqual({ before: "title-bar", after: "thumbnail", active: "ops" });
   });
 });
 
