@@ -728,6 +728,55 @@ describe("held look — a spring-load rearm switches the held look from the hand
   });
 });
 
+describe("held look — a handover that is not taken does not wait for a later layout change", (): void => {
+  function Controlled({ layout }: { layout: TilingLayoutNode }): React.ReactElement {
+    return (
+      <TilingRenderer
+        layout={layout}
+        tiles={layout.kind === "leaf" ? TILES.filter((tile: TilingTile): boolean => tile.id === layout.tileId) : TILES}
+        config={CONFIG}
+        heldLook="thumbnail"
+        dragAnimationEnabled
+        interaction={{
+          dragRecovery: { enable: false },
+          customCursor: false,
+          paneSwitching: { showTabStrip: false, showSwitcherOverlay: false },
+        }}
+        onLayoutChange={(): void => undefined}
+      />
+    );
+  }
+  const narrow: TilingLayoutNode = { ...(LAYOUT as Extract<TilingLayoutNode, { kind: "split" }>), ratio: 0.3 };
+
+  it("a held pane that left the tree (the host removed it mid-drag) lands from no look when it is back and moves", async (): Promise<void> => {
+    restGeometry();
+    const { container, rerender } = render(<Controlled layout={LAYOUT} />);
+    await liftA(container);
+    await frames(400);
+    expect(seen(container).transform).toBe(`scale(${HELD_THUMBNAIL_SCALE})`);
+    // The host drops `a` from the layout: the drag is cancelled and the pane is gone, with no handover.
+    liftedGeometry();
+    rerender(<Controlled layout={leaf("B", "b")} />);
+    await frames(100);
+    expect(container.querySelector("[data-hpt-lifted]")).toBeNull();
+    expect(container.querySelector('[data-hpt-leaf="a"]')).toBeNull();
+    // The host puts it back, and the pane settles where it is.
+    restGeometry();
+    rerender(<Controlled layout={LAYOUT} />);
+    await frames(600);
+    const a: HTMLElement = container.querySelector<HTMLElement>('[data-hpt-leaf="a"]')!;
+    expect(a.style.transform).not.toMatch(/scale/);
+    // A later layout change glides it plainly: nothing is drawn from the old look.
+    GEOMETRY.set("a", { x: 0, y: 0, width: 300, height: 600 });
+    GEOMETRY.set("b", { x: 300, y: 0, width: 700, height: 600 });
+    rerender(<Controlled layout={narrow} />);
+    expect(a.style.transform).not.toMatch(/scale/);
+    expect(a.style.opacity).toBe("");
+    await frames(600);
+    expect(a.style.transform).not.toMatch(/scale/);
+  });
+});
+
 describe("held look — drawing only: the drop is the same in every look", (): void => {
   it("every look commits the same layout for the same drop", async (): Promise<void> => {
     const committed: string[] = [];
