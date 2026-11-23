@@ -106,7 +106,9 @@ export interface HeldLookFrame {
   readonly opacity: number;
 }
 
-const lerp = (from: number, to: number, amount: number): number => from + (to - from) * amount;
+/** From `from` to `to` by `amount`, exactly `to` at 1. */
+const lerp = (from: number, to: number, amount: number): number =>
+  amount >= 1 ? to : from + (to - from) * amount;
 
 /** The full pane: what every look draws at amount 0. */
 export function fullHeldLookFrame(geometry: HeldLookGeometry): HeldLookFrame {
