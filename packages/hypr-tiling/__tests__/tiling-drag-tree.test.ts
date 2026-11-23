@@ -15,6 +15,7 @@ import { findGroupContainingLeaf, readLeafNodeIds } from "../engine/state";
 import {
   createLayoutTilingDrag,
   createTilingDragOps,
+  deriveDropCommitTree,
   resolveTilingSwapPreview,
   tilingDragSplitOptions,
   tilingDragSubjectOf,
@@ -280,3 +281,27 @@ describe("the operator's case: 02 held over 03 Install", () => {
     for (const [tile, rect] of theirs.layout) expect(near(ours.layout.get(tile), rect)).toBe(true);
   });
 });
+
+describe("deriveDropCommitTree: a release commits what the frame drew", () => {
+  it("from the shown drag itself, its min and parts included, and else from a drag on the same min", () => {
+    for (const { tree } of goldenTrees().slice(0, 6)) {
+      const leaves = readLeafNodeIds(tree);
+      if (leaves.length < 2) continue;
+      const [source, other] = [leaves[0]!, leaves[1]!];
+      const shown = createLayoutTilingDrag({ layout: tree, sourceLeafId: source, container: AREA, config: CONFIG, min: CONFIG.minPaneSizePx });
+      const tile = (findLeafByIdIn(tree, other) as TilingLeafNode).tileId;
+      const after = shown!.after({ kind: "swap", at: tile });
+      if (after.refusal || !after.tree.layout) continue;
+      const target = { leafId: other, place: { kind: "swap", at: tile } } as unknown as DragResolvedTarget;
+      const base = { layout: tree, sourceLeafId: source, target, container: AREA, config: CONFIG };
+      expect(deriveDropCommitTree({ ...base, drag: shown })).toBe(after.tree.layout);
+      expect(deriveDropCommitTree(base)).toEqual(after.tree.layout);
+    }
+  });
+});
+
+function findLeafByIdIn(node: TilingLayoutNode, id: string): TilingLeafNode | null {
+  if (node.kind === "leaf") return node.id === id ? node : null;
+  if (node.kind === "group") return node.members.find((m) => m.id === id) ?? null;
+  return findLeafByIdIn(node.first, id) ?? findLeafByIdIn(node.second, id);
+}
