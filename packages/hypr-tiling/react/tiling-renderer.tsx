@@ -5930,6 +5930,12 @@ const TilingRendererComponent = React.forwardRef<
         motion.target(leafId, rect);
       }
     }
+    // Nothing is lifted any more: a handover not taken above (the pane left the
+    // tree another way, a claimed external drop, or came back by a jump) must
+    // not wait for a later layout change of the same id.
+    if (liftGeometryRef.current == null) {
+      heldLookHandoverRef.current.tileId = null;
+    }
     motion.retain(seen);
     motion.flush();
     // A drop that needed no settle (already in place, or snapping under
