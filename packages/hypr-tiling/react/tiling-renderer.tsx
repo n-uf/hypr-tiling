@@ -5060,9 +5060,10 @@ const TilingRendererComponent = React.forwardRef<
   // ── The held drag (live mode) ────────────────────────────────────────────
   // Past the pickup threshold the REAL pane is lifted and drawn where the
   // pointer holds it, in a wrapper of its own laid out where it was picked up.
-  // While the pointer has not yet left its home, its place stays open and
-  // nothing else moves; once it has, the others close the gap (the tree
-  // without it). The drop preview decides what else moves:
+  // While the pointer is over its home (its place at the lift), its place is
+  // open and every other pane is where it was; elsewhere the others close the
+  // gap (the tree without it), and give the room back whenever the pointer
+  // comes back home. The drop preview decides what else moves:
   // - "indicator": a drop indicator marks the exact rect the pane will land
   //   in; with `dragPreviewMakesRoom` the others also make room there (the
   //   tree with the pane in that slot, its place kept empty).
@@ -5090,10 +5091,11 @@ const TilingRendererComponent = React.forwardRef<
         ? committableDropState
         : null;
   const roomTargetKey: string = dropTargetKey(roomTarget);
-  // Until the pointer first leaves the pane's home, the home holds: the
-  // layout stays as it was at the lift, the pane's place kept open.
+  // While the home is the target (the pointer over the pane's place at the
+  // lift, for the whole drag), the layout is the one at the lift, the pane's
+  // place open.
   const dragHomeHeld: boolean =
-    isLiveDragging && dragState.phase === "dragging" && !dragState.leftHome;
+    isLiveDragging && dragState.phase === "dragging" && dragState.atHome;
   const liveDragDisplayLayout: TilingLayoutNode = React.useMemo(
     (): TilingLayoutNode =>
       deriveLiveDragTree({
@@ -5110,7 +5112,8 @@ const TilingRendererComponent = React.forwardRef<
   );
   // The home footprint is client px measured at the press. A layout change or
   // a viewport resize mid-drag moves the pane's place under it, so the home
-  // hold ends then (a scroll or a window resize ends it in the input layer).
+  // is lost then, for the rest of the drag (a scroll or a window resize loses
+  // it in the input layer).
   const homeBasisRef = React.useRef<{
     readonly layout: TilingLayoutNode;
     readonly width: number;
@@ -5127,7 +5130,7 @@ const TilingRendererComponent = React.forwardRef<
       return;
     }
     if (
-      !dragState.leftHome &&
+      !dragState.homeLost &&
       (basis.layout !== layout ||
         basis.width !== viewportSize.width ||
         basis.height !== viewportSize.height)
@@ -5137,7 +5140,7 @@ const TilingRendererComponent = React.forwardRef<
   }, [
     dispatchDrag,
     dragState.phase,
-    dragState.phase === "dragging" && dragState.leftHome,
+    dragState.phase === "dragging" && dragState.homeLost,
     layout,
     viewportSize.height,
     viewportSize.width,
@@ -7648,7 +7651,7 @@ const TilingRendererComponent = React.forwardRef<
         isInsideRect(current.slot, x, y, 0)
           ? current
           : null;
-      if (next == null && (live.leftHome || current != null)) {
+      if (next == null && (!live.atHome || current != null)) {
         const target: TilingDropState | null = live.resolvedTarget;
         const slot: TilingRect | null = resolveDropLandingRectRef.current(
           live.sourceLeafId,
@@ -7717,7 +7720,7 @@ const TilingRendererComponent = React.forwardRef<
     // not double-fire.
     const armedAtSetup: DragMachineState = dragStateRef.current;
 
-    // The home hold ends only once the viewport has moved or resized in
+    // The home is lost only once the viewport has moved or resized in
     // client px since the press (see `HOME_INVALIDATED`).
     const endHomeHoldIfViewportMoved = (): void => {
       const viewportAtPress: ViewportClientRect | null = viewportAtPressRef.current;
@@ -7889,7 +7892,7 @@ const TilingRendererComponent = React.forwardRef<
         return;
       }
       // The home footprint is client px from the press: a scroll that moved
-      // the viewport moves the pane's place under it, so the home hold ends.
+      // the viewport moves the pane's place under it, so the home is lost.
       // A scroll inside a pane (or one that moved nothing) keeps it.
       endHomeHoldIfViewportMoved();
       placeLiftedLayer();
@@ -7897,7 +7900,7 @@ const TilingRendererComponent = React.forwardRef<
       coalescer.schedule(pointer);
     };
     // A window resize can move the viewport in client px without resizing
-    // it; the home hold ends only if the viewport did move or resize.
+    // it; the home is lost only if the viewport did move or resize.
     const handleWindowResize = (): void => {
       if (controller.getState().drag.phase === "dragging") {
         endHomeHoldIfViewportMoved();

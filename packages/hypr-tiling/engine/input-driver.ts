@@ -142,7 +142,7 @@ export function createDragInputDriver(host: DragInputDriverHost): DragInputDrive
     client: DragMachinePoint,
     owningPointerId: number,
   ): void => {
-    // While the home holds (the pointer has not left the pane's place since
+    // While the home is the target (the pointer is over the pane's place at
     // the lift), no drop target is resolved: nothing moves and a release
     // puts the layout back.
     const lifted: DragMachineState = host.getState();
@@ -221,8 +221,10 @@ export function createDragInputDriver(host: DragInputDriverHost): DragInputDrive
         return;
       }
       host.dispatch({ type: "POINTER_MOVE", pointerId: owningPointerId, client });
-      // While the home holds, no drop target is resolved (see
-      // `isDragHomeHeld`): the sample clears any seat and the layout stays.
+      // While the home is the target, no drop target is resolved (see
+      // `isDragHomeHeld`), the pointer back over it after leaving included:
+      // the sample clears any seat, even a held one, and the layout at the
+      // lift is laid out.
       const homeHeld: boolean = isDragHomeHeld(current, client);
       const freshTarget: DragResolvedTarget | null = homeHeld
         ? null
@@ -280,10 +282,11 @@ export function createDragInputDriver(host: DragInputDriverHost): DragInputDrive
       committableSeat = deriveCommittableSeat(nextTarget, current.sourceLeafId);
       // Track the decaying last-committable-seat fallback so the release latch
       // survives a transient final-move clear but cancels on a genuine leave.
-      committableSeatFallback = foldCommittableSeatFallback(
-        committableSeatFallback,
-        committableSeat,
-      );
+      // The home is a target of its own, not a clear: a sample there drops the
+      // fallback at once, so a release there never commits a seat left behind.
+      committableSeatFallback = homeHeld
+        ? EMPTY_COMMITTABLE_SEAT_FALLBACK
+        : foldCommittableSeatFallback(committableSeatFallback, committableSeat);
       host.dispatch({
         type: "TARGET_RESOLVED",
         pointerId: owningPointerId,

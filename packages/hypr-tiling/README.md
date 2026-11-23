@@ -999,11 +999,13 @@ interaction={{
   swipe / slide-fade transition / spring-load. See Workspaces above.
 - **Held drag** — the real pane is lifted and held under the pointer, drawn
   inside the tiling viewport; a drop indicator at the exact landing rect or
-  snap-to-slot (`dragPreview`, `dragPreviewMakesRoom`). Until the pointer
-  first leaves the pane's own place, that place stays open and nothing
-  moves; a release there puts the layout back. A scroll or resize that moves
-  the viewport, or a new `layout` object mid-drag (a change of identity, as
-  everywhere in the renderer), also ends that hold.
+  snap-to-slot (`dragPreview`, `dragPreviewMakesRoom`). The pane's own place
+  is a drop target for the whole drag: whenever the pointer is over it, at
+  the lift or coming back after leaving, that place is open, the other panes
+  are where they were, and a release there puts the layout back. A scroll or
+  resize that moves the viewport, or a new `layout` object mid-drag (a
+  change of identity, as everywhere in the renderer), ends it for the rest
+  of the drag.
 - **External drop** — host-reported `externalDragHover`, and `onExternalDrop`
   claim-before-settle.
   In set mode a `kind: "workspace-tab"` hover is an engine-owned drop target.

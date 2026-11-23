@@ -195,7 +195,9 @@ export type DragMachineState = {
     pointerAnchorOffset: DragMachinePoint;
     heldFootprint: TilingPaneFootprint;
     resolvedTarget: DragResolvedTarget | null;
+    atHome: boolean;
     leftHome: boolean;
+    homeLost: boolean;
 } | {
     phase: "settling";
     outcome: DragSettleOutcome;

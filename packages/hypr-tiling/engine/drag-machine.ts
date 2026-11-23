@@ -155,7 +155,7 @@ export function resolveExternalDropSubject(
  *   been crossed; a sub-threshold release is a click, not a drag.
  * - `dragging` — threshold crossed; pointer is captured; the lifted pane is held
  *   under the pointer, `resolvedTarget` tracks the hovered destination and
- *   `leftHome` whether the pointer has left the pane's own place since the lift.
+ *   `atHome` whether the pane's own place (its home) is the target now.
  * - `settling` — a terminal event fired; `outcome` says whether the renderer
  *   commits (`onLayoutChange`), cancels (the untouched layout comes back and
  *   every pane settles home), or was `claimed` by the host (`onExternalDrop` —
@@ -203,11 +203,24 @@ export type DragMachineState =
       heldFootprint: TilingPaneFootprint;
       resolvedTarget: DragResolvedTarget | null;
       /**
-       * Whether the pointer has left `anchorFootprint` (the pane's place at the
-       * lift) since the drag began. A release that never left home is a cancel:
-       * the layout as it was at the lift comes back.
+       * Whether the home (the pane's place at the lift, see
+       * {@link dragHomeFootprint}) is the drop target now: the pointer is over
+       * it and `homeLost` is false. It is a target for the whole drag, whenever
+       * the pointer comes back over it: while it is, the layout is the one at
+       * the lift and a release there is a cancel (that layout comes back).
+       */
+      atHome: boolean;
+      /**
+       * Whether the pointer has left the home at least once since the lift (or
+       * the home was lost). It decides nothing; `atHome` does.
        */
       leftHome: boolean;
+      /**
+       * Whether the page moved under the drag (`HOME_INVALIDATED`): the home
+       * footprint no longer marks the pane's place, so it is no target for the
+       * rest of the drag.
+       */
+      homeLost: boolean;
     }
   | {
       phase: "settling";
@@ -249,9 +262,9 @@ export type DragMachineEvent =
 
 /**
  * `HOME_INVALIDATED` — the page moved under the drag (a scroll, a viewport or window resize, a layout change), so the
- * home footprint, a client-px snapshot taken at the press, no longer marks the pane's place. The home hold ends as if
- * the pointer had left (`leftHome` becomes true) and the drag re-resolves at the pointer as it does once the pointer
- * has left home. Only `dragging` reacts; it is a no-op once the pointer has left. The renderer sends it when the
+ * home footprint, a client-px snapshot taken at the press, no longer marks the pane's place. The home is lost for the
+ * rest of the drag (`homeLost` becomes true, `atHome` false) and the drag resolves at the pointer as it does away from
+ * home, over the old rect too. Only `dragging` reacts; it is a no-op once the home is lost. The renderer sends it when the
  * viewport's client rect differs from the one at the press after a scroll or window resize, when the viewport's size
  * changes, and when a new `layout` object arrives mid-drag (a change of identity counts, as everywhere in the renderer).
  */
@@ -441,32 +454,36 @@ export function dragHomeFootprint(state: {
 }
 
 /**
- * Whether the home holds with the pointer at `client`: the pointer has stayed inside the drag's home
- * ({@link dragHomeFootprint}, edges included) since the lift. It is the negation of `leftHome` after a move to
- * `client` and, as `leftHome`, never comes back once the pointer has left: from then on the drag is as before.
+ * Whether the home is the drop target with the pointer at `client`: the pointer is inside the drag's home
+ * ({@link dragHomeFootprint}, edges included) and the home is not lost (`homeLost`, see `HOME_INVALIDATED`). It is
+ * `atHome` after a move to `client`. The home is a target for the whole drag: the pointer may leave it and come back.
  *
- * While the home holds nothing moves (the layout is the one at the lift, the pane's place kept open), no drop target
- * is resolved, and a release puts the layout back. That is `@n-uf/motion`'s home rule (its drag intent picks no target
- * over home and a release there does nothing); hypr-tiling's own drop resolution takes over once the pointer leaves.
+ * The home is tested in the geometry of the lift, the layout the drag lays out while it is the target, so it does
+ * not flicker: whether the pointer is over it never depends on what the others did meanwhile.
  *
- * The hold is about the tree's own drops only: a host hover or claim at the release (`POINTER_UP` with
+ * While the home is the target nothing else is (the layout is the one at the lift, the pane's place open, so the
+ * others give back any room they took), no drop target is resolved (the cursor is never "invalid" there), and a
+ * release puts the layout back. That is `@n-uf/motion`'s home rule (its drag intent picks no target over home and a
+ * release there does nothing); hypr-tiling's own drop resolution runs wherever else the pointer is.
+ *
+ * The home is about the tree's own drops only: a host hover or claim at the release (`POINTER_UP` with
  * `claimed: true`, a host `onExternalDrop` or a workspace tab) still wins over it, inside home too.
  */
 export function isDragHomeHeld(
   state: Extract<DragMachineState, { phase: "armed" | "dragging" }>,
   client: DragMachinePoint,
 ): boolean {
-  if (state.phase === "dragging" && state.leftHome) {
+  if (state.phase === "dragging" && state.homeLost) {
     return false;
   }
   return isPointInFootprint(dragHomeFootprint(state), client);
 }
 
 /**
- * The tree a live drag lays out now. While the home holds (`homeHeld`, see {@link isDragHomeHeld}) it is the layout
- * at the lift: nothing moves and the pane's own place stays open. After that it is the candidate tree for the room
- * target ({@link deriveCandidateTree}), which with no target is the tree with the dragged subject taken out and its
- * gap closed.
+ * The tree a live drag lays out now. While the home is the target (`homeHeld`, see {@link isDragHomeHeld}) it is the
+ * layout at the lift: the pane's own place is open and every other pane is where it was. Elsewhere it is the
+ * candidate tree for the room target ({@link deriveCandidateTree}), which with no target is the tree with the dragged
+ * subject taken out and its gap closed.
  */
 export function deriveLiveDragTree(params: {
   readonly layout: TilingLayoutNode;
@@ -930,15 +947,17 @@ function armedFrom(event: Extract<DragMachineEvent, { type: "POINTER_DOWN" }>): 
   };
 }
 
-/** The dragging state after the pointer moved to `client`: held there, and whether it has now left home. */
+/** The dragging state after the pointer moved to `client`: held there, and whether the home is the target there. */
 function movedTo(
   state: Extract<DragMachineState, { phase: "dragging" }>,
   client: DragMachinePoint,
 ): DragMachineState {
+  const atHome: boolean = isDragHomeHeld(state, client);
   return {
     ...state,
     heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, client),
-    leftHome: !isDragHomeHeld(state, client),
+    atHome,
+    leftHome: state.leftHome || !atHome,
   };
 }
 
@@ -978,7 +997,9 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
           pointerAnchorOffset,
           heldFootprint: heldFootprintAt(event.anchorFootprint, pointerAnchorOffset, event.client),
           resolvedTarget: null,
+          atHome: isPointInFootprint(event.anchorFootprint, event.client),
           leftHome: !isPointInFootprint(event.anchorFootprint, event.client),
+          homeLost: false,
         };
       }
       return state;
@@ -1018,7 +1039,9 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             pointerAnchorOffset: state.pointerAnchorOffset,
             heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, event.client),
             resolvedTarget: null,
+            atHome: isDragHomeHeld(state, event.client),
             leftHome: !isDragHomeHeld(state, event.client),
+            homeLost: false,
           };
         }
         // Touch long-press elapsed while the finger is held within tolerance →
@@ -1041,7 +1064,9 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
             pointerAnchorOffset: state.pointerAnchorOffset,
             heldFootprint: heldFootprintAt(state.anchorFootprint, state.pointerAnchorOffset, state.originClient),
             resolvedTarget: null,
+            atHome: true,
             leftHome: false,
+            homeLost: false,
           };
         }
         // Sub-threshold release / cancel / interruption: it was a click/tap,
@@ -1067,16 +1092,17 @@ export function dragMachineReducer(state: DragMachineState, event: DragMachineEv
         case "TARGET_RESOLVED":
           return { ...state, resolvedTarget: event.resolvedTarget };
         case "HOME_INVALIDATED":
-          return state.leftHome ? state : { ...state, leftHome: true };
+          return state.homeLost ? state : { ...state, atHome: false, leftHome: true, homeLost: true };
         case "POINTER_UP":
           if (event.claimed === true) {
             return settleFrom(state, "claimed");
           }
-          // Home: a release whose pointer never left the pane's own place puts
-          // the layout back as it was at the lift, whatever is under it now.
+          // Home: a release over the pane's own place (whether or not the
+          // pointer left it meanwhile) puts the layout back as it was at the
+          // lift, whatever is under it now.
           return settleFrom(
             state,
-            state.leftHome && isCommittableTarget(state.resolvedTarget, state.sourceLeafId) ? "commit" : "cancel",
+            !state.atHome && isCommittableTarget(state.resolvedTarget, state.sourceLeafId) ? "commit" : "cancel",
           );
         // Every interruption is an enumerated cancel edge → settling(cancel) →
         // idle. This is the structural elimination of "stuck on drag".
