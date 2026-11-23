@@ -1572,7 +1572,8 @@ export function DocsPage({
               outside the tiling (a tab, a side panel), report the hover with{" "}
               <Code>externalDragHover</Code> and take the pane in{" "}
               <Code>onExternalDrop</Code>; return <Code>false</Code> to refuse
-              it. This page uses all three.
+              it. The home page sets <Code>dragPreview</Code> and{" "}
+              <Code>heldLook</Code> from its drag switches.
             </SectionLead>
             <ReferenceLinks symbols={["TilingDragPreview", "TilingHeldLook", "TilingRendererProps"]} />
 

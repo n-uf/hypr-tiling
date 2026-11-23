@@ -1,11 +1,13 @@
 // Writes apps/web/src/proof-facts.generated.ts from the library package:
 // Jest suite/test totals (the same config as `pnpm --filter @n-uf/hypr-tiling test`),
 // gzip sizes of dist/index.mjs and dist/engine.mjs as a user downloads them
-// (each entry plus every chunk it loads), runtime dependencies,
+// (each entry plus every chunk it loads; and the root entry again with the
+// whole @n-uf/motion and @n-uf/placement modules it imports), runtime dependencies,
 // React peer ranges, license, and version. The docs prebuild runs this so the
 // committed snapshot matches the package that the site is built from.
 
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
@@ -78,19 +80,30 @@ if (typeof testSuites !== "number" || typeof tests !== "number") {
 /**
  * The files a user downloads for an entry: the entry and every chunk of the
  * build it imports, statically or dynamically, transitively (relative
- * specifiers only: dependencies such as React are not counted).
+ * specifiers only: dependencies such as React are not counted). With
+ * `withScope`, bare imports of that npm scope (`@n-uf/…`) are followed too,
+ * resolved through their packages' `exports`, whole modules (before any
+ * bundler's tree-shaking).
  * @param {string} entry
+ * @param {string | null} [withScope]
  * @returns {string[]}
  */
-function loadedFiles(entry) {
+function loadedFiles(entry, withScope = null) {
   const seen = new Set([entry]);
   const queue = [entry];
-  const specifier = /(?:\bfrom\s*|\bimport\s*\(?\s*)["'](\.{1,2}\/[^"']+)["']/g;
+  const specifier = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
   while (queue.length > 0) {
     const file = queue.shift();
+    const requireFrom = createRequire(file);
     for (const match of readFileSync(file, "utf8").matchAll(specifier)) {
-      const next = resolve(dirname(file), match[1]);
-      if (!seen.has(next) && existsSync(next)) {
+      const spec = match[1];
+      let next = null;
+      if (spec.startsWith("./") || spec.startsWith("../")) {
+        next = resolve(dirname(file), spec);
+      } else if (withScope != null && spec.startsWith(`${withScope}/`)) {
+        next = requireFrom.resolve(spec);
+      }
+      if (next != null && !seen.has(next) && existsSync(next)) {
         seen.add(next);
         queue.push(next);
       }
@@ -102,12 +115,14 @@ function loadedFiles(entry) {
 /**
  * Gzip bytes of an entry as downloaded: the entry plus every chunk it loads, each gzipped as served.
  * @param {string} entry
+ * @param {string | null} [withScope]
  */
-function gzipLoadedBytes(entry) {
-  return loadedFiles(entry).reduce((sum, file) => sum + gzipSync(readFileSync(file)).length, 0);
+function gzipLoadedBytes(entry, withScope = null) {
+  return loadedFiles(entry, withScope).reduce((sum, file) => sum + gzipSync(readFileSync(file)).length, 0);
 }
 
 const gzipIndexBytes = gzipLoadedBytes(indexBundle);
+const gzipIndexWithLibrariesBytes = gzipLoadedBytes(indexBundle, "@n-uf");
 const gzipEngineBytes = gzipLoadedBytes(engineBundle);
 
 const dependencyRecord = packageJson.dependencies ?? {};
@@ -134,9 +149,11 @@ export interface ProofFacts {
   readonly version: string;
   readonly testSuites: number;
   readonly tests: number;
-  /** dist/index.mjs plus every chunk it loads, gzip bytes. */
+  /** dist/index.mjs plus every chunk it loads, gzip bytes (no dependency code). */
   readonly gzipIndexBytes: number;
-  /** dist/engine.mjs plus every chunk it loads, gzip bytes. */
+  /** The same plus the whole @n-uf/motion and @n-uf/placement modules it imports, gzip bytes (no React, clsx, tailwind-merge). */
+  readonly gzipIndexWithLibrariesBytes: number;
+  /** dist/engine.mjs plus every chunk it loads, gzip bytes (no dependency code). */
   readonly gzipEngineBytes: number;
   readonly runtimeDependencyCount: number;
   readonly runtimeDependencies: ReadonlyArray<string>;
@@ -150,6 +167,7 @@ export const PROOF_FACTS: ProofFacts = {
   testSuites: ${testSuites},
   tests: ${tests},
   gzipIndexBytes: ${gzipIndexBytes},
+  gzipIndexWithLibrariesBytes: ${gzipIndexWithLibrariesBytes},
   gzipEngineBytes: ${gzipEngineBytes},
   runtimeDependencyCount: ${runtimeDependencies.length},
   runtimeDependencies: [
@@ -163,5 +181,5 @@ ${dependencyLines}
 
 writeFileSync(outputPath, source, "utf8");
 console.log(
-  `proof-facts: ${testSuites} suites, ${tests} tests, gzip index ${gzipIndexBytes}, engine ${gzipEngineBytes}, version ${version}`,
+  `proof-facts: ${testSuites} suites, ${tests} tests, gzip index ${gzipIndexBytes} (with @n-uf libraries ${gzipIndexWithLibrariesBytes}), engine ${gzipEngineBytes}, version ${version}`,
 );
