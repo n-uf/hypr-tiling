@@ -10,7 +10,13 @@
 import { describe, expect, it } from "@jest/globals";
 import type { TilingHeld } from "@n-uf/placement/tiling";
 import { findGroupContainingLeaf, findLeafById, readLeafNodeIds } from "../engine/state";
-import { collectStaticGatedLeafIds, resolveTilingMove, type TilingKeyboardMove } from "../engine/tiling-drag-tree";
+import type { DragResolvedTarget } from "../engine/drag-machine";
+import {
+  collectStaticGatedLeafIds,
+  deriveDropCommitTree,
+  resolveTilingMove,
+  type TilingKeyboardMove,
+} from "../engine/tiling-drag-tree";
 import type { TilingLayoutConfig, TilingLayoutNode, TilingMovePlacement } from "../engine/types";
 import { AREAS, CONFIGS, layoutDrag, randomTree, seeded, tilesOf } from "./golden/cases";
 
@@ -95,6 +101,72 @@ describe("one move rule: a keyboard or command move is the drag's after(place)",
     expect(counts.refused).toBeGreaterThan(200);
     expect(counts.moves).toBe(counts.committed + counts.refused + counts.stillSource);
     expect([...codes.keys()].some((code) => code === "fit" || code.startsWith("room"))).toBe(true);
+  });
+
+  it("matches the pointer's own path: the hit's zone at a point in the target's center or side, then the renderer's release commit", () => {
+    // Independent of `after(place)`: the place comes from the drag hit's zone map at a point (`placeAt`, pure, nothing
+    // held), and the tree from the release commit the renderer runs (`deriveDropCommitTree`, with the drag the frame
+    // was drawn with). Wherever the pointer holds the place, the move commits the pointer's tree; a refused move is
+    // one the pointer cannot hold there (a refused zone holds nothing), and its release commits nothing either.
+    const counts = { pointerCommits: 0, refusedAndUnheld: 0, noZone: 0 };
+    for (const tree of trees().slice(0, 12)) {
+      const ids = readLeafNodeIds(tree);
+      const gated = collectStaticGatedLeafIds(tree);
+      for (const { area, config } of STAGES.slice(0, 2)) {
+        for (const source of ids) {
+          if (gated.has(source)) continue;
+          for (const subject of [undefined, "group"] as const) {
+            const drag = layoutDrag(tree, source, area, config, subject);
+            if (drag == null) continue;
+            const hit = drag.hit("lift");
+            for (const target of ids) {
+              if (target === source) continue;
+              for (const move of movesOf(source, target)) {
+                const { subject: moveSubject, place } = matchingDrag(tree, move);
+                if (moveSubject !== subject) continue;
+                const rect = drag.lift.layout.get(place.at);
+                if (rect == null || rect.width < 4 || rect.height < 4) continue;
+                const inset = Math.max(1, Math.min(rect.width, rect.height) * 0.05);
+                const mid = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+                const side = place.kind === "beside" ? place.side : null;
+                const point =
+                  side === "left" ? { x: rect.x + inset, y: mid.y }
+                  : side === "right" ? { x: rect.x + rect.width - inset, y: mid.y }
+                  : side === "top" ? { x: mid.x, y: rect.y + inset }
+                  : side === "bottom" ? { x: mid.x, y: rect.y + rect.height - inset }
+                  : mid;
+                const id = hit.placeAt(point);
+                const pointerHeld = id == null ? null : hit.heldOf(id);
+                const release = deriveDropCommitTree({
+                  layout: tree,
+                  sourceLeafId: source,
+                  target: { leafId: target, place } as unknown as DragResolvedTarget,
+                  ...(subject != null ? { subject } : {}),
+                  container: area,
+                  config,
+                  drag,
+                });
+                const result = resolveTilingMove({ layout: tree, move, container: area, config });
+                // The renderer's release on the place and the move agree, refused or not.
+                expect([move, result.layout]).toEqual([move, release]);
+                if (pointerHeld != null && JSON.stringify(pointerHeld) === JSON.stringify(place)) {
+                  counts.pointerCommits += 1;
+                  expect([move, result.refusal]).toEqual([move, null]);
+                } else if (result.layout == null) {
+                  counts.refusedAndUnheld += 1;
+                } else {
+                  // The pointer has no zone for this place at the point (a run neighbour's side, which the drag's hit
+                  // gives to the swap), while the place itself commits.
+                  counts.noZone += 1;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(counts.pointerCommits).toBeGreaterThan(300);
+    expect(counts.refusedAndUnheld).toBeGreaterThan(50);
   });
 
   it("a move under the minimum, onto a still pane, or with no room is refused where a pointer drag is", () => {
