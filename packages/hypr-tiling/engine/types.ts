@@ -1029,8 +1029,8 @@ export interface TilingInteractionCapabilities {
    */
   paneTitleBarControls?: TilingPaneTitleBarControlsCapability;
   /**
-   * Adjustable drag-drop hit-zone geometry (center swap fraction, center floor,
-   * boundary hysteresis). Undefined → today's `TILING_DROP_INTENT_CONFIG`
+   * Adjustable drag-drop hit-zone geometry (center swap fraction, center
+   * floor; the hold rule is the drag hit's own). Undefined → `TILING_DROP_INTENT_CONFIG`
    * defaults. Reactive: changing it at runtime re-shapes the drop zones (and
    * their visual overlay) immediately.
    */
