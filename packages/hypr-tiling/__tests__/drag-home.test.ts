@@ -1,15 +1,18 @@
 /**
- * The lifted pane's home holds until the pointer first leaves it: while the
+ * The lifted pane's home is a drop target for the whole drag: whenever the
  * pointer is inside the pane's place at the lift (its footprint, edges
- * included; for a tab torn off its group, the whole group), the tree a live
- * drag lays out is the original one (its place stays open, nothing moves), no
- * drop target is resolved (so the cursor is never "invalid" there), and a
- * release puts the layout back. One px past the home's edge the drag is as
- * before: the source is taken out and its gap closes.
+ * included; for a tab torn off its group, the whole group), the first time or
+ * coming back after leaving, the tree a live drag lays out is the original one
+ * (its place open, the others where they were), no drop target is resolved
+ * (so the cursor is never "invalid" there), and a release puts the layout
+ * back. One px past the home's edge the drag is as before: the source is taken
+ * out and its gap closes. Once the page moves under the drag, the home is lost
+ * for the rest of it.
  */
 import { describe, expect, it } from "@jest/globals";
 import {
   DRAG_MACHINE_INITIAL_STATE,
+  deriveCandidateTree,
   deriveLiveDragTree,
   dragHomeFootprint,
   dragMachineReducer,
@@ -20,9 +23,17 @@ import {
   type DragResolvedTarget,
 } from "../engine/drag-machine";
 import { resolveDragCursorPresentation } from "../engine/drag-cursor";
+import { evaluateZoneCandidate } from "../engine/drop-validity";
 import { createDragInputDriver, type DragInputDriver } from "../engine/input-driver";
+import { resolveLayoutGeometry } from "../engine/leaf-geometry";
 import { removeLeafTile } from "../engine/state";
-import type { TilingDropAction, TilingLayoutNode, TilingLeafDropZone, TilingPaneFootprint } from "../engine/types";
+import type {
+  TilingDropAction,
+  TilingLayoutConfig,
+  TilingLayoutNode,
+  TilingLeafDropZone,
+  TilingPaneFootprint,
+} from "../engine/types";
 
 /** Pane A's place at the lift. */
 const HOME: TilingPaneFootprint = { left: 100, top: 100, width: 200, height: 150 };
@@ -104,7 +115,7 @@ function harness(resolve: (point: DragMachinePoint) => DragResolvedTarget | null
         layout: LAYOUT,
         sourceLeafId: state.phase === "dragging" ? state.sourceLeafId : null,
         roomTarget: null,
-        homeHeld: state.phase === "dragging" && !state.leftHome,
+        homeHeld: state.phase === "dragging" && state.atHome,
       }),
   };
 }
@@ -128,15 +139,20 @@ describe("drag home — the rule", (): void => {
     }
   });
 
-  it("never holds again once the pointer has left: from then on the drag is as before", (): void => {
+  it("holds again whenever the pointer comes back: atHome follows the pointer, leftHome remembers it left", (): void => {
     const h = harness(() => null);
     h.press({ x: 150, y: 110 });
     h.dispatch({ type: "POINTER_MOVE", pointerId: 1, client: { x: 150, y: 251 } });
+    const away = h.state();
+    if (away.phase !== "dragging") throw new Error("not dragging");
+    expect(away.atHome).toBe(false);
+    expect(away.leftHome).toBe(true);
     h.dispatch({ type: "POINTER_MOVE", pointerId: 1, client: { x: 150, y: 200 } });
-    const state = h.state();
-    if (state.phase !== "dragging") throw new Error("not dragging");
-    expect(state.leftHome).toBe(true);
-    expect(isDragHomeHeld(state, { x: 150, y: 200 })).toBe(false);
+    const back = h.state();
+    if (back.phase !== "dragging") throw new Error("not dragging");
+    expect(back.atHome).toBe(true);
+    expect(back.leftHome).toBe(true);
+    expect(isDragHomeHeld(back, { x: 150, y: 200 })).toBe(true);
   });
 });
 
@@ -154,11 +170,29 @@ describe("drag home — back home after leaving", (): void => {
     if (state.phase !== "dragging") throw new Error("not dragging");
     expect(h.asked).toEqual([{ x: 150, y: 400 }]);
     expect(isDragHomeHeld(state, { x: 150, y: 110 })).toBe(true);
+    expect(state.atHome).toBe(true);
     expect(state.resolvedTarget).toBeNull();
     expect(resolveDragCursorPresentation(state.resolvedTarget, "A").kind).not.toBe("invalid");
-    expect(
-      deriveLiveDragTree({ layout: LAYOUT, sourceLeafId: "A", roomTarget: null, homeHeld: isDragHomeHeld(state, { x: 150, y: 110 }) }),
-    ).toBe(LAYOUT);
+    expect(h.tree()).toBe(LAYOUT);
+    // And out again: the gap closes again, the refused zone shows again.
+    h.driver.processPointerSample({ x: 150, y: 400 });
+    expect(h.tree()).toEqual(removeLeafTile(LAYOUT, "A"));
+    const out = h.state();
+    expect(resolveDragCursorPresentation(out.phase === "dragging" ? out.resolvedTarget : null, "A").kind).toBe("invalid");
+  });
+
+  it("back home wins over a seat held by the slot commitment", (): void => {
+    // The resolver would keep answering B's swap everywhere; home still wins.
+    const h = harness(() => target("B", "center", "swap"));
+    h.press({ x: 150, y: 110 });
+    h.driver.processPointerSample({ x: 150, y: 120 });
+    h.driver.processPointerSample({ x: 150, y: 400 });
+    expect(h.driver.committableSeat?.leafId).toBe("B");
+    h.driver.processPointerSample({ x: 150, y: 240 });
+    const state = h.state();
+    expect(state.phase === "dragging" && state.resolvedTarget).toBeNull();
+    expect(h.driver.committableSeat).toBeNull();
+    expect(h.tree()).toBe(LAYOUT);
   });
 
   it("a release back home restores the layout, even after a committable seat outside", (): void => {
@@ -178,14 +212,14 @@ describe("drag home — back home after leaving", (): void => {
 });
 
 describe("drag home — the page moved under the drag", (): void => {
-  it("HOME_INVALIDATED ends the hold for good: targets resolve again and the gap closes, inside the old rect too", (): void => {
+  it("HOME_INVALIDATED loses the home for good: targets resolve again and the gap closes, inside the old rect too", (): void => {
     const h = harness(() => target("B", "center", "swap"));
     h.press({ x: 150, y: 110 });
     h.driver.processPointerSample({ x: 150, y: 120 });
     expect(h.tree()).toBe(LAYOUT);
     h.dispatch({ type: "HOME_INVALIDATED" });
     const state = h.state();
-    expect(state.phase === "dragging" && state.leftHome).toBe(true);
+    expect(state.phase === "dragging" && state.homeLost && !state.atHome && state.leftHome).toBe(true);
     expect(h.tree()).toEqual(removeLeafTile(LAYOUT, "A"));
     // Still inside the stale rect: resolved as once the pointer has left.
     h.driver.processPointerSample({ x: 160, y: 130 });
@@ -197,15 +231,29 @@ describe("drag home — the page moved under the drag", (): void => {
     expect(settled.phase === "settling" && settled.outcome).toBe("commit");
   });
 
-  it("is a no-op outside dragging and once the pointer has left", (): void => {
+  it("after the pointer has left, it still loses the home: coming back over the old rect resolves as elsewhere", (): void => {
+    const h = harness(() => target("B", "center", "swap"));
+    h.press({ x: 150, y: 110 });
+    h.driver.processPointerSample({ x: 150, y: 120 });
+    h.driver.processPointerSample({ x: 150, y: 400 });
+    h.dispatch({ type: "HOME_INVALIDATED" });
+    h.driver.processPointerSample({ x: 150, y: 110 });
+    expect(h.asked).toEqual([{ x: 150, y: 400 }, { x: 150, y: 110 }]);
+    expect(h.tree()).toEqual(removeLeafTile(LAYOUT, "A"));
+    const state = h.state();
+    expect(state.phase === "dragging" && state.atHome).toBe(false);
+  });
+
+  it("is a no-op outside dragging and once the home is lost", (): void => {
     expect(dragMachineReducer(DRAG_MACHINE_INITIAL_STATE, { type: "HOME_INVALIDATED" })).toBe(DRAG_MACHINE_INITIAL_STATE);
     const h = harness(() => null);
     h.press({ x: 150, y: 110 });
     const armed = h.state();
     expect(dragMachineReducer(armed, { type: "HOME_INVALIDATED" })).toBe(armed);
     h.driver.processPointerSample({ x: 150, y: 251 });
-    const left = h.state();
-    expect(dragMachineReducer(left, { type: "HOME_INVALIDATED" })).toBe(left);
+    h.dispatch({ type: "HOME_INVALIDATED" });
+    const lost = h.state();
+    expect(dragMachineReducer(lost, { type: "HOME_INVALIDATED" })).toBe(lost);
   });
 });
 
@@ -227,9 +275,9 @@ describe("drag home — the candidate tree", (): void => {
     h.driver.processPointerSample({ x: 150, y: 120 });
     h.driver.processPointerSample({ x: 150, y: 251 });
     expect(h.tree()).toEqual(removeLeafTile(LAYOUT, "A"));
-    // And stays closed when the pointer comes back over the old place.
+    // And opens again when the pointer comes back over the old place.
     h.driver.processPointerSample({ x: 150, y: 200 });
-    expect(h.tree()).toEqual(removeLeafTile(LAYOUT, "A"));
+    expect(h.tree()).toBe(LAYOUT);
   });
 
   it("a room target outside home lays out the candidate tree, as before", (): void => {
@@ -295,4 +343,130 @@ describe("drag home — no target, no invalid cursor, release restores", (): voi
     h.driver.processPointerSample({ x: 150, y: 71 });
     expect(h.asked).toEqual([{ x: 150, y: 71 }]);
   });
+});
+
+/**
+ * A column: the dragged subject on top (a tab group of three, dragged whole, or a single pane), short or tall, and
+ * pane B below. Once the subject lifts, B grows to fill the column, so the subject's header lies over B's title bar
+ * band and the top edge of B's body. There the gap-closed geometry resolves:
+ * - over B's title bar: a group merge into B (a host title-bar drop target);
+ * - just below it: B's top edge-insert, whose verdict comes from the projected tree. For a group subject that
+ *   projection moves only the dragged leaf and leaves the rest of the group at its ratio, so a TALL group leaves too
+ *   little room and the edge is refused (the ⊘ cursor), while a short one is valid (a release would commit a new
+ *   split, not the old layout).
+ * Coming back over the home must beat all of them, at either height.
+ */
+describe("drag home — back over a column neighbour that grew (short / tall, group / single)", (): void => {
+  const AREA = { x: 0, y: 0, width: 360, height: 784 };
+  const CONFIG: TilingLayoutConfig = { gapPx: 6, handleSizePx: 4, minPaneSizePx: 180 };
+  const TITLE_BAR_PX = 41;
+  const column = (subject: "group" | "pane", ratio: number): TilingLayoutNode => ({
+    kind: "split",
+    id: "col",
+    axis: "vertical",
+    ratio,
+    first:
+      subject === "group"
+        ? {
+            kind: "group",
+            id: "g",
+            members: [
+              { kind: "leaf", id: "A", tileId: "a" },
+              { kind: "leaf", id: "P", tileId: "p" },
+              { kind: "leaf", id: "S", tileId: "s" },
+            ],
+            activeMemberId: "A",
+          }
+        : { kind: "leaf", id: "A", tileId: "a" },
+    second: { kind: "leaf", id: "B", tileId: "b" },
+  });
+  const footprint = (r: { x: number; y: number; width: number; height: number }): TilingPaneFootprint => ({
+    left: r.x,
+    top: r.y,
+    width: r.width,
+    height: r.height,
+  });
+
+  for (const subject of ["group", "pane"] as const) {
+    for (const [height, ratio] of [["short", 0.25], ["tall", 0.7]] as const) {
+      it(`${subject}, ${height}: back over its header or over B's grown title bar, home wins and the release restores`, (): void => {
+        const layout = column(subject, ratio);
+        const home = footprint(resolveLayoutGeometry(layout, AREA, CONFIG).leaves.get("A")!);
+        const closed = deriveCandidateTree(layout, "A", null, subject === "group" ? "group" : undefined);
+        const grownB = footprint(resolveLayoutGeometry(closed, AREA, CONFIG).leaves.get("B")!);
+        // B fills the column once the subject is out.
+        expect(grownB.top).toBe(AREA.y);
+        expect(grownB.height).toBe(AREA.height);
+        // B's top edge as the gap-closed geometry judges it (the drop the pointer met there before).
+        const topEdge = evaluateZoneCandidate({
+          zone: "top",
+          layout,
+          sourceLeafId: "A",
+          targetLeafId: "B",
+          targetFootprint: grownB,
+          config: CONFIG,
+          viewportWidth: AREA.width,
+          viewportHeight: AREA.height,
+        });
+        expect(topEdge.isValid).toBe(!(subject === "group" && height === "tall"));
+        const resolver = (point: DragMachinePoint): DragResolvedTarget | null => {
+          if (point.y > AREA.y + AREA.height) return null;
+          if (point.y <= grownB.top + TITLE_BAR_PX) return { ...target("B", "center", "group-merge" as TilingDropAction), fallbackReason: "host-group-drop-target" } as DragResolvedTarget;
+          if (point.y <= grownB.top + grownB.height / 4) return target("B", "top", topEdge.isValid ? "edge-insert" : "none", !topEdge.isValid);
+          return target("B", "center", "swap");
+        };
+        for (const back of [
+          { x: home.left + 150, y: home.top + 20 },
+          { x: home.left + 150, y: home.top + 8 },
+        ]) {
+          let state: DragMachineState = DRAG_MACHINE_INITIAL_STATE;
+          const asked: DragMachinePoint[] = [];
+          const driver = createDragInputDriver({
+            getState: (): DragMachineState => state,
+            dispatch: (event: DragMachineEvent): void => {
+              state = dragMachineReducer(state, event);
+            },
+            resolveTarget: (x: number, y: number): DragResolvedTarget | null => {
+              asked.push({ x, y });
+              return resolver({ x, y });
+            },
+            capturePointer: (): void => undefined,
+            getSlotCommitment: () => ({ mode: "delta-responsive", reresolveDeltaPx: 24 }),
+          });
+          const press = { x: home.left + 150, y: home.top + 20 };
+          state = dragMachineReducer(state, {
+            type: "POINTER_DOWN",
+            pointerId: 1,
+            pointerType: "mouse",
+            sourceLeafId: "A",
+            ...(subject === "group" ? { subject: "group" as const } : {}),
+            anchorFootprint: home,
+            pointerAnchorOffset: { x: press.x - home.left, y: press.y - home.top },
+            originClient: press,
+          });
+          driver.processPointerSample({ x: press.x, y: press.y + 10 });
+          // Below the column, then over B's lower part (a committable swap is seated).
+          driver.processPointerSample({ x: press.x, y: AREA.height + 30 });
+          driver.processPointerSample({ x: press.x, y: AREA.height - 40 });
+          expect(driver.committableSeat?.action).toBe("swap");
+          const askedAway = asked.length;
+          // Back: over the header (B's top edge in the gap-closed geometry) or B's grown title bar.
+          driver.processPointerSample(back);
+          if (state.phase !== "dragging") throw new Error("not dragging");
+          expect(asked.length).toBe(askedAway);
+          expect(state.atHome).toBe(true);
+          expect(state.resolvedTarget).toBeNull();
+          expect(resolveDragCursorPresentation(state.resolvedTarget, "A").kind).not.toBe("invalid");
+          // The room comes back: the tree laid out is the original one.
+          expect(
+            deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: null, subject: subject === "group" ? "group" : undefined, homeHeld: state.atHome }),
+          ).toBe(layout);
+          driver.latchRelease();
+          driver.processPointerSample(back, true);
+          state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+          expect(state.phase === "settling" && state.outcome).toBe("cancel");
+        }
+      });
+    }
+  }
 });

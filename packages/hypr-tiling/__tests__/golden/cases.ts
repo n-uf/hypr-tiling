@@ -16,7 +16,9 @@ import {
   dragMachineReducer,
   type DragMachinePoint,
   type DragMachineState,
+  type DragResolvedTarget,
 } from "../../engine/drag-machine";
+import { createDragInputDriver } from "../../engine/input-driver";
 import { clampHeldRectToStage, resolveDragLandingRect } from "../../engine/drag-landing";
 import { collectLeafFootprints, footprintsByLeafId, resolveLayoutGeometry } from "../../engine/leaf-geometry";
 import { buildDefaultDwindleLayout, normalizeLayout } from "../../engine/layout-normalize";
@@ -670,7 +672,8 @@ export function dropBoundaryCases(): Record<string, unknown> {
  * The lifted pane's home, recorded from 26.11.9: for every leaf of every tree, a drag lifted at the leaf's center and
  * moved to its far corner (inside home, edges included), 1 px past its right edge, then back to its center. Each step
  * gives the phase, whether the pointer has left home, and the tree the live drag lays out with no room target:
- * `home` for the original tree (the pane's place kept open), else its shape (the gap closed).
+ * `home` for the original tree (the pane's place kept open), else its shape (the gap closed). Since the home is a
+ * target for the whole drag, the last step (back at the center) lays out `home` again.
  */
 export function dragHomeCases(): Record<string, string[]> {
   const out: Record<string, string[]> = {};
@@ -699,7 +702,7 @@ export function dragHomeCases(): Record<string, string[]> {
           steps.push(state.phase);
           continue;
         }
-        const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: null, homeHeld: !state.leftHome });
+        const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: null, homeHeld: state.atHome });
         steps.push(`dragging/${state.leftHome ? "left" : "home"}/${laid === tree ? "home" : shape(laid)}`);
       }
       out[`${name}/${leafId}`] = steps;
@@ -707,6 +710,231 @@ export function dragHomeCases(): Record<string, string[]> {
   }
   return out;
 }
+
+/**
+ * Back home after leaving, recorded from the release after 26.11.10: for every leaf of every tree, a drag driven
+ * through the input driver (a resolver that answers a swap onto another leaf everywhere) lifted at the leaf's center,
+ * taken 1 px past its bottom edge (or its top edge, for a leaf at the bottom of the area), then back over its header
+ * (8 px below its top, at its center x), then released there; and the same with the page moving under the drag while
+ * the pointer is away (`HOME_INVALIDATED`). Each step gives whether the home is the target, the tree laid out (`home`
+ * or its shape), whether a drop target was resolved, and the release's outcome.
+ */
+export function dragHomeReturnCases(): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const { name, tree } of goldenTrees()) {
+    const rects = resolveLayoutGeometry(tree, AREAS[0]!, CONFIGS.default!).leaves;
+    const ids = [...rects.keys()];
+    if (ids.length < 2) continue;
+    for (const [leafId, r] of rects) {
+      const other = ids.find((id) => id !== leafId)!;
+      for (const lost of [false, true]) {
+        const home = { left: r.x, top: r.y, width: r.width, height: r.height };
+        const center: DragMachinePoint = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+        const atBottom = r.y + r.height + 1 > AREAS[0]!.y + AREAS[0]!.height;
+        const away: DragMachinePoint = { x: center.x, y: atBottom ? r.y - 1 : r.y + r.height + 1 };
+        const header: DragMachinePoint = { x: center.x, y: r.y + 8 };
+        let state: DragMachineState = DRAG_MACHINE_INITIAL_STATE;
+        const driver = createDragInputDriver({
+          getState: (): DragMachineState => state,
+          dispatch: (event): void => {
+            state = dragMachineReducer(state, event);
+          },
+          resolveTarget: (): DragResolvedTarget =>
+            ({ ...resolvedSwap, leafId: other }) as DragResolvedTarget,
+          capturePointer: (): void => undefined,
+          getSlotCommitment: () => ({ mode: "delta-responsive", reresolveDeltaPx: 24 }),
+        });
+        state = dragMachineReducer(state, {
+          type: "POINTER_DOWN",
+          pointerId: 1,
+          pointerType: "mouse",
+          sourceLeafId: leafId,
+          anchorFootprint: home,
+          pointerAnchorOffset: { x: r.width / 2, y: r.height / 2 },
+          originClient: center,
+        });
+        const steps: string[] = [];
+        const record = (label: string): void => {
+          if (state.phase !== "dragging") {
+            steps.push(`${label}:${state.phase}`);
+            return;
+          }
+          const laid = deriveLiveDragTree({ layout: tree, sourceLeafId: leafId, roomTarget: null, homeHeld: state.atHome });
+          steps.push(
+            `${label}:${state.atHome ? "home" : "away"}/${laid === tree ? "home" : shape(laid)}/${state.resolvedTarget?.leafId ?? "-"}`,
+          );
+        };
+        driver.processPointerSample({ x: center.x + 10, y: center.y });
+        record("lift");
+        driver.processPointerSample(away);
+        record("away");
+        if (lost) state = dragMachineReducer(state, { type: "HOME_INVALIDATED" });
+        driver.processPointerSample(header);
+        record("back");
+        driver.latchRelease();
+        driver.processPointerSample(header, true);
+        state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+        steps.push(`release:${state.phase === "settling" ? state.outcome : state.phase}`);
+        out[`${name}/${leafId}/${lost ? "lost" : "kept"}`] = steps;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Back home in a column, recorded from the release after 26.11.10: the dragged subject on top of pane B (a tab group
+ * of three dragged whole, or a single pane), at ratios from short to tall, in a 360 × 784 column with a 180 px minimum.
+ * Each case records the subject's home, B's rect once the gap closed, the verdict the gap-closed geometry gives B's
+ * top edge (for a tall group it is refused: its projection moves only the dragged leaf), and a drag through the input
+ * driver: lift on the header, out below the column, over B's lower part (a swap), then back over the header or over
+ * B's grown title bar, then released. The resolver answers as that geometry would: a merge over B's title bar, B's
+ * top edge (with that verdict) in its top quarter, a swap below.
+ */
+export function dragHomeColumnCases(): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const area: Rect = { x: 0, y: 0, width: 360, height: 784 };
+  const config: TilingLayoutConfig = { gapPx: 6, handleSizePx: 4, minPaneSizePx: 180 };
+  const titleBarPx = 41;
+  for (const subject of ["group", "pane"] as const) {
+    for (const ratio of [0.2, 0.25, 0.4, 0.5, 0.6, 0.7, 0.85]) {
+      const layout: TilingLayoutNode = {
+        kind: "split",
+        id: "col",
+        axis: "vertical",
+        ratio,
+        first:
+          subject === "group"
+            ? {
+                kind: "group",
+                id: "g",
+                members: [
+                  { kind: "leaf", id: "A", tileId: "a" },
+                  { kind: "leaf", id: "P", tileId: "p" },
+                  { kind: "leaf", id: "S", tileId: "s" },
+                ],
+                activeMemberId: "A",
+              }
+            : { kind: "leaf", id: "A", tileId: "a" },
+        second: { kind: "leaf", id: "B", tileId: "b" },
+      };
+      const dragSubject = subject === "group" ? ("group" as const) : undefined;
+      const a = resolveLayoutGeometry(layout, area, config).leaves.get("A")!;
+      const home = { left: a.x, top: a.y, width: a.width, height: a.height };
+      const closed = deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: null, subject: dragSubject, homeHeld: false });
+      const b = resolveLayoutGeometry(closed, area, config).leaves.get("B")!;
+      const grownB = { left: b.x, top: b.y, width: b.width, height: b.height };
+      const topEdge = evaluateZoneCandidate({
+        zone: "top",
+        layout,
+        sourceLeafId: "A",
+        targetLeafId: "B",
+        targetFootprint: grownB,
+        config,
+        viewportWidth: area.width,
+        viewportHeight: area.height,
+      });
+      const answer = (point: DragMachinePoint): DragResolvedTarget | null => {
+        if (point.y > area.y + area.height) return null;
+        if (point.y <= grownB.top + titleBarPx) {
+          return { ...resolvedSwap, leafId: "B", action: "group-merge", fallbackReason: "host-group-drop-target" } as DragResolvedTarget;
+        }
+        if (point.y <= grownB.top + grownB.height / 4) {
+          return {
+            ...resolvedSwap,
+            leafId: "B",
+            zone: "top",
+            action: topEdge.isValid ? "edge-insert" : "none",
+            finalEdge: topEdge.isValid ? "top" : null,
+            blockedReason: topEdge.rejectionReason,
+          } as DragResolvedTarget;
+        }
+        return { ...resolvedSwap, leafId: "B" } as DragResolvedTarget;
+      };
+      const header: DragMachinePoint = { x: home.left + 150, y: home.top + 20 };
+      const drags: Record<string, string[]> = {};
+      for (const [label, back] of [
+        ["header", header],
+        ["title-bar", { x: header.x, y: home.top + 8 }],
+      ] as const) {
+        let state: DragMachineState = DRAG_MACHINE_INITIAL_STATE;
+        const driver = createDragInputDriver({
+          getState: (): DragMachineState => state,
+          dispatch: (event): void => {
+            state = dragMachineReducer(state, event);
+          },
+          resolveTarget: (x: number, y: number): DragResolvedTarget | null => answer({ x, y }),
+          capturePointer: (): void => undefined,
+          getSlotCommitment: () => ({ mode: "delta-responsive", reresolveDeltaPx: 24 }),
+        });
+        state = dragMachineReducer(state, {
+          type: "POINTER_DOWN",
+          pointerId: 1,
+          pointerType: "mouse",
+          sourceLeafId: "A",
+          ...(dragSubject != null ? { subject: dragSubject } : {}),
+          anchorFootprint: home,
+          pointerAnchorOffset: { x: header.x - home.left, y: header.y - home.top },
+          originClient: header,
+        });
+        const steps: string[] = [];
+        const record = (step: string): void => {
+          if (state.phase !== "dragging") {
+            steps.push(`${step}:${state.phase}`);
+            return;
+          }
+          const laid = deriveLiveDragTree({ layout, sourceLeafId: "A", roomTarget: null, subject: dragSubject, homeHeld: state.atHome });
+          const t = state.resolvedTarget;
+          steps.push(`${step}:${state.atHome ? "home" : "away"}/${laid === layout ? "home" : shape(laid)}/${t == null ? "-" : `${t.leafId} ${t.zone} ${t.action}`}`);
+        };
+        driver.processPointerSample({ x: header.x, y: header.y + 10 });
+        record("lift");
+        driver.processPointerSample({ x: header.x, y: area.height + 30 });
+        record("below");
+        driver.processPointerSample({ x: header.x, y: area.height - 40 });
+        record("over-b");
+        driver.processPointerSample(back);
+        record(label);
+        driver.latchRelease();
+        driver.processPointerSample(back, true);
+        state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+        steps.push(`release:${state.phase === "settling" ? state.outcome : state.phase}`);
+        drags[label] = steps;
+      }
+      out[`${subject}/${ratio}`] = {
+        home: [home.left, home.top, home.width, home.height],
+        grownB: [grownB.left, grownB.top, grownB.width, grownB.height],
+        topEdge: topEdge.isValid ? "valid" : topEdge.rejectionReason,
+        drags,
+      };
+    }
+  }
+  return out;
+}
+
+/** A committable swap, the drop the return-trip resolver answers everywhere (its `leafId` set per case). */
+const resolvedSwap = {
+  zone: "center",
+  action: "swap",
+  dominantEdge: "right",
+  finalEdge: null,
+  fallbackReason: null,
+  blockedReason: null,
+  axisPath: [],
+  edgeThresholdRatio: 0.25,
+  centerRectWidthPx: 100,
+  centerRectHeightPx: 100,
+  centerDistancePx: 0,
+  nearestEdgeDistancePx: 0,
+  paneLocalX: 0,
+  paneLocalY: 0,
+  targetSplitId: null,
+  targetSplitPlacement: null,
+  selectedSplitZone: null,
+  selectedSplitDistancePx: null,
+  rejectedSplitReasons: [],
+  tuning: { centerRatio: 0.5, edgeThresholdRatio: 0.25, hysteresisPx: 6, devicePixelRatio: 1 },
+};
 
 /**
  * The held pane against the stage, recorded from 26.11.9: for every leaf of every tree, held by its center at seeded
@@ -748,5 +976,7 @@ export const GOLDEN_SECTIONS: Readonly<Record<string, () => unknown>> = {
   "spring-load": springLoadCases,
   "drop-boundary": dropBoundaryCases,
   "drag-home": dragHomeCases,
+  "drag-home-return": dragHomeReturnCases,
+  "drag-home-column": dragHomeColumnCases,
   "drag-stage": dragStageCases,
 };

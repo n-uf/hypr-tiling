@@ -180,11 +180,21 @@ describe("drag-machine — home: a release that never left the pane's place rest
     expect(state.phase === "settling" && state.outcome).toBe("cancel");
   });
 
-  it("once the pointer left home, coming back over it still commits a committable target", (): void => {
+  it("once the pointer left home, coming back over it is home again: a release there cancels, even over a committable target", (): void => {
     let state: DragMachineState = toDragging();
-    expect(state.phase === "dragging" && state.leftHome).toBe(true);
+    expect(state.phase === "dragging" && state.leftHome && !state.atHome).toBe(true);
     state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 200, y: 200 } });
-    expect(state.phase === "dragging" && state.leftHome).toBe(true);
+    expect(state.phase === "dragging" && state.leftHome && state.atHome).toBe(true);
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("C", "center", "swap") });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase === "settling" && state.outcome).toBe("cancel");
+  });
+
+  it("away from home a committable target commits, after a visit home too", (): void => {
+    let state: DragMachineState = toDragging();
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 200, y: 200 } });
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 500, y: 500 } });
+    expect(state.phase === "dragging" && state.atHome).toBe(false);
     state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("C", "center", "swap") });
     state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
     expect(state.phase === "settling" && state.outcome).toBe("commit");
@@ -1431,10 +1441,20 @@ describe("drag-machine — REARM (spring-load commit-and-rearm continuation drag
     expect(dragMachineReducer(cancel, rearm())).toBe(cancel);
   });
 
+  it("after rearm, the NEW seat is the home: back over it, a release cancels (the pane stays on its new seat)", (): void => {
+    let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm());
+    expect(state.phase === "dragging" && state.atHome).toBe(false);
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 700, y: 500 } });
+    expect(state.phase === "dragging" && state.atHome).toBe(true);
+    state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: makeTarget("B", "center", "swap") });
+    state = dragMachineReducer(state, { type: "POINTER_UP", pointerId: 1 });
+    expect(state.phase === "settling" && state.outcome).toBe("cancel");
+  });
+
   it("after rearm, a move updates the held pane and a resolved target commits in the NEW tree", (): void => {
     let state: DragMachineState = dragMachineReducer(toIdleAfterClaimed(), rearm());
-    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 700, y: 500 } });
-    expect(state.phase === "dragging" && state.heldFootprint).toEqual({ left: 580, top: 410, width: 240, height: 180 });
+    state = dragMachineReducer(state, { type: "POINTER_MOVE", pointerId: 1, client: { x: 900, y: 500 } });
+    expect(state.phase === "dragging" && state.heldFootprint).toEqual({ left: 780, top: 410, width: 240, height: 180 });
     const target: DragResolvedTarget = makeTarget("B", "center", "swap");
     state = dragMachineReducer(state, { type: "TARGET_RESOLVED", pointerId: 1, resolvedTarget: target });
     expect(activeResolvedTarget(state)?.leafId).toBe("B");
