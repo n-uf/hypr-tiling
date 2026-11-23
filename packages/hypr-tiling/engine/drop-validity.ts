@@ -1,170 +1,18 @@
-import { canSplitPane, dropFits, type DropVerdict, type Rect } from "@n-uf/placement/tiling";
-import { resolveLeafRects } from "./leaf-geometry";
 import {
   crossAxisDimension,
   isStaticAlongSplitAxis,
   isStaticInDimension,
   splitAxisDimension,
 } from "./pane-sizing";
-import { insertDragSubjectAdjacent } from "./projected-layout";
-import type { TilingEdgeZone } from "./drop-intent-resolver";
-import type {
-  TilingLayoutConfig,
-  TilingLayoutNode,
-  TilingLeafDropZone,
-  TilingPaneFootprint,
-  TilingSplitAxis,
-  TilingDimension,
-} from "./types";
+import type { TilingLayoutNode, TilingSplitAxis, TilingDimension } from "./types";
 
 /**
- * Single source of truth for drop ELIGIBILITY / VALIDITY.
+ * The per-subtree static drag gate.
  *
- * The hit-zone resolver (`drop-intent-resolver.ts`) owns geometry only — which
- * of the five zones a pane-local cursor lands in. This module owns the orthogonal
- * "is this drop allowed?" question (swap / edge-insert eligibility, min-pane and
- * splitter-cost constraints, projected-insert footprint fit) and the per-subtree
- * static drag gate. The renderer hands the resolver a thin `evaluateZone`
- * closure delegating here, so the validity math is pure, headless-consumable,
- * and unit-tested — it is no longer embedded in the React component. The room
- * rule on the measured target is `@n-uf/placement/tiling`'s `canSplitPane`;
- * the fit rule is its `dropFits` over hypr-tiling's own projection (with its
- * static normalization) laid out by placement; the rejection reasons stay
- * hypr-tiling's.
+ * Which place a drag holds, and whether a release there is allowed (the room rule, the fit rule, a swap with
+ * itself), is `@n-uf/placement/tiling`'s drag hit and its `after(place).refusal`; this module only names the panes
+ * that take no drop at all, which the renderer hands the drag as its `still` panes.
  */
-
-/** @internal */
-export interface DropZoneEvaluation {
-  isValid: boolean;
-  rejectionReason: string | null;
-}
-
-/** @internal */
-export function evaluateEdgeInsertCandidate({
-  candidateZone,
-  layout,
-  sourceLeafId,
-  targetLeafId,
-  targetFootprint,
-  config,
-  viewportWidth,
-  viewportHeight,
-  subject,
-}: {
-  candidateZone: TilingEdgeZone;
-  layout: TilingLayoutNode;
-  sourceLeafId: string | null;
-  targetLeafId: string;
-  targetFootprint: TilingPaneFootprint;
-  config: TilingLayoutConfig;
-  viewportWidth: number;
-  viewportHeight: number;
-  /** What the drag moves: the whole group of `sourceLeafId` for `"group"`, else the pane. */
-  subject?: "pane" | "group";
-}): DropZoneEvaluation {
-  const splitterCostPx: number = config.gapPx + config.handleSizePx;
-  const minPaneSizePx: number = config.minPaneSizePx;
-  const isHorizontalSplit: boolean = candidateZone === "left" || candidateZone === "right";
-
-  // 1. Room on the target as measured: placement's room rule (two minimums plus the gutter along the split, one
-  //    across it) on the footprint the caller measured, where the target sits with the source lifted out.
-  const target: Rect = { x: targetFootprint.left, y: targetFootprint.top, width: targetFootprint.width, height: targetFootprint.height };
-  const room: DropVerdict = canSplitPane(target, candidateZone, { gap: config.gapPx, handle: config.handleSizePx, min: minPaneSizePx });
-  const spanRejection: "axis" | "cross" | null = room.ok ? null : room.reason?.includes("cross span") === true ? "cross" : "axis";
-  if (spanRejection === "cross") {
-    const crossSpanPx: number = isHorizontalSplit ? targetFootprint.height : targetFootprint.width;
-    return {
-      isValid: false,
-      rejectionReason: `${candidateZone} rejected: cross span ${crossSpanPx.toFixed(1)}px < min ${minPaneSizePx}px`,
-    };
-  }
-  if (spanRejection === "axis") {
-    const axisSpanPx: number = isHorizontalSplit ? targetFootprint.width : targetFootprint.height;
-    const minimumAxisSpanRequiredPx: number = minPaneSizePx * 2 + splitterCostPx;
-    return {
-      isValid: false,
-      rejectionReason: `${candidateZone} rejected: axis span ${axisSpanPx.toFixed(1)}px < min ${minimumAxisSpanRequiredPx.toFixed(1)}px (2 panes + splitter/gap ${splitterCostPx}px)`,
-    };
-  }
-  if (sourceLeafId == null) {
-    return {
-      isValid: true,
-      rejectionReason: null,
-    };
-  }
-
-  // 2. The tree the commit would apply, by the commit's own sequence (`insertDragSubjectAdjacent`): the subject is
-  //    released first (a whole group as its node, so every member's room goes back to the neighbours, not only the
-  //    dragged tab's), then placed beside the target; its static normalization re-pins collapsed panes to their new
-  //    axis and demotes the second of two statics along one axis. Laid out by placement, placement's fit rule
-  //    (`dropFits`) wants both panes there and at least the minimum wide and high, and passes when the viewport has
-  //    no width or height yet (nothing to measure). A drop that moves nothing (onto itself, a source the tree can't
-  //    lift, a target with no seat) is the layout as it stands.
-  const projectedLayout: TilingLayoutNode = insertDragSubjectAdjacent(
-    layout,
-    sourceLeafId,
-    targetLeafId,
-    candidateZone,
-    subject,
-  );
-  const viewport: Rect = { x: 0, y: 0, width: viewportWidth, height: viewportHeight };
-  const fitsProjectedConstraints: boolean = dropFits(resolveLeafRects(projectedLayout, viewport, config), sourceLeafId, targetLeafId, viewport, {
-    min: minPaneSizePx,
-    side: candidateZone,
-  }).ok;
-
-  return {
-    isValid: fitsProjectedConstraints,
-    rejectionReason: fitsProjectedConstraints
-      ? null
-      : `${candidateZone} rejected: projected source/target footprint violates min pane ${minPaneSizePx}px`,
-  };
-}
-
-/** @internal */
-export function evaluateZoneCandidate({
-  zone,
-  layout,
-  sourceLeafId,
-  targetLeafId,
-  targetFootprint,
-  config,
-  viewportWidth,
-  viewportHeight,
-  subject,
-}: {
-  zone: TilingLeafDropZone;
-  layout: TilingLayoutNode;
-  sourceLeafId: string | null;
-  targetLeafId: string;
-  targetFootprint: TilingPaneFootprint;
-  config: TilingLayoutConfig;
-  viewportWidth: number;
-  viewportHeight: number;
-  /** What the drag moves: the whole group of `sourceLeafId` for `"group"`, else the pane. */
-  subject?: "pane" | "group";
-}): DropZoneEvaluation {
-  if (zone === "center") {
-    if (sourceLeafId != null && sourceLeafId === targetLeafId) {
-      return {
-        isValid: false,
-        rejectionReason: `center swap blocked: same source and target leaf (${targetLeafId})`,
-      };
-    }
-    return { isValid: true, rejectionReason: null };
-  }
-  return evaluateEdgeInsertCandidate({
-    candidateZone: zone,
-    layout,
-    sourceLeafId,
-    targetLeafId,
-    targetFootprint,
-    config,
-    viewportWidth,
-    viewportHeight,
-    subject,
-  });
-}
 
 /**
  * The along-axis pixel pin for a node static ALONG `axis`, or `null` for no

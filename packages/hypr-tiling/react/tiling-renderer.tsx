@@ -1227,23 +1227,6 @@ export function resolveSplitDividerRenderMode(
     : "render-divider-disabled-hidden";
 }
 
-/** The viewport's client rect (window-client px), as the drag compares it. */
-interface ViewportClientRect {
-  readonly left: number;
-  readonly top: number;
-  readonly width: number;
-  readonly height: number;
-}
-
-/** The viewport element's client rect now, or `null` with no viewport. */
-function readViewportClientRect(viewport: HTMLElement | null): ViewportClientRect | null {
-  if (viewport == null) {
-    return null;
-  }
-  const rect: DOMRect = viewport.getBoundingClientRect();
-  return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
-}
-
 /**
  * The place a lifted pane keeps in the tree while the pointer holds it
  * elsewhere (indicator mode with `dragPreviewMakesRoom`: the others make room
@@ -5189,41 +5172,6 @@ const TilingRendererComponent = React.forwardRef<
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [layout, liveTilingDrag, dragHitBasis, heldPlaceKey],
   );
-  // The home footprint is client px measured at the press. A layout change or
-  // a viewport resize mid-drag moves the pane's place under it, so the home
-  // is lost then, for the rest of the drag (a scroll or a window resize loses
-  // it in the input layer).
-  const homeBasisRef = React.useRef<{
-    readonly layout: TilingLayoutNode;
-    readonly width: number;
-    readonly height: number;
-  } | null>(null);
-  React.useEffect((): void => {
-    if (dragState.phase !== "dragging") {
-      homeBasisRef.current = null;
-      return;
-    }
-    const basis = homeBasisRef.current;
-    if (basis == null) {
-      homeBasisRef.current = { layout, width: viewportSize.width, height: viewportSize.height };
-      return;
-    }
-    if (
-      !dragState.homeLost &&
-      (basis.layout !== layout ||
-        basis.width !== viewportSize.width ||
-        basis.height !== viewportSize.height)
-    ) {
-      dispatchDrag({ type: "HOME_INVALIDATED" });
-    }
-  }, [
-    dispatchDrag,
-    dragState.phase,
-    dragState.phase === "dragging" && dragState.homeLost,
-    layout,
-    viewportSize.height,
-    viewportSize.width,
-  ]);
   // The pane is held (drawn in its lifted wrapper) for the whole drag except
   // while the snap preview has it settled into a slot in the tree.
   const isPaneHeld: boolean =
@@ -7747,13 +7695,6 @@ const TilingRendererComponent = React.forwardRef<
     dragState.phase === "armed" || dragState.phase === "dragging"
       ? dragState.pointerId
       : null;
-  // The viewport's client rect at the press, beside the home footprint the
-  // press measured; kept for the whole press, whatever re-runs below.
-  const viewportAtPressRef = React.useRef<ViewportClientRect | null>(null);
-  React.useLayoutEffect((): void => {
-    viewportAtPressRef.current =
-      activeDragPointerId == null ? null : readViewportClientRect(viewportRef.current);
-  }, [activeDragPointerId]);
   React.useEffect((): (() => void) | void => {
     if (activeDragPointerId == null) {
       return;
@@ -7844,23 +7785,6 @@ const TilingRendererComponent = React.forwardRef<
     // not double-fire.
     const armedAtSetup: DragMachineState = dragStateRef.current;
 
-    // The home is lost only once the viewport has moved or resized in
-    // client px since the press (see `HOME_INVALIDATED`).
-    const endHomeHoldIfViewportMoved = (): void => {
-      const viewportAtPress: ViewportClientRect | null = viewportAtPressRef.current;
-      const now: ViewportClientRect | null = readViewportClientRect(viewportRef.current);
-      if (viewportAtPress == null || now == null) {
-        return;
-      }
-      if (
-        Math.abs(now.left - viewportAtPress.left) > 0.01 ||
-        Math.abs(now.top - viewportAtPress.top) > 0.01 ||
-        Math.abs(now.width - viewportAtPress.width) > 0.01 ||
-        Math.abs(now.height - viewportAtPress.height) > 0.01
-      ) {
-        dispatchDrag({ type: "HOME_INVALIDATED" });
-      }
-    };
     let longPressTimerId: number | null = null;
     if (armedAtSetup.phase === "armed" && armedAtSetup.touchDrag) {
       longPressTimerId = window.setTimeout((): void => {
@@ -8015,20 +7939,9 @@ const TilingRendererComponent = React.forwardRef<
       if (pointer == null || controller.getState().drag.phase !== "dragging") {
         return;
       }
-      // The home footprint is client px from the press: a scroll that moved
-      // the viewport moves the pane's place under it, so the home is lost.
-      // A scroll inside a pane (or one that moved nothing) keeps it.
-      endHomeHoldIfViewportMoved();
       placeLiftedLayer();
       placeHeldPane(pointer, true);
       coalescer.schedule(pointer);
-    };
-    // A window resize can move the viewport in client px without resizing
-    // it; the home is lost only if the viewport did move or resize.
-    const handleWindowResize = (): void => {
-      if (controller.getState().drag.phase === "dragging") {
-        endHomeHoldIfViewportMoved();
-      }
     };
     const handleLostPointerCapture = (event: PointerEvent): void => {
       if (event.pointerId !== owningPointerId) {
@@ -8084,7 +7997,6 @@ const TilingRendererComponent = React.forwardRef<
     document.addEventListener("visibilitychange", handleVisibilityChange);
     // Capture phase: scroll does not bubble, and any scrolling ancestor counts.
     window.addEventListener("scroll", handleScroll, { capture: true, passive: true });
-    window.addEventListener("resize", handleWindowResize);
 
     return (): void => {
       // Drop any pending long-press timer so a released/scrolled gesture never
@@ -8107,7 +8019,6 @@ const TilingRendererComponent = React.forwardRef<
       window.removeEventListener("blur", handleBlur);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("scroll", handleScroll, { capture: true });
-      window.removeEventListener("resize", handleWindowResize);
     };
   }, [
     activeDragPointerId,
@@ -8743,16 +8654,6 @@ const TilingRendererComponent = React.forwardRef<
         pointerType: resolveDragPointerType(event.pointerType),
         sourceLeafId,
         subject: tabMemberId == null ? "group" : "pane",
-        ...(tabMemberId == null
-          ? {}
-          : {
-              homeFootprint: {
-                left: frameRect.left,
-                top: frameRect.top,
-                width: frameRect.width,
-                height: frameRect.height,
-              },
-            }),
         anchorFootprint: {
           left: anchor.left,
           top: anchor.top,
