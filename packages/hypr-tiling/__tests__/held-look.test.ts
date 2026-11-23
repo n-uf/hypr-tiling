@@ -9,9 +9,9 @@ import {
   resolveHeldLook,
   type HeldLookGeometry,
 } from "../engine/held-look";
-import type { TilingHeldOverTarget } from "../engine/types";
+import type { TilingHeldLook } from "../engine/types";
 
-const LOOKS: ReadonlyArray<TilingHeldOverTarget> = ["auto", "title-bar", "thumbnail", "fade", "none"];
+const LOOKS: ReadonlyArray<TilingHeldLook> = ["auto", "title-bar", "thumbnail", "fade", "none"];
 
 describe("resolveHeldLook — auto", (): void => {
   it("auto is the title bar for a pane that draws one, else a thumbnail", (): void => {
@@ -63,8 +63,26 @@ describe("measureHeldTitleBar — the drag handle is the one source", (): void =
     expect(measureHeldTitleBar(frame, { x: 100, y: 50, width: 400, height: 40 })).toBe(40);
   });
 
-  it("a strip under a group's tab strip still counts (it ends above the middle)", (): void => {
-    expect(measureHeldTitleBar(frame, { x: 100, y: 80, width: 400, height: 40 })).toBe(70);
+  it("a pane's header under a group's tab strip counts: it starts at the pane's top", (): void => {
+    expect(measureHeldTitleBar(frame, { x: 100, y: 80, width: 400, height: 40 }, 30)).toBe(70);
+  });
+
+  it("a group's tab strip pressed at the frame's top is the title bar", (): void => {
+    expect(measureHeldTitleBar(frame, { x: 100, y: 50, width: 400, height: 30 }, 30)).toBe(30);
+  });
+
+  it("a small grip is no title bar, even at the top", (): void => {
+    expect(measureHeldTitleBar(frame, { x: 104, y: 52, width: 24, height: 24 })).toBeNull();
+    // Narrower than 60 % of the frame.
+    expect(measureHeldTitleBar(frame, { x: 100, y: 50, width: 230, height: 40 })).toBeNull();
+    expect(measureHeldTitleBar(frame, { x: 100, y: 50, width: 240, height: 40 })).toBe(40);
+  });
+
+  it("a handle offset from the top (past the slack) is no title bar", (): void => {
+    expect(measureHeldTitleBar(frame, { x: 100, y: 60, width: 400, height: 40 })).toBeNull();
+    expect(measureHeldTitleBar(frame, { x: 100, y: 54, width: 400, height: 40 })).toBe(44);
+    // Offset from the pane's top under a strip, too.
+    expect(measureHeldTitleBar(frame, { x: 100, y: 95, width: 400, height: 40 }, 30)).toBeNull();
   });
 
   it("a handle that is the whole pane, or more than half of it, is no title bar", (): void => {
@@ -105,6 +123,11 @@ describe("heldLookFrame — every look keeps the grab point on the pointer", ():
 
   it("title-bar with no title bar measured draws the full pane", (): void => {
     expect(heldLookFrame("title-bar", 1, { ...pane, titleBottom: null }).height).toBe(300);
+  });
+
+  it("a group dragged by its strip folds to the strip alone", (): void => {
+    const group: HeldLookGeometry = { ...pane, frame: { width: 400, height: 330 }, leafTop: 30, leafHeight: 300, titleBottom: 30 };
+    expect(heldLookFrame("title-bar", 1, group)).toEqual({ height: 30, anchorY: 14, leafHeight: 0, scale: 1, opacity: 1 });
   });
 
   it("a group folds to its strip and the pane's title bar", (): void => {
@@ -187,7 +210,8 @@ describe("createHeldLookMotion — the settle both ways, snapping under reduced 
     expect(h.clock.pendingFrames).toBe(0);
     h.motion.to(false);
     expect(h.motion.amount).toBe(0);
-    expect(h.amounts).toEqual([1, 0]);
+    // A snap is drawn by the caller, which places the pane right after.
+    expect(h.amounts).toEqual([]);
   });
 
   it("jumpTo rests at once and dispose stops stepping", (): void => {

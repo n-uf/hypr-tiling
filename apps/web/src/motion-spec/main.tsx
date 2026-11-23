@@ -6,7 +6,7 @@ import {
   type TilingCommand,
   type TilingCommandHandle,
   type TilingDragPreview,
-  type TilingHeldOverTarget,
+  type TilingHeldLook,
   type TilingLayoutNode,
   type TilingRenderTileProps,
   type TilingTile,
@@ -21,9 +21,9 @@ import "../index.css";
  * drag preview starts from `?preview=snap` / `?room=1` and can be switched
  * with `__motionLab.setDragPreview`. `?identity=slot` renders panes in place
  * (`paneIdentity: "slot"`) instead of one stable instance per tile. The held
- * pane's look over a target (`heldOverTarget`) starts from `?held=<look>`
- * (the renderer's default when absent) and is switched with
- * `__motionLab.setHeldOverTarget`; `__motionLab.setTitleBars(false)` renders
+ * pane's look (`heldLook`) starts from `?held=<look>` (the renderer's
+ * default when absent) and is switched with `__motionLab.setHeldLook`;
+ * `__motionLab.setTitleBars(false)` renders
  * panes with no title bar (the whole pane is the drag handle).
  */
 
@@ -65,16 +65,16 @@ interface MotionLab {
   dispatch(command: TilingCommand): void;
   /** Switch the drag preview (and, for the indicator, whether the others make room). */
   setDragPreview(preview: TilingDragPreview, makesRoom?: boolean): void;
-  /** Set the held pane's look over a target (`undefined`: the renderer's default). */
-  setHeldOverTarget(look: TilingHeldOverTarget | undefined): void;
+  /** Set the held pane's look (`undefined`: the renderer's default). */
+  setHeldLook(look: TilingHeldLook | undefined): void;
   /** Panes with a title bar (the default) or without one (the whole pane is the handle). */
   setTitleBars(on: boolean): void;
 }
 
-const HELD_LOOKS: ReadonlyArray<TilingHeldOverTarget> = ["auto", "title-bar", "thumbnail", "fade", "none"];
+const HELD_LOOKS: ReadonlyArray<TilingHeldLook> = ["auto", "title-bar", "thumbnail", "fade", "none"];
 
-function isHeldOverTarget(value: string | null): value is TilingHeldOverTarget {
-  return HELD_LOOKS.some((look: TilingHeldOverTarget): boolean => look === value);
+function isHeldLook(value: string | null): value is TilingHeldLook {
+  return HELD_LOOKS.some((look: TilingHeldLook): boolean => look === value);
 }
 
 function tileIdsOf(node: TilingLayoutNode): string[] {
@@ -188,8 +188,8 @@ function MotionScene(): React.ReactElement {
   // lifted pane is a fresh mount; the default keeps one instance per tile.
   const paneIdentity: "stable" | "slot" = search.get("identity") === "slot" ? "slot" : "stable";
   const heldParam: string | null = search.get("held");
-  const [heldOverTarget, setHeldOverTarget] = React.useState<TilingHeldOverTarget | undefined>(
-    isHeldOverTarget(heldParam) ? heldParam : undefined,
+  const [heldLook, setHeldLook] = React.useState<TilingHeldLook | undefined>(
+    isHeldLook(heldParam) ? heldParam : undefined,
   );
   const [titleBars, setTitleBars] = React.useState<boolean>(true);
   const tiles: ReadonlyArray<TilingTile> = React.useMemo((): ReadonlyArray<TilingTile> => {
@@ -207,7 +207,7 @@ function MotionScene(): React.ReactElement {
         setDragPreview(preview);
         setMakesRoom(room);
       },
-      setHeldOverTarget: (look: TilingHeldOverTarget | undefined): void => setHeldOverTarget(look),
+      setHeldLook: (look: TilingHeldLook | undefined): void => setHeldLook(look),
       setTitleBars: (on: boolean): void => setTitleBars(on),
     };
   }, []);
@@ -225,7 +225,7 @@ function MotionScene(): React.ReactElement {
         dragPreview={dragPreview}
         dragPreviewMakesRoom={makesRoom}
         paneIdentity={paneIdentity}
-        heldOverTarget={heldOverTarget}
+        heldLook={heldLook}
         renderTile={
           !titleBars
             ? (args: TilingRenderTileProps): React.ReactNode => <BarePane {...args} />

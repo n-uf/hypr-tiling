@@ -1,32 +1,32 @@
 import * as React from "react";
-import type { TilingHeldOverTarget } from "@n-uf/hypr-tiling";
+import type { TilingHeldLook } from "@n-uf/hypr-tiling";
 import { useIsHydrating } from "./home-first-paint";
 
-/** The held pane's looks over a target, in the order the switch shows them, with what each does. */
+/** The held pane's looks while dragged, in the order the switch shows them, with what each does. */
 export const HELD_LOOK_OPTIONS: ReadonlyArray<{
-  id: TilingHeldOverTarget;
+  id: TilingHeldLook;
   label: string;
   hint: string;
 }> = [
   {
     id: "auto",
     label: "Auto",
-    hint: "Over a drop target the dragged pane folds to its title bar (a thumbnail when it has none).",
+    hint: "While dragged, a pane folds to its title bar (a thumbnail when it has none).",
   },
   {
     id: "title-bar",
     label: "Title bar",
-    hint: "Over a drop target the dragged pane folds to its title bar at the pointer.",
+    hint: "While dragged, a pane folds to its title bar at the pointer.",
   },
   {
     id: "thumbnail",
     label: "Thumbnail",
-    hint: "Over a drop target the dragged pane shrinks to a small copy around the pointer.",
+    hint: "While dragged, a pane shrinks to a small copy around the pointer.",
   },
   {
     id: "fade",
     label: "Fade",
-    hint: "Over a drop target the dragged pane fades, and the landing outline draws above it.",
+    hint: "While dragged, a pane fades, and the landing outline draws above it.",
   },
   {
     id: "none",
@@ -40,14 +40,14 @@ export const HELD_LOOK_OPTIONS: ReadonlyArray<{
 const STORAGE_KEY: string = "hypr-tiling-web.home-held-look";
 
 /** The home's held look until the visitor picks one: the renderer's default. */
-export const DEFAULT_HOME_HELD_LOOK: TilingHeldOverTarget = "auto";
+export const DEFAULT_HOME_HELD_LOOK: TilingHeldLook = "auto";
 
-function isHeldLook(value: string): value is TilingHeldOverTarget {
+function isHeldLook(value: string): value is TilingHeldLook {
   return HELD_LOOK_OPTIONS.some((option): boolean => option.id === value);
 }
 
 /** Read the persisted held look, falling back to the default when unset or invalid. */
-export function readStoredHeldLook(): TilingHeldOverTarget {
+export function readStoredHeldLook(): TilingHeldLook {
   if (typeof window === "undefined") {
     return DEFAULT_HOME_HELD_LOOK;
   }
@@ -62,7 +62,7 @@ export function readStoredHeldLook(): TilingHeldOverTarget {
   return DEFAULT_HOME_HELD_LOOK;
 }
 
-function writeStoredHeldLook(look: TilingHeldOverTarget): void {
+function writeStoredHeldLook(look: TilingHeldLook): void {
   if (typeof window === "undefined") {
     return;
   }
@@ -79,17 +79,17 @@ function writeStoredHeldLook(look: TilingHeldOverTarget): void {
  * after hydration.
  */
 export function useHomeHeldLook(): readonly [
-  TilingHeldOverTarget,
-  (next: TilingHeldOverTarget) => void,
+  TilingHeldLook,
+  (next: TilingHeldLook) => void,
 ] {
   const hydrating: boolean = useIsHydrating();
-  const [look, setLook] = React.useState<TilingHeldOverTarget>(
-    (): TilingHeldOverTarget => (hydrating ? DEFAULT_HOME_HELD_LOOK : readStoredHeldLook()),
+  const [look, setLook] = React.useState<TilingHeldLook>(
+    (): TilingHeldLook => (hydrating ? DEFAULT_HOME_HELD_LOOK : readStoredHeldLook()),
   );
   React.useEffect((): void => {
     setLook(readStoredHeldLook());
   }, []);
-  const changeLook = React.useCallback((next: TilingHeldOverTarget): void => {
+  const changeLook = React.useCallback((next: TilingHeldLook): void => {
     setLook(next);
     writeStoredHeldLook(next);
   }, []);
@@ -108,20 +108,20 @@ export function HeldLookSwitch({
   labelClassName,
   selectClassName,
 }: {
-  look: TilingHeldOverTarget;
-  onChange: (next: TilingHeldOverTarget) => void;
+  look: TilingHeldLook;
+  onChange: (next: TilingHeldLook) => void;
   className: string;
   labelClassName: string;
   selectClassName: string;
 }): React.ReactElement {
   const current = HELD_LOOK_OPTIONS.find((option): boolean => option.id === look);
   return (
-    <div role="group" aria-label="Dragged pane over a target" className={className} data-held-look={look}>
+    <div role="group" aria-label="Dragged pane look" className={className} data-held-look={look}>
       <span aria-hidden className={labelClassName}>
         held
       </span>
       <select
-        aria-label="Dragged pane over a target"
+        aria-label="Dragged pane look"
         title={current?.hint}
         value={look}
         onChange={(event: React.ChangeEvent<HTMLSelectElement>): void => {

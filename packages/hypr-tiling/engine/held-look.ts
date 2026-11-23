@@ -1,13 +1,13 @@
 import { createSettle, type FrameInfo, type FrameLoop, type Settle } from "@n-uf/motion";
-import type { TilingHeldOverTarget } from "./types";
+import type { TilingHeldLook } from "./types";
 
 /**
- * The held pane's look over a drop target, DOM-free: which look a pane gets
- * (`"auto"` and the per-tile override resolved), what the look draws at a
- * given amount of change, and the motion of that amount.
+ * The held pane's look, DOM-free: which look a pane gets (`"auto"` and the
+ * per-tile override resolved), what the look draws at a given amount of
+ * change, and the motion of that amount.
  *
- * The look is one number, `amount`: 0 is the full pane (home, a refused place,
- * free space), 1 is the look over a target. Every look is a straight
+ * The look is one number, `amount`: 0 is the full pane (at the lift, and as it
+ * lands), 1 is the look, kept for the whole drag. Every look is a straight
  * interpolation in it, and each keeps the grab point on the pointer at every
  * amount: the title bar folds the pane's height under a fixed top edge with
  * the grab point's height moving only when it sat below what is kept, a
@@ -18,7 +18,7 @@ import type { TilingHeldOverTarget } from "./types";
  */
 
 /** A resolved look: `"auto"` is gone. */
-export type HeldLook = Exclude<TilingHeldOverTarget, "auto">;
+export type ResolvedHeldLook = Exclude<TilingHeldLook, "auto">;
 
 /** The thumbnail look's scale (of the lift size). */
 export const HELD_THUMBNAIL_SCALE: number = 0.4;
@@ -27,18 +27,18 @@ export const HELD_THUMBNAIL_SCALE: number = 0.4;
 export const HELD_FADE_OPACITY: number = 0.45;
 
 /**
- * The look a held pane gets over a target. The tile's own choice beats the
- * renderer's when it is set (`"auto"` included); with neither set it is
- * `"auto"`. `"auto"` is `"title-bar"` for a pane that draws a title bar, else
- * `"thumbnail"`; `"title-bar"` on a pane with no title bar is a thumbnail too
- * (it has nothing to fold to).
+ * The look a held pane gets. The tile's own choice beats the renderer's when
+ * it is set (`"auto"` included); with neither set it is `"auto"`. `"auto"` is
+ * `"title-bar"` for a pane that draws a title bar, else `"thumbnail"`;
+ * `"title-bar"` on a pane with no title bar is a thumbnail too (it has nothing
+ * to fold to).
  */
 export function resolveHeldLook(params: {
-  readonly renderer: TilingHeldOverTarget | undefined;
-  readonly tile: TilingHeldOverTarget | undefined;
+  readonly renderer: TilingHeldLook | undefined;
+  readonly tile: TilingHeldLook | undefined;
   readonly hasTitleBar: boolean;
-}): HeldLook {
-  const choice: TilingHeldOverTarget = params.tile ?? params.renderer ?? "auto";
+}): ResolvedHeldLook {
+  const choice: TilingHeldLook = params.tile ?? params.renderer ?? "auto";
   if (choice === "auto" || choice === "title-bar") {
     return params.hasTitleBar ? "title-bar" : "thumbnail";
   }
@@ -53,23 +53,41 @@ export interface HeldLookRect {
   readonly height: number;
 }
 
+/** How far below the top edge (of the held frame, or of the pane in it) a title bar may start, px. */
+export const HELD_TITLE_BAR_TOP_SLACK_PX: number = 4;
+
+/** The least share of the held frame's width a title bar spans. */
+export const HELD_TITLE_BAR_MIN_WIDTH_SHARE: number = 0.6;
+
 /**
  * The one source of "this pane draws a title bar": the element the drag was
- * picked up by (the drag handle), measured at the press against what is held
- * (the pane, or a group's frame). It is the title bar when it is a strip along
- * the top of what is held: it starts at or below its top edge, ends above its
- * middle and is less than half its height. Returns where the title bar ends,
- * px from the held frame's top, or `null` (no title bar: the handle is the
- * whole pane, sits lower, or is outside it, like a tab torn off a group).
+ * picked up by (the drag handle), measured at the press (or the rearm of a
+ * continued drag) against what is held (the pane, or a group's frame). It is
+ * the title bar when it is a strip across the top: it starts within
+ * {@link HELD_TITLE_BAR_TOP_SLACK_PX} of the frame's top edge, or of the
+ * pane's top edge inside it (`leafTop`: a pane under a group's tab strip),
+ * spans at least {@link HELD_TITLE_BAR_MIN_WIDTH_SHARE} of the frame's width,
+ * and ends above the frame's middle. Returns where the title bar ends, px from
+ * the held frame's top, or `null`: no title bar (the handle is the whole pane,
+ * a small grip, sits lower, or is outside it, like a tab torn off a group).
  */
-export function measureHeldTitleBar(frame: HeldLookRect, handle: HeldLookRect): number | null {
-  if (frame.height <= 0 || handle.height <= 0 || handle.width <= 0) {
+export function measureHeldTitleBar(
+  frame: HeldLookRect,
+  handle: HeldLookRect,
+  leafTop: number = 0,
+): number | null {
+  if (frame.height <= 0 || frame.width <= 0 || handle.height <= 0 || handle.width <= 0) {
     return null;
   }
   const top: number = handle.y - frame.y;
   const bottom: number = top + handle.height;
-  // Half a pixel of slack for sub-pixel layout at the frame's top edge.
-  if (top < -0.5 || bottom <= 0) {
+  const startsAtTop: boolean =
+    (top >= -0.5 && top <= HELD_TITLE_BAR_TOP_SLACK_PX) ||
+    (top >= leafTop - 0.5 && top <= leafTop + HELD_TITLE_BAR_TOP_SLACK_PX);
+  if (!startsAtTop || bottom <= 0) {
+    return null;
+  }
+  if (handle.width < frame.width * HELD_TITLE_BAR_MIN_WIDTH_SHARE) {
     return null;
   }
   if (handle.height >= frame.height / 2 || bottom > frame.height / 2) {
@@ -122,8 +140,8 @@ export function fullHeldLookFrame(geometry: HeldLookGeometry): HeldLookFrame {
 }
 
 /**
- * What `look` draws at `amount` (0 the full pane, 1 the look over a target;
- * clamped into 0..1).
+ * What `look` draws at `amount` (0 the full pane, 1 the look; clamped into
+ * 0..1).
  *
  * - `"title-bar"`: the frame keeps its top edge and its width and loses the
  *   pane's height below the title bar (a group's strip below the pane is
@@ -134,7 +152,7 @@ export function fullHeldLookFrame(geometry: HeldLookGeometry): HeldLookFrame {
  * - `"fade"`: opacity from 1 to {@link HELD_FADE_OPACITY}.
  * - `"none"`: the full pane.
  */
-export function heldLookFrame(look: HeldLook, amount: number, geometry: HeldLookGeometry): HeldLookFrame {
+export function heldLookFrame(look: ResolvedHeldLook, amount: number, geometry: HeldLookGeometry): HeldLookFrame {
   const full: HeldLookFrame = fullHeldLookFrame(geometry);
   const k: number = Math.min(1, Math.max(0, amount));
   if (k === 0 || look === "none") {
@@ -172,20 +190,24 @@ export interface HeldLookMotionOptions {
   readonly omega: number;
   /** Read on every change: when true, the amount snaps. */
   readonly reducedMotion: () => boolean;
-  /** Called with the new amount after every change of it (a step, a snap). */
+  /** Called with the new amount after every step of it (not on a snap: the caller draws that). */
   readonly onChange: (amount: number) => void;
 }
 
-/** The amount of a held pane's look, moving between 0 (full) and 1 (over a target). */
+/** The amount of a held pane's look, moving between 0 (full) and 1 (the look). */
 export interface HeldLookMotion {
   /** The amount now, 0..1. */
   readonly amount: number;
   /** Whether it is moving. */
   readonly moving: boolean;
-  /** Head for the look over a target (`true`) or the full pane (`false`), from where it is now. */
-  to(overTarget: boolean): void;
+  /**
+   * Head for the look (`true`) or the full pane (`false`), from where it is
+   * now; each step after this call is reported to `onChange`. Under reduced
+   * motion it is there at once and nothing is reported: the caller draws it.
+   */
+  to(inLook: boolean): void;
   /** Be at the full pane (`false`) or the look (`true`) now, at rest (a new lift). */
-  jumpTo(overTarget: boolean): void;
+  jumpTo(inLook: boolean): void;
   /** Change the tempo; a move in flight carries on at the new tempo. */
   configure(options: { readonly omega: number }): void;
   /** Stop stepping. */
@@ -220,17 +242,16 @@ export function createHeldLookMotion(options: HeldLookMotionOptions): HeldLookMo
     get moving(): boolean {
       return stop != null;
     },
-    to(overTarget: boolean): void {
+    to(inLook: boolean): void {
       if (disposed) {
         return;
       }
-      const goal: number = overTarget ? 1 : 0;
+      const goal: number = inLook ? 1 : 0;
       if (options.reducedMotion()) {
+        // A snap: the caller draws the pane at the new amount itself (it
+        // places the pane right after), so nothing is drawn from here.
         halt();
-        if (settle.value !== goal || settle.target !== goal) {
-          settle.jumpTo(goal);
-          notify();
-        }
+        settle.jumpTo(goal);
         return;
       }
       if (settle.target === goal && (stop != null || settle.value === goal)) {
@@ -251,12 +272,12 @@ export function createHeldLookMotion(options: HeldLookMotionOptions): HeldLookMo
         });
       }
     },
-    jumpTo(overTarget: boolean): void {
+    jumpTo(inLook: boolean): void {
       if (disposed) {
         return;
       }
       halt();
-      settle.jumpTo(overTarget ? 1 : 0);
+      settle.jumpTo(inLook ? 1 : 0);
     },
     configure(next: { readonly omega: number }): void {
       settle.configure({ omega: next.omega, restDelta: HELD_LOOK_REST_DELTA });

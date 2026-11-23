@@ -95,7 +95,7 @@ import {
   heldLookFrame,
   measureHeldTitleBar,
   resolveHeldLook,
-  type HeldLook,
+  type ResolvedHeldLook,
   type HeldLookFrame,
   type HeldLookGeometry,
   type HeldLookMotion,
@@ -597,31 +597,84 @@ function heldLookGeometryOf(lift: {
   };
 }
 
+/** What was last written on the held look layer, so an unchanged look writes nothing. */
+interface HeldLookLayerWrite {
+  layer: HTMLElement | null;
+  transform: string;
+  origin: string;
+  opacity: string;
+}
+
 /**
  * Draw the held look's scale (about `origin`, the grab point in the layer's
  * px) and opacity on the lifted pane's look layer; the full look writes
- * nothing.
+ * nothing. Only what changed since `last` is written.
  */
 function writeHeldLookLayer(
   layer: HTMLElement | null,
   look: HeldLookFrame,
-  origin: DragMachinePoint,
+  originX: number,
+  originY: number,
+  last: HeldLookLayerWrite,
 ): void {
   if (layer == null) {
     return;
   }
-  if (look.scale === 1) {
-    layer.style.removeProperty("transform");
-    layer.style.removeProperty("transform-origin");
-  } else {
-    layer.style.transformOrigin = `${Math.round(origin.x * 100) / 100}px ${Math.round(origin.y * 100) / 100}px`;
-    layer.style.transform = `scale(${look.scale})`;
+  if (last.layer !== layer) {
+    last.layer = layer;
+    last.transform = "";
+    last.origin = "";
+    last.opacity = "";
   }
-  if (look.opacity === 1) {
-    layer.style.removeProperty("opacity");
-  } else {
-    layer.style.opacity = String(look.opacity);
+  const transform: string = look.scale === 1 ? "" : `scale(${look.scale})`;
+  const origin: string =
+    look.scale === 1 ? "" : `${Math.round(originX * 100) / 100}px ${Math.round(originY * 100) / 100}px`;
+  const opacity: string = look.opacity === 1 ? "" : String(look.opacity);
+  if (origin !== last.origin) {
+    last.origin = origin;
+    if (origin === "") {
+      layer.style.removeProperty("transform-origin");
+    } else {
+      layer.style.transformOrigin = origin;
+    }
   }
+  if (transform !== last.transform) {
+    last.transform = transform;
+    if (transform === "") {
+      layer.style.removeProperty("transform");
+    } else {
+      layer.style.transform = transform;
+    }
+  }
+  if (opacity !== last.opacity) {
+    last.opacity = opacity;
+    if (opacity === "") {
+      layer.style.removeProperty("opacity");
+    } else {
+      layer.style.opacity = opacity;
+    }
+  }
+}
+
+/**
+ * The drag handle a continued drag (a spring-load rearm) goes by: the handle
+ * the drag was picked up by, measured again where it is now, when it is still
+ * on the page inside the pane's new seat (stable pane identity moves the same
+ * element there); else `null` (the pane was mounted afresh: no title bar to go
+ * by).
+ */
+export function resolveRearmHandle(
+  previous: { readonly element: HTMLElement } | null,
+  seat: HTMLElement,
+): { readonly element: HTMLElement; readonly rect: TilingClientRectLike } | null {
+  const element: HTMLElement | null = previous?.element ?? null;
+  // A group's strip sits beside its pane, inside the group's section.
+  const holder: Element = seat.closest("[data-group-id]") ?? seat;
+  if (element == null || !element.isConnected || !(holder.contains(element) || element.contains(seat))) {
+    return null;
+  }
+  const rect: DOMRect = element.getBoundingClientRect();
+  return { element, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
 }
 /**
  * Snap preview: the pointer must be this far inside a landing slot (CSS px,
@@ -4106,7 +4159,7 @@ const TilingRendererComponent = React.forwardRef<
     dragAnimationEnabled = true,
     dragPreview = "indicator",
     dragPreviewMakesRoom = false,
-    heldOverTarget = "auto",
+    heldLook = "auto",
     survivorReflowSpeedPercent = DEFAULT_DRAG_ANIMATION_SPEED_PERCENT,
     chromeFocusOutline = "suppress",
     showDropBorderHints = true,
@@ -4612,9 +4665,14 @@ const TilingRendererComponent = React.forwardRef<
   // continuation drag from here: the pointer is parked over a tab and may not
   // move again before the dwell fires.
   const lastDragClientPointRef = React.useRef<DragMachinePoint | null>(null);
-  // The drag handle the last press picked a pane up by (window-client px): the
-  // one source of whether the held pane draws a title bar (`measureHeldTitleBar`).
-  const pressHandleClientRectRef = React.useRef<TilingClientRectLike | null>(null);
+  // The drag handle the last press picked a pane up by, and its rect
+  // (window-client px) measured at the press, or again at a spring-load rearm:
+  // the one source of whether the held pane draws a title bar
+  // (`measureHeldTitleBar`).
+  const pressHandleRef = React.useRef<{
+    readonly element: HTMLElement;
+    readonly rect: TilingClientRectLike;
+  } | null>(null);
   // N3 — a spring-load rearm waiting for the destination tree. Set when the
   // wrapper ends the live drag as a claimed commit (step 3c); consumed by the
   // rearm layout effect once the machine is `idle` again and the destination
@@ -5348,8 +5406,11 @@ const TilingRendererComponent = React.forwardRef<
             height: layoutRect.height - stripPx,
           };
     // The handle the press picked it up by, against what is held, both in
-    // client px as measured at the press.
-    const handle: TilingClientRectLike | null = pressHandleClientRectRef.current;
+    // client px as measured at the press (or the rearm); the pane's top in
+    // the frame (under a group's strip) in client px too.
+    const handle: TilingClientRectLike | null = pressHandleRef.current?.rect ?? null;
+    const clientPerLayoutPx: number =
+      layoutRect.height > 0 ? dragState.anchorFootprint.height / layoutRect.height : 1;
     const titleBottomClient: number | null =
       handle == null
         ? null
@@ -5361,6 +5422,7 @@ const TilingRendererComponent = React.forwardRef<
               height: dragState.anchorFootprint.height,
             },
             { x: handle.left, y: handle.top, width: handle.width, height: handle.height },
+            (leafRect.y - layoutRect.y) * clientPerLayoutPx,
           );
     return {
       tileId: dragSourceTileId,
@@ -5386,37 +5448,56 @@ const TilingRendererComponent = React.forwardRef<
   liftGeometryRef.current = liftGeometry;
   const isPaneHeldRef = React.useRef<boolean>(isPaneHeld);
   isPaneHeldRef.current = isPaneHeld;
-  // ── The held pane's look over a target ───────────────────────────────────
-  // While the drag has a drop it would commit, the held pane changes look so
-  // it never hides the target or the indicator (`heldOverTarget`, the tile's
-  // own choice first); over its home, a refused place or free space it is
-  // drawn in full. The look is one amount (0 full, 1 the look) on the leaf
-  // motion's settle; every look keeps the grab point on the pointer. Drawing
-  // only: the targets and the drop never read it.
+  // ── The held pane's look ──────────────────────────────────────────────────
+  // From the lift the held pane glides into its look (`heldLook`, the tile's
+  // own choice first) and keeps it for the whole drag, wherever the pointer
+  // goes, so it never hides what it is over. It comes back to full size only
+  // as it lands (the leaf motion's handover: into its slot on a drop, home on
+  // a cancel), or while the snap preview has it sitting in a slot. The look is
+  // one amount (0 full, 1 the look) on the leaf motion's settle; every look
+  // keeps the grab point on the pointer. Drawing only: the targets and the
+  // drop never read it.
   const dragSourceTile: TilingTile | undefined =
     dragSourceTileId == null ? undefined : resolveTile(tiles, dragSourceTileId);
-  const heldLook: HeldLook | null =
+  const resolvedHeldLook: ResolvedHeldLook | null =
     liftGeometry == null
       ? null
       : resolveHeldLook({
-          renderer: heldOverTarget,
-          tile: dragSourceTile?.heldOverTarget,
+          renderer: heldLook,
+          tile: dragSourceTile?.heldLook,
           hasTitleBar: liftGeometry.titleBottom != null,
         });
-  const heldLookRef = React.useRef<HeldLook | null>(heldLook);
-  heldLookRef.current = heldLook;
-  const isHeldOverTarget: boolean = isPaneHeld && committableDropState != null;
+  const resolvedHeldLookRef = React.useRef<ResolvedHeldLook | null>(resolvedHeldLook);
+  resolvedHeldLookRef.current = resolvedHeldLook;
   const heldLookMotionRef = React.useRef<HeldLookMotion | null>(null);
   // The inner layer of the lifted wrapper the thumbnail scale and the fade are
   // written on (the wrapper's own box is measured to place it, so it carries
-  // no transform).
+  // no transform), and what was last written there.
   const heldLookLayerRef = React.useRef<HTMLDivElement | null>(null);
-  // A thumbnail the pane leaves the lifted wrapper as (a drop, a snap into a
-  // slot): the box it is drawn at then (viewport px), so its glide into the
-  // tree starts there instead of at its full size.
+  const heldLookLayerWriteRef = React.useRef<HeldLookLayerWrite>({
+    layer: null,
+    transform: "",
+    origin: "",
+    opacity: "",
+  });
+  // How the pane leaves the lifted wrapper (a drop, a cancel, a snap into a
+  // slot), as last placed: drawn at `rect` (viewport px, before the scale)
+  // with the look's scale (about the rect's top-left) and opacity. Its landing
+  // starts there and settles back to full size and solid (`LeafMotion.handover`).
   const heldLookHandoverRef = React.useRef<{
-    readonly tileId: string;
-    readonly box: TilingRect;
+    tileId: string | null;
+    readonly rect: { x: number; y: number; width: number; height: number };
+    scale: number;
+    opacity: number;
+  }>({ tileId: null, rect: { x: 0, y: 0, width: 0, height: 0 }, scale: 1, opacity: 1 });
+  // The pointer as the held pane was last placed (client px) and where that
+  // is in the viewport: a step of the look with the pointer where it was
+  // re-places the pane without measuring the viewport again.
+  const heldPointerRef = React.useRef<{
+    clientX: number;
+    clientY: number;
+    x: number;
+    y: number;
   } | null>(null);
   /** What the held look draws now, or `null` with nothing lifted. */
   const currentHeldLookFrame = React.useCallback((): HeldLookFrame | null => {
@@ -5425,7 +5506,7 @@ const TilingRendererComponent = React.forwardRef<
       return null;
     }
     const geometry: HeldLookGeometry = heldLookGeometryOf(lift);
-    const look: HeldLook | null = heldLookRef.current;
+    const look: ResolvedHeldLook | null = resolvedHeldLookRef.current;
     return look == null
       ? fullHeldLookFrame(geometry)
       : heldLookFrame(look, heldLookMotionRef.current?.amount ?? 0, geometry);
@@ -5433,28 +5514,42 @@ const TilingRendererComponent = React.forwardRef<
   /**
    * Where the lifted pane is drawn (viewport layout px), from a client point,
    * through the viewport's frame as it is now (scrolled, scaled): where the
-   * pointer holds it, in its held look, kept inside the stage
+   * pointer holds it, in its held look `look`, kept inside the stage
    * (`clampHeldRectToStage`). What is kept inside is what is SEEN (a
    * thumbnail's scaled box), and the frame moves with it. `frame` is the
    * frame's rect before any scale, `origin` the grab point the scale is about.
    * The pointer itself, and the drop it resolves, are not clamped.
+   * `samePointer`: the pointer has not moved since the last placement (a step
+   * of the look), so its viewport point is reused.
    */
   const heldRectAt = React.useCallback(
     (
       client: DragMachinePoint,
+      look: HeldLookFrame,
+      samePointer: boolean = false,
     ): { readonly frame: TilingRect; readonly origin: DragMachinePoint } | null => {
       const lift = liftGeometryRef.current;
-      const look: HeldLookFrame | null = currentHeldLookFrame();
-      if (lift == null || look == null) {
+      if (lift == null) {
         return null;
       }
-      const point: DragMachinePoint = clientToViewportPoint(
-        measureViewportClientFrame(viewportRef.current),
-        client,
-      );
+      const last = heldPointerRef.current;
+      let pointX: number;
+      let pointY: number;
+      if (samePointer && last != null && last.clientX === client.x && last.clientY === client.y) {
+        pointX = last.x;
+        pointY = last.y;
+      } else {
+        const point: DragMachinePoint = clientToViewportPoint(
+          measureViewportClientFrame(viewportRef.current),
+          client,
+        );
+        pointX = point.x;
+        pointY = point.y;
+        heldPointerRef.current = { clientX: client.x, clientY: client.y, x: pointX, y: pointY };
+      }
       const seen: TilingRect = {
-        x: point.x - lift.grab.x * look.scale,
-        y: point.y - look.anchorY * look.scale,
+        x: pointX - lift.grab.x * look.scale,
+        y: pointY - look.anchorY * look.scale,
         width: lift.layoutRect.width * look.scale,
         height: look.height * look.scale,
       };
@@ -5463,35 +5558,33 @@ const TilingRendererComponent = React.forwardRef<
       const dy: number = kept.y - seen.y;
       return {
         frame: {
-          x: point.x - lift.grab.x + dx,
-          y: point.y - look.anchorY + dy,
+          x: pointX - lift.grab.x + dx,
+          y: pointY - look.anchorY + dy,
           width: lift.layoutRect.width,
           height: look.height,
         },
-        origin: { x: point.x + dx, y: point.y + dy },
+        origin: { x: pointX + dx, y: pointY + dy },
       };
     },
-    [currentHeldLookFrame],
+    [],
   );
   /**
    * Put the lifted pane where the pointer is: held 1:1 (indicator) or settling
    * toward it (snap, not snapped), in its held look. Called from the raw
    * pointer listener, so the pane follows within the same task as the event,
-   * from the layout sync, and on every step of the look.
+   * from the layout sync, and on every step of the look (`samePointer`).
    */
   const placeHeldPane = React.useCallback(
-    (client: DragMachinePoint, flush: boolean): void => {
+    (client: DragMachinePoint, flush: boolean, samePointer: boolean = false): void => {
       const lift = liftGeometryRef.current;
       const motion: LeafMotion | null = leafMotionRef.current;
-      const held = heldRectAt(client);
+      if (lift == null || motion == null || !isPaneHeldRef.current) {
+        return;
+      }
+      // The look, once per placement.
       const look: HeldLookFrame | null = currentHeldLookFrame();
-      if (
-        lift == null ||
-        motion == null ||
-        held == null ||
-        look == null ||
-        !isPaneHeldRef.current
-      ) {
+      const held = look == null ? null : heldRectAt(client, look, samePointer);
+      if (look == null || held == null) {
         return;
       }
       const frameRect: TilingRect = held.frame;
@@ -5512,22 +5605,23 @@ const TilingRendererComponent = React.forwardRef<
       }
       // The thumbnail scales about the grab point and the fade sits on the
       // whole lifted pane (a group's strip included).
-      writeHeldLookLayer(heldLookLayerRef.current, look, {
-        x: origin.x - lift.layoutRect.x,
-        y: origin.y - lift.layoutRect.y,
-      });
-      heldLookHandoverRef.current =
-        look.scale < 1
-          ? {
-              tileId: lift.tileId,
-              box: {
-                x: origin.x + (rect.x - origin.x) * look.scale,
-                y: origin.y + (rect.y - origin.y) * look.scale,
-                width: rect.width * look.scale,
-                height: rect.height * look.scale,
-              },
-            }
-          : null;
+      writeHeldLookLayer(
+        heldLookLayerRef.current,
+        look,
+        origin.x - lift.layoutRect.x,
+        origin.y - lift.layoutRect.y,
+        heldLookLayerWriteRef.current,
+      );
+      // How it would leave the wrapper now: the pane's rect at its full scale,
+      // placed so that, scaled about its top-left, it is the box seen.
+      const handover = heldLookHandoverRef.current;
+      handover.tileId = lift.tileId;
+      handover.rect.x = origin.x + (rect.x - origin.x) * look.scale;
+      handover.rect.y = origin.y + (rect.y - origin.y) * look.scale;
+      handover.rect.width = rect.width;
+      handover.rect.height = rect.height;
+      handover.scale = look.scale;
+      handover.opacity = look.opacity;
       if (flush) {
         motion.flush();
       }
@@ -5545,7 +5639,7 @@ const TilingRendererComponent = React.forwardRef<
       onChange: (): void => {
         const pointer: DragMachinePoint | null = lastDragClientPointRef.current;
         if (pointer != null) {
-          placeHeldPane(pointer, true);
+          placeHeldPane(pointer, true, true);
         }
       },
     });
@@ -5561,27 +5655,39 @@ const TilingRendererComponent = React.forwardRef<
   React.useLayoutEffect((): void => {
     heldLookMotionRef.current?.configure({ omega: leafMotionOmega });
   }, [leafMotionOmega]);
-  // A new lift starts in full; then the look heads for the target look while
-  // the drag is over a target and back to full when it is not.
+  // Every time the pane is lifted into the wrapper (the lift, or leaving a
+  // snap slot) it starts in full and glides into its look, then keeps it.
+  // Out of the wrapper (it landed, or sits in a snap slot) the leaf motion's
+  // handover takes it back to full size.
   const heldLookLiftRef = React.useRef<typeof liftGeometry>(null);
+  const heldLookWasHeldRef = React.useRef<boolean>(false);
   React.useLayoutEffect((): void => {
     const look: HeldLookMotion | null = heldLookMotionRef.current;
     if (look == null) {
       return;
     }
-    if (heldLookLiftRef.current !== liftGeometry) {
-      heldLookLiftRef.current = liftGeometry;
-      if (liftGeometry != null) {
+    const held: boolean = liftGeometry != null && isPaneHeld;
+    const relift: boolean =
+      held && (heldLookLiftRef.current !== liftGeometry || !heldLookWasHeldRef.current);
+    heldLookLiftRef.current = liftGeometry;
+    heldLookWasHeldRef.current = held;
+    if (!held) {
+      if (liftGeometry == null) {
         look.jumpTo(false);
-        heldLookHandoverRef.current = null;
+      }
+      return;
+    }
+    if (relift) {
+      look.jumpTo(false);
+      heldLookHandoverRef.current.tileId = null;
+      // A pane coming back out of a snap slot may still be settling from
+      // its handover: the wrapper draws its look from here.
+      if (liftGeometry != null) {
+        leafMotionRef.current?.endHandover(liftGeometry.tileId);
       }
     }
-    if (liftGeometry != null) {
-      look.to(isHeldOverTarget);
-    } else {
-      look.jumpTo(false);
-    }
-  }, [isHeldOverTarget, liftGeometry]);
+    look.to(true);
+  }, [isPaneHeld, liftGeometry]);
   // The lifted wrapper is `position: fixed`, laid out at the pane's place at
   // the lift; the pane in it is drawn inside the viewport (`heldRectAt`), so
   // nothing past the viewport's edge needs it unclipped. Its left / top are
@@ -5807,13 +5913,19 @@ const TilingRendererComponent = React.forwardRef<
           motion.open(leafId);
         }
       } else {
-        // A pane that leaves the lifted wrapper as a thumbnail (a drop, a snap
-        // into a slot) is drawn at that box from now on: its glide into the
-        // tree starts there, not at its full size.
+        // A pane that leaves the lifted wrapper (a drop, a cancel, a snap into
+        // a slot) lands from its look: drawn where it was seen, at the look's
+        // scale and opacity, which settle back to full and solid together
+        // with its glide into place. (A fold is already in its drawn rect.)
         const handover = heldLookHandoverRef.current;
-        if (handover != null && handover.tileId === leafId) {
-          heldLookHandoverRef.current = null;
-          motion.hold(leafId, handover.box);
+        if (handover.tileId === leafId) {
+          handover.tileId = null;
+          if (handover.scale !== 1 || handover.opacity !== 1) {
+            motion.handover(leafId, handover.rect, {
+              scale: handover.scale,
+              opacity: handover.opacity,
+            });
+          }
         }
         motion.target(leafId, rect);
       }
@@ -8436,6 +8548,11 @@ const TilingRendererComponent = React.forwardRef<
       rearmGroup != null && rearmGroup.members.length >= 2
         ? groupFrameClientRect(seatRect)
         : seatRect;
+    // The handle the drag was picked up by, measured again on the new seat
+    // (the same element under stable pane identity), so the continued drag's
+    // look is decided from the pane held now; a handle that is gone (the pane
+    // was mounted afresh) leaves no title bar to go by.
+    pressHandleRef.current = resolveRearmHandle(pressHandleRef.current, seatElement);
     dispatchDrag({
       type: "REARM",
       pointerId: request.pointerId,
@@ -8858,7 +8975,10 @@ const TilingRendererComponent = React.forwardRef<
       onLiveHitLogChange?.(null);
       const anchor: TilingClientRectLike = tabMemberId == null ? frameRect : paneRect;
       lastDragClientPointRef.current = { x: event.clientX, y: event.clientY };
-      pressHandleClientRectRef.current = event.currentTarget.getBoundingClientRect();
+      pressHandleRef.current = {
+        element: event.currentTarget,
+        rect: event.currentTarget.getBoundingClientRect(),
+      };
       dispatchDrag({
         type: "POINTER_DOWN",
         pointerId: event.nativeEvent.pointerId,
@@ -9139,7 +9259,10 @@ const TilingRendererComponent = React.forwardRef<
               ? groupFrameClientRect(paneRect)
               : paneRect;
             lastDragClientPointRef.current = { x: event.clientX, y: event.clientY };
-            pressHandleClientRectRef.current = event.currentTarget.getBoundingClientRect();
+            pressHandleRef.current = {
+              element: event.currentTarget,
+              rect: event.currentTarget.getBoundingClientRect(),
+            };
             dispatchDrag({
               type: "POINTER_DOWN",
               pointerId: event.nativeEvent.pointerId,
@@ -10126,8 +10249,7 @@ const TilingRendererComponent = React.forwardRef<
         <div
           ref={heldLookLayerRef}
           className="flex h-full w-full"
-          data-hpt-held-look={heldLook ?? undefined}
-          data-hpt-held-over-target={isHeldOverTarget ? "" : undefined}
+          data-hpt-held-look={resolvedHeldLook ?? undefined}
         >
           {renderBranch(
             // A dragged group is lifted whole: it renders as a group (strip and
@@ -10157,7 +10279,7 @@ const TilingRendererComponent = React.forwardRef<
           width: dropIndicatorRect.width,
           height: dropIndicatorRect.height,
           zIndex:
-            heldLook === "fade"
+            resolvedHeldLook === "fade"
               ? DROP_INDICATOR_OVER_FADED_PANE_Z_INDEX
               : DROP_INDICATOR_Z_INDEX,
         }}

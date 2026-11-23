@@ -1550,12 +1550,12 @@ export interface TilingTile {
    */
   titleBarContent?: React.ReactNode;
   /**
-   * How this pane looks while it is held over a drop target. When set, it beats
-   * the renderer's {@link TilingRendererCommonProps.heldOverTarget} for this
-   * pane (`"auto"` included); omit it to follow the renderer. See
-   * {@link TilingHeldOverTarget}.
+   * How this pane looks while it is held in a drag. When set, it beats the
+   * renderer's {@link TilingRendererCommonProps.heldLook} for this pane
+   * (`"auto"` included); omit it to follow the renderer. See
+   * {@link TilingHeldLook}.
    */
-  heldOverTarget?: TilingHeldOverTarget;
+  heldLook?: TilingHeldLook;
 }
 
 /**
@@ -2786,10 +2786,9 @@ export type TilingRendererModeProps =
 export type TilingDragPreview = "indicator" | "snap";
 
 /**
- * How a held pane looks while it is over a drop target, so it never hides what
- * it is over (the target and the drop indicator) — see
- * {@link TilingRendererCommonProps.heldOverTarget}. Over its home, a refused
- * place or free space the pane is always drawn in full.
+ * How a held pane looks for the whole drag, from the lift until it lands, so
+ * it never hides what it is over — see
+ * {@link TilingRendererCommonProps.heldLook}.
  *
  * - `"auto"` — `"title-bar"` when the pane draws a title bar, else `"thumbnail"`.
  * - `"title-bar"` — the pane folds to its own title bar at the pointer.
@@ -2798,7 +2797,7 @@ export type TilingDragPreview = "indicator" | "snap";
  *   indicator.
  * - `"none"` — the pane stays full size and solid.
  */
-export type TilingHeldOverTarget = "auto" | "title-bar" | "thumbnail" | "fade" | "none";
+export type TilingHeldLook = "auto" | "title-bar" | "thumbnail" | "fade" | "none";
 
 /** Window-client point (CSS px) the host reports for an external hover / drop. */
 export interface TilingClientPoint {
@@ -3056,20 +3055,26 @@ export interface TilingRendererCommonProps {
    */
   dragPreviewMakesRoom?: boolean;
   /**
-   * How the held pane looks while it is over a drop target (`dragMode:
-   * "live"`), so it never hides the target or the drop indicator. "Over a
-   * target" means the drag has a drop it would commit; over the pane's home, a
-   * refused place or free space it is drawn in full. The pointer keeps its grab
-   * point on the pane in every look, and the change glides both ways on the
-   * pane motion's settle curve (it snaps under `prefers-reduced-motion` or with
-   * `dragAnimationEnabled: false`). Drawing only: targets, validity and the
-   * drop are the same for every look.
+   * How the held pane looks for the whole drag (`dragMode: "live"`), so it
+   * never hides what it is over (a target, the drop indicator, the layout).
+   * At the lift the pane glides from full size into its look and keeps it
+   * wherever the pointer goes: over a target, its home, a refused place or
+   * free space. It comes back to full size only as it lands: settling into
+   * its slot on a drop, or home on a release there or a cancel. In the snap
+   * preview the pane is drawn at full size while it sits in a slot (it is the
+   * landing mark then) and glides back into its look when it leaves it. The
+   * pointer keeps its grab point on the pane in every look; the changes glide
+   * on the pane motion's settle curve (they snap under
+   * `prefers-reduced-motion` or with `dragAnimationEnabled: false`). Drawing
+   * only: targets, validity and the drop are the same for every look.
    *
    * - `"auto"` (default): `"title-bar"` when the pane draws a title bar, else
    *   `"thumbnail"`. A pane draws a title bar when the element its drag was
    *   picked up by (the one wired to `onHandlePointerDown`: the built-in
    *   pane's header, a `TilingDragHandle`, a group's tab strip) is a strip
-   *   along the top of what is held, shorter than half of it.
+   *   across the top of what is held: starting at its top edge (or the top of
+   *   the pane under a group's strip), at least 60 % of its width, ending
+   *   above its middle.
    * - `"title-bar"`: the pane folds to that title bar at the pointer (a pane
    *   with no title bar shrinks to a thumbnail instead).
    * - `"thumbnail"`: the pane scales down to about 40 % around the grab point.
@@ -3077,11 +3082,11 @@ export interface TilingRendererCommonProps {
    *   indicator draws above it.
    * - `"none"`: the pane stays full size and solid.
    *
-   * A tile's own {@link TilingTile.heldOverTarget} beats this prop for that
-   * pane. A `dragMode: "preview"` drag holds no pane under the pointer (the
-   * source stays dimmed in its slot), so nothing changes there.
+   * A tile's own {@link TilingTile.heldLook} beats this prop for that pane. A
+   * `dragMode: "preview"` drag holds no pane under the pointer (the source
+   * stays dimmed in its slot), so nothing changes there.
    */
-  heldOverTarget?: TilingHeldOverTarget;
+  heldLook?: TilingHeldLook;
   /**
    * Speed of pane motion: every layout change (open, close, swap, a keyboard
    * move, maximize / restore, a drag's reflow, a layout set from outside)
