@@ -745,22 +745,24 @@ function viewportRectOf(frame: ViewportClientFrame, r: { left: number; top: numb
  * The drag's parts, measured ONCE at the lift from the DOM as it stands then: each group's tab strip (its band from
  * the slot's top, where its first tab starts, the gap between tabs, and each tab's width by tile) and each pane's
  * host drop elements (`groupDropTargetRef`, as insets from its slot's edges). The hit lays them on whatever rect its
- * layout draws the pane at; nothing is measured again during the drag.
+ * layout draws the pane at; nothing is measured again during the drag. Each group's tab widths are its own, so a tab
+ * with no measure (one dropped in) takes the mean of that group's tabs.
+ * @internal
  */
-function measureDragPartGeometry(
-  port: MeasurementPort,
+export function measureDragPartGeometry(
+  port: Pick<MeasurementPort, "measureGroupTabStripRect" | "measureGroupTabMemberRects" | "measureGroupDropTargetRects">,
   inputs: DragHitInputs,
   frame: ViewportClientFrame,
 ): TilingDragPartGeometry {
   let strip: TilingDragPartGeometry["strip"];
   const strips: Map<string, NonNullable<TilingDragPartGeometry["strip"]>> = new Map();
-  const widths: Map<string, number> = new Map<string, number>();
   for (const group of collectGroups(inputs.layout)) {
     const slot: TilingPaneFootprint | undefined = inputs.footprints.get(group.activeMemberId);
     const stripRect: DOMRect | null = port.measureGroupTabStripRect(group.id);
     if (slot == null || stripRect == null) {
       continue;
     }
+    const widths: Map<string, number> = new Map<string, number>();
     const band: TilingRect = viewportRectOf(frame, stripRect);
     const tabs: TilingRect[] = port
       .measureGroupTabMemberRects(group.id)
