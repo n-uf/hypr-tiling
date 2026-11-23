@@ -169,9 +169,11 @@ function CountedPane({
 function Host({
   onLayoutChange,
   mounts,
+  grouping = true,
 }: {
   onLayoutChange: (next: TilingLayoutNode) => void;
   mounts: Map<string, number>;
+  grouping?: boolean;
 }): React.ReactElement {
   const [layout, setLayout] = React.useState<TilingLayoutNode>(LAYOUT);
   return React.createElement(TilingRenderer, {
@@ -184,7 +186,7 @@ function Host({
     },
     paneIdentity: "stable",
     interaction: {
-      grouping: { enable: true, showGroupTabStrip: false },
+      grouping: { enable: grouping, showGroupTabStrip: false },
       dragRecovery: { enable: false },
     },
     renderTile: (args: TilingRenderTileProps): React.ReactNode =>
@@ -279,6 +281,40 @@ describe("host groupDropTargetRef — renderer commit", (): void => {
     expect([...memberIds].sort()).toEqual(["leaf:a", "leaf:b"]);
     expect(groups[0].activeMemberId).toBe("leaf:a");
     expect(mounts.get("a")).toBe(1);
+  });
+
+  it("with grouping off a header drop over a host group-drop target commits no group", async (): Promise<void> => {
+    const mounts: Map<string, number> = new Map<string, number>();
+    const onLayoutChange = jest.fn((_next: TilingLayoutNode): void => {});
+    const view = render(React.createElement(Host, { onLayoutChange, mounts, grouping: false }));
+    await flushFrames();
+    const baseline: number = onLayoutChange.mock.calls.length;
+    const header: HTMLElement | null = view.container.querySelector('header[data-group-drop-target="leaf:a"]');
+    if (header == null) {
+      throw new Error("expected leaf:a group-drop target");
+    }
+    await act(async (): Promise<void> => {
+      dispatchPointer(header, "pointerdown", { clientX: 40, clientY: 50 });
+    });
+    await flushFrames();
+    await act(async (): Promise<void> => {
+      dispatchPointer(window, "pointermove", { clientX: 80, clientY: 50 });
+    });
+    await flushFrames();
+    await act(async (): Promise<void> => {
+      dispatchPointer(window, "pointermove", { clientX: 560, clientY: 55 });
+    });
+    await flushFrames();
+    await act(async (): Promise<void> => {
+      dispatchPointer(window, "pointerup", { clientX: 560, clientY: 55 });
+    });
+    await flushFrames();
+    const commits: ReadonlyArray<TilingLayoutNode> = onLayoutChange.mock.calls
+      .slice(baseline)
+      .map((call: ReadonlyArray<unknown>): TilingLayoutNode => call[0] as TilingLayoutNode);
+    // The pane lands on b's top side instead: the host element is not a join target while grouping is off.
+    expect(commits).toHaveLength(1);
+    expect(collectGroups(commits[0])).toHaveLength(0);
   });
 });
 
