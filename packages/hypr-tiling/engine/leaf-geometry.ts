@@ -141,32 +141,27 @@ function geometryConfigOf(config: TilingLayoutConfig): TilingLayoutConfig {
 }
 
 /**
- * `layout` as placement's split tree, with the options that read its sizing and floors under `config` (a snapshot of
- * the fields it reads, taken here).
+ * `layout` as placement's split tree, each slot (a leaf, or a group) keyed by `keyOf`. Each split carries the id
+ * `splitIdOf` gives it (asked before its children are mapped), its axis, its ratio (as {@link storedRatio} reads it; a
+ * master split's as stored) and its own gap, or for a master split its count and side and no gap. `seen` is told every
+ * mapped node and the layout node it stands for, so a host can answer placement's per-child callbacks from it.
+ * @internal
  */
-function toSplitTree(layout: TilingLayoutNode, liveConfig: TilingLayoutConfig): TilingSplitTree {
-  const config: TilingLayoutConfig = geometryConfigOf(liveConfig);
-  const slots: Array<TilingLeafNode | TilingGroupNode> = [];
-  const shown: Array<string | null> = [];
-  const splits: Map<string, TilingSplitNode> = new Map<string, TilingSplitNode>();
-
-  const map = (node: TilingLayoutNode): Split<TilingPaneKey> => {
+export function mapLayoutToSplit<K>(
+  layout: TilingLayoutNode,
+  keyOf: (slot: TilingLeafNode | TilingGroupNode) => K,
+  splitIdOf: (split: TilingSplitNode) => string,
+  seen?: (mapped: Split<K>, node: TilingLayoutNode) => void,
+): Split<K> {
+  const map = (node: TilingLayoutNode): Split<K> => {
     if (node.kind !== "split") {
-      const key: TilingPaneKey = slots.length;
-      slots.push(node);
-      shown.push(
-        node.kind === "leaf"
-          ? node.id
-          : node.members.some((member: TilingLeafNode): boolean => member.id === node.activeMemberId)
-            ? node.activeMemberId
-            : null,
-      );
-      return { pane: key };
+      const pane: Split<K> = { pane: keyOf(node) };
+      seen?.(pane, node);
+      return pane;
     }
-    const id: string = String(splits.size);
-    splits.set(id, node);
+    const id: string = splitIdOf(node);
     const master: boolean = node.layoutMode === "master";
-    const split: { id: string; a: Split<TilingPaneKey>; b: Split<TilingPaneKey>; axis: "x" | "y"; ratio: number; gap?: number; master?: MasterOptions } = {
+    const split: { id: string; a: Split<K>; b: Split<K>; axis: "x" | "y"; ratio: number; gap?: number; master?: MasterOptions } = {
       id,
       a: map(node.first),
       b: map(node.second),
@@ -181,37 +176,86 @@ function toSplitTree(layout: TilingLayoutNode, liveConfig: TilingLayoutConfig): 
     } else if (node.gapPx != null) {
       split.gap = node.gapPx;
     }
+    seen?.(split, node);
     return split;
   };
-  const tree: Split<TilingPaneKey> = map(layout);
+  return map(layout);
+}
 
-  const nodeOf = (child: Split<TilingPaneKey>): TilingLayoutNode =>
-    ("pane" in child ? slots[child.pane] : child.id !== undefined ? splits.get(child.id) : undefined) ?? NEW_SPLIT;
-  const fixed = (child: Split<TilingPaneKey>, axis: "x" | "y"): FixedLength | undefined => {
-    const node: TilingLayoutNode = nodeOf(child);
+/**
+ * The layout options of a mapped tree under `liveConfig` (a snapshot of the fields the geometry reads, taken here):
+ * the config's gap and handle, and the fixed lengths and floors of each child, read off the layout node `nodeOf`
+ * says it stands for (a split a drop made, which no node stands for, has no sizing and no floors). `splitNodeOf`
+ * gives the split node a floor's split stands for, for its own `minPaneSizePx`.
+ * @internal
+ */
+export function sizingSplitOptions<K>(
+  liveConfig: TilingLayoutConfig,
+  nodeOf: (child: Split<K>) => TilingLayoutNode | undefined,
+  splitNodeOf: (split: Split<K>) => TilingSplitNode | undefined,
+): SplitOptions<K> {
+  const config: TilingLayoutConfig = geometryConfigOf(liveConfig);
+  const fixed = (child: Split<K>, axis: "x" | "y"): FixedLength | undefined => {
+    const node: TilingLayoutNode = nodeOf(child) ?? NEW_SPLIT;
     const along: TilingSplitAxis = engineAxis(axis);
     if (!isStaticAlongSplitAxis(node, along)) {
       return undefined;
     }
     return { length: pinPx(node, splitAxisDimension(along)) ?? 0, keep: node.kind === "leaf" && node.collapsed === true };
   };
-  const fixedAcross = (child: Split<TilingPaneKey>, axis: "x" | "y"): number | undefined => {
-    const node: TilingLayoutNode = nodeOf(child);
+  const fixedAcross = (child: Split<K>, axis: "x" | "y"): number | undefined => {
+    const node: TilingLayoutNode = nodeOf(child) ?? NEW_SPLIT;
     const along: TilingSplitAxis = engineAxis(axis);
     return isStaticOnCrossAxis(node, along) ? (pinPx(node, crossAxisDimension(along)) ?? undefined) : undefined;
   };
-  const floor = (child: Split<TilingPaneKey>, axis: "x" | "y", split: Split<TilingPaneKey>): MinLength => {
-    const splitNode: TilingSplitNode | undefined = "pane" in split || split.id === undefined ? undefined : splits.get(split.id);
-    const resolved = resolveAlongAxisFloor(nodeOf(child), engineAxis(axis), splitNode?.minPaneSizePx, config);
+  const floor = (child: Split<K>, axis: "x" | "y", split: Split<K>): MinLength => {
+    const resolved = resolveAlongAxisFloor(nodeOf(child) ?? NEW_SPLIT, engineAxis(axis), splitNodeOf(split)?.minPaneSizePx, config);
     return { min: resolved.floorPx, net: !resolved.isChromeFloor };
   };
+  return { gap: config.gapPx, handle: config.handleSizePx, fixed, fixedAcross, floor };
+}
+
+/**
+ * `layout` as placement's split tree, with the options that read its sizing and floors under `config` (a snapshot of
+ * the fields it reads, taken here).
+ */
+function toSplitTree(layout: TilingLayoutNode, liveConfig: TilingLayoutConfig): TilingSplitTree {
+  const slots: Array<TilingLeafNode | TilingGroupNode> = [];
+  const shown: Array<string | null> = [];
+  const splits: Map<string, TilingSplitNode> = new Map<string, TilingSplitNode>();
+
+  const tree: Split<TilingPaneKey> = mapLayoutToSplit<TilingPaneKey>(
+    layout,
+    (node: TilingLeafNode | TilingGroupNode): TilingPaneKey => {
+      const key: TilingPaneKey = slots.length;
+      slots.push(node);
+      shown.push(
+        node.kind === "leaf"
+          ? node.id
+          : node.members.some((member: TilingLeafNode): boolean => member.id === node.activeMemberId)
+            ? node.activeMemberId
+            : null,
+      );
+      return key;
+    },
+    (node: TilingSplitNode): string => {
+      const id: string = String(splits.size);
+      splits.set(id, node);
+      return id;
+    },
+  );
+
+  const nodeOf = (child: Split<TilingPaneKey>): TilingLayoutNode | undefined =>
+    "pane" in child ? slots[child.pane] : child.id !== undefined ? splits.get(child.id) : undefined;
+  const splitNodeOf = (split: Split<TilingPaneKey>): TilingSplitNode | undefined =>
+    "pane" in split || split.id === undefined ? undefined : splits.get(split.id);
 
   return {
     tree,
     slots,
     shown,
     splits,
-    options: { gap: config.gapPx, handle: config.handleSizePx, fixed, fixedAcross, floor },
+    options: sizingSplitOptions(liveConfig, nodeOf, splitNodeOf),
   };
 }
 
