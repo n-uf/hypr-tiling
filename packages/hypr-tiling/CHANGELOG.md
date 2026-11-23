@@ -24,6 +24,19 @@ the version number alone does not flag them.
   left; from then on the old place is resolved like any other.
 - **After a spring-loaded drop onto a workspace tab,** the pane's new seat is
   its place for the continued drag, the same way.
+- **A tall tab group fits where it fits.** Drag a whole group down past the
+  pane below it in its own column and the drop there is no longer refused:
+  the room check now frees the space the group leaves before asking whether
+  it fits at the new place, exactly as the release commits it. Before, it
+  counted only the dragged tab as moving and left the rest of the group in
+  its old space, so a tall group "had no room" (the ⊘ cursor, and the pane
+  below never made room). Single panes were already judged this way.
+- **Known limit: merging into the pane below by its title bar.** While a pane
+  is away from its place at the top of a column, the pane below grows into
+  that place, so its title bar lies inside the pane's own place, where a
+  release puts the layout back. To group the two, drag the pane below onto
+  the dragged pane's title bar instead. Side by side, or with the dragged
+  pane below, nothing changes.
 - **Engine API:** the `dragging` state of `DragMachineState` gains `atHome`
   (the pane's place is the target now) and `homeLost` (the page moved under
   the drag). `leftHome` keeps its meaning and decides nothing any more.
