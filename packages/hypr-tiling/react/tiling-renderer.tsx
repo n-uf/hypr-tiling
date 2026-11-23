@@ -184,6 +184,7 @@ import {
   deriveDropCommitTree,
   deriveDropPreviewTree,
   resolveTilingSwapPreview,
+  sameLayoutTree,
   tilingDragParts,
   tilingDragZoneRefusals,
   tilingHitPaneCenter,
@@ -864,10 +865,10 @@ function createDragHitSession(
 /**
  * The drag's hit session for a sample or a render (`known`, the one in use, or null).
  * - A new drag (another source leaf or subject, or none yet) builds one: its parts are measured now (`measure`), once.
- * - The same drag keeps it, whatever else changes: a new `config` object with the same values, a preview switched
- *   between snap and indicator (the basis is fixed at the lift), a re-render.
- * - The tree or the stage itself changed under the drag (a new `layout` object, a new viewport size, a config with
- *   other values): the hit is rebuilt on them, on the same basis, from the lift's part measures (no DOM is read),
+ * - The same drag keeps it, whatever else changes: a new `layout` or `config` object with the same tree or values, a
+ *   preview switched between snap and indicator (the basis is fixed at the lift), a re-render.
+ * - The tree or the stage itself changed under the drag (another tree, a new viewport size, a config with other
+ *   values): the hit is rebuilt on them, on the same basis, from the lift's part measures (no DOM is read),
  *   since the drag's places are the new tree's. Its hold starts afresh.
  * @internal
  */
@@ -884,7 +885,8 @@ export function nextDragHitSession(
     return createDragHitSession(inputs, sourceLeafId, subject, measure());
   }
   const sameConfig: boolean = known.config === inputs.config || JSON.stringify(known.config) === JSON.stringify(inputs.config);
-  if (known.layout === inputs.layout && known.width === inputs.width && known.height === inputs.height && sameConfig) {
+  // The same tree handed back as a new object is the same layout: the drag keeps its hit, and its hold.
+  if (known.width === inputs.width && known.height === inputs.height && sameConfig && sameLayoutTree(known.layout, inputs.layout)) {
     return known;
   }
   return createDragHitSession({ ...inputs, basis: known.basis }, sourceLeafId, subject, known.parts);

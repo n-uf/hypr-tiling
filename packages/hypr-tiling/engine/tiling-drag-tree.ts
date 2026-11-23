@@ -602,7 +602,7 @@ export function deriveDropCommitTree(params: {
   const place: TilingHeld<string> | undefined = target?.place;
   if (target != null && place != null && place.kind !== "home" && target.leafId !== sourceLeafId) {
     const drag =
-      params.drag != null && params.drag.lift.tree.layout === layout
+      params.drag != null && params.drag.lift.tree.layout != null && sameLayoutTree(params.drag.lift.tree.layout, layout)
         ? params.drag
         : createLayoutTilingDrag({
             layout,
@@ -619,6 +619,15 @@ export function deriveDropCommitTree(params: {
     }
   }
   return deriveCandidateTree(layout, sourceLeafId, target, subject);
+}
+
+/**
+ * Whether two layout trees are the same tree: the same object, or equal node for node (a host may hand back an equal
+ * tree as a new object). Compared by value only when the objects differ.
+ * @internal
+ */
+export function sameLayoutTree(a: TilingLayoutNode, b: TilingLayoutNode): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
 }
 
 /**
