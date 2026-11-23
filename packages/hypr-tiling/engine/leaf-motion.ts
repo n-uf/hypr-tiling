@@ -1,6 +1,8 @@
 import {
   SETTLE_TEMPO,
   createLayoutMotion,
+  createSettle,
+  type Settle,
   popIn,
   reveal,
   type DrawFrame,
@@ -57,8 +59,20 @@ export interface LeafMotionFrame {
   readonly reveal: RevealFrame;
   /** The pop-in of an opening leaf, or `null` once it has fully opened. */
   readonly pop: PopIn | null;
+  /**
+   * A held pane's look it lands from ({@link LeafMotion.handover}), settling
+   * to full and solid: a uniform scale about the drawn rect's top-left and an
+   * opacity; `null` once it has settled.
+   */
+  readonly look: LeafMotionLook | null;
   /** Whether the leaf is still moving (or popping in). */
   readonly moving: boolean;
+}
+
+/** A look a leaf is drawn with on top of its rect: a uniform scale (about the drawn rect's top-left) and an opacity. */
+export interface LeafMotionLook {
+  readonly scale: number;
+  readonly opacity: number;
 }
 
 /** What a write sees of the frame it draws. */
@@ -109,6 +123,16 @@ export interface LeafMotion {
   hold(id: string, rect: Rect, layout?: Rect): void;
   /** Pop the leaf in (uniform scale + opacity from {@link LEAF_MOTION_POP_IN_FROM}); a no-op under reduced motion. */
   open(id: string): void;
+  /**
+   * A held pane lands from its look: it is put at `rect` (where it was drawn,
+   * before the scale) with `look`, and the look settles to full and solid on
+   * the leaf's tempo while the next {@link LeafMotion.target} glides the rect
+   * into place, so the box it is seen as never jumps. Under reduced motion it
+   * is put at `rect` with no look.
+   */
+  handover(id: string, rect: Rect, look: LeafMotionLook): void;
+  /** Drop the leaf's look at once (it is held again: the holder draws the look). */
+  endHandover(id: string): void;
   /** Forget a leaf (it left the layout). */
   remove(id: string): void;
   /** Forget every leaf not in `ids`. */
@@ -142,7 +166,12 @@ interface LeafState {
   layout: Rect;
   /** It was opened and its pop-in hasn't finished. */
   opening: boolean;
+  /** The look it lands from, settling to full and solid, or `null`. */
+  look: { readonly scale: Settle<number>; readonly opacity: Settle<number> } | null;
 }
+
+/** A look's scale and opacity have arrived within this much of full and solid. */
+const LOOK_REST_DELTA: number = 0.0005;
 
 function sameRect(a: Rect, b: Rect): boolean {
   return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
@@ -183,7 +212,8 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
   let disposed: boolean = false;
 
   const popping = (item: LayoutItem, state: LeafState): boolean => state.opening && !item.shownSettled;
-  const isMoving = (item: LayoutItem, state: LeafState): boolean => !item.settled || popping(item, state);
+  const isMoving = (item: LayoutItem, state: LeafState): boolean =>
+    !item.settled || popping(item, state) || state.look != null;
   const anyMoving = (): boolean => {
     for (const [id, state] of leaves) {
       const item: LayoutItem | undefined = layout.get(id);
@@ -208,7 +238,9 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
     if (state.opening && item.shownSettled) {
       state.opening = false;
     }
-    return { id, drawn, target: state.layout, reveal: reveal(drawn, state.layout), pop, moving: isMoving(item, state) };
+    const look: LeafMotionLook | null =
+      state.look == null ? null : { scale: state.look.scale.value, opacity: state.look.opacity.value };
+    return { id, drawn, target: state.layout, reveal: reveal(drawn, state.layout), pop, look, moving: isMoving(item, state) };
   };
 
   /** Nothing moves any more: the leaves are at rest before the frame that brought them there is written. */
@@ -267,13 +299,25 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
       stopClock = layout.task((frame: FrameInfo): boolean => {
         time += frame.delta;
         delta = frame.delta;
+        // A look still settling keeps the frames coming once the rects rest.
+        let looking: boolean = false;
         for (const [id, state] of leaves) {
           const item: LayoutItem | undefined = layout.get(id);
           if (item != null && isMoving(item, state)) {
             dirty.add(id);
           }
+          // A look a pane lands from settles on the same frames.
+          if (state.look != null) {
+            const scaling: boolean = state.look.scale.step(frame.delta);
+            const fading: boolean = state.look.opacity.step(frame.delta);
+            if (!scaling && !fading) {
+              state.look = null;
+            } else {
+              looking = true;
+            }
+          }
         }
-        return false;
+        return looking;
       });
     }
   };
@@ -285,7 +329,7 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
       return { item: known, state };
     }
     const goal: Rect = copyRect(rect);
-    const fresh: LeafState = { goal, layout: goal, opening: false };
+    const fresh: LeafState = { goal, layout: goal, opening: false, look: null };
     leaves.set(id, fresh);
     return { item: layout.add(id, WRITTEN_IN_BATCHES, rect), state: fresh };
   };
@@ -295,6 +339,7 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
     const { item, state } = itemFor(id, rect);
     state.goal = copyRect(rect);
     state.layout = at != null ? copyRect(at) : state.goal;
+    state.look = null;
     item.jumpTo(state.layout);
     if (at != null) {
       item.hold(rect);
@@ -388,6 +433,29 @@ export function createLeafMotion(options: LeafMotionOptions): LeafMotion {
       item.show(true);
       dirty.add(id);
       ensureRunning();
+    },
+    handover(id: string, rect: Rect, look: LeafMotionLook): void {
+      if (disposed) {
+        return;
+      }
+      const state: LeafState = place(id, rect);
+      if (reducedMotion() || (look.scale === 1 && look.opacity === 1)) {
+        return;
+      }
+      const scale: Settle<number> = createSettle<number>(look.scale, { omega, restDelta: LOOK_REST_DELTA });
+      const opacity: Settle<number> = createSettle<number>(look.opacity, { omega, restDelta: LOOK_REST_DELTA });
+      scale.setTarget(1);
+      opacity.setTarget(1);
+      state.look = { scale, opacity };
+      ensureRunning();
+      layout.wake();
+    },
+    endHandover(id: string): void {
+      const state: LeafState | undefined = leaves.get(id);
+      if (state != null && state.look != null) {
+        state.look = null;
+        dirty.add(id);
+      }
     },
     remove(id: string): void {
       leaves.delete(id);
