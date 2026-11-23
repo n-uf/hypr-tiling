@@ -36,20 +36,26 @@ the version number alone does not flag them.
   (with `paneIdentity: "slot"` the pane is mounted afresh there, so the
   continued drag has no title bar).
 - **Drawing only.** Drop targets, validity and the committed layout are the
-  same in every look (the golden drag and drop fixtures are unchanged). A
+  same in every look (`heldLook` changes none of the golden drag and drop
+  fixtures). A
   `dragMode: "preview"` drag holds no pane under the pointer, so nothing
   changes there.
 - **A swap shows where the other pane goes.** Hold a pane over another
-  pane's middle (a swap), in either drop preview: the pane's old place opens
-  again (the neighbour that grew into it at the lift gives the room back),
-  the other pane is drawn in it, and a tinted wash in the swap colour with ⇄
-  and that pane's name marks it, with no frame, above the held pane. A
-  release does exactly what was shown. Off the swap the gap closes again as
+  pane's middle (a swap) and the pane's old place opens again (the
+  neighbour that grew into it at the lift gives the room back), marked by a
+  tinted wash in the swap colour with ⇄ and the other pane's name, with no
+  frame and no content, above the held pane. In the indicator preview the
+  other pane stays in its own slot and only the old place reopens; in the
+  snap preview the swap is drawn landed, the other pane already in the old
+  place under the wash. A release commits the swap, the same tree
+  `tilingDrag` lays out, in both. Off the swap the gap closes again as
   before. Before, the indicator preview kept the gap closed over a swap, so
   the place the other pane would land in was not on screen. The wash's
   colour is the default drop indicator's orange; set `--hpt-swap-color` on
   the renderer or an ancestor to change it. The swap's layout comes from
-  `@n-uf/placement/tiling`'s `tilingDrag`, the same tree the swap commits.
+  `@n-uf/placement/tiling`'s `tilingDrag`. The golden drag fixtures
+  `drag-home-return` and `drag-home-column` record the indicator frame held
+  over a swap, which is now the layout at the lift.
 
 ## 26.11.11 — 2026-11-22
 
