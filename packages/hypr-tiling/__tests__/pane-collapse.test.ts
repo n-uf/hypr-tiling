@@ -449,7 +449,7 @@ describe("collapsed drag re-parent — axis reconciliation (HT-PANE-COLLAPSE-DRA
       selectedSplitZone: "left",
       selectedSplitDistancePx: null,
       rejectedSplitReasons: [],
-      tuning: { centerRatio: 0.5, edgeThresholdRatio: 0.25, hysteresisPx: 6, devicePixelRatio: 1 },
+      tuning: { centerRatio: 0.5, edgeThresholdRatio: 0.25, devicePixelRatio: 1 },
     };
     const candidate: TilingLayoutNode = deriveCandidateTree(layout, "cases", target);
     const cases: TilingLeafNode | null = findLeafById(candidate, "cases");

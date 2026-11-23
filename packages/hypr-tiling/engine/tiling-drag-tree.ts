@@ -462,7 +462,7 @@ function dropStateBase(leafId: string, devicePixelRatio: number): TilingDropInte
     selectedSplitZone: null,
     selectedSplitDistancePx: null,
     rejectedSplitReasons: [],
-    tuning: { centerRatio: 0, edgeThresholdRatio: 0, hysteresisPx: 0, devicePixelRatio },
+    tuning: { centerRatio: 0, edgeThresholdRatio: 0, devicePixelRatio },
   };
 }
 

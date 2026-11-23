@@ -41,7 +41,7 @@ function intent(overrides: Partial<DragResolvedTarget>): DragResolvedTarget {
     selectedSplitZone: null,
     selectedSplitDistancePx: null,
     rejectedSplitReasons: [],
-    tuning: { centerRatio: 0.34, edgeThresholdRatio: 0.33, hysteresisPx: 6, devicePixelRatio: 1 },
+    tuning: { centerRatio: 0.34, edgeThresholdRatio: 0.33, devicePixelRatio: 1 },
     ...overrides,
   };
 }

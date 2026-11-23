@@ -2158,8 +2158,6 @@ export interface TilingDropIntentTuningState {
   centerRatio: number;
   /** Edge threshold fraction derived from the center ratio. */
   edgeThresholdRatio: number;
-  /** Boundary stickiness (pane-local CSS px) in effect. */
-  hysteresisPx: number;
   /** `window.devicePixelRatio` the geometry snapped to. */
   devicePixelRatio: number;
 }

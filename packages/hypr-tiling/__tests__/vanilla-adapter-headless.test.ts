@@ -65,7 +65,6 @@ function makeTarget(
     tuning: {
       centerRatio: 0.5,
       edgeThresholdRatio: 0.25,
-      hysteresisPx: 6,
       devicePixelRatio: 1,
     },
   };

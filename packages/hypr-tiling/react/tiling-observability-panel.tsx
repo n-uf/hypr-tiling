@@ -2104,7 +2104,6 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
                 <div>selected split candidate: {props.liveDropIntent?.selectedSplitZone ?? "none"}</div>
                 <div>selected split distance px: {props.liveDropIntent?.selectedSplitDistancePx?.toFixed(1) ?? "none"}</div>
                 <div>center ratio: {props.liveDropIntent?.tuning.centerRatio?.toFixed(2) ?? "none"}</div>
-                <div>hysteresis px: {props.liveDropIntent?.tuning.hysteresisPx?.toFixed(1) ?? "none"}</div>
                 <div>device pixel ratio: {props.liveDropIntent?.tuning.devicePixelRatio?.toFixed(2) ?? "none"}</div>
                 <div>target split id: {props.liveDropIntent?.targetSplitId ?? "none"}</div>
                 <div

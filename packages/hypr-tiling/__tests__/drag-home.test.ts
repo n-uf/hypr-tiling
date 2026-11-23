@@ -62,7 +62,7 @@ function target(leafId: string, zone: TilingLeafDropZone, action: TilingDropActi
     selectedSplitZone: zone === "center" ? null : "right",
     selectedSplitDistancePx: null,
     rejectedSplitReasons: [],
-    tuning: { centerRatio: 0.5, edgeThresholdRatio: 0.25, hysteresisPx: 6, devicePixelRatio: 1 },
+    tuning: { centerRatio: 0.5, edgeThresholdRatio: 0.25, devicePixelRatio: 1 },
   } as unknown as DragResolvedTarget;
 }
 

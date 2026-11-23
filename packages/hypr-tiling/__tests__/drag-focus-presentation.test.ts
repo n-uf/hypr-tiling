@@ -61,7 +61,6 @@ function makeResolvedTarget(
     tuning: {
       centerRatio: 0.5,
       edgeThresholdRatio: 0.25,
-      hysteresisPx: 8,
       devicePixelRatio: 1,
     },
   };
