@@ -1274,8 +1274,8 @@ export function TilingObservabilityPanel(props: TilingObservabilityPanelProps): 
         sticky={props.hitZoneGeometrySticky}
         onStickyChange={props.setHitZoneGeometrySticky}
         ariaLabel="hit-zone geometry group"
-        offTitle="Collapse the drop hit-zone geometry knobs (center swap fraction, center floor, hysteresis). The current geometry values stay live and keep driving zone resolution; only the controls are hidden. Advanced tuning: off by default."
-        onTitle="Expand the drop hit-zone geometry knobs (center swap fraction, center floor, hysteresis). Adjusting any knob briefly previews the resolved zones across EVERY pane."
+        offTitle="Collapse the drop hit-zone geometry knobs (center swap fraction, center floor). The current geometry values stay live and keep driving zone resolution; only the controls are hidden. Advanced tuning: off by default."
+        onTitle="Expand the drop hit-zone geometry knobs (center swap fraction, center floor). Adjusting any knob briefly previews the resolved zones across EVERY pane."
       />
       {props.hitZoneGeometryEnabled ? (
         <div className="mt-2 space-y-2">

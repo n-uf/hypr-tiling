@@ -402,10 +402,10 @@ function resolveDragPointerType(pointerType: string): DragPointerType {
 
 /**
  * Build the per-resolve zone-geometry config from the resolved interaction
- * capability (operator-adjustable center swap fraction, center floor, boundary
- * hysteresis) plus the live `devicePixelRatio`. The capability defaults equal
+ * capability (the adjustable center swap fraction and center floor) plus the
+ * live `devicePixelRatio`. The capability defaults equal
  * `TILING_DROP_INTENT_CONFIG`, so an unconfigured renderer keeps today's
- * behavior; `resolvePaneZoneGeometry` clamps `centerRatio` and floors the px
+ * behavior; `resolvePaneCenterGeometry` clamps `centerRatio` and floors the px
  * knobs, so this stays a thin pass-through.
  */
 function currentGeometryConfig(
@@ -4592,7 +4592,7 @@ const TilingRendererComponent = React.forwardRef<
   dragPreviewRef.current = dragPreview;
   // Snap preview: the drop the lifted pane is snapped into and its landing slot
   // (viewport px), or `null` while the pane follows the pointer. A ref for the
-  // pointer listeners (enter / leave hysteresis, the target the resolver
+  // pointer listeners (the inset it takes to settle in, the target the resolver
   // keeps while the pointer stays in the slot) and state for the render (the
   // pane sits in the tree at that slot; the others make room).
   const snappedRef = React.useRef<{
