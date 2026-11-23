@@ -567,7 +567,8 @@ async function dragScenario(name, { preview, tileId, homeTileId, start: startAt,
           if (Math.abs(s.left - p.left) > 1.5) failures.push(`strip left ${Math.round(s.left)} is not the pane's left ${Math.round(p.left)}`);
           return failures;
         }, tileId);
-  if (during != null) await during();
+  // `during(rest)` may return failures about the moment before the release.
+  const duringFailures = during != null ? await during(rest) : null;
   const releaseT = await page.evaluate(() => window.__HPT_MOTION_PROBE__.time ?? 0);
   const indicatorAtRelease = await page.evaluate(() => {
     const indicator = document.querySelector("[data-hpt-drop-indicator]");
@@ -601,6 +602,7 @@ async function dragScenario(name, { preview, tileId, homeTileId, start: startAt,
   }
   const lines = [];
   const add = (kind, failures, note = "") => lines.push({ id: tileId, kind, failures, note });
+  if (Array.isArray(duringFailures)) add("before the release", duringFailures);
 
   const mine = samples.filter((s) => s.id === tileId);
   const liftedSamples = mine.filter((s) => s.lifted);
@@ -794,6 +796,31 @@ await dragScenario("release over its own place restores the layout", {
   to: (rest) => ({ x: rest.a.x + 200, y: rest.a.y + 260 }),
   expect: { commit: false },
 });
+// The pane's own place stays a drop target for the whole drag: bravo leaves
+// it (charlie closes the gap), comes back over its header, and there charlie
+// gives the room back, the cursor is not refused and a release restores.
+for (const preview of ["snap", "indicator"]) {
+  await dragScenario("leave its own place and come back: the place is a drop target again", {
+    preview,
+    tileId: "b",
+    via: (rest) => [{ x: rest.c.x + rest.c.width * 0.5, y: rest.c.y + rest.c.height * 0.8 }],
+    to: (rest) => ({ x: rest.b.x + 60, y: rest.b.y + 14 }),
+    expect: { commit: false },
+    during: async (rest) => {
+      const failures = [];
+      let now = null;
+      for (let i = 0; i < 40; i++) {
+        now = await restRects();
+        if (now.c != null && near(now.c, rest.c, 1)) break;
+        await page.waitForTimeout(50);
+      }
+      if (now.c == null || !near(now.c, rest.c, 1)) failures.push(`charlie at ${rectText(now.c)}, not back at ${rectText(rest.c)}`);
+      const cursor = await page.evaluate(() => document.querySelector("[data-drag-cursor]")?.getAttribute("data-drag-cursor-kind") ?? null);
+      if (cursor === "invalid") failures.push("the cursor is refused over the pane's own place");
+      return failures;
+    },
+  });
+}
 await dragScenario("Escape restores the layout", {
   preview: "snap",
   tileId: "a",
