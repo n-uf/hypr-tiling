@@ -898,6 +898,10 @@ describe("held look — a tab group lands from its look: the strip pivots with t
     expect(container.querySelector("[data-hpt-lifted]")).toBeNull();
   }
 
+  // The handover frame's scale is a frame-by-frame bound too: on the wall clock a loaded run (a CI runner) lets the
+  // settle start before the first read (0.60 seen against 0.40), so these run on the driven clock.
+  describe("thumbnail drops on a driven clock", (): void => {
+  useDrivenClock();
   for (const placement of ["top", "bottom"] as const) {
     it(`a thumbnail drop (strip ${placement}): the strip is scaled with the pane about the edge they share, then settles to full size`, async (): Promise<void> => {
       GEOMETRY.set("a", { x: 0, y: 0, width: 500, height: 600 });
@@ -933,6 +937,7 @@ describe("held look — a tab group lands from its look: the strip pivots with t
       expect(strip.style.opacity).toBe("");
     });
   }
+  });
 
   // The handover frame's opacity is a frame-by-frame bound: on the wall clock a loaded full run lets the settle start
   // before the first read (0.637 seen against 0.45), so it runs on the driven clock.
