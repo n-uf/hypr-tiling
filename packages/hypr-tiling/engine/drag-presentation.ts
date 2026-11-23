@@ -106,8 +106,8 @@ export function resolveDragPresentation(
  * - held-slot reservation → `render-reservation` (the empty place kept for a
  *   lifted pane; a drag mechanic, never carries content regardless of the
  *   CONTENT toggle).
- * - a COLLAPSED pane that is NOT maximized → decided by `collapseBodyMode`
- *   (HT-COLLAPSE-BODY-MODE), overriding the CONTENT toggle either way:
+ * - a COLLAPSED pane that is NOT maximized → decided by `collapseBodyMode`,
+ *   overriding the CONTENT toggle either way:
  *   `"keep-mounted"` (default) → `render-content` (body stays mounted;
  *   {@link TilingPaneBody}'s independent `display: none` gate is what
  *   actually hides it — see there), `"unmount"` → `render-empty`
@@ -116,7 +116,7 @@ export function resolveDragPresentation(
  * - otherwise the body honors the CONTENT toggle: `render-content` when content
  *   is visible, `render-empty` when hidden.
  *
- * HT-PANE-COLLAPSE + maximize: `isMaximized` SUSPENDS the collapse gate
+ * Collapse + maximize: `isMaximized` SUSPENDS the collapse gate
  * for exactly this leaf. Collapse is an in-tree, titlebar-only affordance;
  * maximizing a leaf is the user explicitly asking to see its content full-screen
  * — without this, a maximized collapsed pane rendered a titlebar strip floating

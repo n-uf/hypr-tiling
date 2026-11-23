@@ -4134,7 +4134,7 @@ const TilingRendererComponent = React.forwardRef<
 ): React.ReactElement {
   // Refs for the layout-edit choke point — declared before any handler so
   // idle settle / resize rAF / sync reducers all share one emit path
-  // (HT-PANE-COLLAPSE-EVENTS). `layoutRef` is advanced eagerly on emit so
+  // (collapse events included). `layoutRef` is advanced eagerly on emit so
   // chained commits in the same tick (rAF flush → normalize) diff against the
   // tree just reported, not a stale pre-setState snapshot.
   const layoutRef = React.useRef(layout);
@@ -4188,7 +4188,7 @@ const TilingRendererComponent = React.forwardRef<
     [],
   );
 
-  // Single choke point for every layout edit (HT-PANE-COLLAPSE-EVENTS): reports
+  // Single choke point for every layout edit (collapse events included): reports
   // the edit via `onLayoutChange`, THEN diffs the whole tree's collapse truth
   // against the last-emitted tree and fires `onPaneCollapsedChange` for every
   // leaf whose `collapsed` flipped. A normalize/reconcile side effect (a
@@ -4290,7 +4290,7 @@ const TilingRendererComponent = React.forwardRef<
         resolveInteractionCapabilities(interaction),
       [interaction],
     );
-  // PER-SUBTREE static drag gate (HT-SIZING-STATIC-DRAG-GATING). `isRearrangeEnabled`
+  // PER-SUBTREE static drag gate. `isRearrangeEnabled`
   // is now the capability master switch ALONE — it is no longer ANDed with a
   // whole-tree static flag. The static geometry is handled per-leaf instead:
   // `collectLeafFootprints` is static-aware (a pinned static pane gets its exact
@@ -6382,7 +6382,7 @@ const TilingRendererComponent = React.forwardRef<
     };
   }, [cancelLayoutIdleSettle]);
 
-  // Both-collapsed-siblings void escape (HT-PANE-COLLAPSE-VOID): the divider
+  // Both-collapsed-siblings void escape: the divider
   // between two collapsed siblings stays interactive (see `isBoundaryResizable`
   // below) specifically so pressing/nudging it can un-collapse BOTH — a ratio
   // drag has no live geometry effect while both sides are pinned to their
@@ -6428,7 +6428,7 @@ const TilingRendererComponent = React.forwardRef<
         return;
       }
       event.preventDefault();
-      // Both-collapsed-siblings void (HT-PANE-COLLAPSE-VOID): pressing the
+      // Both-collapsed-siblings void: pressing the
       // divider un-collapses both instead of starting a ratio drag — see
       // `expandBothCollapsedVoidSiblings`.
       if (bothCollapsedVoidLeafIds != null) {
@@ -6537,7 +6537,7 @@ const TilingRendererComponent = React.forwardRef<
       }
       event.preventDefault();
       event.stopPropagation();
-      // Both-collapsed-siblings void (HT-PANE-COLLAPSE-VOID): nudging the
+      // Both-collapsed-siblings void: nudging the
       // divider un-collapses both instead of stepping a ratio with no live
       // geometry effect while both sides are pinned to their collapse extent.
       if (bothCollapsedVoidLeafIds != null) {
@@ -6629,7 +6629,7 @@ const TilingRendererComponent = React.forwardRef<
     [activeMaximizedLeafId, setMaximizedLeaf],
   );
 
-  // Collapse-to-titlebar (HT-PANE-COLLAPSE, axis-aware). Collapse pins the
+  // Collapse-to-titlebar (axis-aware). Collapse pins the
   // leaf's dimension ALONG its immediate parent split's axis (height under a
   // stacked/vertical parent, width under a side-by-side/horizontal parent) to
   // the resolved chrome extent (`config.collapsedExtentPx` →
@@ -6840,7 +6840,7 @@ const TilingRendererComponent = React.forwardRef<
     }
   }, [commitMove, controller, setFocusedLeaf]);
 
-  // The ONE effectful command router (HT-API-COMMAND-KEYBOARD-SURFACE §7). Both
+  // The ONE effectful command router. Both
   // the keyboard layer and the imperative `dispatch` handle funnel a
   // `TilingCommand` through here so there is a single action-execution path (no
   // duplicated logic). Returns `true` when the command produced an effect (the
@@ -7347,7 +7347,7 @@ const TilingRendererComponent = React.forwardRef<
     );
   }, [controller, leafIds]);
 
-  // Public imperative handle (HT-API-COMMAND-KEYBOARD-SURFACE half A): a consumer
+  // Public imperative handle: a consumer
   // holds a `ref` and drives the tiler programmatically (the Hyprland `dispatch`
   // analog). It routes through the SAME `dispatchCommand` router the keyboard
   // layer uses, so a disabled-capability command is a safe no-op. The boolean
@@ -7438,7 +7438,7 @@ const TilingRendererComponent = React.forwardRef<
         clearMultiSelection();
         return;
       }
-      // Public binding registry (HT-API-COMMAND-KEYBOARD-SURFACE half B), highest
+      // Public binding registry, highest
       // precedence: a consumer chord→command binding ALWAYS wins (augments or
       // overrides a default). A custom binding routes straight through the
       // command router with no switcher-overlay modal flow (immediate, like a
@@ -8655,7 +8655,7 @@ const TilingRendererComponent = React.forwardRef<
     ],
   );
 
-  // Group context for renderTile args (HT-GROUP-TABBED-STACKING): one context
+  // Group context for renderTile args: one context
   // per group, keyed by the group's ACTIVE member leaf id — the only member
   // the leaf arm ever renders (the stacking contract), so a loose leaf misses
   // the map and gets `group: null`. Memoized on layout/tiles/dispatchCommand
@@ -8880,7 +8880,7 @@ const TilingRendererComponent = React.forwardRef<
         // The uniform pane-body rule: a held-slot reservation is a content-less
         // place (drag mechanic); every other slot honors the CONTENT toggle
         // identically to a resting pane. Maximizing a collapsed leaf suspends
-        // the collapse-empty gate (HT-PANE-COLLAPSE + maximize) so it shows full
+        // the collapse-empty gate (collapse + maximize) so it shows full
         // content instead of a titlebar strip in a full-screen void.
         const paneBodyRenderMode: TilingPaneBodyRenderMode =
           resolvePaneBodyRenderMode(
@@ -9286,7 +9286,7 @@ const TilingRendererComponent = React.forwardRef<
         );
       }
 
-      // Group arm (HT-GROUP-TABBED-STACKING): N leaves share ONE slot as a
+      // Group arm: N leaves share ONE slot as a
       // stacked group with a tab strip across the top — only the active member
       // renders below (the stacking contract). Tabs switch the active member via
       // the `group-tab-jump` command (routed through the same `dispatchCommand`).
@@ -9460,7 +9460,7 @@ const TilingRendererComponent = React.forwardRef<
         );
       }
 
-      // Master/stack arm (HT-LAYOUT-MASTER-STACK): a split set to `layoutMode:
+      // Master/stack arm: a split set to `layoutMode:
       // "master"` flattens its descendant slots and positions each ABSOLUTELY
       // from the same `resolveMasterStackFootprints` geometry the hit-testing /
       // overlay / focus layers read — so the rendered DOM and the resolved
@@ -9539,7 +9539,7 @@ const TilingRendererComponent = React.forwardRef<
       }
 
       const resolvedGapPx: number = node.gapPx ?? config.gapPx;
-      // Per-side along-axis floor (HT-MIN-BBOX-PX / HT-RESIZE-FLOOR): a
+      // Per-side along-axis floor (minimum box and resize floor): a
       // direct-child leaf's own `minBBoxPx` wins over this split's
       // `minPaneSizePx`, which wins over the config default — UNLESS that
       // side opts into a "chrome" resize floor (size-out to the collapsed
@@ -9596,7 +9596,7 @@ const TilingRendererComponent = React.forwardRef<
       };
       const firstPinPx: number | null = alongPinPx(node.first);
       const secondPinPx: number | null = alongPinPx(node.second);
-      // Both-collapsed siblings (HT-PANE-COLLAPSE-VOID): both children are
+      // Both-collapsed siblings: both children are
       // LEAVES currently collapsed. Locked design prefers both stay collapsed
       // with a split slack void over silently un-collapsing one — see
       // `resolveEffectiveStaticAlong` / `resolveBinarySplitDistribution` /
@@ -9650,7 +9650,7 @@ const TilingRendererComponent = React.forwardRef<
         node.axis,
       );
       // Both-collapsed-siblings void stays resizable (drag/keyboard nudge
-      // un-collapses both — HT-PANE-COLLAPSE-VOID) even though both sides are
+      // un-collapses both) even though both sides are
       // static-along: every OTHER static combination still hides the divider
       // (a lone collapsed pane's escape is its expand control, not a drag that
       // has no live geometry effect while pinned).
@@ -10289,7 +10289,7 @@ const TilingRendererComponent = React.forwardRef<
           }
         >
           {workspaceTransition != null ? (
-            // N2: the set-mode wrapper asked for a switch transition. The
+            // The set-mode wrapper asked for a switch transition. The
             // stage wraps the tree INSIDE the viewport so the frozen outgoing
             // clone and the incoming tree share the viewport's box; the
             // wrapper drives `begin` / `scrub` / `finish` through `stageRef`.

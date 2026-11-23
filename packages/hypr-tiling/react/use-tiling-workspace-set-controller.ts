@@ -1,5 +1,5 @@
 /**
- * Host-agnostic workspace-set controller (H7): keeps locally-edited trees,
+ * Host-agnostic workspace-set controller: keeps locally-edited trees,
  * coalesces tree commits, and applies lifecycle / move / reveal immediately.
  * Replaces the `localTrees` / `pendingRef` / `lastPersistedRef` block a set
  * host (DashAI `dashboard-renderer.tsx`) otherwise keeps by hand.

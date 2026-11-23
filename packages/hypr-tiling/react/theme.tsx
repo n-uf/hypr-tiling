@@ -164,7 +164,7 @@ export interface TilingThemeDragChromeTokens {
 }
 
 /**
- * Workspace-switch motion tokens (N2). Optional + partial — omitted fields
+ * Workspace-switch motion tokens. Optional + partial — omitted fields
  * resolve through {@link resolveWorkspaceTransition} to the library defaults
  * (200 ms, a snappy decel). Same additive slot pattern as `dragChrome`.
  */

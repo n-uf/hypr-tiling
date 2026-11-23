@@ -8,13 +8,13 @@ import type {
 /**
  * Spring-loaded workspace-tab drop — the pure DWELL FSM behind "hold a dragged
  * pane over a workspace tab and the drag continues inside that workspace"
- * (`_agent/workspace-navigation-plan.md` N3; deferred in
- * `_agent/workspace-set-concept.md` §9 Q7 because the layout tree must never
+ * (`_agent/workspace-navigation-plan.md`, spring-loading; deferred in
+ * `_agent/workspace-set-concept.md` §9 because the layout tree must never
  * change under a live drag). Modelled on `engine/workspace-navigation.ts` and
  * `engine/drag-machine.ts`: a reducer over a discriminated state union, no
  * timers, no DOM, no side effects.
  *
- * The rule that keeps INV-R1..R4 intact: the tree never changes under a live
+ * The rule that keeps the drag's invariants intact: the tree never changes under a live
  * drag. Spring-load therefore does NOT switch workspaces mid-drag. When the
  * dwell elapses it asks the host to END the running drag as the existing
  * `claimed` external commit (`moveLeafToWorkspace`, the same path a release
@@ -69,7 +69,7 @@ import type {
  *        dispatch `POINTER_UP { pointerId, claimed: true }` to the inner drag
  *        machine (the same edge `handleExternalDrop` takes on release). The
  *        inner settle effect runs its ordinary teardown — strips the OLD
- *        tree's transient styles (INV-R1), resets the seat / latch cluster,
+ *        tree's transient styles, resets the seat / latch cluster,
  *        clears the external hover, dispatches `SETTLE_DONE` → `idle`. It
  *        MUST NOT release pointer capture for a pending rearm (the pointer is
  *        still held) — gate `pointerCapturePort.release` on "no rearm pending";
@@ -92,9 +92,9 @@ import type {
  *    rearm — the pointer's release then does nothing (idle), which is the
  *    safe outcome.
  *    The re-armed drag is an ordinary `dragging` state: the input layer
- *    re-subscribes on the new `pointerId`, the M3 watchdog re-arms, the
+ *    re-subscribes on the new `pointerId`, the idle watchdog re-arms, the
  *    visibility / blur / capture-loss arbiters and the source-vanished cancel
- *    all apply unchanged (INV-R2..R4).
+ *    all apply unchanged.
  * 5. **DRAG_END** — whenever the inner drag machine leaves `dragging` for any
  *    reason other than step 3c (release, cancel, watchdog, visibility), dispatch
  *    `DRAG_END` and clear the timer, so a dwell can never outlive its drag.

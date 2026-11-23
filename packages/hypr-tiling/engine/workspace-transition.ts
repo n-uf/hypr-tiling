@@ -1,5 +1,5 @@
 /**
- * Pure workspace-switch transition helpers (N2).
+ * Pure workspace-switch transition helpers.
  *
  * No DOM, no React — the node Jest environment runs this module. The React
  * stage (`react/workspace-transition.tsx`) consumes these to drive a frozen
@@ -136,7 +136,7 @@ export function clampUnitProgress(progress: number): number {
 }
 
 /**
- * Convert N1 swipe progress (`−1..1`) into unit progress (`0..1`) for
+ * Convert swipe progress (`−1..1`) into unit progress (`0..1`) for
  * `direction`. Positive signed progress is `"next"`; negative is `"prev"`.
  * The opposite sign clamps to `0`.
  */

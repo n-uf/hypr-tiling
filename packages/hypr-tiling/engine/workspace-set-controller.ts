@@ -1,5 +1,5 @@
 /**
- * Framework-free helpers for the workspace-set controller (H7). The React hook
+ * Framework-free helpers for the workspace-set controller. The React hook
  * (`react/use-tiling-workspace-set-controller.ts`) owns timers, refs, and
  * `onCommit`; everything that diffs trees, folds pending edits, or decides
  * whether an incoming host `value` is an echo / stale / authoritative

@@ -13,7 +13,7 @@
  *
  * A single selector keeps both call sites in lockstep — drifting copies would
  * silently re-open exactly the "titlebar content blocks drag" bug this module
- * exists to prevent (HT-TITLEBAR-DRAG-THRU).
+ * exists to prevent.
  * @internal
  */
 export const INTERACTIVE_CONTROL_SELECTOR: string =

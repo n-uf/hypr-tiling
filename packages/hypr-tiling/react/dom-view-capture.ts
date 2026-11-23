@@ -1,5 +1,5 @@
 /**
- * Frozen viewport capture for the workspace-switch transition stage (N2).
+ * Frozen viewport capture for the workspace-switch transition stage.
  *
  * `cloneNode(true)` does not copy `<canvas>` bitmaps and would leave
  * duplicate `id` / hit-test `data-*` attributes that the live incoming tree

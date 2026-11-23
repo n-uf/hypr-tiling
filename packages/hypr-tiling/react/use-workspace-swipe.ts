@@ -1,5 +1,5 @@
 /**
- * `useWorkspaceSwipe` + the swipe scope (N1). The set-mode renderer runs the
+ * `useWorkspaceSwipe` + the swipe scope. The set-mode renderer runs the
  * pure swipe FSM (`engine/workspace-navigation.ts`) over the wheel / touch
  * ports and publishes its state through a small external store. A host tab
  * strip mounted OUTSIDE the renderer reads that store through
@@ -172,7 +172,7 @@ export interface UseWorkspaceSwipeDriverParams {
    */
   dispatch: (command: TilingCommand) => void;
   /**
-   * Holds `SETTLE_DONE` until the wrapper's switch transition (N2) has
+   * Holds `SETTLE_DONE` until the wrapper's switch transition has
    * settled. Called once per gesture on entry to `settling`, AFTER the commit
    * command was dispatched; the FSM stays `settling` until `done` runs
    * (synchronously or later — a stale `done` from a gesture that already

@@ -33,7 +33,7 @@ import { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "./types";
  * `ceil`, so a pane never becomes imperceptibly thin (or its sibling
  * imperceptibly thick) purely from a mismatched `minPaneSizePx`/container
  * ratio. This is the "hardcoded 5%" — kept as the DEFAULT for the ordinary
- * body-floor path; a resize-floor "chrome" side (HT-RESIZE-FLOOR-CHROME, size-out
+ * body-floor path; a resize-floor "chrome" side (size-out
  * to the titlebar chrome extent) passes {@link RATIO_SAFETY_BOUNDS_UNBOUNDED}
  * instead so a legitimately small chrome floor is not artificially raised.
  */
@@ -61,7 +61,7 @@ export const RATIO_SAFETY_BOUNDS_UNBOUNDED: RatioSafetyBounds = { floor: 0, ceil
  * minimums cannot both be satisfied. This is the single min-constraint helper
  * reused by the resize path, projected-layout geometry, and the
  * `growLeafToward` acquire-space reducer (so all three share one constraint
- * math, never reinventing it) — generalized (HT-MIN-BBOX-PX) so a caller can
+ * math, never reinventing it) — generalized (per-side minimum boxes) so a caller can
  * resolve each side's floor independently (e.g. a leaf-owned
  * {@link TilingLeafNode.minBBoxPx} on one side only) rather than a single
  * split-wide value.
@@ -189,7 +189,7 @@ export function resolveAlongAxisMinPaneSizePx(
 
 /**
  * The resolved along-axis resize floor (CSS px) for a split's direct child,
- * plus whether it came from "chrome" mode (HT-RESIZE-FLOOR) — the caller
+ * plus whether it came from "chrome" mode (the resize floor) — the caller
  * needs BOTH: the px value feeds `clampByMinSize`, and the chrome flag
  * selects {@link RATIO_SAFETY_BOUNDS_UNBOUNDED} over the default 5%/95% net so
  * a legitimately small chrome floor is reachable instead of being artificially
@@ -206,7 +206,7 @@ export interface AlongAxisFloorResolution {
  *
  * 1. `child.resizeFloor` (a bare leaf only) — per-leaf override.
  * 2. `config.resizeFloor` — library-wide default.
- * 3. `"chrome"` — the LIBRARY default (HT-RESIZE-FLOOR-DEFAULT). `"body"`
+ * 3. `"chrome"` — the LIBRARY default. `"body"`
  *    remains available as an explicit opt-in via either precedence level
  *    above, for consumers that want the old content-floor behavior.
  *
@@ -259,8 +259,8 @@ export function resolveRatioSafetyBounds(
  * dimension — a generic whole-tree predicate. NOTE: this is no longer the drag
  * gate. The drag/rearrange gate is now PER-SUBTREE (`tiling-drag-tree.ts`
  * `collectStaticGatedLeafIds`) and the footprint geometry is static-aware
- * (`leaf-geometry.ts`), so a pinned static pane no longer freezes the whole tree
- * (HT-SIZING-STATIC-DRAG-GATING). Retained as a reusable predicate.
+ * (`leaf-geometry.ts`), so a pinned static pane no longer freezes the whole
+ * tree. Retained as a reusable predicate.
  */
 export function layoutContainsStaticPane(node: TilingLayoutNode): boolean {
   const selfStatic: boolean =
@@ -411,7 +411,7 @@ export function resolveStaticAlongExtents(
  * non-shrinking pin inside a too-small container (overflow / dead-space void).
  * When a pin fits, `staticExtents` carries the resolved along-axis px.
  *
- * `bothCollapsedVoid` (HT-PANE-COLLAPSE-VOID) opts into the both-collapsed-
+ * `bothCollapsedVoid` (the collapse void) opts into the both-collapsed-
  * siblings arm: when true AND both sides are static-along with a fitting,
  * positive pin, EACH keeps its OWN pin — `staticExtents.secondPx` is the
  * second child's real pin, not "whatever container space the first side left
@@ -498,7 +498,7 @@ export function resolveEffectiveStaticAlong(
  * - one static → static child content-sized, flexible sibling fills the rest;
  * - both flexible → distribute the axis by the (renormalized) ratio.
  *
- * BOTH-COLLAPSED-SIBLINGS ARM (HT-PANE-COLLAPSE-VOID): a collapsed leaf's pin is
+ * BOTH-COLLAPSED-SIBLINGS ARM (the collapse void): a collapsed leaf's pin is
  * the fixed chrome/titlebar extent, not an arbitrary static size that drifts
  * with the container — two of them side by side (or stacked) simply do not
  * fill the split, and forcing the second to FILL would silently re-expand it
