@@ -210,7 +210,7 @@ describe("a swap commits the tree the swap reducers make", () => {
   });
 });
 
-describe("the operator's case: 02 held over 03 Install", () => {
+describe("the reported case: 02 held over 03 Install", () => {
   // The site's columns: 01 above 02 in the first column, then 03, 04, 05.
   const layout: TilingLayoutNode = {
     kind: "split",

@@ -9,7 +9,7 @@
  * the swap the indicator's layout is still the lift's.
  *
  * jsdom has no layout: every leaf wrapper (`[data-hpt-leaf]`, keyed by tile id) reports the rect in `GEOMETRY`; the
- * viewport is 1000×600. Columns: 01 above 02 on the left, 03 on the right (the operator's case, 02 held over 03).
+ * viewport is 1000×600. Columns: 01 above 02 on the left, 03 on the right (the reported case, 02 held over 03).
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
 import * as React from "react";
