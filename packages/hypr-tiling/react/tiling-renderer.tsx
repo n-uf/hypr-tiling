@@ -937,6 +937,12 @@ export function resolvePointerTargetFromMeasurement(
     dropHitZoneGeometry: ResolvedTilingDropHitZoneGeometryCapability;
     liveDragModeEnabled: boolean;
     liveHitFootprintsById: ReadonlyMap<string, TilingPaneFootprint>;
+    /**
+     * Where each target sits with the subject released (the base): an edge
+     * insert's room is judged there, as the commit releases the subject
+     * first. Absent: the hit footprints.
+     */
+    liveRoomFootprintsById?: ReadonlyMap<string, TilingPaneFootprint>;
     leafFootprintsById: ReadonlyMap<string, TilingPaneFootprint>;
     leafIds: ReadonlyArray<string>;
     rearrangeGatedLeafIds: ReadonlySet<string>;
@@ -1172,7 +1178,9 @@ export function resolvePointerTargetFromMeasurement(
         layout: input.layout,
         sourceLeafId: input.sourceLeafId,
         targetLeafId: hitLeafId as string,
-        targetFootprint: hitFootprint as TilingPaneFootprint,
+        targetFootprint:
+          input.liveRoomFootprintsById?.get(hitLeafId as string) ??
+          (hitFootprint as TilingPaneFootprint),
         config: input.config,
         viewportWidth: input.viewportSize.width,
         viewportHeight: input.viewportSize.height,
@@ -6048,6 +6056,16 @@ const TilingRendererComponent = React.forwardRef<
         viewportSize,
       ],
     );
+  // Where each target sits with the subject released: an edge insert's room is
+  // judged there (the commit releases the subject first), wherever it is hit.
+  const liveRoomFootprintsById: ReadonlyMap<string, TilingPaneFootprint> | undefined =
+    React.useMemo(
+      (): ReadonlyMap<string, TilingPaneFootprint> | undefined =>
+        liveTilingDrag != null
+          ? tilingDragHitFootprints(liveTilingDrag, "base")
+          : undefined,
+      [liveTilingDrag],
+    );
   const projectedLandingOverlays: ReadonlyArray<TilingProjectedLandingOverlay> =
     React.useMemo(
       (): ReadonlyArray<TilingProjectedLandingOverlay> =>
@@ -7932,6 +7950,7 @@ const TilingRendererComponent = React.forwardRef<
         dropHitZoneGeometry: interactionCapabilities.dropHitZoneGeometry,
         liveDragModeEnabled,
         liveHitFootprintsById,
+        liveRoomFootprintsById,
         leafFootprintsById,
         leafIds,
         rearrangeGatedLeafIds,
@@ -7953,6 +7972,7 @@ const TilingRendererComponent = React.forwardRef<
       leafIds,
       liveDragModeEnabled,
       liveHitFootprintsById,
+      liveRoomFootprintsById,
       rearrangeGatedLeafIds,
       viewportSize.height,
       viewportSize.width,
