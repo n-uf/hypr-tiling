@@ -126,8 +126,11 @@ the version number alone does not flag them.
   of a drop state and of the devtools readout).
 - **Engine API:** the `dragging` state of `DragMachineState` no longer has
   `homeLost` (added in 26.11.11), and neither it nor the `armed` state has
-  `homeFootprint`; the `HOME_INVALIDATED` event is gone. The pane's own place
-  is whatever the drag hit holds, which the machine keeps as `atHome`.
+  `homeFootprint`; the `HOME_INVALIDATED` event is gone. `liftLeavesGap`
+  (added in 26.11.11 on `armed`, `dragging` and the `REARM` event) is gone
+  too: whether a lift leaves a place to come back to is the drag hit's home
+  (a torn tab has none). The pane's own place is whatever the drag hit holds,
+  which the machine keeps as `atHome`.
   The controller host no longer has `getSlotCommitment`.
 - **Added:** `atHome` on the `TARGET_RESOLVED` event (whether the sample held
   the pane's own place); `place` (the hit's held place) and `mark` (the
