@@ -6743,7 +6743,14 @@ const TilingRendererComponent = React.forwardRef<
   const commitMove = React.useCallback(
     (move: TilingKeyboardMove): boolean => {
       const moved: TilingLayoutNode | null = resolveMove(move).layout;
-      if (moved == null) {
+      // The same gate a drop's commit runs: a structurally broken tree, or one
+      // that drops a host tile, is refused and the layout stays as it was.
+      const expectedTileIds: ReadonlyArray<string> = expectedTileIdsRef.current;
+      if (
+        moved == null ||
+        !isStructurallyValidLayout(moved) ||
+        (expectedTileIds.length > 0 && !layoutCoversExpectedTiles(moved, expectedTileIds))
+      ) {
         return false;
       }
       commitLayoutChange(
@@ -6751,7 +6758,7 @@ const TilingRendererComponent = React.forwardRef<
           containerWidthPx: viewportSizeRef.current.width,
           containerHeightPx: viewportSizeRef.current.height,
           config: configRef.current,
-          expectedTileIds: expectedTileIdsRef.current,
+          expectedTileIds,
         }),
       );
       armLayoutIdleSettle();
