@@ -803,20 +803,35 @@ await dragScenario("drag charlie onto alpha (swap)", {
 
 /**
  * A `during` check for bravo held over alpha's middle (a swap, placement's `tilingDrag`): bravo's old place reopens
- * (charlie, which grew into it at the lift, is back at its rest rect) and alpha is drawn landed there; a wash marks
- * it, at that rect, with ⇄ and alpha's name, tinted, with no border, outline or shadow, above the held pane. With
- * `--shots`, a screenshot of the held frame.
+ * (charlie, which grew into it at the lift, is back at its rest rect) and a wash marks it, at that rect, with ⇄ and
+ * alpha's name, tinted, with no border, outline or shadow, above the held pane, and with no pane content in it.
+ * Indicator: alpha stays in its own slot and nothing is drawn under the wash. Snap: alpha is drawn landed in the
+ * reopened place. With `--shots`, a screenshot of the held frame.
  */
 const swapWashCheck = (preview) => async (rest) => {
   const failures = [];
+  const alphaAt = preview === "indicator" ? rest.a : rest.b;
   let now = null;
   for (let i = 0; i < 40; i++) {
     now = await restRects();
-    if (now.c != null && near(now.c, rest.c, 1) && now.a != null && near(now.a, rest.b, 1)) break;
+    if (now.c != null && near(now.c, rest.c, 1) && now.a != null && near(now.a, alphaAt, 1)) break;
     await page.waitForTimeout(50);
   }
   if (now.c == null || !near(now.c, rest.c, 1)) failures.push(`charlie at ${rectText(now.c)}, not back at ${rectText(rest.c)}`);
-  if (now.a == null || !near(now.a, rest.b, 1)) failures.push(`alpha at ${rectText(now.a)}, not landed in bravo's old place ${rectText(rest.b)}`);
+  if (now.a == null || !near(now.a, alphaAt, 1)) {
+    failures.push(
+      preview === "indicator"
+        ? `alpha at ${rectText(now.a)}, not kept in its own slot ${rectText(rest.a)}`
+        : `alpha at ${rectText(now.a)}, not landed in bravo's old place ${rectText(rest.b)}`,
+    );
+  }
+  if (preview === "indicator") {
+    // Nothing under the wash: no pane but the held one overlaps bravo's old place.
+    for (const [id, rect] of Object.entries(now)) {
+      if (id === "b") continue;
+      if (overlapArea(rect, rest.b) > 1) failures.push(`pane ${id} at ${rectText(rect)} is drawn in bravo's old place ${rectText(rest.b)}`);
+    }
+  }
   const wash = await page.evaluate(() => {
     const element = document.querySelector("[data-hpt-swap-wash]");
     if (element == null) return null;
@@ -827,6 +842,7 @@ const swapWashCheck = (preview) => async (rest) => {
       rect: { x: b.left + window.scrollX, y: b.top + window.scrollY, width: b.width, height: b.height },
       partner: element.getAttribute("data-hpt-swap-partner"),
       text: element.textContent,
+      content: element.querySelector("[data-hpt-leaf], article, header") != null,
       border: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth],
       outline: style.outlineStyle,
       shadow: style.boxShadow,
@@ -840,6 +856,7 @@ const swapWashCheck = (preview) => async (rest) => {
     if (wash.partner !== "a") failures.push(`the wash names partner ${wash.partner}, not alpha`);
     if (!near(wash.rect, rest.b, 1)) failures.push(`the wash is at ${rectText(wash.rect)}, not bravo's old place ${rectText(rest.b)}`);
     if (!wash.text.includes("⇄") || !wash.text.includes("alpha")) failures.push(`the wash reads "${wash.text}"`);
+    if (wash.content) failures.push("the wash holds pane content");
     if (wash.border.some((w) => w !== "0px")) failures.push(`the wash has a border (${wash.border.join(" ")})`);
     if (wash.outline !== "none") failures.push(`the wash has an outline (${wash.outline})`);
     if (wash.shadow !== "none") failures.push(`the wash has a shadow (${wash.shadow})`);
@@ -853,8 +870,9 @@ const swapWashCheck = (preview) => async (rest) => {
   return failures;
 };
 
-// A held swap in both previews: the old place reopens, the partner is drawn landed there under the wash, and the
-// release does exactly what was shown (bravo in alpha's place, alpha in bravo's).
+// A held swap in both previews: the old place reopens, marked by the wash. Indicator keeps the partner in its slot
+// (nothing under the wash); snap draws it landed there. The release commits the swap in both (bravo in alpha's
+// place, alpha in bravo's).
 for (const preview of ["indicator", "snap"]) {
   await dragScenario("hold bravo over alpha (swap): the old place reopens, marked by the wash", {
     preview,
