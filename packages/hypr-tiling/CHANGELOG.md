@@ -192,6 +192,9 @@ the version number alone does not flag them.
   are never refused.
 - **Known gap:** an arrow that move mode refuses gives no feedback yet; the aim
   just stays where it was.
+- **Known gap:** keyboard move mode can put a pane above or below (or beside)
+  a pane right next to it in the same row or column, where a pointer drag over
+  that pane only swaps. The same set of places for both is a later step.
 - **A release with no held place commits nothing.** A drop state without a
   place from the drag's hit, or on a refused place, no longer falls back to
   the reducers' tree.
