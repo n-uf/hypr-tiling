@@ -313,6 +313,30 @@ describe("a held swap reopens the old place, marks where the partner lands, and 
     });
   }
 
+  it("a preview switched to snap mid-drag changes nothing until the release: the mark and the wash stay the indicator's", async (): Promise<void> => {
+    const changes: TilingLayoutNode[] = [];
+    const view = await holdTwoOverThree({ preview: "indicator", heldLook: "title-bar", changes });
+    expect(washOf(view.container)).not.toBeNull();
+    await act(async (): Promise<void> => {
+      view.rerender(<Host preview="snap" heldLook="title-bar" onLayoutReported={(next): void => void changes.push(next)} />);
+      await wait(20);
+    });
+    await moveTo(752, 302);
+    const wash: HTMLElement | null = washOf(view.container);
+    expect(wash?.getAttribute("data-hpt-swap-partner") ?? null).toBe("three");
+    const indicator: HTMLElement | null = view.container.querySelector<HTMLElement>("[data-hpt-drop-indicator]");
+    expect(indicator).not.toBeNull();
+    expect({ x: parseFloat(indicator!.style.left), y: parseFloat(indicator!.style.top), width: parseFloat(indicator!.style.width), height: parseFloat(indicator!.style.height) }).toEqual(PARTNER_PLACE);
+    expect(drawnOrder(view.container)).toEqual(["one", "slot:L2", "three"]);
+    expect(view.container.querySelector("[data-hpt-lifted]")).not.toBeNull();
+    await act(async (): Promise<void> => {
+      pointer(window, "pointerup", 752, 302);
+      await wait(20);
+    });
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toEqual(swapLeafTiles(LAYOUT, "L2", "L3"));
+  });
+
   it("off the swap target the gap closes again and the wash goes", async (): Promise<void> => {
     const { container } = await holdTwoOverThree({ preview: "indicator", heldLook: "title-bar", changes: [] });
     expect(washOf(container)).not.toBeNull();

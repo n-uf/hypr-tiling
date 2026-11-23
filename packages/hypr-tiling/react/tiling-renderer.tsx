@@ -705,6 +705,8 @@ export interface DragHitInputs {
   readonly width: number;
   readonly height: number;
   readonly basis: TilingBasis;
+  /** The drop preview: like the basis, the drag keeps the one it was lifted with. Omitted: the indicator. */
+  readonly preview?: TilingDragPreview;
   readonly geometry: ResolvedTilingDropHitZoneGeometryCapability;
   readonly gated: ReadonlySet<string>;
   /** Whether grouping is on: with it off no tab strip or host drop element takes a join, so no part is measured. */
@@ -720,6 +722,8 @@ export interface DragHitSession {
   readonly sourceLeafId: string;
   readonly subject: DragSubject | undefined;
   readonly basis: TilingBasis;
+  /** The drop preview at the lift: what the frame draws (the pane settled in a slot, the indicator's mark, the wash). */
+  readonly preview: TilingDragPreview;
   readonly width: number;
   readonly height: number;
   /** The parts as measured once at the lift: a rebuild during the drag lays them on its new rects, reading no DOM. */
@@ -852,6 +856,7 @@ function createDragHitSession(
     sourceLeafId,
     subject,
     basis: inputs.basis,
+    preview: inputs.preview ?? "indicator",
     width: inputs.width,
     height: inputs.height,
     parts,
@@ -889,7 +894,7 @@ export function nextDragHitSession(
   if (known.width === inputs.width && known.height === inputs.height && sameConfig && sameLayoutTree(known.layout, inputs.layout)) {
     return known;
   }
-  return createDragHitSession({ ...inputs, basis: known.basis }, sourceLeafId, subject, known.parts);
+  return createDragHitSession({ ...inputs, basis: known.basis, preview: known.preview }, sourceLeafId, subject, known.parts);
 }
 
 /** One pointer sample (viewport layout px) through the session's intent, read by its hit, as the drop state the drag machine keeps. */
@@ -5146,6 +5151,7 @@ const TilingRendererComponent = React.forwardRef<
     width: viewportSize.width,
     height: viewportSize.height,
     basis: dragHitBasis,
+    preview: dragPreview,
     geometry: interactionCapabilities.dropHitZoneGeometry,
     gated: rearrangeGatedLeafIds,
     grouping: isGroupingEnabled,
@@ -5195,6 +5201,8 @@ const TilingRendererComponent = React.forwardRef<
   const liveTilingDrag: TilingDrag<TilingDragTree, string> | null = liveDragHit?.drag ?? null;
   // What the frame draws follows the basis the hit was built on at the lift, not a preview switched mid-drag.
   const shownBasis: TilingBasis = liveDragHit?.basis ?? dragHitBasis;
+  // So does the preview: the pane settled in a slot, the indicator's mark and the swap wash are the lift's preview's.
+  const shownSnap: boolean = (liveDragHit?.preview ?? dragPreview) === "snap";
   // The held place: home, the committable drop's, or none.
   const heldPlace: TilingHeld<string> | null = !isLiveDragging
     ? null
@@ -5247,7 +5255,7 @@ const TilingRendererComponent = React.forwardRef<
   const isPaneHeld: boolean =
     isLiveDragging &&
     dragSourceTileId != null &&
-    !(isSnapPreview && snappedTarget != null);
+    !(shownSnap && snappedTarget != null);
   // On a COMMIT settle the FSM has already left `dragging` (so `dragSourceLeafId`
   // is null), but `onLayoutChange(deriveCandidateTree(...))` has not landed yet.
   // Hold the committed candidate for that frame so the display does NOT briefly
@@ -5319,7 +5327,7 @@ const TilingRendererComponent = React.forwardRef<
   // The indicator: the mark, a region of the lift layout (the target's half
   // for a side, its outline for a swap or a join), never a landed rect; with
   // `dragPreviewMakesRoom` (the base drawn landed) the landing itself.
-  const dropIndicatorRect: TilingRect | null = !isPaneHeld || isSnapPreview || dragSourceLeafId == null
+  const dropIndicatorRect: TilingRect | null = !isPaneHeld || shownSnap || dragSourceLeafId == null
     ? null
     : shownBasis === "lift"
       ? (committableDropState?.mark?.rect ?? null)
@@ -5563,7 +5571,7 @@ const TilingRendererComponent = React.forwardRef<
         width: lift.leafRect.width,
         height: look.leafHeight,
       };
-      if (dragPreviewRef.current === "snap") {
+      if ((dragHitRef.current?.preview ?? dragPreviewRef.current) === "snap") {
         motion.target(lift.tileId, rect, lift.leafRect);
       } else {
         motion.hold(lift.tileId, rect, lift.leafRect);
@@ -7813,7 +7821,8 @@ const TilingRendererComponent = React.forwardRef<
     const updateSnap = (client: DragMachinePoint): void => {
       const current = snappedRef.current;
       const live: DragMachineState = controller.getState().drag;
-      if (dragPreviewRef.current !== "snap" || live.phase !== "dragging" || live.atHome) {
+      // The drag's preview is the one it was lifted with (the session's), not one switched mid-drag.
+      if ((dragHitRef.current?.preview ?? dragPreviewRef.current) !== "snap" || live.phase !== "dragging" || live.atHome) {
         if (current != null) {
           snappedRef.current = null;
           setSnappedTarget(null);
@@ -10060,7 +10069,7 @@ const TilingRendererComponent = React.forwardRef<
       : (resolveTile(tiles, swapPreview.partnerTileId)?.title ?? swapPreview.partnerTileId);
   const swapWashElement: React.ReactElement | null =
     // Indicator only: snap to slot draws a held swap landed, the partner plainly in the old place.
-    isLiveDragging && swapPreview != null && !isSnapPreview ? (
+    isLiveDragging && swapPreview != null && !shownSnap ? (
       <div
         className="pointer-events-none absolute"
         data-hpt-swap-wash=""
