@@ -696,8 +696,8 @@ export function resolveRearmHandle(
  */
 const DRAG_SNAP_INSET_PX: number = 24;
 
-/** What a drag's hit is built from, as the render last saw it. */
-interface DragHitInputs {
+/** What a drag's hit is built from, as the render last saw it. @internal */
+export interface DragHitInputs {
   readonly layout: TilingLayoutNode;
   readonly config: TilingLayoutConfig;
   readonly width: number;
@@ -711,8 +711,8 @@ interface DragHitInputs {
   readonly footprints: ReadonlyMap<string, TilingPaneFootprint>;
 }
 
-/** One drag's hit: built at the lift, with the intent the pointer goes through, and whether it holds home now. */
-interface DragHitSession {
+/** One drag's hit: built at the lift, with the intent the pointer goes through, and whether it holds home now. @internal */
+export interface DragHitSession {
   readonly layout: TilingLayoutNode;
   readonly config: TilingLayoutConfig;
   readonly sourceLeafId: string;
@@ -720,6 +720,8 @@ interface DragHitSession {
   readonly basis: TilingBasis;
   readonly width: number;
   readonly height: number;
+  /** The parts as measured once at the lift: a rebuild during the drag lays them on its new rects, reading no DOM. */
+  readonly parts: TilingDragPartGeometry;
   readonly drag: TilingDrag<TilingDragTree, string>;
   readonly hit: TilingHit<TilingDragTree, string>;
   readonly intent: DragIntent<TilingHitTarget<string>>;
@@ -839,11 +841,41 @@ function createDragHitSession(
     basis: inputs.basis,
     width: inputs.width,
     height: inputs.height,
+    parts,
     drag,
     hit,
     intent: createDragIntent<TilingHitTarget<string>>({ ...hit.intent }),
     atHome: false,
   };
+}
+
+/**
+ * The drag's hit session for a sample or a render (`known`, the one in use, or null).
+ * - A new drag (another source leaf or subject, or none yet) builds one: its parts are measured now (`measure`), once.
+ * - The same drag keeps it, whatever else changes: a new `config` object with the same values, a preview switched
+ *   between snap and indicator (the basis is fixed at the lift), a re-render.
+ * - The tree or the stage itself changed under the drag (a new `layout` object, a new viewport size, a config with
+ *   other values): the hit is rebuilt on them, on the same basis, from the lift's part measures (no DOM is read),
+ *   since the drag's places are the new tree's. Its hold starts afresh.
+ * @internal
+ */
+export function nextDragHitSession(
+  known: DragHitSession | null,
+  inputs: DragHitInputs,
+  sourceLeafId: string,
+  given: DragSubject | undefined,
+  measure: () => TilingDragPartGeometry,
+): DragHitSession | null {
+  // One key for "the pane": the machine leaves it out, the render names it.
+  const subject: DragSubject | undefined = given === "group" ? "group" : undefined;
+  if (known == null || known.sourceLeafId !== sourceLeafId || known.subject !== subject) {
+    return createDragHitSession(inputs, sourceLeafId, subject, measure());
+  }
+  const sameConfig: boolean = known.config === inputs.config || JSON.stringify(known.config) === JSON.stringify(inputs.config);
+  if (known.layout === inputs.layout && known.width === inputs.width && known.height === inputs.height && sameConfig) {
+    return known;
+  }
+  return createDragHitSession({ ...inputs, basis: known.basis }, sourceLeafId, subject, known.parts);
 }
 
 /** One pointer sample (viewport layout px) through the session's intent, read by its hit, as the drop state the drag machine keeps. */
@@ -5085,30 +5117,12 @@ const TilingRendererComponent = React.forwardRef<
     footprints: leafFootprintsById,
   };
   const dragHitRef = React.useRef<DragHitSession | null>(null);
-  const ensureDragHit = (sourceLeafId: string, given: DragSubject | undefined): DragHitSession | null => {
-    // One key for "the pane": the machine leaves it out, the render names it.
-    const subject: DragSubject | undefined = given === "group" ? "group" : undefined;
+  const ensureDragHit = (sourceLeafId: string, subject: DragSubject | undefined): DragHitSession | null => {
     const inputs: DragHitInputs | null = dragHitInputsRef.current;
     if (inputs == null) {
       return null;
     }
-    const known: DragHitSession | null = dragHitRef.current;
-    if (
-      known != null &&
-      known.layout === inputs.layout &&
-      known.sourceLeafId === sourceLeafId &&
-      known.subject === subject &&
-      known.basis === inputs.basis &&
-      known.width === inputs.width &&
-      known.height === inputs.height &&
-      known.config === inputs.config
-    ) {
-      return known;
-    }
-    dragHitRef.current = createDragHitSession(
-      inputs,
-      sourceLeafId,
-      subject,
+    dragHitRef.current = nextDragHitSession(dragHitRef.current, inputs, sourceLeafId, subject, (): TilingDragPartGeometry =>
       inputs.grouping ? measureDragPartGeometry(measurementPort, inputs, viewportClientFrame()) : {},
     );
     return dragHitRef.current;
@@ -5124,10 +5138,11 @@ const TilingRendererComponent = React.forwardRef<
     isLiveDragging && dragState.phase === "dragging" && dragState.atHome;
   // The drag as placement's `tilingDrag` lays it out, over hypr-tiling's own
   // tree adapter: the hit's, fixed for the drag.
-  const liveTilingDrag: TilingDrag<TilingDragTree, string> | null =
-    isLiveDragging && dragSourceLeafId != null
-      ? (ensureDragHit(dragSourceLeafId, dragSubject)?.drag ?? null)
-      : null;
+  const liveDragHit: DragHitSession | null =
+    isLiveDragging && dragSourceLeafId != null ? ensureDragHit(dragSourceLeafId, dragSubject) : null;
+  const liveTilingDrag: TilingDrag<TilingDragTree, string> | null = liveDragHit?.drag ?? null;
+  // What the frame draws follows the basis the hit was built on at the lift, not a preview switched mid-drag.
+  const shownBasis: TilingBasis = liveDragHit?.basis ?? dragHitBasis;
   // The held place: home, the committable drop's, or none.
   const heldPlace: TilingHeld<string> | null = !isLiveDragging
     ? null
@@ -5161,7 +5176,7 @@ const TilingRendererComponent = React.forwardRef<
   // place is held, the lift at home, the base with nothing held.
   const liveDragDisplayLayout: TilingLayoutNode = React.useMemo(
     (): TilingLayoutNode => {
-      if (liveTilingDrag == null || dragHitBasis === "lift" || heldPlace?.kind === "home") {
+      if (liveTilingDrag == null || shownBasis === "lift" || heldPlace?.kind === "home") {
         return layout;
       }
       const after: TilingAfter<TilingDragTree, string> | null = heldPlace == null ? null : liveTilingDrag.after(heldPlace);
@@ -5173,7 +5188,7 @@ const TilingRendererComponent = React.forwardRef<
     // `heldPlace` identity changes on every pointer move, so key on what
     // decides the tree instead — identical resolves are free.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [layout, liveTilingDrag, dragHitBasis, heldPlaceKey],
+    [layout, liveTilingDrag, shownBasis, heldPlaceKey],
   );
   // The pane is held (drawn in its lifted wrapper) for the whole drag except
   // while the snap preview has it settled into a slot in the tree.
@@ -5252,7 +5267,7 @@ const TilingRendererComponent = React.forwardRef<
   // `dragPreviewMakesRoom` (the base drawn landed) the landing itself.
   const dropIndicatorRect: TilingRect | null = !isPaneHeld || isSnapPreview || dragSourceLeafId == null
     ? null
-    : dragHitBasis === "lift"
+    : shownBasis === "lift"
       ? (committableDropState?.mark?.rect ?? null)
       : heldPlace != null && heldPlace.kind !== "home" && liveTilingDrag != null
         ? liveTilingDrag.after(heldPlace).landing
