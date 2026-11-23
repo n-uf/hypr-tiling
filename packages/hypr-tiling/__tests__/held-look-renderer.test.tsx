@@ -53,6 +53,10 @@ function boxOf(element: HTMLElement): Box | null {
 }
 
 function enclosingBox(element: HTMLElement): Box | null {
+  // A tab group's strip (and its tabs): `GEOMETRY["strip"]`, or nothing when unset.
+  if (element.closest("[data-hpt-group-tab-placement]") != null) {
+    return GEOMETRY.get("strip") ?? { x: 0, y: 0, width: 0, height: 0 };
+  }
   const leafElement: HTMLElement | null = element.closest<HTMLElement>("[data-hpt-leaf]");
   return leafElement == null ? null : boxOf(leafElement);
 }
@@ -725,6 +729,130 @@ describe("held look — a spring-load rearm switches the held look from the hand
       HEADER.px = null;
     });
     expect(seen).toEqual({ before: "title-bar", after: "thumbnail", active: "ops" });
+  });
+});
+
+describe("held look — a tab group lands from its look: the strip pivots with the pane", (): void => {
+  const STRIP_PX = 28;
+  const GROUP_TILES: ReadonlyArray<TilingTile> = [...TILES, { id: "c", title: "charlie" }];
+  /** a | g[b, c*] */
+  const GROUP_LAYOUT: TilingLayoutNode = {
+    kind: "split",
+    id: "root",
+    axis: "horizontal",
+    ratio: 0.5,
+    first: leaf("A", "a"),
+    second: { kind: "group", id: "g", members: [leaf("B", "b"), leaf("C", "c")], activeMemberId: "C" },
+  };
+
+  /** The group's strip and its active pane `c` laid out in the half starting at `x` (the strip on top or below). */
+  function groupAt(x: number, placement: "top" | "bottom"): void {
+    const paneTop: number = placement === "top" ? STRIP_PX : 0;
+    GEOMETRY.set("c", { x, y: paneTop, width: 500, height: 600 - STRIP_PX });
+    GEOMETRY.set("strip", { x, y: placement === "top" ? 0 : 600 - STRIP_PX, width: 500, height: STRIP_PX });
+  }
+
+  function GroupHost({ look, placement }: { look: TilingHeldLook; placement: "top" | "bottom" }): React.ReactElement {
+    const [layout, setLayout] = React.useState<TilingLayoutNode>(GROUP_LAYOUT);
+    return (
+      <TilingRenderer
+        layout={layout}
+        tiles={GROUP_TILES}
+        config={CONFIG}
+        heldLook={look}
+        dragAnimationEnabled
+        interaction={{
+          dragRecovery: { enable: false },
+          customCursor: false,
+          paneSwitching: { showTabStrip: false, showSwitcherOverlay: false },
+          grouping: { groupTabStrip: { placement } },
+        }}
+        onLayoutChange={setLayout}
+      />
+    );
+  }
+
+  const stripOf = (container: HTMLElement): HTMLElement =>
+    container.querySelector<HTMLElement>('[data-group-id="g"] [data-hpt-group-tab-placement]')!;
+  const translateScale = (transform: string): { dx: number; dy: number; scale: number } | null => {
+    const match: RegExpExecArray | null = /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(transform);
+    return match == null ? null : { dx: Number(match[1]), dy: Number(match[2]), scale: Number(match[3]) };
+  };
+
+  /** Lift the group by its active pane's title bar, hold it over `a`'s centre, swap into a's half and release. */
+  async function dropGroup(container: HTMLElement, placement: "top" | "bottom"): Promise<void> {
+    const paneTop: number = placement === "top" ? STRIP_PX : 0;
+    const header: HTMLElement = container.querySelector<HTMLElement>('[data-hpt-leaf="c"] article header')!;
+    await act(async (): Promise<void> => {
+      pointer(header, "pointerdown", 600, paneTop + 10);
+      await wait(5);
+    });
+    GEOMETRY.set("a", { x: 0, y: 0, width: 1000, height: 600 });
+    await moveTo(640, paneTop + 40);
+    await frames(500);
+    await moveTo(480, 300, 0);
+    await frames(100);
+    // The swap: a goes right, the group takes the left half.
+    GEOMETRY.set("a", { x: 500, y: 0, width: 500, height: 600 });
+    groupAt(0, placement);
+    await act(async (): Promise<void> => {
+      pointer(window, "pointerup", 480, 300);
+    });
+    expect(container.querySelector("[data-hpt-lifted]")).toBeNull();
+  }
+
+  for (const placement of ["top", "bottom"] as const) {
+    it(`a thumbnail drop (strip ${placement}): the strip is scaled with the pane about the edge they share, then settles to full size`, async (): Promise<void> => {
+      GEOMETRY.set("a", { x: 0, y: 0, width: 500, height: 600 });
+      groupAt(500, placement);
+      const { container } = render(<GroupHost look="thumbnail" placement={placement} />);
+      await dropGroup(container, placement);
+      const pane: HTMLElement = container.querySelector<HTMLElement>('[data-hpt-leaf="c"]')!;
+      const strip: HTMLElement = stripOf(container);
+      // The handover frame: the pane and its strip carry the thumbnail's scale.
+      const paneNow = translateScale(pane.style.transform);
+      const stripNow = translateScale(strip.style.transform);
+      expect(paneNow?.scale).toBeCloseTo(HELD_THUMBNAIL_SCALE, 3);
+      expect(stripNow?.scale).toBeCloseTo(HELD_THUMBNAIL_SCALE, 3);
+      expect(strip.style.opacity).toBe("");
+      // The pane pivots about its top-left; the strip about the corner it shares with the pane's scaled edge: its
+      // bottom-left above the pane, its top-left below it.
+      expect(pane.style.transformOrigin).toBe("0 0");
+      expect(strip.style.transformOrigin).toBe(placement === "top" ? "0 100%" : "0 0");
+      // Their edges meet: above, both are moved by the same dy; below, the strip follows the pane's scaled bottom.
+      const paneHeight: number = 600 - STRIP_PX;
+      expect(stripNow!.dy - paneNow!.dy).toBeCloseTo(
+        placement === "top" ? 0 : paneHeight * (HELD_THUMBNAIL_SCALE - 1),
+        1,
+      );
+      expect(strip.style.width).toBe("500px");
+      await frames(60);
+      const mid = translateScale(strip.style.transform);
+      expect(mid?.scale ?? 1).toBeGreaterThan(HELD_THUMBNAIL_SCALE);
+      await frames(900);
+      expect(pane.style.transform).toBe("");
+      expect(strip.style.transform).toBe("");
+      expect(strip.style.width).toBe("");
+      expect(strip.style.opacity).toBe("");
+    });
+  }
+
+  it("a fade drop: the strip is faded with the pane, at full size, then settles to solid", async (): Promise<void> => {
+    GEOMETRY.set("a", { x: 0, y: 0, width: 500, height: 600 });
+    groupAt(500, "top");
+    const { container } = render(<GroupHost look="fade" placement="top" />);
+    await dropGroup(container, "top");
+    const pane: HTMLElement = container.querySelector<HTMLElement>('[data-hpt-leaf="c"]')!;
+    const strip: HTMLElement = stripOf(container);
+    expect(Number(pane.style.opacity)).toBeCloseTo(HELD_FADE_OPACITY, 3);
+    expect(Number(strip.style.opacity)).toBeCloseTo(HELD_FADE_OPACITY, 3);
+    expect(translateScale(strip.style.transform)?.scale).toBe(1);
+    await frames(60);
+    expect(Number(strip.style.opacity)).toBeGreaterThan(HELD_FADE_OPACITY);
+    await frames(900);
+    expect(pane.style.opacity).toBe("");
+    expect(strip.style.opacity).toBe("");
+    expect(strip.style.transform).toBe("");
   });
 });
 
