@@ -46,7 +46,7 @@ export {
   DRAG_ANIMATION_SPEED_MIN_PERCENT,
   DEFAULT_TILING_LAYOUT_CONFIG,
 } from "./react/tiling-renderer";
-export { TILING_DEFAULT_COLLAPSED_EXTENT_PX } from "./engine/types";
+export { TILING_DEFAULT_COLLAPSED_EXTENT_PX, TILING_DEFAULT_FOLD_SPINE_PX } from "./engine/types";
 
 // ── Theming ──────────────────────────────────────────────────────────────────
 export {
@@ -216,6 +216,8 @@ export {
 export type {
   // Layout tree
   TilingCollapseBodyMode,
+  TilingFoldConfig,
+  TilingFoldMinPanePx,
   TilingLayoutConfig,
   TilingLayoutNode,
   TilingLeafNode,

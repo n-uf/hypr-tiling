@@ -1769,7 +1769,53 @@ export interface TilingLayoutConfig {
    * {@link TilingCollapseBodyMode}. Undefined → `"keep-mounted"`.
    */
   collapseBodyMode?: TilingCollapseBodyMode;
+  /**
+   * Folding: what a split does when it can't give both children their
+   * minimum along its axis (a phone, a narrow side panel). Undefined or
+   * `false` → off: the split lays out as it always has. With a
+   * {@link TilingFoldConfig} such a split folds instead: the side holding
+   * focus stays open, the other becomes a spine on the edge where it sits.
+   * A split where both floors fit is laid out exactly as with folding off.
+   * Folds are derived from the container size and focus only and are never
+   * written into the layout. See `resolveFoldPlan` (`./engine`).
+   */
+  fold?: false | TilingFoldConfig;
 }
+
+/**
+ * Per-axis fold floor (CSS px): a pane narrower than `width` (side by side) or
+ * shorter than `height` (stacked) folds.
+ */
+export interface TilingFoldMinPanePx {
+  /** Minimum width (CSS px) a pane keeps beside a sibling before the split folds. */
+  width: number;
+  /** Minimum height (CSS px) a pane keeps above or below a sibling before the split folds. */
+  height: number;
+}
+
+/**
+ * How a layout folds where it doesn't fit ({@link TilingLayoutConfig.fold}).
+ */
+export interface TilingFoldConfig {
+  /**
+   * The floor each child of a split needs along the split's axis, as one
+   * value for both axes or per axis. A split folds when its two children's
+   * floors plus its gutter don't fit its extent. Each child's floor, most
+   * specific first: a static child's px pin along the axis (a collapsed
+   * leaf's title bar), a leaf's own {@link TilingLeafNode.minBBoxPx}, the
+   * split's {@link TilingSplitNode.minPaneSizePx}, this value, then
+   * {@link TilingLayoutConfig.minPaneSizePx}.
+   */
+  minPanePx?: number | TilingFoldMinPanePx;
+  /**
+   * Thickness (CSS px) of the spine a folded side becomes, across the split's
+   * axis. Undefined → {@link TILING_DEFAULT_FOLD_SPINE_PX}.
+   */
+  spineSizePx?: number;
+}
+
+/** Default spine thickness (CSS px) when {@link TilingFoldConfig.spineSizePx} is undefined. */
+export const TILING_DEFAULT_FOLD_SPINE_PX: number = 30;
 
 /**
  * Default collapsed titlebar-only extent (CSS px) when
