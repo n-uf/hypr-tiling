@@ -6,6 +6,7 @@ import type {
   WheelTouchInputListener,
   WheelTouchInputPort,
 } from "../engine/wheel-touch-port";
+import { findFoldFlipElement } from "./dom-scroll-chain-port";
 
 /** `WheelEvent.deltaMode` line unit → CSS px (the Firefox line-mode convention). */
 const WHEEL_LINE_PX: number = 16;
@@ -135,7 +136,11 @@ export function createDomWheelTouchPort(
       x: event.clientX,
       y: event.clientY,
       ts: now(),
-      canScrollFurther: options.scrollChain.canScrollFurther(activeTouch.target, "x", direction),
+      // A fold that turns this way takes the swipe first (`useFoldSwipe`): the
+      // workspace swipe only arms past the last fold.
+      canScrollFurther:
+        options.scrollChain.canScrollFurther(activeTouch.target, "x", direction) ||
+        findFoldFlipElement(activeTouch.target, "x", direction) != null,
       widthPx: laidOutWidth(element),
     };
     for (const listener of listeners) {
