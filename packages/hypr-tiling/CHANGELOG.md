@@ -20,7 +20,12 @@ the version number alone does not flag them.
   (for crawlers too), and no pane remounts when a split folds, unfolds (a
   turned phone) or flips.
 - **The flip**: the side a fold opens slides in from its spine's edge
-  (260 ms; none under reduced motion).
+  (260 ms; none under reduced motion). Keyboard focus follows into the
+  pane that opened.
+- **Dragging a pane is off while anything is folded**, for now: drop
+  targets are still worked out on the unfolded layout. The map shown on
+  lift, the fold model's next step, brings it back. Resize still works on
+  the splits that are drawn, from where their boundary is drawn.
 - **Unchanged where nothing folds**: with `config.fold` off, or wherever
   every pane has its floor, the markup is the same as before. A server
   render (no measured size yet) and a maximized pane don't fold.
