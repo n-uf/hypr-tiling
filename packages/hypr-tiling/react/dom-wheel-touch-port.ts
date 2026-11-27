@@ -8,6 +8,9 @@ import type {
 } from "../engine/wheel-touch-port";
 import { findFoldFlipElement } from "./dom-scroll-chain-port";
 
+/** After a touch pointer is cancelled, how long (ms) to wait for the finger's next touch event before ending. */
+const TOUCH_FOLLOW_TIMEOUT_MS: number = 400;
+
 /** `WheelEvent.deltaMode` line unit → CSS px (the Firefox line-mode convention). */
 const WHEEL_LINE_PX: number = 16;
 
@@ -55,8 +58,12 @@ function laidOutWidth(element: HTMLElement): number | null {
  *   passive listener.
  * - `touch`: `pointerdown` (`pointerType === "touch"`) on `element` starts a
  *   gesture; `pointermove` / `pointerup` / `pointercancel` on `window` follow
- *   that one `pointerId` until it ends. The scroll chain is judged from the
- *   TOUCH-START target for the finger's current direction on every move.
+ *   that one `pointerId` until it ends. When the browser cancels the pointer
+ *   (a touch that starts in a container it may pan, such as a pane's
+ *   scrolling body), the same finger is followed through touch events
+ *   (`touchmove` / `touchend`) instead; a second finger ends the gesture. The
+ *   scroll chain is judged from the TOUCH-START target for the finger's
+ *   current direction on every move.
  *
  * Samples carry `element.clientWidth` as `widthPx`, or `null` when the element
  * has no laid-out width (so the FSM keeps its context / config width).
@@ -112,6 +119,22 @@ export function createDomWheelTouchPort(
     }
   };
 
+  // After the browser cancels the touch pointer (it does when the touch starts
+  // in a container it may pan, such as a pane's scrolling body), the same
+  // finger is followed through touch events, which keep coming; without
+  // them, or if none comes soon, the gesture ends as before.
+  let followTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const stopFollowingTouches = (): void => {
+    if (followTimer != null) {
+      clearTimeout(followTimer);
+      followTimer = null;
+    }
+    window.removeEventListener("touchmove", onTouchEventMove);
+    window.removeEventListener("touchend", onTouchEventEnd);
+    window.removeEventListener("touchcancel", onTouchEventEnd);
+  };
+
   const endTouch = (): void => {
     if (activeTouch == null) {
       return;
@@ -119,22 +142,23 @@ export function createDomWheelTouchPort(
     activeTouch = null;
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerEnd);
-    window.removeEventListener("pointercancel", onPointerEnd);
+    window.removeEventListener("pointercancel", onPointerCancel);
+    stopFollowingTouches();
     const ts: number = now();
     for (const listener of listeners) {
       listener.onTouchEnd(ts);
     }
   };
 
-  const onPointerMove = (event: PointerEvent): void => {
-    if (activeTouch == null || event.pointerId !== activeTouch.pointerId) {
+  const moveTo = (clientX: number, clientY: number): void => {
+    if (activeTouch == null) {
       return;
     }
     // Finger moving LEFT reveals content on the right = scroll direction +1.
-    const direction: ScrollChainDirection = event.clientX <= activeTouch.originX ? 1 : -1;
+    const direction: ScrollChainDirection = clientX <= activeTouch.originX ? 1 : -1;
     const sample: TouchInputSample = {
-      x: event.clientX,
-      y: event.clientY,
+      x: clientX,
+      y: clientY,
       ts: now(),
       // A fold that turns this way takes the swipe first (`useFoldSwipe`): the
       // workspace swipe only arms past the last fold.
@@ -148,11 +172,58 @@ export function createDomWheelTouchPort(
     }
   };
 
+  const onPointerMove = (event: PointerEvent): void => {
+    if (activeTouch == null || event.pointerId !== activeTouch.pointerId) {
+      return;
+    }
+    moveTo(event.clientX, event.clientY);
+  };
+
   const onPointerEnd = (event: PointerEvent): void => {
     if (activeTouch == null || event.pointerId !== activeTouch.pointerId) {
       return;
     }
     endTouch();
+  };
+
+  function onTouchEventMove(event: TouchEvent): void {
+    if (followTimer != null) {
+      clearTimeout(followTimer);
+      followTimer = null;
+    }
+    const finger = event.touches.length === 1 ? event.touches[0] : null;
+    if (finger == null) {
+      // A second finger (a pinch), or none: not a swipe.
+      endTouch();
+      return;
+    }
+    moveTo(finger.clientX, finger.clientY);
+  }
+
+  function onTouchEventEnd(event: TouchEvent): void {
+    if (event.touches.length === 0) {
+      endTouch();
+    }
+  }
+
+  const onPointerCancel = (event: PointerEvent): void => {
+    if (activeTouch == null || event.pointerId !== activeTouch.pointerId) {
+      return;
+    }
+    if (typeof TouchEvent === "undefined") {
+      endTouch();
+      return;
+    }
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerEnd);
+    window.removeEventListener("pointercancel", onPointerCancel);
+    window.addEventListener("touchmove", onTouchEventMove, { passive: true });
+    window.addEventListener("touchend", onTouchEventEnd);
+    window.addEventListener("touchcancel", onTouchEventEnd);
+    followTimer = setTimeout((): void => {
+      followTimer = null;
+      endTouch();
+    }, TOUCH_FOLLOW_TIMEOUT_MS);
   };
 
   const onPointerDown = (event: PointerEvent): void => {
@@ -165,7 +236,7 @@ export function createDomWheelTouchPort(
     activeTouch = { pointerId: event.pointerId, target: event.target, originX: event.clientX };
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerEnd);
-    window.addEventListener("pointercancel", onPointerEnd);
+    window.addEventListener("pointercancel", onPointerCancel);
     const sample: TouchInputSample = {
       x: event.clientX,
       y: event.clientY,
@@ -194,7 +265,8 @@ export function createDomWheelTouchPort(
       activeTouch = null;
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerEnd);
-      window.removeEventListener("pointercancel", onPointerEnd);
+      window.removeEventListener("pointercancel", onPointerCancel);
+      stopFollowingTouches();
     }
   };
 

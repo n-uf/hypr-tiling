@@ -92,6 +92,44 @@ describe("fold flips come before the workspace swipe", () => {
     expect(findFoldFlipElement(pane, "y", 1)).toBeNull();
   });
 
+  it("after the browser cancels the touch pointer, the same finger is followed through touch events", () => {
+    const globalScope = globalThis as unknown as { TouchEvent?: unknown };
+    const hadTouchEvent: boolean = typeof globalScope.TouchEvent !== "undefined";
+    if (!hadTouchEvent) globalScope.TouchEvent = class extends Event {};
+    try {
+      const { root, pane } = tree("x-");
+      const port = createDomWheelTouchPort(root, { wheel: false, touch: true, scrollChain: NO_SCROLL, now: (): number => 1 });
+      const moves: Array<TouchInputSample> = [];
+      let ended: number = 0;
+      const unsubscribe = port.subscribe({
+        onWheel: (): void => undefined,
+        onTouchStart: (): void => undefined,
+        onTouchMove: (sample: TouchInputSample): void => {
+          moves.push(sample);
+        },
+        onTouchEnd: (): void => {
+          ended += 1;
+        },
+      });
+      const touchEvent = (type: string, fingers: ReadonlyArray<{ clientX: number; clientY: number }>): void => {
+        const event = new Event(type, { bubbles: true });
+        Object.defineProperty(event, "touches", { value: fingers });
+        window.dispatchEvent(event);
+      };
+      touch(pane, "pointerdown", 200);
+      touch(window, "pointercancel", 200);
+      expect(ended).toBe(0);
+      touchEvent("touchmove", [{ clientX: 120, clientY: 100 }]);
+      // past the last fold that way (the open side turns only rightward, x-): the workspace swipe may take it
+      expect(moves.map((sample) => [sample.x, sample.canScrollFurther])).toEqual([[120, false]]);
+      touchEvent("touchend", []);
+      expect(ended).toBe(1);
+      unsubscribe();
+    } finally {
+      if (!hadTouchEvent) delete globalScope.TouchEvent;
+    }
+  });
+
   it("a container that can still scroll that way takes the swipe first", () => {
     const { open, pane } = tree("x+");
     const scroller: HTMLElement = document.createElement("div");
