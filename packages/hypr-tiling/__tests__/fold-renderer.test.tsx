@@ -35,13 +35,27 @@ beforeAll((): void => {
     addListener: (): void => undefined,
     removeListener: (): void => undefined,
   })) as unknown as typeof window.matchMedia;
-  const globalScope = globalThis as unknown as { ResizeObserver?: unknown };
+  const globalScope = globalThis as unknown as { ResizeObserver?: unknown; PointerEvent?: unknown };
   if (typeof globalScope.ResizeObserver === "undefined") {
     globalScope.ResizeObserver = class {
       observe(): void {}
       unobserve(): void {}
       disconnect(): void {}
     };
+  }
+  if (typeof globalScope.PointerEvent === "undefined") {
+    class StubPointerEvent extends MouseEvent {
+      readonly pointerId: number;
+      readonly pointerType: string;
+      readonly isPrimary: boolean;
+      constructor(type: string, init: PointerEventInit = {}) {
+        super(type, init);
+        this.pointerId = init.pointerId ?? 0;
+        this.pointerType = init.pointerType ?? "mouse";
+        this.isPrimary = init.isPrimary ?? true;
+      }
+    }
+    globalScope.PointerEvent = StubPointerEvent;
   }
 });
 
@@ -231,5 +245,73 @@ describe("folding in the renderer", () => {
     await act(async (): Promise<void> => undefined);
     expect(container.querySelector("[data-hpt-fold-spine]")).toBeNull();
     expect(container.querySelector("[data-hpt-folded]")).toBeNull();
+  });
+});
+
+function touch(target: EventTarget, type: string, x: number, y: number): void {
+  target.dispatchEvent(
+    new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: "touch", isPrimary: true, clientX: x, clientY: y }),
+  );
+}
+
+async function swipe(from: Element, dx: number, dy: number = 0): Promise<void> {
+  await act(async (): Promise<void> => {
+    touch(from, "pointerdown", 200, 400);
+    for (let step = 1; step <= 5; step += 1) {
+      touch(window, "pointermove", 200 + (dx * step) / 5, 400 + (dy * step) / 5);
+    }
+    touch(window, "pointerup", 200 + dx, 400 + dy);
+  });
+}
+
+const leafElement = (root: HTMLElement, leafId: string): Element => {
+  const element = root.querySelector(`[data-hpt-leaf="${leafId}"]`) ?? root.querySelector(`[data-hpt-leaf]`);
+  if (element == null) throw new Error(`no leaf ${leafId}`);
+  return element;
+};
+
+describe("folds on touch and keys", () => {
+  it("the open side of a sideways fold is marked with the way it turns", async () => {
+    const { container } = renderHome(SITE_FOLD);
+    await act(async (): Promise<void> => undefined);
+    const open = container.querySelector<HTMLElement>('[data-hpt-folded] > [data-hpt-fold-side="open"]');
+    expect(open?.getAttribute("data-hpt-fold-flip")).toBe("x+");
+    expect(open?.getAttribute("data-hpt-fold-split")).toBe("home-root");
+    expect(open?.style.touchAction).toBe("pan-y");
+  });
+
+  it("a swipe left over the open side turns the fold toward its spine on the right", async () => {
+    const { container } = renderHome(SITE_FOLD);
+    await act(async (): Promise<void> => undefined);
+    await swipe(leafElement(container, "intro"), -200);
+    expect(spine(container, "home-root")?.getAttribute("data-hpt-spine-edge")).toBe("left");
+    // Features is open; a swipe right turns back to the hero column
+    await swipe(leafElement(container, "features"), 200);
+    expect(spine(container, "home-root")?.getAttribute("data-hpt-spine-edge")).toBe("right");
+  });
+
+  it("a short, slow or backward swipe, or a vertical one, doesn't turn it", async () => {
+    const { container } = renderHome(SITE_FOLD);
+    await act(async (): Promise<void> => undefined);
+    await swipe(leafElement(container, "intro"), 40);
+    await swipe(leafElement(container, "intro"), -5, -300);
+    expect(spine(container, "home-root")?.getAttribute("data-hpt-spine-edge")).toBe("right");
+  });
+
+  it("the arrows move focus by where panes really are, and unfold as they go", async () => {
+    const { container } = renderHome(SITE_FOLD);
+    await act(async (): Promise<void> => undefined);
+    (spine(container, "home-root") as HTMLButtonElement).focus();
+    await act(async (): Promise<void> => {
+      document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", code: "ArrowRight", bubbles: true }));
+    });
+    expect(spine(container, "home-root")?.getAttribute("data-hpt-spine-edge")).toBe("left");
+    expect(spine(container, "home-features-rest")).not.toBeNull();
+    await act(async (): Promise<void> => {
+      (spine(container, "home-root") as HTMLButtonElement).focus();
+      document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", code: "ArrowRight", bubbles: true }));
+    });
+    // Install, on the inner spine, opens next
+    expect(spine(container, "home-features-rest")?.getAttribute("data-hpt-spine-edge")).toBe("left");
   });
 });
