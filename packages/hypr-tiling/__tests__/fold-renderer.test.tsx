@@ -248,24 +248,37 @@ describe("folding in the renderer", () => {
   });
 });
 
-function touch(target: EventTarget, type: string, x: number, y: number, pointerId: number = 7, isPrimary: boolean = true): void {
-  target.dispatchEvent(
-    new PointerEvent(type, { bubbles: true, cancelable: true, pointerId, pointerType: "touch", isPrimary, clientX: x, clientY: y }),
-  );
+interface FakeTouch {
+  identifier: number;
+  clientX: number;
+  clientY: number;
 }
 
+/**
+ * A touch event as a browser sends it: to the element the touch started on, with `touches` (the fingers down) and
+ * `changedTouches` (the ones this event is about). jsdom has no `Touch` constructor, so the lists are plain arrays.
+ */
+function touch(target: EventTarget, type: string, changed: FakeTouch, down: ReadonlyArray<FakeTouch> = type === "touchend" || type === "touchcancel" ? [] : [changed]): void {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "changedTouches", { value: [changed] });
+  Object.defineProperty(event, "touches", { value: down });
+  target.dispatchEvent(event);
+}
+
+const finger = (x: number, y: number, identifier: number = 7): FakeTouch => ({ identifier, clientX: x, clientY: y });
+
 /** A swipe as a browser delivers it: each event in its own task, React committing between them. */
-async function swipe(from: Element, dx: number, dy: number = 0, end: "pointerup" | "pointercancel" = "pointerup"): Promise<void> {
+async function swipe(from: Element, dx: number, dy: number = 0, end: "touchend" | "touchcancel" = "touchend"): Promise<void> {
   await act(async (): Promise<void> => {
-    touch(from, "pointerdown", 200, 400);
+    touch(from, "touchstart", finger(200, 400));
   });
   for (let step = 1; step <= 5; step += 1) {
     await act(async (): Promise<void> => {
-      touch(window, "pointermove", 200 + (dx * step) / 5, 400 + (dy * step) / 5);
+      touch(from, "touchmove", finger(200 + (dx * step) / 5, 400 + (dy * step) / 5));
     });
   }
   await act(async (): Promise<void> => {
-    touch(window, end, 200 + dx, 400 + dy);
+    touch(from, end, finger(200 + dx, 400 + dy));
   });
 }
 
@@ -310,9 +323,32 @@ describe("folds on touch and keys", () => {
   it("a cancelled touch doesn't turn it and leaves no transform", async () => {
     const { container } = renderHome(SITE_FOLD);
     await act(async (): Promise<void> => undefined);
-    await swipe(leafElement(container, "intro"), -200, 0, "pointercancel");
+    await swipe(leafElement(container, "intro"), -200, 0, "touchcancel");
     expect(spine(container, "home-root")?.getAttribute("data-hpt-spine-edge")).toBe("right");
     expect(openSide(container)?.style.transform).toBe("");
+  });
+
+  it("a short flick turns it; the same flick with a rest before the finger lifts doesn't", async () => {
+    const flick = async (pane: Element, restMs: number): Promise<void> => {
+      // The moves in one task: a fast flick (40 px, under a quarter of the pane, so only its speed can turn it).
+      await act(async (): Promise<void> => {
+        touch(pane, "touchstart", finger(200, 400));
+        for (const x of [185, 170, 160]) touch(pane, "touchmove", finger(x, 400));
+        if (restMs === 0) touch(pane, "touchend", finger(160, 400));
+      });
+      if (restMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, restMs));
+        await act(async (): Promise<void> => {
+          touch(pane, "touchend", finger(160, 400));
+        });
+      }
+    };
+    const { container } = renderHome(SITE_FOLD);
+    await act(async (): Promise<void> => undefined);
+    await flick(leafElement(container, "intro"), 160);
+    expect(spine(container, "home-root")?.getAttribute("data-hpt-spine-edge")).toBe("right");
+    await flick(leafElement(container, "intro"), 0);
+    expect(spine(container, "home-root")?.getAttribute("data-hpt-spine-edge")).toBe("left");
   });
 
   it("a second finger (a pinch) ends the swipe", async () => {
@@ -320,17 +356,17 @@ describe("folds on touch and keys", () => {
     await act(async (): Promise<void> => undefined);
     const pane = leafElement(container, "intro");
     await act(async (): Promise<void> => {
-      touch(pane, "pointerdown", 200, 400);
+      touch(pane, "touchstart", finger(200, 400));
     });
     await act(async (): Promise<void> => {
-      touch(window, "pointermove", 150, 400);
+      touch(pane, "touchmove", finger(150, 400));
     });
     await act(async (): Promise<void> => {
-      touch(pane, "pointerdown", 300, 500, 8, false);
+      touch(pane, "touchstart", finger(300, 500, 8), [finger(150, 400), finger(300, 500, 8)]);
     });
     await act(async (): Promise<void> => {
-      touch(window, "pointermove", 0, 400);
-      touch(window, "pointerup", 0, 400);
+      touch(pane, "touchmove", finger(0, 400), [finger(0, 400), finger(300, 500, 8)]);
+      touch(pane, "touchend", finger(0, 400), [finger(300, 500, 8)]);
     });
     expect(spine(container, "home-root")?.getAttribute("data-hpt-spine-edge")).toBe("right");
     expect(openSide(container)?.style.transform).toBe("");
@@ -340,19 +376,24 @@ describe("folds on touch and keys", () => {
     const { container, unmount } = renderHome(SITE_FOLD);
     await act(async (): Promise<void> => undefined);
     const removed: Array<string> = [];
-    const original = window.removeEventListener.bind(window);
-    window.removeEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void => {
+    const original = EventTarget.prototype.removeEventListener;
+    EventTarget.prototype.removeEventListener = function (
+      this: EventTarget,
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: boolean | EventListenerOptions,
+    ): void {
       removed.push(type);
-      original(type, listener, options);
-    }) as typeof window.removeEventListener;
+      original.call(this, type, listener, options);
+    };
     try {
       await act(async (): Promise<void> => {
-        touch(leafElement(container, "intro"), "pointerdown", 200, 400);
+        touch(leafElement(container, "intro"), "touchstart", finger(200, 400));
       });
       unmount();
-      expect(removed).toEqual(expect.arrayContaining(["pointermove", "pointerup", "pointercancel"]));
+      expect(removed).toEqual(expect.arrayContaining(["touchstart", "touchmove", "touchend", "touchcancel"]));
     } finally {
-      window.removeEventListener = original;
+      EventTarget.prototype.removeEventListener = original;
     }
   });
 
