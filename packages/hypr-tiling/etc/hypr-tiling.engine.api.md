@@ -245,6 +245,9 @@ export interface ExtractedLeafResult {
 export function extractLeafNode(node: TilingLayoutNode, leafId: string): ExtractedLeafResult;
 
 // @public
+export function findFoldToward(plan: TilingFoldPlan, leafId: string, direction: TilingFocusDirection): TilingFold | null;
+
+// @public
 export function findLeafByDirection(layout: TilingLayoutNode, fromLeafId: string, direction: TilingFocusDirection): string | null;
 
 // @public
@@ -507,6 +510,9 @@ export interface ResolvedTilingWorkspaceSwitchCapability {
 export function resolveFocusCurrentOrLast(history: FocusHistory, currentLeafId: string | null): string | null;
 
 // @public
+export function resolveFoldPlan(layout: TilingLayoutNode, container: TilingRect, config: TilingLayoutConfig, focusedLeafId: string | null, recentLeafIds?: ReadonlyArray<string>): TilingFoldPlan;
+
+// @public
 export function resolveKeymap(keymap?: TilingKeymap | null): ResolvedTilingKeymap;
 
 // @public
@@ -649,6 +655,9 @@ export function switchWorkspace(set: TilingWorkspaceSet, id: TilingWorkspaceId):
 export function tileOrderByLeafId(node: TilingLayoutNode): ReadonlyArray<string>;
 
 // @public
+export const TILING_DEFAULT_FOLD_SPINE_PX: number;
+
+// @public
 export const TILING_DEFAULT_WORKSPACE_PLACEMENT: TilingWorkspacePlacement;
 
 // @public
@@ -761,6 +770,51 @@ export interface TilingDropIntentState {
 export type TilingEdgeZone = Exclude<TilingLeafDropZone, "center">;
 
 // @public
+export type TilingFocusDirection = "left" | "right" | "up" | "down";
+
+// @public
+export interface TilingFold {
+    axis: TilingSplitAxis;
+    leafIds: ReadonlyArray<string>;
+    openRect: TilingRect;
+    openSide: TilingFoldSide;
+    parentSplitId: string | null;
+    rect: TilingRect;
+    spineEdge: TilingFoldEdge;
+    spineRect: TilingRect;
+    splitId: string;
+    targetLeafId: string | null;
+}
+
+// @public
+export interface TilingFoldConfig {
+    minPanePx?: number | TilingFoldMinPanePx;
+    spineSizePx?: number;
+}
+
+// @public
+export type TilingFoldEdge = "left" | "right" | "top" | "bottom";
+
+// @public
+export interface TilingFoldMinPanePx {
+    height: number;
+    width: number;
+}
+
+// @public
+export interface TilingFoldPlan extends TilingLayoutGeometry {
+    fittedRatios: ReadonlyMap<string, number>;
+    foldedLeafIds: ReadonlySet<string>;
+    folds: ReadonlyArray<TilingFold>;
+    leafFolds: ReadonlyMap<string, ReadonlyArray<string>>;
+    leaves: ReadonlyMap<string, TilingRect>;
+    splits: ReadonlyMap<string, TilingSplitGeometry>;
+}
+
+// @public
+export type TilingFoldSide = "first" | "second";
+
+// @public
 export interface TilingGroupNode {
     activeMemberId: string;
     id: string;
@@ -844,6 +898,7 @@ export interface TilingKeymapActionGuards {
 export interface TilingLayoutConfig {
     collapseBodyMode?: TilingCollapseBodyMode;
     collapsedExtentPx?: number;
+    fold?: false | TilingFoldConfig;
     gapPx: number;
     handleSizePx: number;
     minPaneSizePx: number;

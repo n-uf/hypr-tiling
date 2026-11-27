@@ -7,6 +7,36 @@ SemVer "major" bump. The library is in active development, and any release may
 include breaking changes. Read the per-release notes below before upgrading —
 the version number alone does not flag them.
 
+## Unreleased
+
+### Folding: the tree folds where it doesn't fit (engine only)
+
+- **`resolveFoldPlan(layout, container, config, focusedLeafId, recentLeafIds?)`**
+  on `./engine`, the first step of the phone model. Laid out from the root,
+  a split whose two children can't both get their floor along its axis
+  folds: the side holding focus stays open, the other becomes a spine on the
+  edge where it sits (`folds`: the split, the open side, the spine's edge and
+  box, the leaves on the spine and the one a tap would open). The open side
+  is laid out afresh and its splits are judged the same way. Pure and
+  derived: folds are never written into the layout. The renderer doesn't
+  use it yet.
+- **`config.fold`** (`TilingFoldConfig`): `minPanePx` (one value or
+  `{ width, height }`) and `spineSizePx` (default
+  `TILING_DEFAULT_FOLD_SPINE_PX`, 30). Off by default. A child's floor, most
+  specific first: a static child's px pin, a leaf's `minBBoxPx`, the split's
+  `minPaneSizePx`, `minPanePx`, the config's `minPaneSizePx`.
+- **The floor is honoured, not dropped.** A split where both floors fit stays
+  a split; if its stored ratio leaves a pane under the floor, the boundary
+  moves to the floor for this layout (`fittedRatios`, derived like the
+  folds). Before, a split that couldn't fit both floors silently fell back
+  to 50/50 (`clampByMinSize`'s 0.5; `clampByMinSizeOrFold` now reports
+  `"fold"` there).
+- **Desktop is unchanged.** Wherever every pane already has its floor (the
+  site's Home tree at 1440 × 900 with 220 × 200 px floors, say), the plan is
+  exactly `resolveLayoutGeometry`'s geometry.
+- **`findFoldToward(plan, leafId, direction)`**: the nearest fold to turn to
+  reach what lies that way of a pane, or `null` past the last one.
+
 ## 26.11.12 — 2026-11-23
 
 ### Dragging a pane

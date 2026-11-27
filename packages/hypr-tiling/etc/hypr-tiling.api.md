@@ -465,6 +465,9 @@ export const TILING_DASHBOARD_PRESET: TilingInteractionCapabilities;
 export const TILING_DEFAULT_COLLAPSED_EXTENT_PX: number;
 
 // @public
+export const TILING_DEFAULT_FOLD_SPINE_PX: number;
+
+// @public
 export const TILING_DEFAULT_WORKSPACE_PLACEMENT: TilingWorkspacePlacement;
 
 // @public
@@ -808,6 +811,18 @@ export type TilingExternalDropSubject = {
 export type TilingFocusDirection = "left" | "right" | "up" | "down";
 
 // @public
+export interface TilingFoldConfig {
+    minPanePx?: number | TilingFoldMinPanePx;
+    spineSizePx?: number;
+}
+
+// @public
+export interface TilingFoldMinPanePx {
+    height: number;
+    width: number;
+}
+
+// @public
 export interface TilingGroupingCapability {
     enable?: boolean;
     groupTabStrip?: TilingGroupTabStripOptions;
@@ -964,6 +979,7 @@ export interface TilingKeymap {
 export interface TilingLayoutConfig {
     collapseBodyMode?: TilingCollapseBodyMode;
     collapsedExtentPx?: number;
+    fold?: false | TilingFoldConfig;
     gapPx: number;
     handleSizePx: number;
     minPaneSizePx: number;
