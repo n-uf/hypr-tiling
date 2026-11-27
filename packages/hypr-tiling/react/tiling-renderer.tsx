@@ -133,6 +133,8 @@ import {
   type TilingRect,
 } from "../engine/leaf-geometry";
 import { resolveFoldPlan, type TilingFold, type TilingFoldPlan, type TilingFoldSide } from "../engine/fold-plan";
+import { FOLD_FLIP_ATTRIBUTE, foldFlipToken } from "../engine/fold-swipe";
+import { FOLD_SPLIT_ATTRIBUTE, useFoldSwipe } from "./use-fold-swipe";
 import { isInteractiveControlTarget } from "../engine/interactive-controls";
 import type { MeasurementPort } from "../engine/measurement-port";
 import {
@@ -8977,6 +8979,14 @@ const TilingRendererComponent = React.forwardRef<
           <div
             className={cn("flex min-h-0 min-w-0", overflowClass)}
             data-hpt-fold-side={open ? "open" : "folded"}
+            // A sideways fold's open side turns by a touch swipe toward its
+            // spine (`useFoldSwipe`): the browser keeps vertical pans.
+            {...(open && isHorizontal
+              ? {
+                  [FOLD_FLIP_ATTRIBUTE]: foldFlipToken(fold.spineEdge),
+                  [FOLD_SPLIT_ATTRIBUTE]: node.id,
+                }
+              : {})}
             style={
               open
                 ? {
@@ -8987,6 +8997,7 @@ const TilingRendererComponent = React.forwardRef<
                     ...(isStaticOnCrossAxis(child, node.axis)
                       ? { alignSelf: "flex-start" }
                       : {}),
+                    ...(isHorizontal ? { touchAction: "pan-y" } : {}),
                   }
                 : { display: "none" }
             }
@@ -10264,6 +10275,24 @@ const TilingRendererComponent = React.forwardRef<
   // side now open slides in from the edge its spine was on. The layout itself
   // is already final; this only animates the open side's box into place.
   // Skipped under reduced motion and where the Web Animations API is missing.
+  // Swipe to flip (touch): a sideways swipe toward a fold's spine opens it,
+  // as a tap on the spine does. Past the last fold the workspace swipe takes
+  // the swipe (the touch port sees the fold as scrollable until then).
+  const foldBySplitIdRef = React.useRef(foldBySplitId);
+  foldBySplitIdRef.current = foldBySplitId;
+  useFoldSwipe({
+    rootRef: viewportRef,
+    enabled: foldBySplitId != null,
+    isBlocked: (): boolean => dragStateRef.current.phase !== "idle",
+    onFlip: (splitId: string): void => {
+      const targetLeafId: string | null =
+        foldBySplitIdRef.current?.get(splitId)?.targetLeafId ?? null;
+      if (targetLeafId != null) {
+        setFocusedLeaf(targetLeafId);
+      }
+    },
+  });
+
   const previousFoldOpenSidesRef = React.useRef<Map<string, TilingFoldSide>>(
     new Map<string, TilingFoldSide>(),
   );
