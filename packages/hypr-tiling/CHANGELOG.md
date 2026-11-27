@@ -18,6 +18,11 @@ the version number alone does not flag them.
 - **Then the workspace**: past the last fold the same swipe carries on into
   the next workspace (the workspace swipe only arms once no fold turns that
   way; the wheel is unchanged).
+- **A workspace swipe on a pane's body works on touch** (it worked only from
+  a title bar): when the browser cancels the touch pointer, as it does for a
+  touch that starts in a pane's scrolling body, the workspace swipe follows
+  the same finger through touch events. The fold swipe listens to touch
+  events for the same reason.
 - **The arrows unfold as they go**: directional focus moves by where panes
   really are in the tree, and focusing a pane on a spine opens it.
 - Stacked folds (a spine above or below) open by a tap or the arrows; a
