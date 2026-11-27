@@ -66,21 +66,26 @@ export function canFoldFlip(element: HTMLElement, axis: ScrollChainAxis, directi
 }
 
 /**
- * The nearest fold open side from `target` up that a touch swipe along `axis` in `direction` turns, or `null`: none,
- * or a container on the way to it can still scroll that way first (it takes the swipe).
+ * The nearest fold open side from `target` up (to `root`, inclusive, when given) that a touch swipe along `axis` in
+ * `direction` turns, or `null`: none, or a container on the way to it can still scroll that way first (it takes the
+ * swipe). With a `root` that holds no fold mark at all, `null` at once (no ancestor walk).
  */
 export function findFoldFlipElement(
   target: EventTarget | null,
   axis: ScrollChainAxis,
   direction: ScrollChainDirection,
+  root?: HTMLElement | null,
 ): HTMLElement | null {
+  if (root != null && root.querySelector(`[${FOLD_FLIP_ATTRIBUTE}]`) == null) {
+    return null;
+  }
   let element: HTMLElement | null =
     target instanceof HTMLElement ? target : target instanceof Node ? (target.parentElement as HTMLElement | null) : null;
   while (element != null) {
     if (canFoldFlip(element, axis, direction)) {
       return element;
     }
-    if (canElementScrollFurther(element, axis, direction)) {
+    if (canElementScrollFurther(element, axis, direction) || element === root) {
       return null;
     }
     element = element.parentElement;
