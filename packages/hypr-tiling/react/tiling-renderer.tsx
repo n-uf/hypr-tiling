@@ -132,6 +132,7 @@ import {
   slotRepresentativeLeafId,
   type TilingRect,
 } from "../engine/leaf-geometry";
+import { resolveFoldPlan, type TilingFold, type TilingFoldPlan, type TilingFoldSide } from "../engine/fold-plan";
 import { isInteractiveControlTarget } from "../engine/interactive-controls";
 import type { MeasurementPort } from "../engine/measurement-port";
 import {
@@ -4921,21 +4922,6 @@ const TilingRendererComponent = React.forwardRef<
         pruneFocusHistory(history, leafIds),
     );
   }, [controller, leafIds]);
-  const leafFootprintsById: ReadonlyMap<string, TilingPaneFootprint> =
-    React.useMemo(
-      (): ReadonlyMap<string, TilingPaneFootprint> =>
-        footprintsByLeafId(
-          collectLeafFootprints(
-            layout,
-            0,
-            0,
-            viewportSize.width,
-            viewportSize.height,
-            config,
-          ),
-        ),
-      [config, layout, viewportSize.height, viewportSize.width],
-    );
   const activeFocusedLeafId: string | null =
     focusedLeafId ?? internalFocusedLeafId;
   const controlledMaximizedLeafId: string | null =
@@ -4948,6 +4934,79 @@ const TilingRendererComponent = React.forwardRef<
     findLeafById(layout, controlledMaximizedLeafId) != null
       ? controlledMaximizedLeafId
       : null;
+  // Folding (`config.fold`): where a split can't fit both floors it folds into
+  // a spine. Derived from the measured viewport and focus every render, never
+  // written into the layout. Off while a pane is maximized and before the
+  // viewport is measured (a server render lays out unfolded, as before).
+  const resolveFoldPlanFor = React.useCallback(
+    (tree: TilingLayoutNode): TilingFoldPlan | null => {
+      if (
+        !config.fold ||
+        activeMaximizedLeafId != null ||
+        viewportSize.width <= 1 ||
+        viewportSize.height <= 1
+      ) {
+        return null;
+      }
+      const recentLeafIds: ReadonlyArray<string> = [
+        ...controller.getFocusHistory().entries,
+      ].reverse();
+      return resolveFoldPlan(
+        tree,
+        { x: 0, y: 0, width: viewportSize.width, height: viewportSize.height },
+        config,
+        activeFocusedLeafId,
+        recentLeafIds,
+      );
+    },
+    // `activeFocusedLeafId` also refreshes the focus history read above.
+    [
+      activeFocusedLeafId,
+      activeMaximizedLeafId,
+      config,
+      controller,
+      viewportSize.height,
+      viewportSize.width,
+    ],
+  );
+  const layoutFoldPlan: TilingFoldPlan | null = React.useMemo(
+    (): TilingFoldPlan | null => resolveFoldPlanFor(layout),
+    [layout, resolveFoldPlanFor],
+  );
+  // Hit-testing, overlays and drag read the panes where they are drawn: with
+  // folds, the open panes only (a pane on a spine has no footprint).
+  const leafFootprintsById: ReadonlyMap<string, TilingPaneFootprint> =
+    React.useMemo(
+      (): ReadonlyMap<string, TilingPaneFootprint> =>
+        layoutFoldPlan != null
+          ? new Map<string, TilingPaneFootprint>(
+              [...layoutFoldPlan.leaves].map(
+                ([leafId, rect]: [string, TilingRect]): [
+                  string,
+                  TilingPaneFootprint,
+                ] => [
+                  leafId,
+                  {
+                    left: rect.x,
+                    top: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                  },
+                ],
+              ),
+            )
+          : footprintsByLeafId(
+              collectLeafFootprints(
+                layout,
+                0,
+                0,
+                viewportSize.width,
+                viewportSize.height,
+                config,
+              ),
+            ),
+      [config, layout, layoutFoldPlan, viewportSize.height, viewportSize.width],
+    );
   const layoutForPaneTabs: TilingLayoutNode = React.useMemo(
     (): TilingLayoutNode =>
       layoutWithMaximizedGroupMember(layout, activeMaximizedLeafId),
@@ -5311,6 +5370,31 @@ const TilingRendererComponent = React.forwardRef<
     isLiveDragging && dragSourceLeafId != null
       ? liveDragDisplayLayout
       : (settlingCommitCandidate ?? settlingClaimedHold ?? layout);
+  // The folds of the tree as drawn (the live drag's reflowed tree while one
+  // runs), by split id.
+  const displayFoldPlan: TilingFoldPlan | null = React.useMemo(
+    (): TilingFoldPlan | null =>
+      displayLayout === layout
+        ? layoutFoldPlan
+        : resolveFoldPlanFor(displayLayout),
+    [displayLayout, layout, layoutFoldPlan, resolveFoldPlanFor],
+  );
+  const foldBySplitId: ReadonlyMap<string, TilingFold> | null = React.useMemo(
+    (): ReadonlyMap<string, TilingFold> | null =>
+      displayFoldPlan == null || displayFoldPlan.folds.length === 0
+        ? null
+        : new Map<string, TilingFold>(
+            displayFoldPlan.folds.map((fold: TilingFold): [string, TilingFold] => [
+              fold.splitId,
+              fold,
+            ]),
+          ),
+    [displayFoldPlan],
+  );
+  const fittedRatios: ReadonlyMap<string, number> | null =
+    displayFoldPlan != null && displayFoldPlan.fittedRatios.size > 0
+      ? displayFoldPlan.fittedRatios
+      : null;
   // While the pane is held, a leaf of the display tree that carries it (the
   // slot the others made room around, or a root leaf with nothing to close
   // over) is its kept place: painted empty, so the pane shows only once.
@@ -8824,6 +8908,132 @@ const TilingRendererComponent = React.forwardRef<
     ],
   );
 
+  // A folded split (see `resolveFoldPlan`): the open side fills the split's
+  // box less the spine and the gap; the folded side stays mounted, hidden, so
+  // the DOM keeps every pane's text and nothing remounts when it opens. The
+  // same three child slots as an ordinary split (first, boundary, second), so
+  // folding and unfolding (a turned phone) keeps both sides' panes mounted.
+  const renderFoldedSplit = React.useCallback(
+    (
+      node: TilingSplitNode,
+      fold: TilingFold,
+      renderChild: (
+        child: TilingLayoutNode,
+        widthPx: number,
+        heightPx: number,
+        pinPermission?: LeafPinPermission,
+      ) => React.ReactElement,
+      overflowVisible: boolean,
+    ): React.ReactElement => {
+      const isHorizontal: boolean = node.axis === "horizontal";
+      const gapPx: number = Math.max(0, node.gapPx ?? config.gapPx);
+      const spineFirst: boolean = fold.openSide === "second";
+      const fillPin: LeafPinPermission = isHorizontal
+        ? { allowWidthPin: false, allowHeightPin: true }
+        : { allowWidthPin: true, allowHeightPin: false };
+      const titles: ReadonlyArray<string> = fold.leafIds.map(
+        (leafId: string): string => {
+          const leaf: TilingLeafNode | null = findLeafById(node, leafId);
+          const tile: TilingTile | undefined =
+            leaf == null ? undefined : resolveTile(tiles, leaf.tileId);
+          return tile?.title ?? leafId;
+        },
+      );
+      const label: string = titles.join(" · ");
+      const overflowClass: string = overflowVisible
+        ? "overflow-visible"
+        : LEAF_MOTION_OVERFLOW_CLASS;
+      const side = (
+        which: TilingFoldSide,
+        child: TilingLayoutNode,
+      ): React.ReactElement => {
+        const open: boolean = which === fold.openSide;
+        return (
+          <div
+            className={cn("flex min-h-0 min-w-0", overflowClass)}
+            data-hpt-fold-side={open ? "open" : "folded"}
+            style={
+              open
+                ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, order: 1 }
+                : { display: "none" }
+            }
+          >
+            {open
+              ? renderChild(
+                  child,
+                  fold.openRect.width,
+                  fold.openRect.height,
+                  fillPin,
+                )
+              : renderChild(child, fold.rect.width, fold.rect.height)}
+          </div>
+        );
+      };
+      return (
+        <section
+          ref={(element: HTMLDivElement | null): void =>
+            setSplitContainerRef(node.id, element)
+          }
+          className={cn(
+            "relative flex h-full max-h-full min-h-0 w-full min-w-0",
+            overflowClass,
+            isHorizontal ? "flex-row" : "flex-col",
+          )}
+          data-hpt-folded=""
+        >
+          {side("first", node.first)}
+          <button
+            type="button"
+            data-hpt-fold-spine={node.id}
+            data-hpt-spine-edge={fold.spineEdge}
+            aria-label={`Show ${titles.join(", ")}`}
+            title={label}
+            disabled={fold.targetLeafId == null}
+            onClick={(): void => {
+              if (fold.targetLeafId != null) {
+                setFocusedLeaf(fold.targetLeafId);
+              }
+            }}
+            className={cn(
+              theme.paneShell.surface,
+              "shrink-0 cursor-pointer items-center justify-center overflow-hidden p-0",
+            )}
+            style={{
+              order: spineFirst ? 0 : 2,
+              ...(isHorizontal
+                ? {
+                    width: fold.spineRect.width,
+                    height: "100%",
+                    [spineFirst ? "marginRight" : "marginLeft"]: gapPx,
+                  }
+                : {
+                    height: fold.spineRect.height,
+                    width: "100%",
+                    [spineFirst ? "marginBottom" : "marginTop"]: gapPx,
+                  }),
+            }}
+          >
+            <span
+              className={cn(theme.paneHeader.titleText, "block max-h-full max-w-full")}
+              style={
+                isHorizontal
+                  ? {
+                      writingMode: "vertical-rl",
+                      transform: spineFirst ? "rotate(180deg)" : undefined,
+                    }
+                  : undefined
+              }
+            >
+              {label}
+            </span>
+          </button>
+          {side("second", node.second)}
+        </section>
+      );
+    },
+    [config.gapPx, setFocusedLeaf, setSplitContainerRef, theme, tiles],
+  );
+
   const renderBranch = React.useCallback(
     (
       node: TilingLayoutNode,
@@ -9637,14 +9847,21 @@ const TilingRendererComponent = React.forwardRef<
         effectiveStatic.secondStaticAlongAxis;
       const staticExtents = effectiveStatic.staticExtents;
 
+      // A split the fold plan folded: one side open, the other a spine. A split
+      // it kept but whose stored ratio left a pane under the fold floor: laid
+      // out at the fitted ratio (derived; the stored ratio is unchanged).
+      const fold: TilingFold | null = foldBySplitId?.get(node.id) ?? null;
       const safeRatio: number = clampByMinSize(
-        node.ratio,
+        fittedRatios?.get(node.id) ?? node.ratio,
         axisContainerSizePx,
         boundaryGutterPx,
         firstMinPaneSizePx,
         secondMinPaneSizePx,
         ratioSafetyBounds,
       );
+      if (fold != null) {
+        return renderFoldedSplit(node, fold, renderBranch, isLeafMotionOverflowWindow);
+      }
       const isDividerResizeEnabled: boolean = isResizeAxisEnabled(
         interactionCapabilities.resize,
         node.axis,
@@ -9924,6 +10141,9 @@ const TilingRendererComponent = React.forwardRef<
     [
       beginResize,
       controller,
+      foldBySplitId,
+      fittedRatios,
+      renderFoldedSplit,
       handleSeparatorKeyDown,
       moveModeState,
       config.gapPx,
