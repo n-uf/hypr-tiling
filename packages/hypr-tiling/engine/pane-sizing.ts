@@ -58,7 +58,10 @@ export const RATIO_SAFETY_BOUNDS_UNBOUNDED: RatioSafetyBounds = { floor: 0, ceil
  * CSS px, converted to a ratio against the gap-adjusted container extent).
  * `secondMinPaneSizePx` defaults to `firstMinPaneSizePx` for the common
  * symmetric case (both sides share one floor). Returns `0.5` when the two
- * minimums cannot both be satisfied. This is the single min-constraint helper
+ * minimums cannot both be satisfied: the ratio a caller stores or resizes to
+ * must be a number. {@link clampByMinSizeOrFold} is the same clamp reporting
+ * `"fold"` in that case instead, for the layout pass that folds such a split
+ * (`resolveFoldPlan`). This is the single min-constraint helper
  * reused by the resize path, projected-layout geometry, and the
  * `growLeafToward` acquire-space reducer (so all three share one constraint
  * math, never reinventing it) — generalized (per-side minimum boxes) so a caller can
@@ -74,6 +77,30 @@ export function clampByMinSize(
   secondMinPaneSizePx: number = firstMinPaneSizePx,
   safetyBounds: RatioSafetyBounds = RATIO_SAFETY_BOUNDS_DEFAULT,
 ): number {
+  const clamped: number | "fold" = clampByMinSizeOrFold(
+    ratio,
+    containerSizePx,
+    gapPx,
+    firstMinPaneSizePx,
+    secondMinPaneSizePx,
+    safetyBounds,
+  );
+  return clamped === "fold" ? 0.5 : clamped;
+}
+
+/**
+ * {@link clampByMinSize}, reporting `"fold"` instead of the silent `0.5` when
+ * the two minimums cannot both be satisfied (after the safety bounds): the
+ * split can't give both children their floor, so the fold plan folds it.
+ */
+export function clampByMinSizeOrFold(
+  ratio: number,
+  containerSizePx: number,
+  gapPx: number,
+  firstMinPaneSizePx: number,
+  secondMinPaneSizePx: number = firstMinPaneSizePx,
+  safetyBounds: RatioSafetyBounds = RATIO_SAFETY_BOUNDS_DEFAULT,
+): number | "fold" {
   const availableSizePx: number = Math.max(containerSizePx - gapPx, 1);
   const maxFromMin: number = 1 - secondMinPaneSizePx / availableSizePx;
   const minFromMin: number = firstMinPaneSizePx / availableSizePx;
@@ -81,7 +108,7 @@ export function clampByMinSize(
   const boundedMax: number = Math.max(Math.min(maxFromMin, safetyBounds.ceil), safetyBounds.floor);
 
   if (boundedMin > boundedMax) {
-    return 0.5;
+    return "fold";
   }
 
   return Math.min(Math.max(ratio, boundedMin), boundedMax);
