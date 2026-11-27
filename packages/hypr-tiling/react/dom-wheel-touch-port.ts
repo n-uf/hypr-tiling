@@ -140,7 +140,7 @@ export function createDomWheelTouchPort(
       // workspace swipe only arms past the last fold.
       canScrollFurther:
         options.scrollChain.canScrollFurther(activeTouch.target, "x", direction) ||
-        findFoldFlipElement(activeTouch.target, "x", direction) != null,
+        findFoldFlipElement(activeTouch.target, "x", direction, element) != null,
       widthPx: laidOutWidth(element),
     };
     for (const listener of listeners) {

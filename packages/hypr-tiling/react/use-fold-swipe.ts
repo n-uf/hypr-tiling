@@ -1,15 +1,15 @@
 import * as React from "react";
+import { prefersReducedMotion } from "@n-uf/motion/browser";
 import type { ElementRef } from "../engine/element-ref";
 import {
+  FOLD_SPLIT_ATTRIBUTE,
+  FOLD_SWIPE_FLING_IDLE_MS,
   foldSwipeFollowPx,
   resolveFoldSwipeAxis,
   resolveFoldSwipeRelease,
 } from "../engine/fold-swipe";
 import type { ScrollChainDirection } from "../engine/wheel-touch-port";
 import { findFoldFlipElement } from "./dom-scroll-chain-port";
-
-/** The data attribute on a fold's open side naming its split (read back on release). */
-export const FOLD_SPLIT_ATTRIBUTE: string = "data-hpt-fold-split";
 
 /** How long a swipe that doesn't turn the fold takes to slide back (ms). */
 const FOLD_SWIPE_RETURN_MS: number = 180;
@@ -20,6 +20,7 @@ interface TrackedTouch {
   readonly originX: number;
   readonly originY: number;
   lastX: number;
+  /** The last move's event time (ms) */
   lastTs: number;
   velocityPxPerMs: number;
   /** "x" once the touch is sideways, "y" once vertical (then ignored), null inside the slop */
@@ -33,7 +34,8 @@ interface TrackedTouch {
  * `FOLD_FLIP_ATTRIBUTE`) toward its spine follows the finger; released far or fast enough it calls `onFlip` with the
  * fold's split id, which opens the spine. A container that can still scroll that way first takes the swipe; past the
  * last fold the swipe is left to the workspace swipe (the touch port reports the fold as scrollable until then).
- * Vertical swipes scroll the panes as before. Nothing happens while `isBlocked` (a pane drag in flight).
+ * Vertical swipes scroll the panes as before; a second finger (a pinch) ends the swipe. Nothing happens while
+ * `isBlocked` (a pane lifted by a drag).
  */
 export function useFoldSwipe(params: {
   rootRef: ElementRef<HTMLElement | null>;
@@ -51,7 +53,7 @@ export function useFoldSwipe(params: {
       return;
     }
     let touch: TrackedTouch | null = null;
-    const now = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
+    const readReducedMotion: () => boolean = prefersReducedMotion();
 
     const stopListening = (): void => {
       window.removeEventListener("pointermove", onMove);
@@ -74,7 +76,7 @@ export function useFoldSwipe(params: {
         latestRef.current.onFlip(splitId);
         return;
       }
-      if (followed !== "" && typeof element.animate === "function") {
+      if (followed !== "" && !readReducedMotion() && typeof element.animate === "function") {
         element.animate([{ transform: followed }, { transform: "none" }], {
           duration: FOLD_SWIPE_RETURN_MS,
           easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
@@ -84,7 +86,12 @@ export function useFoldSwipe(params: {
 
     function onMove(event: PointerEvent): void {
       const tracked: TrackedTouch | null = touch;
-      if (tracked == null || event.pointerId !== tracked.pointerId) {
+      if (tracked == null) {
+        return;
+      }
+      if (event.pointerId !== tracked.pointerId) {
+        // A second finger: a pinch, not a swipe.
+        if (event.pointerType === "touch") release(false);
         return;
       }
       if (latestRef.current.isBlocked()) {
@@ -93,12 +100,11 @@ export function useFoldSwipe(params: {
       }
       const dx: number = event.clientX - tracked.originX;
       const dy: number = event.clientY - tracked.originY;
-      const ts: number = now();
-      if (ts > tracked.lastTs) {
-        tracked.velocityPxPerMs = (event.clientX - tracked.lastX) / (ts - tracked.lastTs);
+      if (event.timeStamp > tracked.lastTs) {
+        tracked.velocityPxPerMs = (event.clientX - tracked.lastX) / (event.timeStamp - tracked.lastTs);
       }
       tracked.lastX = event.clientX;
-      tracked.lastTs = ts;
+      tracked.lastTs = event.timeStamp;
       if (tracked.axis == null) {
         tracked.axis = resolveFoldSwipeAxis(dx, dy);
         if (tracked.axis == null) {
@@ -110,7 +116,7 @@ export function useFoldSwipe(params: {
         }
         // A finger moving left reveals what is on the right: scroll direction +1.
         const direction: ScrollChainDirection = dx < 0 ? 1 : -1;
-        const element: HTMLElement | null = findFoldFlipElement(tracked.target, "x", direction);
+        const element: HTMLElement | null = findFoldFlipElement(tracked.target, "x", direction, root);
         if (element == null) {
           release(false);
           return;
@@ -119,7 +125,8 @@ export function useFoldSwipe(params: {
       }
       const claimed = tracked.claimed;
       if (claimed != null) {
-        claimed.element.style.transform = `translateX(${foldSwipeFollowPx(dx, claimed.element.clientWidth)}px)`;
+        const followPx: number = foldSwipeFollowPx(dx, claimed.element.clientWidth, claimed.direction);
+        claimed.element.style.transform = followPx === 0 ? "" : `translateX(${followPx}px)`;
       }
     }
 
@@ -129,11 +136,14 @@ export function useFoldSwipe(params: {
         return;
       }
       const claimed = tracked.claimed;
+      // A finger that rested before it lifted is not flinging.
+      const velocityPxPerMs: number =
+        event.timeStamp - tracked.lastTs > FOLD_SWIPE_FLING_IDLE_MS ? 0 : tracked.velocityPxPerMs;
       release(
         claimed != null &&
           resolveFoldSwipeRelease({
-            travelPx: tracked.lastX - tracked.originX,
-            velocityPxPerMs: tracked.velocityPxPerMs,
+            travelPx: event.clientX - tracked.originX,
+            velocityPxPerMs,
             direction: claimed.direction,
             extentPx: claimed.element.clientWidth,
           }),
@@ -147,7 +157,12 @@ export function useFoldSwipe(params: {
     }
 
     const onDown = (event: PointerEvent): void => {
-      if (event.pointerType !== "touch" || !event.isPrimary || latestRef.current.isBlocked()) {
+      if (event.pointerType !== "touch") {
+        return;
+      }
+      if (!event.isPrimary) {
+        // A second finger: a pinch, not a swipe.
+        if (touch != null) release(false);
         return;
       }
       if (touch != null) {
@@ -159,7 +174,7 @@ export function useFoldSwipe(params: {
         originX: event.clientX,
         originY: event.clientY,
         lastX: event.clientX,
-        lastTs: now(),
+        lastTs: event.timeStamp,
         velocityPxPerMs: 0,
         axis: null,
         claimed: null,

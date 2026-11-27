@@ -248,21 +248,29 @@ describe("folding in the renderer", () => {
   });
 });
 
-function touch(target: EventTarget, type: string, x: number, y: number): void {
+function touch(target: EventTarget, type: string, x: number, y: number, pointerId: number = 7, isPrimary: boolean = true): void {
   target.dispatchEvent(
-    new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: "touch", isPrimary: true, clientX: x, clientY: y }),
+    new PointerEvent(type, { bubbles: true, cancelable: true, pointerId, pointerType: "touch", isPrimary, clientX: x, clientY: y }),
   );
 }
 
-async function swipe(from: Element, dx: number, dy: number = 0): Promise<void> {
+/** A swipe as a browser delivers it: each event in its own task, React committing between them. */
+async function swipe(from: Element, dx: number, dy: number = 0, end: "pointerup" | "pointercancel" = "pointerup"): Promise<void> {
   await act(async (): Promise<void> => {
     touch(from, "pointerdown", 200, 400);
-    for (let step = 1; step <= 5; step += 1) {
+  });
+  for (let step = 1; step <= 5; step += 1) {
+    await act(async (): Promise<void> => {
       touch(window, "pointermove", 200 + (dx * step) / 5, 400 + (dy * step) / 5);
-    }
-    touch(window, "pointerup", 200 + dx, 400 + dy);
+    });
+  }
+  await act(async (): Promise<void> => {
+    touch(window, end, 200 + dx, 400 + dy);
   });
 }
+
+const openSide = (root: HTMLElement): HTMLElement | null =>
+  root.querySelector<HTMLElement>('[data-hpt-folded] > [data-hpt-fold-side="open"]');
 
 const leafElement = (root: HTMLElement, leafId: string): Element => {
   const element = root.querySelector(`[data-hpt-leaf="${leafId}"]`) ?? root.querySelector(`[data-hpt-leaf]`);
@@ -277,7 +285,7 @@ describe("folds on touch and keys", () => {
     const open = container.querySelector<HTMLElement>('[data-hpt-folded] > [data-hpt-fold-side="open"]');
     expect(open?.getAttribute("data-hpt-fold-flip")).toBe("x+");
     expect(open?.getAttribute("data-hpt-fold-split")).toBe("home-root");
-    expect(open?.style.touchAction).toBe("pan-y");
+    expect(open?.style.touchAction).toBe("pan-y pinch-zoom");
   });
 
   it("a swipe left over the open side turns the fold toward its spine on the right", async () => {
@@ -288,6 +296,64 @@ describe("folds on touch and keys", () => {
     // Features is open; a swipe right turns back to the hero column
     await swipe(leafElement(container, "features"), 200);
     expect(spine(container, "home-root")?.getAttribute("data-hpt-spine-edge")).toBe("right");
+  });
+
+  it("a swipe from a pane's title bar turns it too", async () => {
+    const { container } = renderHome(SITE_FOLD);
+    await act(async (): Promise<void> => undefined);
+    const header = openSide(container)?.querySelector("header");
+    expect(header).not.toBeNull();
+    await swipe(header as Element, -200);
+    expect(spine(container, "home-root")?.getAttribute("data-hpt-spine-edge")).toBe("left");
+  });
+
+  it("a cancelled touch doesn't turn it and leaves no transform", async () => {
+    const { container } = renderHome(SITE_FOLD);
+    await act(async (): Promise<void> => undefined);
+    await swipe(leafElement(container, "intro"), -200, 0, "pointercancel");
+    expect(spine(container, "home-root")?.getAttribute("data-hpt-spine-edge")).toBe("right");
+    expect(openSide(container)?.style.transform).toBe("");
+  });
+
+  it("a second finger (a pinch) ends the swipe", async () => {
+    const { container } = renderHome(SITE_FOLD);
+    await act(async (): Promise<void> => undefined);
+    const pane = leafElement(container, "intro");
+    await act(async (): Promise<void> => {
+      touch(pane, "pointerdown", 200, 400);
+    });
+    await act(async (): Promise<void> => {
+      touch(window, "pointermove", 150, 400);
+    });
+    await act(async (): Promise<void> => {
+      touch(pane, "pointerdown", 300, 500, 8, false);
+    });
+    await act(async (): Promise<void> => {
+      touch(window, "pointermove", 0, 400);
+      touch(window, "pointerup", 0, 400);
+    });
+    expect(spine(container, "home-root")?.getAttribute("data-hpt-spine-edge")).toBe("right");
+    expect(openSide(container)?.style.transform).toBe("");
+  });
+
+  it("unmounting mid-swipe leaves no listener behind", async () => {
+    const { container, unmount } = renderHome(SITE_FOLD);
+    await act(async (): Promise<void> => undefined);
+    const removed: Array<string> = [];
+    const original = window.removeEventListener.bind(window);
+    window.removeEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void => {
+      removed.push(type);
+      original(type, listener, options);
+    }) as typeof window.removeEventListener;
+    try {
+      await act(async (): Promise<void> => {
+        touch(leafElement(container, "intro"), "pointerdown", 200, 400);
+      });
+      unmount();
+      expect(removed).toEqual(expect.arrayContaining(["pointermove", "pointerup", "pointercancel"]));
+    } finally {
+      window.removeEventListener = original;
+    }
   });
 
   it("a short, slow or backward swipe, or a vertical one, doesn't turn it", async () => {
