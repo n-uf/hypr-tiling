@@ -4305,7 +4305,32 @@ const TilingRendererComponent = React.forwardRef<
   // leaves that are NOT drag participants (the static panes themselves + any
   // unpinned-static subtree whose distribution is unknowable). Flexible regions
   // elsewhere stay fully rearrangeable. See _agent/drag-core-ssot-design.md §4.
-  const isRearrangeEnabled: boolean = interactionCapabilities.rearrange;
+  const [viewportSize, setViewportSize] = React.useState<{
+    width: number;
+    height: number;
+  }>({
+    width: 0,
+    height: 0,
+  });
+  // Whether the layout folds at this size (`config.fold`). Which splits fold
+  // first doesn't depend on focus, so this asks with none. Drag hit-testing
+  // and landing still read the unfolded layout, so a pane drag is off while
+  // anything is folded (the map shown on lift is the fold model's next step).
+  const isLayoutFolded: boolean = React.useMemo(
+    (): boolean =>
+      Boolean(config.fold) &&
+      viewportSize.width > 1 &&
+      viewportSize.height > 1 &&
+      resolveFoldPlan(
+        layout,
+        { x: 0, y: 0, width: viewportSize.width, height: viewportSize.height },
+        config,
+        null,
+      ).folds.length > 0,
+    [config, layout, viewportSize.height, viewportSize.width],
+  );
+  const isRearrangeEnabled: boolean =
+    interactionCapabilities.rearrange && !isLayoutFolded;
   const rearrangeGatedLeafIds: ReadonlySet<string> = React.useMemo(
     (): ReadonlySet<string> => collectStaticGatedLeafIds(layout),
     [layout],
@@ -4493,13 +4518,6 @@ const TilingRendererComponent = React.forwardRef<
       }),
     [rootRef, viewportRef, groupTabStripRefs, groupDropTargetElementsRef],
   );
-  const [viewportSize, setViewportSize] = React.useState<{
-    width: number;
-    height: number;
-  }>({
-    width: 0,
-    height: 0,
-  });
   const [resizeState, setResizeState] =
     React.useState<TilingSplitResizeState | null>(null);
   // Resize pointer handlers must NOT rebind when `layout` changes — every move
@@ -8960,7 +8978,15 @@ const TilingRendererComponent = React.forwardRef<
             data-hpt-fold-side={open ? "open" : "folded"}
             style={
               open
-                ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, order: 1 }
+                ? {
+                    flexGrow: 1,
+                    flexShrink: 1,
+                    flexBasis: 0,
+                    order: 1,
+                    ...(isStaticOnCrossAxis(child, node.axis)
+                      ? { alignSelf: "flex-start" }
+                      : {}),
+                  }
                 : { display: "none" }
             }
           >
@@ -8994,7 +9020,9 @@ const TilingRendererComponent = React.forwardRef<
             data-hpt-spine-edge={fold.spineEdge}
             aria-label={`Show ${titles.join(", ")}`}
             title={label}
-            disabled={fold.targetLeafId == null}
+            // A spine opens by focusing its pane: with focus selection off
+            // there is no way to open it.
+            disabled={fold.targetLeafId == null || !isFocusSelectionEnabled}
             onClick={(): void => {
               if (fold.targetLeafId != null) {
                 setFocusedLeaf(fold.targetLeafId);
@@ -9002,7 +9030,7 @@ const TilingRendererComponent = React.forwardRef<
             }}
             className={cn(
               theme.paneShell.surface,
-              "shrink-0 cursor-pointer items-center justify-center overflow-hidden p-0",
+              "flex shrink-0 cursor-pointer items-center justify-center overflow-hidden p-0 outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 disabled:cursor-default",
             )}
             style={{
               order: spineFirst ? 0 : 2,
@@ -9037,7 +9065,14 @@ const TilingRendererComponent = React.forwardRef<
         </section>
       );
     },
-    [config.gapPx, setFocusedLeaf, setSplitContainerRef, theme, tiles],
+    [
+      config.gapPx,
+      isFocusSelectionEnabled,
+      setFocusedLeaf,
+      setSplitContainerRef,
+      theme,
+      tiles,
+    ],
   );
 
   const renderBranch = React.useCallback(
@@ -9857,8 +9892,12 @@ const TilingRendererComponent = React.forwardRef<
       // it kept but whose stored ratio left a pane under the fold floor: laid
       // out at the fitted ratio (derived; the stored ratio is unchanged).
       const fold: TilingFold | null = foldBySplitId?.get(node.id) ?? null;
+      const fittedRatio: number | undefined = fittedRatios?.get(node.id);
+      // A resize starts from where the boundary is drawn (the fitted ratio).
+      const resizeNode: TilingSplitNode =
+        fittedRatio != null ? { ...node, ratio: fittedRatio } : node;
       const safeRatio: number = clampByMinSize(
-        fittedRatios?.get(node.id) ?? node.ratio,
+        fittedRatio ?? node.ratio,
         axisContainerSizePx,
         boundaryGutterPx,
         firstMinPaneSizePx,
@@ -10046,7 +10085,7 @@ const TilingRendererComponent = React.forwardRef<
                   ? (event: React.PointerEvent<HTMLDivElement>): void =>
                       beginResize(
                         event,
-                        node,
+                        resizeNode,
                         resolvedGapPx,
                         firstMinPaneSizePx,
                         secondMinPaneSizePx,
@@ -10061,7 +10100,7 @@ const TilingRendererComponent = React.forwardRef<
                   ? (event: React.KeyboardEvent<HTMLDivElement>): void =>
                       handleSeparatorKeyDown(
                         event,
-                        node,
+                        resizeNode,
                         axisContainerSizePx,
                         resolvedGapPx,
                         firstMinPaneSizePx,
@@ -10232,10 +10271,15 @@ const TilingRendererComponent = React.forwardRef<
       previousFoldOpenSidesRef.current;
     const next: Map<string, TilingFoldSide> = new Map<string, TilingFoldSide>();
     const reducedMotion: boolean = readPrefersReducedMotion()();
+    let flipped: boolean = false;
     for (const fold of displayFoldPlan?.folds ?? []) {
       next.set(fold.splitId, fold.openSide);
       const before: TilingFoldSide | undefined = previous.get(fold.splitId);
-      if (before == null || before === fold.openSide || reducedMotion) {
+      if (before == null || before === fold.openSide) {
+        continue;
+      }
+      flipped = true;
+      if (reducedMotion) {
         continue;
       }
       const section: HTMLDivElement | undefined =
@@ -10264,7 +10308,26 @@ const TilingRendererComponent = React.forwardRef<
       );
     }
     previousFoldOpenSidesRef.current = next;
-  }, [displayFoldPlan]);
+    // A focus command moves DOM focus at once, before the fold has opened, so
+    // it can land on a hidden pane (the browser ignores it) and the old pane
+    // then hides: focus falls to the body. A tapped spine keeps DOM focus too.
+    // Once a fold has turned, DOM focus goes to the focused pane.
+    if (!flipped || activeFocusedLeafId == null) {
+      return;
+    }
+    const active: Element | null = document.activeElement;
+    const rootElement: HTMLDivElement | null = rootRef.current;
+    const lost: boolean =
+      active == null ||
+      active === document.body ||
+      (rootElement != null &&
+        rootElement.contains(active) &&
+        (active.closest('[data-hpt-fold-side="folded"]') != null ||
+          active.hasAttribute("data-hpt-fold-spine")));
+    if (lost) {
+      focusLeafElement(activeFocusedLeafId);
+    }
+  }, [activeFocusedLeafId, displayFoldPlan, focusLeafElement]);
 
   const maximizedLeaf: TilingLeafNode | null =
     activeMaximizedLeafId != null

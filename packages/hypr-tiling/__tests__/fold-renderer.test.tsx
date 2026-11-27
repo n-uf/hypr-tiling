@@ -88,15 +88,21 @@ const TILES: ReadonlyArray<TilingTile> = Object.entries(TITLES).map(([id, title]
 const SITE: TilingLayoutConfig = { gapPx: 14, minPaneSizePx: 180, handleSizePx: 8 };
 const SITE_FOLD: TilingLayoutConfig = { ...SITE, fold: { minPanePx: { width: 220, height: 200 } } };
 
-function renderHome(config: TilingLayoutConfig, reported: Array<TilingLayoutNode> = []): ReturnType<typeof render> {
+function renderHome(
+  config: TilingLayoutConfig,
+  reported: Array<TilingLayoutNode> = [],
+  extra: Partial<React.ComponentProps<typeof TilingRenderer>> = {},
+  interaction: Record<string, unknown> = {},
+): ReturnType<typeof render> {
   function Host(): React.ReactElement {
     const [layout, setLayout] = React.useState<TilingLayoutNode>(HOME);
     return (
       <TilingRenderer
+        {...extra}
         layout={layout}
         tiles={TILES}
         config={config}
-        interaction={{ dragRecovery: { enable: false }, customCursor: false }}
+        interaction={{ dragRecovery: { enable: false }, customCursor: false, ...interaction }}
         onLayoutChange={(next: TilingLayoutNode): void => {
           reported.push(next);
           setLayout(next);
@@ -168,6 +174,56 @@ describe("folding in the renderer", () => {
     await act(async (): Promise<void> => undefined);
     expect(on.container.querySelector("[data-hpt-fold-spine]")).toBeNull();
     expect(on.container.innerHTML).toBe(offMarkup);
+  });
+
+  it("no pane remounts when a fold turns, there and back", async () => {
+    const { container } = renderHome(SITE_FOLD);
+    await act(async (): Promise<void> => undefined);
+    const panes = (): Map<string, Element> =>
+      new Map([...container.querySelectorAll("[data-leaf-id]")].map((element): [string, Element] => [element.getAttribute("data-leaf-id") ?? "", element]));
+    const before = panes();
+    expect(before.size).toBe(5);
+    for (const splitId of ["home-root", "home-root"]) {
+      await act(async (): Promise<void> => {
+        fireEvent.click(spine(container, splitId) as HTMLButtonElement);
+      });
+      const after = panes();
+      expect(after.size).toBe(5);
+      for (const [leafId, element] of after) expect(element).toBe(before.get(leafId));
+    }
+  });
+
+  it("a tapped spine hands DOM focus to the pane it opened", async () => {
+    const { container } = renderHome(SITE_FOLD);
+    await act(async (): Promise<void> => undefined);
+    const root = spine(container, "home-root") as HTMLButtonElement;
+    root.focus();
+    await act(async (): Promise<void> => {
+      fireEvent.click(root);
+    });
+    expect(document.activeElement?.closest("[data-leaf-id]")?.getAttribute("data-leaf-id")).toBe("features");
+  });
+
+  it("844 × 390: a split drawn at its fitted ratio (the hero column on its 220 px floor)", async () => {
+    VIEWPORT.width = 844;
+    VIEWPORT.height = 390;
+    const { container } = renderHome(SITE_FOLD);
+    await act(async (): Promise<void> => undefined);
+    const rootFirst = container.querySelector<HTMLElement>("section > div");
+    const percent = Number(/calc\(([\d.]+)% - 11px\)/.exec(rootFirst?.style.flexBasis ?? "")?.[1]);
+    expect(percent).toBeCloseTo((231 / 844) * 100, 3);
+  });
+
+  it("no fold while a pane is maximized", async () => {
+    const { container } = renderHome(SITE_FOLD, [], { maximizedLeafId: "features" });
+    await act(async (): Promise<void> => undefined);
+    expect(container.querySelector("[data-hpt-fold-spine]")).toBeNull();
+  });
+
+  it("with focus selection off a spine can't open anything: it is disabled", async () => {
+    const { container } = renderHome(SITE_FOLD, [], {}, { focus: false });
+    await act(async (): Promise<void> => undefined);
+    expect(spine(container, "home-root")?.disabled).toBe(true);
   });
 
   it("folding off: no spine at a phone width (the old layout, unchanged)", async () => {
