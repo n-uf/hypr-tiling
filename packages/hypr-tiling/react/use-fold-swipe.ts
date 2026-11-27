@@ -49,8 +49,8 @@ function trackedTouchOf(event: TouchEvent, id: number): { clientX: number; clien
  * `isBlocked` (a pane lifted by a drag).
  *
  * It listens to touch events, not pointer events: a pane's body is a scroll container the browser may pan, and once
- * it does it cancels the pointer (`pointercancel`) while the touch events keep coming. Once the swipe has claimed a
- * fold its moves are not the browser's (`preventDefault`).
+ * it does it cancels the pointer (`pointercancel`) while the touch events keep coming. The listeners are passive, so
+ * scrolling never waits on them.
  */
 export function useFoldSwipe(params: {
   rootRef: ElementRef<HTMLElement | null>;
@@ -160,7 +160,6 @@ export function useFoldSwipe(params: {
       }
       const claimed = tracked.claimed;
       if (claimed != null) {
-        if (event.cancelable) event.preventDefault();
         const followPx: number = foldSwipeFollowPx(dx, claimed.element.clientWidth, claimed.direction);
         claimed.element.style.transform = followPx === 0 ? "" : `translateX(${followPx}px)`;
       }
@@ -198,7 +197,11 @@ export function useFoldSwipe(params: {
 
     // Touch events go to the element the touch started on, inside the root.
     root.addEventListener("touchstart", onStart, { passive: true });
-    root.addEventListener("touchmove", onMove, { passive: false });
+    // Passive: a blocking touchmove listener here would make every touch in the
+    // tiling (vertical scrolling of pane bodies included) wait on the main
+    // thread. The open side's `touch-action: pan-y pinch-zoom` keeps the
+    // browser from panning sideways, and a pane body can't scroll sideways.
+    root.addEventListener("touchmove", onMove, { passive: true });
     root.addEventListener("touchend", onEnd);
     root.addEventListener("touchcancel", onCancel);
     return (): void => {
