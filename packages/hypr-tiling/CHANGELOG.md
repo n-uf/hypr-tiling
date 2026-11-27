@@ -9,6 +9,20 @@ the version number alone does not flag them.
 
 ## Unreleased
 
+### Folds on touch and keys
+
+- **Swipe to flip**: a sideways swipe over a fold's open side toward its
+  spine follows the finger and, released past a quarter of the pane or
+  flung, opens the spine. A container that can still scroll that way takes
+  the swipe first; vertical swipes scroll the panes as before.
+- **Then the workspace**: past the last fold the same swipe carries on into
+  the next workspace (the workspace swipe only arms once no fold turns that
+  way; the wheel is unchanged).
+- **The arrows unfold as they go**: directional focus moves by where panes
+  really are in the tree, and focusing a pane on a spine opens it.
+- Stacked folds (a spine above or below) open by a tap or the arrows; a
+  vertical swipe still scrolls the pane.
+
 ### Folding in the renderer
 
 - **`TilingRenderer` folds** when `config.fold` is set: a split that can't
