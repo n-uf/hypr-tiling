@@ -1,5 +1,5 @@
 import { collectMasterSlots, resolveLayoutGeometry, type TilingLayoutGeometry, type TilingRect, type TilingSplitGeometry } from "./leaf-geometry";
-import { RATIO_SAFETY_BOUNDS_UNBOUNDED, clampByMinSizeOrFold, isStaticAlongSplitAxis, splitAxisDimension } from "./pane-sizing";
+import { isStaticAlongSplitAxis, splitAxisDimension } from "./pane-sizing";
 import {
   TILING_DEFAULT_FOLD_SPINE_PX,
   type TilingDimension,
@@ -143,35 +143,54 @@ function foldFloorPx(child: TilingLayoutNode, split: TilingSplitNode, config: Ti
   }
   const leafFloor: number | undefined =
     child.kind === "leaf" ? positivePx(dimension === "width" ? child.minBBoxPx?.widthPx : child.minBBoxPx?.heightPx) : undefined;
-  return leafFloor ?? positivePx(split.minPaneSizePx) ?? foldMinPx(fold, dimension) ?? Math.max(0, config.minPaneSizePx || 0);
+  // A split's own minPaneSizePx counts when it is set at all (0 included: the split opts out of a floor), as in the
+  // geometry's precedence.
+  const splitFloor: number | undefined =
+    split.minPaneSizePx != null && Number.isFinite(split.minPaneSizePx) && split.minPaneSizePx >= 0 ? split.minPaneSizePx : undefined;
+  return leafFloor ?? splitFloor ?? foldMinPx(fold, dimension) ?? Math.max(0, config.minPaneSizePx || 0);
 }
 
-/** Ratios this close are the same ratio: no refit. */
-const RATIO_EPSILON: number = 1e-9;
+/** Px this close count as on the floor: no refit. */
+const FLOOR_EPSILON_PX: number = 1e-6;
 
 /**
- * What `split`, laid out in `rect`, does under the fold floors: `"fold"` when it can't give both children their
- * floor; else the ratio that moves its boundary to a floor when its stored ratio leaves a child under one (a split
- * with a child static along it keeps its pins, and a ratio that isn't a finite number is left to the geometry);
- * else `null`, laid out as stored.
+ * What `split`, laid out in `rect`, does under the fold floors, in the geometry's own terms (the boundary is the
+ * middle of the gutter, at `ratio` of the extent: the first child gets `ratio × extent − gutter / 2`):
+ * - `"fold"` when the two floors and the gutter don't fit the extent;
+ * - else, when the stored ratio leaves a child with a floor under it, the ratio that puts that child exactly on its
+ *   floor (a split with a child static along it keeps its pins, and a ratio that isn't a finite number is left to
+ *   the geometry);
+ * - else `null`: laid out as stored.
  */
 function judgeSplit(split: TilingSplitNode, rect: TilingRect, config: TilingLayoutConfig, fold: TilingFoldConfig): "fold" | number | null {
-  const alongPx: number = split.axis === "horizontal" ? rect.width : rect.height;
+  const extentPx: number = Math.max(0, split.axis === "horizontal" ? rect.width : rect.height);
   const gutterPx: number = Math.max(0, split.gapPx ?? config.gapPx) + Math.max(0, config.handleSizePx);
+  const firstFloorPx: number = foldFloorPx(split.first, split, config, fold);
+  const secondFloorPx: number = foldFloorPx(split.second, split, config, fold);
+  if (firstFloorPx + secondFloorPx > Math.max(0, extentPx - gutterPx) + FLOOR_EPSILON_PX && firstFloorPx + secondFloorPx > 0) {
+    return "fold";
+  }
   const stored: number = Number(split.ratio);
-  const clamped: number | "fold" = clampByMinSizeOrFold(
-    Number.isFinite(stored) ? Math.min(1, Math.max(0, stored)) : 0.5,
-    alongPx,
-    gutterPx,
-    foldFloorPx(split.first, split, config, fold),
-    foldFloorPx(split.second, split, config, fold),
-    RATIO_SAFETY_BOUNDS_UNBOUNDED,
-  );
-  if (clamped === "fold") return "fold";
-  if (!Number.isFinite(stored) || isStaticAlongSplitAxis(split.first, split.axis) || isStaticAlongSplitAxis(split.second, split.axis)) {
+  if (!Number.isFinite(stored) || extentPx <= 0 || isStaticAlongSplitAxis(split.first, split.axis) || isStaticAlongSplitAxis(split.second, split.axis)) {
     return null;
   }
-  return Math.abs(clamped - stored) > RATIO_EPSILON ? clamped : null;
+  const ratio: number = Math.min(1, Math.max(0, stored));
+  const halfGutterPx: number = gutterPx / 2;
+  if (firstFloorPx > 0 && ratio * extentPx - halfGutterPx < firstFloorPx - FLOOR_EPSILON_PX) {
+    return (firstFloorPx + halfGutterPx) / extentPx;
+  }
+  if (secondFloorPx > 0 && (1 - ratio) * extentPx - halfGutterPx < secondFloorPx - FLOOR_EPSILON_PX) {
+    return 1 - (secondFloorPx + halfGutterPx) / extentPx;
+  }
+  return null;
+}
+
+/** Whether every split id in `node` is unique (the geometry keys splits by id). */
+function hasUniqueSplitIds(node: TilingLayoutNode, seen: Set<string> = new Set<string>()): boolean {
+  if (node.kind !== "split") return true;
+  if (seen.has(node.id)) return false;
+  seen.add(node.id);
+  return hasUniqueSplitIds(node.first, seen) && hasUniqueSplitIds(node.second, seen);
 }
 
 /** The side of `split` holding the first of `preferred` it holds, else `"first"`. */
@@ -188,7 +207,7 @@ function openSideOf(split: TilingSplitNode, preferred: ReadonlyArray<string>): T
 /** The spine's and the open side's boxes in a folded split's `rect`. */
 function foldBoxes(rect: TilingRect, axis: TilingSplitAxis, spineEdge: TilingFoldEdge, spinePx: number, gapPx: number): { spineRect: TilingRect; openRect: TilingRect } {
   if (axis === "horizontal") {
-    const spineWidth: number = Math.min(spinePx, rect.width);
+    const spineWidth: number = Math.max(0, Math.min(spinePx, rect.width));
     const openWidth: number = Math.max(0, rect.width - spinePx - gapPx);
     return spineEdge === "left"
       ? {
@@ -200,7 +219,7 @@ function foldBoxes(rect: TilingRect, axis: TilingSplitAxis, spineEdge: TilingFol
           openRect: { x: rect.x, y: rect.y, width: openWidth, height: rect.height },
         };
   }
-  const spineHeight: number = Math.min(spinePx, rect.height);
+  const spineHeight: number = Math.max(0, Math.min(spinePx, rect.height));
   const openHeight: number = Math.max(0, rect.height - spinePx - gapPx);
   return spineEdge === "top"
     ? {
@@ -224,13 +243,13 @@ const NO_FOLDS: ReadonlyArray<string> = [];
  *   its fold floor: a desktop layout whose panes are all above the floor is unchanged.
  * - A split folds when its two children's floors along its axis ({@link TilingFoldConfig.minPanePx} and its
  *   precedence) plus its gutter (`gapPx`, the split's own first, and `handleSizePx`) don't fit its extent.
- * - A split where both fit stays a split. If its stored ratio leaves a child under its floor, the boundary moves to
- *   the floor (`clampByMinSize`'s ratio, reported in `fittedRatios`; as in the geometry, a floored pane may land up
- *   to half a gutter short of it); otherwise it is laid out as stored. A split with a child static along it keeps
- *   its pins.
+ * - A split where both fit stays a split. If its stored ratio leaves a child under its floor, the boundary moves so
+ *   that child is exactly on its floor (reported in `fittedRatios`); otherwise it is laid out as stored. A split
+ *   with a child static along it keeps its pins.
  * - The open side is the one holding `focusedLeafId`, else the one holding the first of `recentLeafIds` it holds,
  *   else the first. It is laid out afresh in the split's box less the spine (`spineSizePx`) and the split's gap.
  * - A `layoutMode: "master"` split never folds.
+ * - Split ids must be unique, as the layout requires; a tree that repeats one is laid out unfolded.
  */
 export function resolveFoldPlan(
   layout: TilingLayoutNode,
@@ -248,7 +267,7 @@ export function resolveFoldPlan(
   const foldedLeafIds: Set<string> = new Set<string>();
   const fittedRatios: Map<string, number> = new Map<string, number>();
 
-  if (!fold) {
+  if (!fold || !hasUniqueSplitIds(layout)) {
     for (const leafId of base.leaves.keys()) leafFolds.set(leafId, NO_FOLDS);
     return { leaves: base.leaves, splits: base.splits, folds, fittedRatios, leafFolds, foldedLeafIds };
   }

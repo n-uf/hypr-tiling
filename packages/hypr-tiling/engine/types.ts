@@ -1804,7 +1804,10 @@ export interface TilingFoldConfig {
    * specific first: a static child's px pin along the axis (a collapsed
    * leaf's title bar), a leaf's own {@link TilingLeafNode.minBBoxPx}, the
    * split's {@link TilingSplitNode.minPaneSizePx}, this value, then
-   * {@link TilingLayoutConfig.minPaneSizePx}.
+   * {@link TilingLayoutConfig.minPaneSizePx}. The fold floor is its own:
+   * `resizeFloor` and `collapsedExtentPx`, which bound a resize, don't enter
+   * it. A split that fits but whose ratio leaves a pane under its floor is
+   * laid out with its boundary moved to the floor.
    */
   minPanePx?: number | TilingFoldMinPanePx;
   /**
