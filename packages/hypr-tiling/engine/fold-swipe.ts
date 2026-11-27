@@ -12,6 +12,8 @@ import type { ScrollChainAxis, ScrollChainDirection } from "./wheel-touch-port";
 
 /** The data attribute on a fold's open side naming the way it can turn (see {@link foldFlipToken}). */
 export const FOLD_FLIP_ATTRIBUTE: string = "data-hpt-fold-flip";
+/** The data attribute on a fold's open side naming its split (read back when a swipe turns it). */
+export const FOLD_SPLIT_ATTRIBUTE: string = "data-hpt-fold-split";
 
 /**
  * The way a fold with its spine on `edge` turns, in scroll-chain terms: the axis and the scroll direction a swipe
@@ -55,11 +57,19 @@ export function resolveFoldSwipeAxis(dx: number, dy: number, slopPx: number = FO
   return Math.abs(dx) > 2 * Math.abs(dy) ? "x" : "y";
 }
 
-/** Where the open side is drawn while the finger has moved `travelPx` along the swipe's axis. */
-export function foldSwipeFollowPx(travelPx: number, extentPx: number): number {
+/**
+ * Where the open side is drawn while the finger has moved `travelPx` along the swipe's axis, for a fold that turns
+ * in scroll `direction`: it follows toward the spine only (a finger moving back past where it started leaves it in
+ * place), at {@link FOLD_SWIPE_FOLLOW} of the travel, up to {@link FOLD_SWIPE_MAX_FOLLOW_FRACTION} of its extent.
+ */
+export function foldSwipeFollowPx(travelPx: number, extentPx: number, direction: ScrollChainDirection): number {
   const limit: number = Math.max(0, extentPx) * FOLD_SWIPE_MAX_FOLLOW_FRACTION;
-  return Math.max(-limit, Math.min(limit, travelPx * FOLD_SWIPE_FOLLOW));
+  const toward: number = Math.max(0, Math.min(limit, -direction * travelPx * FOLD_SWIPE_FOLLOW));
+  return toward === 0 ? 0 : -direction * toward;
 }
+
+/** A finger resting longer than this (ms) before it lifts is not a fling. */
+export const FOLD_SWIPE_FLING_IDLE_MS: number = 100;
 
 /**
  * Whether a released swipe turns the fold: it moved toward the spine (`travelPx` with the sign of the flip's

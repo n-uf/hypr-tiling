@@ -31,10 +31,15 @@ describe("resolveFoldSwipeAxis", () => {
 });
 
 describe("foldSwipeFollowPx", () => {
-  it("follows the finger at 0.6, up to 40 % of the extent either way", () => {
-    expect(foldSwipeFollowPx(-100, 400)).toBeCloseTo(-60, 9);
-    expect(foldSwipeFollowPx(-1000, 400)).toBeCloseTo(-400 * FOLD_SWIPE_MAX_FOLLOW_FRACTION, 9);
-    expect(foldSwipeFollowPx(1000, 400)).toBeCloseTo(400 * FOLD_SWIPE_MAX_FOLLOW_FRACTION, 9);
+  it("follows the finger toward the spine at 0.6, up to 40 % of the extent", () => {
+    expect(foldSwipeFollowPx(-100, 400, 1)).toBeCloseTo(-60, 9);
+    expect(foldSwipeFollowPx(-1000, 400, 1)).toBeCloseTo(-400 * FOLD_SWIPE_MAX_FOLLOW_FRACTION, 9);
+    expect(foldSwipeFollowPx(100, 400, -1)).toBeCloseTo(60, 9);
+  });
+
+  it("not away from it: a finger back past its start leaves the side in place", () => {
+    expect(foldSwipeFollowPx(80, 400, 1)).toBe(0);
+    expect(foldSwipeFollowPx(-80, 400, -1)).toBe(0);
   });
 });
 
