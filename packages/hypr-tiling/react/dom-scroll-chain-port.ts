@@ -1,4 +1,5 @@
 import type { ElementRef } from "../engine/element-ref";
+import { FOLD_FLIP_ATTRIBUTE, scrollChainFlipToken } from "../engine/fold-swipe";
 import type {
   ScrollChainAxis,
   ScrollChainDirection,
@@ -52,6 +53,39 @@ export function canElementScrollFurther(
   return direction === 1
     ? scrollLeft < maxLeft - SCROLL_BOUND_EPSILON_PX
     : scrollLeft > SCROLL_BOUND_EPSILON_PX;
+}
+
+/**
+ * Whether `element` is a fold's open side that turns along `axis` in
+ * `direction` (its {@link FOLD_FLIP_ATTRIBUTE} mark): a touch swipe that way
+ * flips the fold.
+ */
+export function canFoldFlip(element: HTMLElement, axis: ScrollChainAxis, direction: ScrollChainDirection): boolean {
+  const mark: string | null = element.getAttribute(FOLD_FLIP_ATTRIBUTE);
+  return mark != null && mark.split(" ").includes(scrollChainFlipToken(axis, direction));
+}
+
+/**
+ * The nearest fold open side from `target` up that a touch swipe along `axis` in `direction` turns, or `null`: none,
+ * or a container on the way to it can still scroll that way first (it takes the swipe).
+ */
+export function findFoldFlipElement(
+  target: EventTarget | null,
+  axis: ScrollChainAxis,
+  direction: ScrollChainDirection,
+): HTMLElement | null {
+  let element: HTMLElement | null =
+    target instanceof HTMLElement ? target : target instanceof Node ? (target.parentElement as HTMLElement | null) : null;
+  while (element != null) {
+    if (canFoldFlip(element, axis, direction)) {
+      return element;
+    }
+    if (canElementScrollFurther(element, axis, direction)) {
+      return null;
+    }
+    element = element.parentElement;
+  }
+  return null;
 }
 
 /**
