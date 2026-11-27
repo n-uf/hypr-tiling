@@ -3665,6 +3665,12 @@ const TILING_CHROME_CURSOR_STYLE_HREF: string = "hypr-tiling-chrome-cursor";
  */
 const LEAF_MOTION_ACTIVE_ATTR: string = "data-hpt-leaf-motion-active";
 const LEAF_MOTION_OVERFLOW_CLASS: string = "overflow-hidden hpt-motion-overflow";
+
+/** The fold flip: the side now open slides in this share of its extent, from this opacity. */
+const FOLD_FLIP_DISTANCE_FRACTION: number = 0.35;
+const FOLD_FLIP_START_OPACITY: number = 0.35;
+const FOLD_FLIP_DURATION_MS: number = 260;
+const FOLD_FLIP_EASING: string = "cubic-bezier(0.2, 0.8, 0.2, 1)";
 const TILING_CHROME_CURSOR_CSS: string = `
 .hpt-root [${TILING_RESIZE_CURSOR_ATTR}="col"] { cursor: col-resize; }
 .hpt-root [${TILING_RESIZE_CURSOR_ATTR}="row"] { cursor: row-resize; }
@@ -10213,6 +10219,52 @@ const TilingRendererComponent = React.forwardRef<
       registerStablePaneSlot,
     ],
   );
+
+  // The flip: when a fold's open side changes (focus moved across it), the
+  // side now open slides in from the edge its spine was on. The layout itself
+  // is already final; this only animates the open side's box into place.
+  // Skipped under reduced motion and where the Web Animations API is missing.
+  const previousFoldOpenSidesRef = React.useRef<Map<string, TilingFoldSide>>(
+    new Map<string, TilingFoldSide>(),
+  );
+  React.useLayoutEffect((): void => {
+    const previous: Map<string, TilingFoldSide> =
+      previousFoldOpenSidesRef.current;
+    const next: Map<string, TilingFoldSide> = new Map<string, TilingFoldSide>();
+    const reducedMotion: boolean = readPrefersReducedMotion()();
+    for (const fold of displayFoldPlan?.folds ?? []) {
+      next.set(fold.splitId, fold.openSide);
+      const before: TilingFoldSide | undefined = previous.get(fold.splitId);
+      if (before == null || before === fold.openSide || reducedMotion) {
+        continue;
+      }
+      const section: HTMLDivElement | undefined =
+        splitContainerRefs.current.get(fold.splitId);
+      const open: Element | null =
+        section?.querySelector(':scope > [data-hpt-fold-side="open"]') ?? null;
+      if (!(open instanceof HTMLElement) || typeof open.animate !== "function") {
+        continue;
+      }
+      const horizontal: boolean = fold.axis === "horizontal";
+      const distancePx: number =
+        (horizontal ? fold.openRect.width : fold.openRect.height) *
+        FOLD_FLIP_DISTANCE_FRACTION *
+        (fold.openSide === "second" ? 1 : -1);
+      open.animate(
+        [
+          {
+            transform: horizontal
+              ? `translateX(${distancePx}px)`
+              : `translateY(${distancePx}px)`,
+            opacity: FOLD_FLIP_START_OPACITY,
+          },
+          { transform: "none", opacity: 1 },
+        ],
+        { duration: FOLD_FLIP_DURATION_MS, easing: FOLD_FLIP_EASING },
+      );
+    }
+    previousFoldOpenSidesRef.current = next;
+  }, [displayFoldPlan]);
 
   const maximizedLeaf: TilingLeafNode | null =
     activeMaximizedLeafId != null
