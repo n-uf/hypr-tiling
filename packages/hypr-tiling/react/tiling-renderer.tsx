@@ -4298,7 +4298,8 @@ const TilingRendererComponent = React.forwardRef<
       [interaction],
     );
   // PER-SUBTREE static drag gate. `isRearrangeEnabled`
-  // is now the capability master switch ALONE — it is no longer ANDed with a
+  // is the capability master switch, off only while the layout folds (see
+  // `isLayoutFolded` below) — it is no longer ANDed with a
   // whole-tree static flag. The static geometry is handled per-leaf instead:
   // `collectLeafFootprints` is static-aware (a pinned static pane gets its exact
   // extent, the flexible sibling fills), and `rearrangeGatedLeafIds` marks the
