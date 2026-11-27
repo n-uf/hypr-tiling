@@ -39,6 +39,17 @@ export {
 // The tree and the geometry config those take
 export type { TilingGroupNode, TilingLayoutConfig, TilingLayoutNode, TilingLeafNode, TilingSplitAxis, TilingSplitNode } from "./engine/types";
 
+// ── Layout tree — folds: where a split that doesn't fit folds into a spine (derived, never stored) ──
+export {
+  findFoldToward,
+  resolveFoldPlan,
+  type TilingFold,
+  type TilingFoldEdge,
+  type TilingFoldPlan,
+  type TilingFoldSide,
+} from "./engine/fold-plan";
+export { TILING_DEFAULT_FOLD_SPINE_PX, type TilingFocusDirection, type TilingFoldConfig, type TilingFoldMinPanePx } from "./engine/types";
+
 // ── Layout tree — reducers (pure; each returns a NEW tree) ────────────────────
 export {
   extractLeafNode,
