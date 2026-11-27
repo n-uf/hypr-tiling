@@ -9,7 +9,23 @@ the version number alone does not flag them.
 
 ## Unreleased
 
-### Folding: the tree folds where it doesn't fit (engine only)
+### Folding in the renderer
+
+- **`TilingRenderer` folds** when `config.fold` is set: a split that can't
+  fit both floors renders its open side and a **spine** on the edge where
+  the folded side sits, labelled with its panes. A tap on the spine opens
+  it (it focuses the pane it targets). A split that fits but squeezes a
+  pane under its floor is drawn with its boundary at the floor.
+- **Folded panes stay mounted**, hidden: the page keeps every pane's text
+  (for crawlers too), and no pane remounts when a split folds, unfolds (a
+  turned phone) or flips.
+- **The flip**: the side a fold opens slides in from its spine's edge
+  (260 ms; none under reduced motion).
+- **Unchanged where nothing folds**: with `config.fold` off, or wherever
+  every pane has its floor, the markup is the same as before. A server
+  render (no measured size yet) and a maximized pane don't fold.
+
+### Folding: the tree folds where it doesn't fit (engine)
 
 - **`resolveFoldPlan(layout, container, config, focusedLeafId, recentLeafIds?)`**
   on `./engine`, the first step of the phone model. Laid out from the root,
