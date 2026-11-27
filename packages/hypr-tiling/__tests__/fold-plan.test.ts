@@ -147,6 +147,31 @@ describe("resolveFoldPlan: desktop stays pixel-identical wherever both floors fi
     expect(tree.ratio).toBe(0.2);
   });
 
+  it("a pane already on its floor doesn't move, with a gutter and an asymmetric floor", () => {
+    // a gets 0.775 × 400 − 8 = 302 (floor 300), b 82 (floor 50): both have their floor
+    const tree = split("r", "horizontal", 0.775, leaf("a", { minBBoxPx: { widthPx: 300 } }), leaf("b"));
+    const config: TilingLayoutConfig = { gapPx: 10, minPaneSizePx: 0, handleSizePx: 6, fold: { minPanePx: 50 } };
+    const plan = resolveFoldPlan(tree, box(400, 300), config, "a");
+    expect(plan.fittedRatios.size).toBe(0);
+    expect(plan.leaves).toEqual(resolveLayoutGeometry(tree, box(400, 300), config).leaves);
+  });
+
+  it("a pane under its floor is moved exactly onto it, the other side too", () => {
+    const config: TilingLayoutConfig = { gapPx: 10, minPaneSizePx: 0, handleSizePx: 6, fold: { minPanePx: 100 } };
+    const second = resolveFoldPlan(split("r", "horizontal", 0.9, leaf("a"), leaf("b")), box(400, 300), config, "a");
+    expect(second.leaves.get("b")?.width).toBeCloseTo(100, 9);
+    const first = resolveFoldPlan(split("r", "vertical", 0.1, leaf("a"), leaf("b")), box(300, 400), config, "a");
+    expect(first.leaves.get("a")?.height).toBeCloseTo(100, 9);
+  });
+
+  it("no refit for a floor of 0, even at an out-of-range stored ratio", () => {
+    const tree = split("r", "horizontal", 2, leaf("a"), leaf("b"));
+    const config: TilingLayoutConfig = { gapPx: 10, minPaneSizePx: 0, handleSizePx: 0, fold: { minPanePx: 0 } };
+    const plan = resolveFoldPlan(tree, box(400, 300), config, "a");
+    expect(plan.fittedRatios.size).toBe(0);
+    expect(plan.folds).toEqual([]);
+  });
+
   it("a split with a static child keeps its pin", () => {
     const tree = split("r", "horizontal", 0.5, leaf("a", { sizing: { width: "static", widthPx: 120 } }), leaf("b"));
     const config: TilingLayoutConfig = { gapPx: 0, minPaneSizePx: 0, handleSizePx: 0, fold: { minPanePx: 100 } };
@@ -199,11 +224,12 @@ describe("resolveFoldPlan: the Home tree on a phone", () => {
   it("844 × 390: three columns (the boundaries move to the floor); the hero's stack and Install · Use cases fold", () => {
     const plan = resolveFoldPlan(HOME, box(844, 390), SITE_FOLD, "intro");
     expect(plan.folds.map((fold) => fold.splitId)).toEqual(["home-intro-stack", "home-install-uses"]);
-    // the root's 0.26 would leave the hero 208 px wide: its boundary moves to the 220 px floor
-    const rootRatio = 220 / 822;
+    // the root's 0.26 would leave the hero 208 px wide: its boundary moves so the hero is exactly 220 px
+    const rootRatio = (220 + 11) / 844;
     expect(plan.fittedRatios.get("home-root")).toBeCloseTo(rootRatio, 9);
     expect(plan.splits.has("home-root")).toBe(true);
     const heroWidth = firstPx(rootRatio, 844);
+    expect(heroWidth).toBeCloseTo(220, 9);
     const stack = foldOf(plan, "home-intro-stack");
     expect(stack).toMatchObject({ axis: "vertical", openSide: "first", spineEdge: "bottom", leafIds: ["discoverability"] });
     expectRect(stack.spineRect, { x: 0, y: 360, width: heroWidth, height: 30 });
@@ -211,9 +237,10 @@ describe("resolveFoldPlan: the Home tree on a phone", () => {
     // Features, moved to its floor too
     const restX = heroWidth + 22;
     const restWidth = 844 - restX;
-    const featuresRatio = 220 / (restWidth - 22);
+    const featuresRatio = (220 + 11) / restWidth;
     expect(plan.fittedRatios.get("home-features-rest")).toBeCloseTo(featuresRatio, 9);
     const featuresWidth = firstPx(featuresRatio, restWidth);
+    expect(featuresWidth).toBeCloseTo(220, 9);
     expectRect(plan.leaves.get("features"), { x: restX, y: 0, width: featuresWidth, height: 390 });
     // focus is in another column: the first side opens
     const uses = foldOf(plan, "home-install-uses");
@@ -288,6 +315,30 @@ describe("resolveFoldPlan: the floor, most specific first", () => {
   it("the gutter counts: gap and handle", () => {
     expect(folds(split("r", "horizontal", 0.5, leaf("a"), leaf("b")), { ...BASE, fold: { minPanePx: 340 } })).toBe(false);
     expect(folds(split("r", "horizontal", 0.5, leaf("a"), leaf("b")), { ...BASE, gapPx: 12, handleSizePx: 10, fold: { minPanePx: 340 } })).toBe(true);
+  });
+
+  it("a split's own minPaneSizePx of 0 opts it out of the fold floor", () => {
+    expect(folds(split("r", "horizontal", 0.5, leaf("a"), leaf("b"), { minPaneSizePx: 0 }), { ...BASE, fold: { minPanePx: 400 } })).toBe(false);
+  });
+
+  it("one floor bigger than the split folds even against a sibling with none", () => {
+    const tree = split("r", "horizontal", 0.5, leaf("a", { minBBoxPx: { widthPx: 800 } }), leaf("b"));
+    expect(folds(tree, { ...BASE, fold: {} })).toBe(true);
+  });
+
+  it("a tree that repeats a split id is laid out unfolded", () => {
+    const tree = split("x", "horizontal", 0.5, leaf("a"), split("x", "horizontal", 0.5, leaf("b"), leaf("c")));
+    const plan = resolveFoldPlan(tree, box(250, 100), { ...BASE, fold: { minPanePx: 100 } }, "a");
+    expect(plan.folds).toEqual([]);
+    expect([...plan.leaves.keys()]).toEqual(["a", "b", "c"]);
+  });
+
+  it("a negative container gives no negative spine", () => {
+    const plan = resolveFoldPlan(split("r", "horizontal", 0.5, leaf("a"), leaf("b")), { x: 0, y: 0, width: -50, height: 100 }, { ...BASE, fold: { minPanePx: 100 } }, "a");
+    for (const fold of plan.folds) {
+      expect(fold.spineRect.width).toBeGreaterThanOrEqual(0);
+      expect(fold.openRect.width).toBeGreaterThanOrEqual(0);
+    }
   });
 
   it("a master split never folds", () => {
