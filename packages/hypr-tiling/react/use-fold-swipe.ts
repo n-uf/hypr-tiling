@@ -15,7 +15,8 @@ import { findFoldFlipElement } from "./dom-scroll-chain-port";
 const FOLD_SWIPE_RETURN_MS: number = 180;
 
 interface TrackedTouch {
-  readonly pointerId: number;
+  /** The finger's `Touch.identifier` */
+  readonly id: number;
   readonly target: EventTarget | null;
   readonly originX: number;
   readonly originY: number;
@@ -29,6 +30,16 @@ interface TrackedTouch {
   claimed: { element: HTMLElement; direction: ScrollChainDirection } | null;
 }
 
+/** The changed touch of the tracked finger, if this event carries it. */
+function trackedTouchOf(event: TouchEvent, id: number): { clientX: number; clientY: number } | null {
+  const touches = event.changedTouches;
+  for (let index = 0; index < touches.length; index += 1) {
+    const touch = touches[index];
+    if (touch.identifier === id) return touch;
+  }
+  return null;
+}
+
 /**
  * Swipe to flip a fold (touch): a sideways swipe over a fold's open side (marked by the renderer, see
  * `FOLD_FLIP_ATTRIBUTE`) toward its spine follows the finger; released far or fast enough it calls `onFlip` with the
@@ -36,6 +47,10 @@ interface TrackedTouch {
  * last fold the swipe is left to the workspace swipe (the touch port reports the fold as scrollable until then).
  * Vertical swipes scroll the panes as before; a second finger (a pinch) ends the swipe. Nothing happens while
  * `isBlocked` (a pane lifted by a drag).
+ *
+ * It listens to touch events, not pointer events: a pane's body is a scroll container the browser may pan, and once
+ * it does it cancels the pointer (`pointercancel`) while the touch events keep coming. Once the swipe has claimed a
+ * fold its moves are not the browser's (`preventDefault`).
  */
 export function useFoldSwipe(params: {
   rootRef: ElementRef<HTMLElement | null>;
@@ -55,15 +70,9 @@ export function useFoldSwipe(params: {
     let touch: TrackedTouch | null = null;
     const readReducedMotion: () => boolean = prefersReducedMotion();
 
-    const stopListening = (): void => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onCancel);
-    };
     const release = (flip: boolean): void => {
       const tracked: TrackedTouch | null = touch;
       touch = null;
-      stopListening();
       const claimed = tracked?.claimed;
       if (tracked == null || claimed == null) {
         return;
@@ -84,26 +93,52 @@ export function useFoldSwipe(params: {
       }
     };
 
-    function onMove(event: PointerEvent): void {
+    const onStart = (event: TouchEvent): void => {
+      if (event.touches.length > 1) {
+        // A second finger: a pinch, not a swipe.
+        release(false);
+        return;
+      }
+      const start = event.changedTouches[0];
+      if (start == null) {
+        return;
+      }
+      release(false);
+      touch = {
+        id: start.identifier,
+        target: event.target,
+        originX: start.clientX,
+        originY: start.clientY,
+        lastX: start.clientX,
+        lastTs: event.timeStamp,
+        velocityPxPerMs: 0,
+        axis: null,
+        claimed: null,
+      };
+    };
+
+    const onMove = (event: TouchEvent): void => {
       const tracked: TrackedTouch | null = touch;
       if (tracked == null) {
         return;
       }
-      if (event.pointerId !== tracked.pointerId) {
-        // A second finger: a pinch, not a swipe.
-        if (event.pointerType === "touch") release(false);
+      if (event.touches.length > 1) {
+        release(false);
+        return;
+      }
+      const point = trackedTouchOf(event, tracked.id);
+      if (point == null) {
         return;
       }
       if (latestRef.current.isBlocked()) {
         release(false);
         return;
       }
-      const dx: number = event.clientX - tracked.originX;
-      const dy: number = event.clientY - tracked.originY;
-      if (event.timeStamp > tracked.lastTs) {
-        tracked.velocityPxPerMs = (event.clientX - tracked.lastX) / (event.timeStamp - tracked.lastTs);
-      }
-      tracked.lastX = event.clientX;
+      const dx: number = point.clientX - tracked.originX;
+      const dy: number = point.clientY - tracked.originY;
+      // Moves sharing a time stamp (coalesced) count as 1 ms apart: fast.
+      tracked.velocityPxPerMs = (point.clientX - tracked.lastX) / Math.max(1, event.timeStamp - tracked.lastTs);
+      tracked.lastX = point.clientX;
       tracked.lastTs = event.timeStamp;
       if (tracked.axis == null) {
         tracked.axis = resolveFoldSwipeAxis(dx, dy);
@@ -125,14 +160,19 @@ export function useFoldSwipe(params: {
       }
       const claimed = tracked.claimed;
       if (claimed != null) {
+        if (event.cancelable) event.preventDefault();
         const followPx: number = foldSwipeFollowPx(dx, claimed.element.clientWidth, claimed.direction);
         claimed.element.style.transform = followPx === 0 ? "" : `translateX(${followPx}px)`;
       }
-    }
+    };
 
-    function onUp(event: PointerEvent): void {
+    const onEnd = (event: TouchEvent): void => {
       const tracked: TrackedTouch | null = touch;
-      if (tracked == null || event.pointerId !== tracked.pointerId) {
+      if (tracked == null) {
+        return;
+      }
+      const point = trackedTouchOf(event, tracked.id);
+      if (point == null) {
         return;
       }
       const claimed = tracked.claimed;
@@ -142,51 +182,30 @@ export function useFoldSwipe(params: {
       release(
         claimed != null &&
           resolveFoldSwipeRelease({
-            travelPx: event.clientX - tracked.originX,
+            travelPx: point.clientX - tracked.originX,
             velocityPxPerMs,
             direction: claimed.direction,
             extentPx: claimed.element.clientWidth,
           }),
       );
-    }
-
-    function onCancel(event: PointerEvent): void {
-      if (touch != null && event.pointerId === touch.pointerId) {
-        release(false);
-      }
-    }
-
-    const onDown = (event: PointerEvent): void => {
-      if (event.pointerType !== "touch") {
-        return;
-      }
-      if (!event.isPrimary) {
-        // A second finger: a pinch, not a swipe.
-        if (touch != null) release(false);
-        return;
-      }
-      if (touch != null) {
-        release(false);
-      }
-      touch = {
-        pointerId: event.pointerId,
-        target: event.target,
-        originX: event.clientX,
-        originY: event.clientY,
-        lastX: event.clientX,
-        lastTs: event.timeStamp,
-        velocityPxPerMs: 0,
-        axis: null,
-        claimed: null,
-      };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-      window.addEventListener("pointercancel", onCancel);
     };
 
-    root.addEventListener("pointerdown", onDown);
+    const onCancel = (event: TouchEvent): void => {
+      if (touch != null && trackedTouchOf(event, touch.id) != null) {
+        release(false);
+      }
+    };
+
+    // Touch events go to the element the touch started on, inside the root.
+    root.addEventListener("touchstart", onStart, { passive: true });
+    root.addEventListener("touchmove", onMove, { passive: false });
+    root.addEventListener("touchend", onEnd);
+    root.addEventListener("touchcancel", onCancel);
     return (): void => {
-      root.removeEventListener("pointerdown", onDown);
+      root.removeEventListener("touchstart", onStart);
+      root.removeEventListener("touchmove", onMove);
+      root.removeEventListener("touchend", onEnd);
+      root.removeEventListener("touchcancel", onCancel);
       release(false);
     };
   }, [enabled, rootRef]);
