@@ -70,7 +70,7 @@ import {
 } from "./home-workspaces";
 import { ProofPane } from "./proof-pane";
 import { ScenariosPane } from "./scenarios-pane";
-import { MobileHome } from "./mobile-home/mobile-home";
+import { ReadStackMobile } from "./mobile-home/read-stack";
 import { MobileTopStrip } from "./mobile-home/top-strip";
 import { useMobileHomeMode } from "./mobile-home/mode-storage";
 import { useHomeDragPreview } from "./drag-preview-storage";
@@ -331,11 +331,9 @@ function RepoLink({ skin }: { skin: HomeSkin }): React.ReactElement {
 
 // The top chrome bar — site chrome, not floating over content. Left: the
 // wordmark. Middle: the workspace tab strip (`useTilingWorkspaceTabs` — native
-// drop targets, spring-load, swipe-progress tick) — OR, on a narrow/coarse
-// mobile viewport, the mobile home mode switcher (Master / Swipe / Grid) in
-// that same slot. Mobile concepts each paint their own pane navigation and
-// already consume horizontal swipe (Fullscreen + Swipe), so the workspace
-// strip stays desktop-only there. Right: the skin switch.
+// drop targets, spring-load, swipe-progress tick) — OR, on a phone, the mode
+// switcher (Tiles / Read) in that same slot, with the workspace tabs on a row
+// of their own below it in Tiles. Right: the skin switch.
 function HomeTopBar({
   skin,
   onSkinChange,
@@ -373,21 +371,30 @@ function HomeTopBar({
 }): React.ReactElement {
   const tokens: SkinChromeTokens = SKIN_CHROME[skin];
 
-  // Mobile: the ENTIRE top chrome collapses to one thin status-bar row
-  // (wordmark · mode segments · skin menu — see `MobileTopStrip`). The desktop
-  // workspace-tab rail is dropped here because each mobile concept paints its
-  // own in-content pane navigation, and the skin pills fold into an overflow
-  // menu, so nothing but a single ~44px strip stands between the top edge and
-  // the content.
+  // Phone: the top chrome is one thin status-bar row (wordmark · mode
+  // segments · skin menu — see `MobileTopStrip`; the reset and drag switches
+  // stay desktop-only). In Tiles the workspace tabs follow on a row of their
+  // own, full width, so all three names fit and each is a 32px target. Read is
+  // a page, so it has no workspaces.
   if (isMobile) {
     return (
-      <MobileTopStrip
-        skin={skin}
-        onSkinChange={onSkinChange}
-        mode={mobileMode}
-        onModeChange={onMobileModeChange}
-        sticky={mobileMode === "read"}
-      />
+      <>
+        <MobileTopStrip
+          skin={skin}
+          onSkinChange={onSkinChange}
+          mode={mobileMode}
+          onModeChange={onMobileModeChange}
+          sticky={mobileMode === "read"}
+        />
+        {mobileMode === "tiles" ? (
+          <HomeWorkspaceTabStrip
+            skin={skin}
+            tabs={workspaceTabs.tabs}
+            tablistProps={workspaceTabs.tablistProps}
+            phone
+          />
+        ) : null}
+      </>
     );
   }
 
@@ -847,13 +854,11 @@ export function HomePage({
     }
   }, [activeLayout, focusedLeafId, maximizedLeafId]);
 
-  // Mobile home mode: which of the three mobile organization concepts
-  // (Master + Rail / Fullscreen + Swipe / Pocket Grid) presents on a
-  // narrow/coarse viewport. Persisted in `localStorage` so a returning
-  // visitor's choice sticks; defaults to Master + Rail (`"master"`), which is
-  // also the mode the prerendered mobile home ships in. `isMobile` gates the
-  // mobile presentation entirely — wide/desktop viewports never see this state
-  // at all, keeping the classic dwindle demo exactly as it was.
+  // Phone home mode: Tiles (the default, and the mode the prerendered phone
+  // home ships in) is the same workspace set and renderer as the desktop,
+  // folded by `LAYOUT_CONFIG.fold`; Read stacks the documentation panes as one
+  // page. Persisted in `localStorage` so a returning visitor's choice sticks.
+  // `isMobile` gates it entirely: wider viewports never see this state.
   const [mobileMode, onMobileModeChange] = useMobileHomeMode();
   // How a pane drag previews its drop: the drop indicator (default) or snap to
   // slot. The bottom bar toggles it; persisted like the mobile mode.
@@ -912,14 +917,6 @@ export function HomePage({
     navigate: navigate == null ? undefined : openDocsHref,
   });
   const tiles: ReadonlyArray<TilingTile> = [...docTiles, ...widgetTiles];
-
-  const tilesById: ReadonlyMap<string, TilingTile> = React.useMemo(
-    (): ReadonlyMap<string, TilingTile> =>
-      new Map(
-        tiles.map((tile: TilingTile): [string, TilingTile] => [tile.id, tile]),
-      ),
-    [tiles],
-  );
 
   // Interaction: the homepage keeps the library's own pane tab strip OFF (the
   // top chrome bar owns workspace switching). Group tabs use the built-in
@@ -1018,27 +1015,14 @@ export function HomePage({
           className="min-h-0 min-w-0 flex-1"
           {...workspaceTabs.panelProps(workspaceController.set.activeId)}
         >
-          {isMobile ? (
-            // Narrow/coarse viewport: one of the three mobile organization
-            // concepts, each with its own independent `TilingRenderer`
-            // instance/state (see `mobile-home/`) — the desktop workspace set
-            // above is untouched. Same tiles, same skin, same renderTile.
-            <MobileHome
-              mode={mobileMode}
-              tiles={tiles}
-              tilesById={tilesById}
-              skin={skin}
-              renderTile={(args: TilingRenderTileProps): React.ReactNode =>
-                skin === "editorial" ? (
-                  <EditorialTile {...args} />
-                ) : skin === "canvas" ? (
-                  <CanvasTile {...args} />
-                ) : (
-                  <DocTile {...args} />
-                )
-              }
-            />
+          {isReadMode ? (
+            // Phone, Read: the documentation panes as one stacked page.
+            <ReadStackMobile tiles={tiles} skin={skin} />
           ) : (
+            // Every other viewport, phones in Tiles included: the one
+            // workspace set and renderer. Where a split doesn't fit it folds
+            // (`LAYOUT_CONFIG.fold`), so a phone shows one pane with spines,
+            // and turning it keeps the same workspaces and focus.
             <TilingRenderer
               ref={commandHandleRef}
               workspaces={workspaceController.set}

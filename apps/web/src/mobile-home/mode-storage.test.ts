@@ -23,26 +23,33 @@ afterEach((): void => {
 });
 
 describe("the stored mobile home mode", (): void => {
-  it("is read when nothing is stored", (): void => {
+  it("is tiles when nothing is stored", (): void => {
     installStorage({});
-    expect(readStoredMobileHomeMode()).toBe("read");
+    expect(readStoredMobileHomeMode()).toBe("tiles");
   });
 
-  it("falls back to read for a value that is not a mode", (): void => {
-    for (const value of ["", "nonsense", "Master", "grid ", "undefined"]) {
+  it("falls back to tiles for a value that is not a mode", (): void => {
+    for (const value of ["", "nonsense", "Tiles", "read ", "undefined"]) {
       installStorage({ [STORAGE_KEY]: value });
-      expect(readStoredMobileHomeMode()).toBe("read");
+      expect(readStoredMobileHomeMode()).toBe("tiles");
     }
   });
 
-  it("returns a stored master, swipe, grid or read as stored", (): void => {
-    for (const mode of ["master", "swipe", "grid", "read"] as const) {
+  it("falls back to tiles for a mode the phone home no longer has", (): void => {
+    for (const value of ["master", "swipe", "grid"]) {
+      installStorage({ [STORAGE_KEY]: value });
+      expect(readStoredMobileHomeMode()).toBe("tiles");
+    }
+  });
+
+  it("returns a stored tiles or read as stored", (): void => {
+    for (const mode of ["tiles", "read"] as const) {
       installStorage({ [STORAGE_KEY]: mode });
       expect(readStoredMobileHomeMode()).toBe(mode);
     }
   });
 
-  it("falls back to read when storage throws", (): void => {
+  it("falls back to tiles when storage throws", (): void => {
     (globalThis as { window?: unknown }).window = {
       localStorage: {
         getItem: (): string => {
@@ -50,13 +57,13 @@ describe("the stored mobile home mode", (): void => {
         },
       },
     };
-    expect(readStoredMobileHomeMode()).toBe("read");
+    expect(readStoredMobileHomeMode()).toBe("tiles");
   });
 
   it("writes the chosen mode under its key", (): void => {
     const store = installStorage({});
-    writeStoredMobileHomeMode("swipe");
-    expect(store.get(STORAGE_KEY)).toBe("swipe");
-    expect(readStoredMobileHomeMode()).toBe("swipe");
+    writeStoredMobileHomeMode("read");
+    expect(store.get(STORAGE_KEY)).toBe("read");
+    expect(readStoredMobileHomeMode()).toBe("read");
   });
 });

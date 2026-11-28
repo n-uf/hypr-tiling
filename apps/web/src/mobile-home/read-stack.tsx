@@ -1,25 +1,30 @@
 import * as React from "react";
 import type { TilingTile } from "@n-uf/hypr-tiling";
 import type { HomeSkin } from "../page";
-import { MOBILE_HOME_TILE_IDS } from "./layout-tree";
 import { MOBILE_HOME_SKIN_TOKENS, type MobileHomeSkinTokens } from "./skin-tokens";
 
-// Mode 0 — Read (the mobile home default). Every documentation pane is a
-// stacked section of one scrolling page, in reading order, and a row of anchor
-// chips jumps to each. No `TilingRenderer` here: the other three concepts show
-// one pane at a time, which leaves the other panes' text out of the page. This
-// one keeps all of it mounted and visible, so a phone reader scrolls it and a
-// mobile-first crawler sees the same text the desktop copy has. The page
-// scrolls as a document (see `page.tsx`), so the browser's own toolbar
-// collapse and scroll restoration keep working.
+// Read: the phone home's reading path. Every documentation pane is a stacked
+// section of one scrolling page, in reading order, and a row of anchor chips
+// jumps to each. No `TilingRenderer` here (Tiles, the default, is the folded
+// demo). The page scrolls as a document (see `page.tsx`), so the browser's own
+// toolbar collapse and scroll restoration keep working.
 
 /** The DOM id of a pane's section (the target of its jump chip). */
 export function readSectionId(tileId: string): string {
   return `section-${tileId}`;
 }
 
-// Reading order: the order the mobile trees seat the panes in (intro first).
-const READING_ORDER: ReadonlyArray<string> = [...MOBILE_HOME_TILE_IDS];
+/** The six documentation panes Read stacks, in reading order (intro first); any other tile is left out. */
+export const READ_TILE_IDS: ReadonlyArray<string> = [
+  "intro",
+  "features",
+  "workspaces",
+  "install",
+  "usecases",
+  "discoverability",
+];
+
+const READING_ORDER: ReadonlyArray<string> = READ_TILE_IDS;
 
 export function ReadStackMobile({
   tiles,

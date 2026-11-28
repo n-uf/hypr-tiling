@@ -59,6 +59,20 @@ const WORKSPACE_TAB_CHROME: Record<HomeSkin, WorkspaceTabChrome> = {
   },
 };
 
+// The phone row (Tiles mode): the rail spans the width and the three tabs share
+// it, each at least 32px tall with 12px text. Only the layout differs from the
+// desktop rail; the colours are the skin's own.
+const PHONE_RAIL: string = "relative flex w-full min-w-0 items-stretch gap-1";
+
+const PHONE_TAB_BASE: Record<HomeSkin, string> = {
+  mosaic:
+    "relative flex min-h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md border px-1.5 font-mono text-[12px] uppercase tracking-[0.08em] outline-none transition-colors",
+  editorial:
+    "relative flex min-h-8 min-w-0 flex-1 items-center justify-center gap-1.5 border-b-2 px-1.5 font-mono text-[12px] uppercase tracking-[0.08em] outline-none transition-colors",
+  canvas:
+    "relative flex min-h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md border px-1.5 font-mono text-[12px] uppercase tracking-[0.08em] outline-none transition-colors",
+};
+
 function composeClassName(
   hookClassName: string | undefined,
   ...parts: ReadonlyArray<string>
@@ -97,20 +111,24 @@ export function HomeWorkspaceTabStrip({
   skin,
   tabs,
   tablistProps,
+  phone = false,
 }: {
   skin: HomeSkin;
   tabs: ReadonlyArray<TilingWorkspaceTab>;
   tablistProps: TilingWorkspaceTablistElementProps;
+  /** The phone row: full width, equal tabs, no version on the Changelog tab. */
+  phone?: boolean;
 }): React.ReactElement {
   const tokens: WorkspaceTabChrome = WORKSPACE_TAB_CHROME[skin];
   const swipe: TilingWorkspaceSwipeSnapshot = useWorkspaceSwipe();
   const tickStyle: React.CSSProperties | null = swipeTickStyle(tabs, swipe);
+  const tabBase: string = phone ? PHONE_TAB_BASE[skin] : tokens.tabBase;
 
   return (
     <div
       {...tablistProps}
       aria-label="workspaces"
-      className={composeClassName(tablistProps.className, tokens.rail)}
+      className={composeClassName(tablistProps.className, phone ? PHONE_RAIL : tokens.rail)}
     >
       {tabs.map((tab: TilingWorkspaceTab, index: number): React.ReactElement => {
         const stateClass: string = tab.isDropTarget
@@ -124,7 +142,7 @@ export function HomeWorkspaceTabStrip({
             {...tab.tabProps}
             className={composeClassName(
               tab.tabProps.className,
-              tokens.tabBase,
+              tabBase,
               stateClass,
             )}
           >
@@ -132,7 +150,7 @@ export function HomeWorkspaceTabStrip({
               {index + 1}
             </span>
             <span className="truncate">
-              {tab.workspace.id === HOME_WORKSPACE_ID_CHANGELOG
+              {!phone && tab.workspace.id === HOME_WORKSPACE_ID_CHANGELOG
                 ? `${tab.workspace.name} \u00b7 ${LIBRARY_VERSION}`
                 : tab.workspace.name}
             </span>
