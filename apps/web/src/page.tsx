@@ -73,6 +73,7 @@ import { ScenariosPane } from "./scenarios-pane";
 import { ReadStackMobile } from "./mobile-home/read-stack";
 import { MobileTopStrip } from "./mobile-home/top-strip";
 import { useMobileHomeMode } from "./mobile-home/mode-storage";
+import { useIsHydrating } from "./home-first-paint";
 import { useHomeDragPreview } from "./drag-preview-storage";
 import { DragPreviewSwitch } from "./drag-preview-switch";
 import { HeldLookSwitch, useHomeHeldLook } from "./held-look-switch";
@@ -868,6 +869,13 @@ export function HomePage({
   const [heldLook, onHeldLookChange] = useHomeHeldLook(dragPreview);
   const isMobile: boolean = useIsMobileHomeViewport();
   const isReadMode: boolean = isMobile && mobileMode === "read";
+  // A server render can't measure the screen, so it can't fold: the phone copy
+  // would paint the desktop columns squeezed to the phone's width until the
+  // script loads. Instead it ships with the focused pane maximized (a whole,
+  // readable pane), and the page folds as soon as it hydrates.
+  const hydrating: boolean = useIsHydrating();
+  const shownMaximizedLeafId: string | null =
+    isMobile && hydrating ? (focusedLeafId ?? INITIAL_FOCUSED_LEAF_ID) : maximizedLeafId;
   const isCoarsePointer: boolean = useIsCoarsePointer();
 
   const docTiles: ReadonlyArray<TilingTile> = DOC_PANES.map(
@@ -1044,7 +1052,7 @@ export function HomePage({
               themeId="mosaic"
               focusedLeafId={focusedLeafId}
               onFocusedLeafChange={setFocusedLeafId}
-              maximizedLeafId={maximizedLeafId}
+              maximizedLeafId={shownMaximizedLeafId}
               onMaximizedLeafChange={setMaximizedLeafId}
               {...workspaceTabs.rendererProps}
               onWorkspaceSwitch={onWorkspaceSwitch}
