@@ -5,7 +5,7 @@ h1: "react-grid-layout alternatives, compared by layout model"
 mainKeyword: "react-grid-layout alternatives"
 kind: comparison
 published: 2026-11-04
-updated: 2026-11-04
+updated: 2026-11-28
 author: n-uf
 takeaways:
   - "gridstack.js is the closest match to react-grid-layout: the same grid of draggable, resizable widgets with columns and breakpoints, for any framework, with a React wrapper and nested grids documented."
@@ -202,7 +202,7 @@ Several of its limits are good reasons to pick something else:
 - **No grid.** Panes always fill the space, with a small gutter between them. There are no empty cells, no free placement and no breakpoint layouts.
 - **No floating windows.** Every pane sits in the tiled tree. There are no pop-out windows and no docking to the screen's edges.
 - **React 19 and the DOM only.** The peer range is `^19`. No React 18, React Native, Vue, Svelte or Angular yet.
-- **Tailwind required.** The package ships no CSS. The renderer emits Tailwind utility classes, so your Tailwind build has to scan the package's dist folder, or the panes render unstyled.
+- **Tailwind required.** The package ships no stylesheet to import. The renderer emits Tailwind utility classes, so your Tailwind build has to scan the package's dist folder, or the panes render unstyled.
 - **Source-available, not open source.** PolyForm Perimeter 1.0.1 allows internal and commercial use, but not a product that competes with hypr-tiling.
 - **Active development.** Versions are calendar-based (`YY.M.R`) and can't signal a breaking change. The README says compatibility may break between releases, so pin an exact version and read the changelog before upgrading.
 
