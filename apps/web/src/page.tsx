@@ -1021,7 +1021,8 @@ export function HomePage({
         />
         <div
           className="min-h-0 min-w-0 flex-1"
-          {...workspaceTabs.panelProps(workspaceController.set.activeId)}
+          // Read has no workspace tabs, so its page isn't a tab panel.
+          {...(isReadMode ? {} : workspaceTabs.panelProps(workspaceController.set.activeId))}
         >
           {isReadMode ? (
             // Phone, Read: the documentation panes as one stacked page.
