@@ -33,8 +33,9 @@ the version number alone does not flag them.
 - **`TilingRenderer` folds** when `config.fold` is set: a split that can't
   fit both floors renders its open side and a **spine** on the edge where
   the folded side sits, labelled with its panes. A tap on the spine opens
-  it (it focuses the pane it targets). A split that fits but squeezes a
-  pane under its floor is drawn with its boundary at the floor.
+  it (it focuses the pane it targets), so with focus selection off a spine
+  is disabled. A split that fits but squeezes a pane under its floor is
+  drawn with its boundary at the floor.
 - **Folded panes stay mounted**, hidden: the page keeps every pane's text
   (for crawlers too), and no pane remounts when a split folds, unfolds (a
   turned phone) or flips.
@@ -60,8 +61,8 @@ the version number alone does not flag them.
   edge where it sits (`folds`: the split, the open side, the spine's edge and
   box, the leaves on the spine and the one a tap would open). The open side
   is laid out afresh and its splits are judged the same way. Pure and
-  derived: folds are never written into the layout. The renderer doesn't
-  use it yet.
+  derived: folds are never written into the layout. `TilingRenderer` uses
+  it when `config.fold` is set.
 - **`config.fold`** (`TilingFoldConfig`): `minPanePx` (one value or
   `{ width, height }`) and `spineSizePx` (default
   `TILING_DEFAULT_FOLD_SPINE_PX`, 30). Off by default. A child's floor, most
@@ -71,8 +72,7 @@ the version number alone does not flag them.
   a split; if its stored ratio leaves a pane under the floor, the boundary
   moves to the floor for this layout (`fittedRatios`, derived like the
   folds). Before, a split that couldn't fit both floors silently fell back
-  to 50/50 (`clampByMinSize`'s 0.5; `clampByMinSizeOrFold` now reports
-  `"fold"` there).
+  to 50/50; with `config.fold` set it folds there instead.
 - **Desktop is unchanged.** Wherever every pane already has its floor (the
   site's Home tree at 1440 × 900 with 220 × 200 px floors, say), the plan is
   exactly `resolveLayoutGeometry`'s geometry.
