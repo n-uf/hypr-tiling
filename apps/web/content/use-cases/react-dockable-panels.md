@@ -5,7 +5,7 @@ h1: "Dockable panels in React with a tiled layout"
 mainKeyword: "react dockable panels"
 kind: use-case
 published: 2026-11-04
-updated: 2026-11-23
+updated: 2026-11-28
 author: n-uf
 takeaways:
   - "Docking needs a layout tree that records where each panel sits, drop targets while a panel is dragged, and a way to save the result; hypr-tiling gives you the tree and the drag behaviour, and your app owns the state."
@@ -23,7 +23,7 @@ faq:
   - q: "Does docking work with the keyboard?"
     a: "Partly. Alt+M starts keyboard move mode: the arrow keys pick a destination, Enter moves the pane beside it and Escape cancels. Alt+G groups the focused pane with its neighbour, and Alt+J and Alt+K step through a group's tabs. To drop a pane into a chosen group as a tab, use your own button and the add-to-group command."
   - q: "Does it work on touch screens?"
-    a: "The docs make one promise: on a touch screen a pane drag starts with a long press (interaction.touchDrag, on by default; longPressMs defaults to 220). They say nothing wider about phones or tablets, and hypr-tiling is React 19 and the browser DOM only, so test on your own devices."
+    a: "Yes. On a touch screen a pane drag starts with a long press (interaction.touchDrag, on by default; longPressMs defaults to 220). Since 26.11.13, config.fold folds a split that doesn't fit: the focused side stays open and the other becomes a spine, opened by a tap, a sideways swipe or the arrow keys. Moving panes is off while the layout is folded, for now. hypr-tiling is React 19 and the browser DOM only, so test on your own devices."
 sources:
   - title: "hypr-tiling README (repository root, origin/main)"
     url: "https://github.com/n-uf/hypr-tiling/blob/main/README.md"
@@ -31,6 +31,9 @@ sources:
   - title: "@n-uf/hypr-tiling package README (install, Tailwind, versioning, programmatic layout API, persisted layout, Tab groups, Multi-select grouping, Maximize, Features)"
     url: "https://github.com/n-uf/hypr-tiling/blob/main/packages/hypr-tiling/README.md"
     checked: 2026-11-04
+  - title: "@n-uf/hypr-tiling CHANGELOG, 26.11.13 (config.fold, spines, folded panes can't be moved)"
+    url: "https://github.com/n-uf/hypr-tiling/blob/v26.11.13/packages/hypr-tiling/CHANGELOG.md"
+    checked: 2026-11-28
   - title: "hypr-tiling public entry points (index.ts, engine.ts) at origin/main"
     url: "https://github.com/n-uf/hypr-tiling/tree/main/packages/hypr-tiling"
     checked: 2026-11-04
@@ -103,7 +106,7 @@ To undock, the strip has two controls at its right end. Eject moves the active t
 
 A loose pane has no strip to drop on. Users start a group by Alt/Opt+clicking two or more pane headers and pressing the Group button that appears on them. Alt+G groups the focused pane with its reading-order neighbour, or ungroups it if it's already in a group.
 
-Other gestures work on the same tree. Alt+Enter maximizes the focused pane without rewriting the layout, and Escape restores it; a maximized group member keeps its tab strip unless you set `maximize.keepGroupTabStrip` to `false`. Alt+M starts keyboard move mode: arrow keys pick a destination pane, Enter commits and Escape cancels. Move mode follows the drag's rules, so it never picks a destination a drag would refuse. On a touch screen a pane drag starts with a long press (`interaction.touchDrag`, on by default). That's all the docs promise for touch.
+Other gestures work on the same tree. Alt+Enter maximizes the focused pane without rewriting the layout, and Escape restores it; a maximized group member keeps its tab strip unless you set `maximize.keepGroupTabStrip` to `false`. Alt+M starts keyboard move mode: arrow keys pick a destination pane, Enter commits and Escape cancels. Move mode follows the drag's rules, so it never picks a destination a drag would refuse. On a touch screen a pane drag starts with a long press (`interaction.touchDrag`, on by default). A split that doesn't fit a small screen folds when you set `config.fold` (26.11.13); moving panes is off while it's folded, for now.
 
 A free grid of widgets with empty cells is a different model; the [alternatives to react-grid-layout](/blog/react-grid-layout-alternatives) article covers those libraries.
 
@@ -115,7 +118,7 @@ Install the package with its React 19 peers:
 pnpm add @n-uf/hypr-tiling react react-dom
 ```
 
-Versions follow the calendar (`YY.M.R`), and the README says releases may break compatibility, so pin an exact version. The package ships no CSS: the renderer emits Tailwind utility classes, so your Tailwind build has to scan the package's `dist` folder (an `@source` line in v4, the `content` array in v3) or the panes render unstyled. The [quickstart](/docs#quickstart) walks through it.
+Versions follow the calendar (`YY.M.R`), and the README says releases may break compatibility, so pin an exact version. The package ships no stylesheet to import: the renderer emits Tailwind utility classes, so your Tailwind build has to scan the package's `dist` folder (an `@source` line in v4, the `content` array in v3) or the panes render unstyled. The [quickstart](/docs#quickstart) walks through it.
 
 The layout below is the docs' initial-layout example with the tiles given some content. Files sit on the left; the editor sits above a group that holds Terminal and Problems behind a tab strip:
 
