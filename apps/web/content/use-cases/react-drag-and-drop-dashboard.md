@@ -31,6 +31,9 @@ sources:
   - title: "@n-uf/hypr-tiling package README (install, Tailwind, versioning, entry points, persisted layout, workspaces)"
     url: "https://github.com/n-uf/hypr-tiling/blob/main/packages/hypr-tiling/README.md"
     checked: 2026-11-03
+  - title: "@n-uf/hypr-tiling CHANGELOG, 26.11.13 (config.fold, spines, folded panes can't be moved)"
+    url: "https://github.com/n-uf/hypr-tiling/blob/v26.11.13/packages/hypr-tiling/CHANGELOG.md"
+    checked: 2026-11-28
   - title: "hypr-tiling docs examples: dashboard-app, save-restore, capabilities, commands"
     url: "https://github.com/n-uf/hypr-tiling/tree/main/apps/web/src/docs-examples"
     checked: 2026-11-03
@@ -94,7 +97,7 @@ pnpm add @n-uf/hypr-tiling react react-dom
 
 Versions follow the calendar (`YY.M.R`), so the number can't warn you about a breaking change, and the README says the library is in active development. Pin an exact version and read the changelog before you upgrade.
 
-The package ships no CSS, and this is the step people miss. The renderer emits Tailwind utility classes, so your Tailwind build has to scan the package. In v4 that's one `@source` line; in v3 the same path goes in the `content` array:
+The package ships no stylesheet to import, and this is the step people miss. The renderer emits Tailwind utility classes, so your Tailwind build has to scan the package. In v4 that's one `@source` line; in v3 the same path goes in the `content` array:
 
 ```css
 @import "tailwindcss";
@@ -249,7 +252,7 @@ On a grid, each widget has a position and a size in cells, and cells between wid
 | Breakpoint layouts | No | Yes, with separate layouts per breakpoint | Yes: `columnOpts` takes breakpoint and column pairs |
 | Tabs | Built-in tab groups | Not stated in the README | Not stated in the README |
 | Keyboard | Directional focus, pane switcher, move mode, remappable keymap | Not stated in the README | Not stated in the README |
-| Touch | Long press starts a pane drag | Not stated in the README | Native touch events for drag and resize (v6+) |
+| Touch | Long press starts a pane drag; `config.fold` folds a split that doesn't fit a small screen (drags are off while folded) | Not stated in the README | Native touch events for drag and resize (v6+) |
 | Frameworks | React 19 only | React only (v2 lists React 18+) | Framework-agnostic; Angular, React and Vue wrappers included |
 | Licence | PolyForm Perimeter 1.0.1 (source-available) | MIT | MIT |
 
