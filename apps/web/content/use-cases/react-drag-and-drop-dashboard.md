@@ -19,7 +19,7 @@ faq:
   - q: "Can users add and remove widgets?"
     a: "Yes, through buttons you write. Add a tile to your tiles array and seat a leaf for it with insertLeafInto, or take a pane out with removeLeafTile. Both come from @n-uf/hypr-tiling/engine, which the package README marks beta, so pin the version."
   - q: "Does a hypr-tiling dashboard work on phones?"
-    a: "Yes, with config.fold, added in 26.11.13. Where a split can't give both sides their minimum size, it folds: the focused side stays open and the other becomes a spine on the edge, opened by a tap, a sideways swipe or the arrow keys. Moving panes is off while the layout folds, for now. It needs React 19 and the browser DOM, not React Native, so test on your own devices."
+    a: "Yes, with config.fold, added in 26.11.13. A split that can't give both sides their minimum size folds: the focused side stays open and the other becomes a spine on the edge. A tap or the arrow keys open it, and a sideways swipe opens a side spine. Moving panes is off while the layout folds, for now; resizing still works."
   - q: "Do I need Tailwind?"
     a: "Yes. The package ships no stylesheet to import: the renderer emits Tailwind utility classes, so your Tailwind build has to scan the package's dist folder (a content glob in v3, an @source line in v4). Without that the panes render unstyled."
   - q: "Can I use hypr-tiling in a commercial dashboard?"
@@ -252,7 +252,7 @@ On a grid, each widget has a position and a size in cells, and cells between wid
 | Breakpoint layouts | No | Yes, with separate layouts per breakpoint | Yes: `columnOpts` takes breakpoint and column pairs |
 | Tabs | Built-in tab groups | Not stated in the README | Not stated in the README |
 | Keyboard | Directional focus, pane switcher, move mode, remappable keymap | Not stated in the README | Not stated in the README |
-| Touch | Long press starts a pane drag; `config.fold` folds a split that doesn't fit a small screen (drags are off while folded) | Not stated in the README | Native touch events for drag and resize (v6+) |
+| Touch | Long press starts a pane drag; `config.fold` folds a split that doesn't fit a small screen (moving panes is off while it folds; resizing still works) | Not stated in the README | Native touch events for drag and resize (v6+) |
 | Frameworks | React 19 only | React only (v2 lists React 18+) | Framework-agnostic; Angular, React and Vue wrappers included |
 | Licence | PolyForm Perimeter 1.0.1 (source-available) | MIT | MIT |
 

@@ -241,7 +241,7 @@ It makes sense when you want a Hyprland-style tiled screen with keyboard control
 | rc-dock | Docking: dock box and float box | Yes | Float box; popup as new browser window | Yes | React 18 or later | Apache-2.0 |
 | react-resizable-panels | Resizable groups and grids; `Workspace` of tabsets (4.16.0 on) | Yes, in `Workspace` | Not stated | `Workspace`: tabs, and whole tabsets from 4.17.0; panels resize only | React 18, 19 | MIT |
 | Allotment | Split panes, derived from VS Code's split view | Not stated | Not stated | Not stated (resizing described) | React 17 to 19 | MIT |
-| hypr-tiling | Tiling tree: two-child splits, tab groups | Yes, tab groups | No | Yes: swap, insert beside, stack into a group; long press on touch (off while a small screen is folded) | React 19 only | PolyForm Perimeter 1.0.1 (source-available) |
+| hypr-tiling | Tiling tree: two-child splits, tab groups | Yes, tab groups | No | Yes: swap, insert beside, stack into a group; long press on touch (off while the layout folds) | React 19 only | PolyForm Perimeter 1.0.1 (source-available) |
 
 "Not stated" means we found nothing on the project's own pages, not that the feature is missing.
 
@@ -253,7 +253,7 @@ It makes sense when you want a Hyprland-style tiled screen with keyboard control
 - **A fixed shell where users only resize:** Allotment, or a `Group` from react-resizable-panels.
 - **Draggable tabsets, floating windows not needed:** react-mosaic (tab nodes), the react-resizable-panels `Workspace`, FlexLayout or dockview.
 - **A tiled screen with keyboard focus, a move mode and several workspaces:** hypr-tiling, if React 19 and Tailwind are fine for you.
-- **Touch:** react-mosaic, dockview, FlexLayout, Golden Layout and the `Workspace` each name touch or mobile support on their pages. In hypr-tiling a pane drag on touch starts with a long press, and since 26.11.13 `config.fold` folds a split that doesn't fit a small screen into a spine you open by tap, swipe or arrow keys (moving panes is off while it's folded). Whichever you pick, test on your own devices.
+- **Touch:** react-mosaic, dockview, FlexLayout, Golden Layout and the `Workspace` each name touch or mobile support on their pages. In hypr-tiling a pane drag on touch starts with a long press, and since 26.11.13 `config.fold` folds a split that doesn't fit a small screen into a spine you open by tap or arrow keys, or a sideways swipe for a side spine (moving panes is off while the layout folds). Whichever you pick, test on your own devices.
 
 ## Moving a react-mosaic layout to hypr-tiling
 
