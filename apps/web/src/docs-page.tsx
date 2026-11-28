@@ -917,7 +917,9 @@ function labelReferenceTableCells(html: string): string {
         return `<td data-label="${label}">`;
       })}</tr>`;
     });
-    return `<table>${labelled}</table>`;
+    // A wide table scrolls inside its own box instead of widening the page
+    // (tablets, between the phone cards and the desktop width).
+    return `<div class="ht-api-table" tabindex="0" role="region" aria-label="Reference table"><table>${labelled}</table></div>`;
   });
 }
 
@@ -1179,6 +1181,8 @@ const API_PROSE_STYLES: string = `
 .ht-api code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; color: rgb(253 230 138 / 0.92); }
 .ht-api pre { overflow-x: auto; margin: 0.5rem 0 0.9rem; border-radius: 0.5rem; border: 1px solid rgb(255 255 255 / 0.08); background: #0a0b0d; padding: 0.85rem 0.9rem; }
 .ht-api pre code { color: rgb(214 211 209); font-size: 12px; line-height: 1.65; }
+.ht-api-table { max-width: 100%; overflow-x: auto; margin: 0.5rem 0 0.9rem; }
+.ht-api .ht-api-table table { margin: 0; }
 .ht-api table { width: 100%; border-collapse: collapse; margin: 0.5rem 0 0.9rem; font-size: 12px; }
 .ht-api th, .ht-api td { border: 1px solid rgb(255 255 255 / 0.08); padding: 0.45rem 0.6rem; text-align: left; vertical-align: top; }
 .ht-api th { color: rgb(214 211 209); font-weight: 500; background: rgb(255 255 255 / 0.02); }
