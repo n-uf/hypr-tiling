@@ -45,6 +45,9 @@ export function buildLlmsTxt(site: ContentSite): string {
   for (const fact of FEATURE_FACTS) {
     lines.push(`- ${fact.term}: ${fact.detail}`);
   }
+  lines.push(
+    "- Folding for small screens: `config.fold` (26.11.13) folds a split that doesn't fit into a spine, opened by a tap, a sideways swipe or the arrow keys; moving panes is off while folded.",
+  );
   lines.push("");
   lines.push("## Workspaces API");
   lines.push("");
