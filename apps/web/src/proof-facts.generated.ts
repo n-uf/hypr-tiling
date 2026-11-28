@@ -19,12 +19,12 @@ export interface ProofFacts {
 }
 
 export const PROOF_FACTS: ProofFacts = {
-  version: "26.11.12",
-  testSuites: 80,
-  tests: 1483,
-  gzipIndexBytes: 123592,
-  gzipIndexWithLibrariesBytes: 183025,
-  gzipEngineBytes: 30117,
+  version: "26.11.13",
+  testSuites: 84,
+  tests: 1544,
+  gzipIndexBytes: 129994,
+  gzipIndexWithLibrariesBytes: 189327,
+  gzipEngineBytes: 32095,
   runtimeDependencyCount: 4,
   runtimeDependencies: [
     "@n-uf/motion",
