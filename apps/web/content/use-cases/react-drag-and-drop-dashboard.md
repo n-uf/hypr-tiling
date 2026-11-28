@@ -5,7 +5,7 @@ h1: "Build a drag-and-drop dashboard in React with tiled panels"
 mainKeyword: "react drag and drop dashboard"
 kind: use-case
 published: 2026-11-03
-updated: 2026-11-23
+updated: 2026-11-28
 author: n-uf
 takeaways:
   - "A drag-and-drop dashboard in React needs three parts: the layout as data in your state, a component that renders and edits it, and a way to save it per user."
@@ -19,9 +19,9 @@ faq:
   - q: "Can users add and remove widgets?"
     a: "Yes, through buttons you write. Add a tile to your tiles array and seat a leaf for it with insertLeafInto, or take a pane out with removeLeafTile. Both come from @n-uf/hypr-tiling/engine, which the package README marks beta, so pin the version."
   - q: "Does a hypr-tiling dashboard work on phones?"
-    a: "The docs make no promise for phones. What they state: on a touch screen a pane drag starts with a long press (interaction.touchDrag, on by default, 220 ms), and swiping between workspaces is opt-in. hypr-tiling needs React 19 and the browser DOM, with no React Native and no breakpoint layouts, so test on your own devices before you rely on it."
+    a: "Yes, with config.fold, added in 26.11.13. Where a split can't give both sides their minimum size, it folds: the focused side stays open and the other becomes a spine on the edge, opened by a tap, a sideways swipe or the arrow keys. Moving panes is off while the layout folds, for now. It needs React 19 and the browser DOM, not React Native, so test on your own devices."
   - q: "Do I need Tailwind?"
-    a: "Yes. The package ships no CSS: the renderer emits Tailwind utility classes, so your Tailwind build has to scan the package's dist folder (a content glob in v3, an @source line in v4). Without that the panes render unstyled."
+    a: "Yes. The package ships no stylesheet to import: the renderer emits Tailwind utility classes, so your Tailwind build has to scan the package's dist folder (a content glob in v3, an @source line in v4). Without that the panes render unstyled."
   - q: "Can I use hypr-tiling in a commercial dashboard?"
     a: "Yes, within the licence. hypr-tiling is source-available under PolyForm Perimeter 1.0.1, which allows internal and commercial use but not a product that competes with hypr-tiling. It is not open source in the OSI sense, and no price is published, so read the licence text for your case."
 sources:
