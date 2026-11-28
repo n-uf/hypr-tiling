@@ -127,10 +127,19 @@ function homeTabLabel(tileId: string, fallback: string): string {
 
 export type HomeSkin = "mosaic" | "editorial" | "canvas";
 
+// The pane floor, for resizing and for folding.
+const MIN_PANE_PX: number = 180;
+
+// One layout rule at every width: a split that can't give both sides
+// `MIN_PANE_PX` folds (the focused side stays open, the other becomes a spine
+// on its edge). At 1440×900 every split of the three seed workspaces fits, so
+// the desktop demo lays out exactly as without folding; a phone folds to one
+// column with spines, a phone on its side folds the stacked splits.
 const LAYOUT_CONFIG: TilingLayoutConfig = {
   gapPx: 14,
-  minPaneSizePx: 180,
+  minPaneSizePx: MIN_PANE_PX,
   handleSizePx: 8,
+  fold: { minPanePx: MIN_PANE_PX },
 };
 
 const HOME_HEAL_OPTIONS: HomeLayoutHealOptions = {
