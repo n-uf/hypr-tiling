@@ -1,10 +1,9 @@
 import type { HomeSkin } from "../page";
 
-// Per-skin chrome tokens for the mobile home concepts. The mobile vocabulary is
-// deliberately NOT the desktop card vocabulary: think a tiling-WM status bar —
-// thin strips, hairlines, and a single overflow menu, never padded marketing
-// panels. Every mode keeps chrome to one thin top row (~44px) plus, at most, one
-// hairline strip, so the CONTENT owns the viewport. Accent colors still track
+// Per-skin chrome tokens for the phone home (the top strip and Read). The
+// mobile vocabulary is deliberately NOT the desktop card vocabulary: think a
+// tiling-WM status bar — thin strips, hairlines, and a single overflow menu,
+// never padded marketing panels, so the CONTENT owns the viewport. Accent colors still track
 // the active skin (Mosaic amber, Editorial ink, Canvas cyan) so the mobile
 // presentation reads as the SAME site, just compacted.
 export interface MobileHomeSkinTokens {
@@ -20,7 +19,7 @@ export interface MobileHomeSkinTokens {
   readonly menuItem: string;
   /** The skin-menu row for the currently-active skin. */
   readonly menuItemActive: string;
-  /** A compact TEXT-ONLY segmented-control group (the mode row: Master/Swipe/Grid). */
+  /** A compact TEXT-ONLY segmented-control group (the mode row: Tiles/Read). */
   readonly switcherGroup: string;
   /** The segmented-control's active segment. */
   readonly switcherActive: string;
@@ -28,26 +27,6 @@ export interface MobileHomeSkinTokens {
   readonly switcherInactive: string;
   /** The hairline divider between adjacent segments (all but the last). */
   readonly switcherDivider: string;
-  /** A thin hairline strip overlaid below content (Swipe's dots/counter/overview row). */
-  readonly bottomStrip: string;
-  /** A small text button inside the bottom strip (Overview / Focus toggle). */
-  readonly overviewButton: string;
-  /** A swipe-mode pane dot at rest. */
-  readonly dot: string;
-  /** The active swipe-mode pane dot. */
-  readonly dotActive: string;
-  /** A small "NN / NN" tabular-nums readout (swipe pane counter). */
-  readonly counterText: string;
-  /** A Master-mode stack-rail chip (single-row: ordinal + title) at rest. */
-  readonly chip: string;
-  /** A Master-mode stack-rail chip that currently holds focus. */
-  readonly chipFocused: string;
-  /** A Pocket-Grid schematic leaf rectangle at rest. */
-  readonly schematicRect: string;
-  /** The open Pocket-Grid schematic leaf rectangle. */
-  readonly schematicRectActive: string;
-  /** The Pocket-Grid schematic's outer shell (border/bg) — fills its resizable map tile. */
-  readonly schematicShell: string;
   /** Read mode: one stacked section card around a pane's content. */
   readonly readSection: string;
   /** Read mode: a section-anchor chip in the jump row. */
@@ -79,21 +58,6 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     switcherInactive:
       "flex items-center justify-center text-stone-400 transition-colors hover:bg-white/[0.04] hover:text-stone-200",
     switcherDivider: "border-r border-white/[0.06]",
-    bottomStrip:
-      "flex h-11 shrink-0 items-center gap-3 rounded-md border border-white/[0.06] bg-[#121316]/70 px-2.5 backdrop-blur",
-    overviewButton:
-      "flex h-11 shrink-0 items-center justify-center rounded-[3px] border border-white/[0.12] bg-white/[0.02] px-2.5 font-mono text-[12px] uppercase tracking-[0.14em] text-stone-300 transition-colors hover:border-amber-300/45 hover:text-amber-100",
-    dot: "bg-white/25",
-    dotActive: "bg-amber-300",
-    counterText: "shrink-0 font-mono text-[12px] tabular-nums text-stone-500",
-    chip: "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[3px] border border-white/[0.08] bg-white/[0.02] px-0.5 text-[12px] font-medium tracking-tight text-stone-300 transition-colors",
-    chipFocused:
-      "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[3px] border border-amber-300/55 bg-amber-300/[0.08] px-0.5 text-[12px] font-medium tracking-tight text-amber-100 transition-colors",
-    schematicRect:
-      "border border-white/[0.12] bg-white/[0.03] text-stone-400 hover:border-white/25",
-    schematicRectActive:
-      "border border-amber-300/65 bg-amber-300/[0.12] text-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.15)]",
-    schematicShell: "border-white/[0.08] bg-[#101114]/70",
     readSection:
       "scroll-mt-14 rounded-lg border border-white/[0.07] bg-[#121316] px-4 py-5 shadow-[0_18px_40px_-30px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.04)]",
     readChip: `${READ_CHIP_BASE} border-white/[0.08] bg-white/[0.02] text-stone-300 hover:border-amber-300/40 hover:text-amber-100`,
@@ -118,21 +82,6 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     switcherInactive:
       "flex items-center justify-center text-[#9c8f77] transition-colors hover:bg-[#f4eedb] hover:text-[#241f17]",
     switcherDivider: "border-r border-[#ddd4bf]",
-    bottomStrip:
-      "flex h-11 shrink-0 items-center gap-3 rounded-[4px] border border-[#e2dac6] bg-[#fbf9f2] px-2.5",
-    overviewButton:
-      "flex h-11 shrink-0 items-center justify-center rounded-[3px] border border-[#c9bd9f] bg-transparent px-2.5 font-mono text-[12px] uppercase tracking-[0.14em] text-[#6b6250] transition-colors hover:border-[#241f17] hover:text-[#241f17]",
-    dot: "bg-[#d7ccb2]",
-    dotActive: "bg-[#241f17]",
-    counterText: "shrink-0 font-mono text-[12px] tabular-nums text-[#a89c83]",
-    chip: "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[2px] border border-[#ddd4bf] bg-[#efe8d6] px-0.5 text-[12px] font-medium tracking-tight text-[#6b6250] transition-colors",
-    chipFocused:
-      "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[2px] border border-[#241f17]/55 bg-[#f4eedb] px-0.5 text-[12px] font-medium tracking-tight text-[#241f17] transition-colors",
-    schematicRect:
-      "border border-[#ddd4bf] bg-[#efe8d6] text-[#8c8069] hover:border-[#c9bd9f]",
-    schematicRectActive:
-      "border border-[#241f17]/65 bg-[#f4eedb] text-[#241f17] shadow-[0_0_0_1px_rgba(36,31,23,0.08)]",
-    schematicShell: "border-[#e2dac6] bg-[#f4eedb]",
     readSection:
       "scroll-mt-14 rounded-[4px] border border-[#e2dac6] bg-[#fbf9f2] px-4 py-5 text-[15px] leading-[1.65] text-[#4b4335] shadow-[0_1px_0_rgba(36,31,23,0.03),0_10px_28px_-22px_rgba(36,31,23,0.4)]",
     readChip: `${READ_CHIP_BASE} border-[#ddd4bf] bg-[#efe8d6] text-[#6b6250] hover:border-[#241f17] hover:text-[#241f17]`,
@@ -157,21 +106,6 @@ export const MOBILE_HOME_SKIN_TOKENS: Record<HomeSkin, MobileHomeSkinTokens> = {
     switcherInactive:
       "flex items-center justify-center text-slate-400 transition-colors hover:bg-white/70 hover:text-slate-700",
     switcherDivider: "border-r border-slate-200",
-    bottomStrip:
-      "flex h-11 shrink-0 items-center gap-3 rounded-md border border-slate-200 bg-white/90 px-2.5 backdrop-blur",
-    overviewButton:
-      "flex h-11 shrink-0 items-center justify-center rounded-[3px] border border-slate-200 bg-slate-50 px-2.5 font-mono text-[12px] uppercase tracking-[0.14em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900",
-    dot: "bg-slate-300",
-    dotActive: "bg-cyan-500",
-    counterText: "shrink-0 font-mono text-[12px] tabular-nums text-slate-400",
-    chip: "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[3px] border border-slate-200 bg-slate-50 px-0.5 text-[12px] font-medium tracking-tight text-slate-600 transition-colors",
-    chipFocused:
-      "flex h-full min-w-[52px] items-center justify-center gap-1.5 rounded-[3px] border border-cyan-300 bg-cyan-50 px-0.5 text-[12px] font-medium tracking-tight text-cyan-700 transition-colors",
-    schematicRect:
-      "border border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300",
-    schematicRectActive:
-      "border border-cyan-300 bg-cyan-50 text-cyan-700 shadow-[0_0_0_1px_rgba(6,182,212,0.12)]",
-    schematicShell: "border-slate-200 bg-white",
     readSection:
       "scroll-mt-14 rounded-lg border border-slate-200/80 bg-white px-5 py-5 text-[15px] leading-[1.6] text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-24px_rgba(15,23,42,0.35)]",
     readChip: `${READ_CHIP_BASE} border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:text-slate-900`,

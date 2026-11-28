@@ -6,18 +6,15 @@ import { DEFAULT_MOBILE_HOME_MODE, type MobileHomeMode } from "./types";
 // (see the docs `save-restore` example's `STORAGE_KEY` convention).
 const STORAGE_KEY: string = "hypr-tiling-web.home-mobile-mode";
 
-const VALID_MODES: ReadonlySet<string> = new Set<MobileHomeMode>([
-  "read",
-  "master",
-  "swipe",
-  "grid",
-]);
+// A mode stored before Tiles replaced Master, Swipe and Grid isn't valid any
+// more, so it falls back to the default.
+const VALID_MODES: ReadonlySet<string> = new Set<MobileHomeMode>(["tiles", "read"]);
 
 function isMobileHomeMode(value: string): value is MobileHomeMode {
   return VALID_MODES.has(value);
 }
 
-/** Read the persisted mobile home mode, falling back to the default (`"read"`) when unset or invalid. */
+/** Read the persisted mobile home mode, falling back to the default (`"tiles"`) when unset or invalid. */
 export function readStoredMobileHomeMode(): MobileHomeMode {
   if (typeof window === "undefined") {
     return DEFAULT_MOBILE_HOME_MODE;

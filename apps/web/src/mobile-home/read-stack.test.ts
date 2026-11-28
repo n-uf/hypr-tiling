@@ -2,8 +2,7 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "@jest/globals";
 import type { TilingTile } from "@n-uf/hypr-tiling";
-import { MOBILE_HOME_TILE_IDS } from "./layout-tree";
-import { ReadStackMobile, readSectionId } from "./read-stack";
+import { READ_TILE_IDS, ReadStackMobile, readSectionId } from "./read-stack";
 
 // Read mode stacks every pane as a section, in reading order, whatever order
 // the page hands the tiles in, and each anchor chip points at its section.
@@ -39,7 +38,7 @@ describe("ReadStackMobile", (): void => {
   );
 
   it("seats the six documentation panes", (): void => {
-    expect([...MOBILE_HOME_TILE_IDS]).toEqual(READING_ORDER);
+    expect(READ_TILE_IDS).toEqual(READING_ORDER);
   });
 
   it("renders all six section ids in reading order, and no other pane", (): void => {

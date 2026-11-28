@@ -4,12 +4,10 @@ import { MobileModeSwitcher } from "./mode-switcher";
 import { MOBILE_HOME_SKIN_TOKENS, type MobileHomeSkinTokens } from "./skin-tokens";
 import type { MobileHomeMode } from "./types";
 
-// The mobile home's ENTIRE top chrome: one thin (~44px) status-bar row —
-// wordmark · mode segments · skin menu — replacing the desktop's stacked
-// wordmark/tab-rail/skin card. Everything the desktop bar did on a phone
-// (pane tabs, skin pills) is either owned by each concept's own in-content
-// navigation or folded into the overflow menu here, so the row stays a single
-// hairline strip and the content below owns the viewport.
+// The phone home's top status-bar row (~44px) — wordmark · mode segments ·
+// skin menu — replacing the desktop's stacked wordmark/tab-rail/skin card. The
+// skin pills fold into the overflow menu here; in Tiles the workspace tabs get
+// a row of their own below this one (`HomeTopBar` in `page.tsx`).
 
 interface MobileSkinOption {
   readonly id: HomeSkin;

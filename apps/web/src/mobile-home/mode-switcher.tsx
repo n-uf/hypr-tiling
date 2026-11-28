@@ -11,7 +11,7 @@ export interface MobileSegmentedOption<Id extends string> {
 }
 
 // A compact, TEXT-ONLY segmented control for the mobile top strip's mode row
-// (Master / Swipe / Grid) — one thin hairline-bordered group with a solid-fill
+// (Tiles / Read) — one thin hairline-bordered group with a solid-fill
 // active segment and thin dividers between segments, echoing a window-manager
 // status bar's workspace switcher rather than a padded pill. The whole group is
 // `flex-1` so it fills the strip's middle between the wordmark and the skin
@@ -55,7 +55,7 @@ export function MobileSegmentedControl<Id extends string>({
   );
 }
 
-/** The mobile-only layout mode switcher — a `MobileSegmentedControl` over the three concepts. */
+/** The mobile-only layout mode switcher — a `MobileSegmentedControl` over Tiles and Read. */
 export function MobileModeSwitcher({
   mode,
   onModeChange,
