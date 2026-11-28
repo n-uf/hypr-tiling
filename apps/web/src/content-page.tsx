@@ -363,7 +363,7 @@ function InstallBlock(): React.ReactElement {
         <a href={QUICKSTART_HREF} className={LINK_CLASS}>
           quickstart
         </a>
-        . It needs React 19, and Tailwind in your app: the package ships no CSS.
+        . It needs React 19, and Tailwind in your app: the package ships no stylesheet to import.
       </p>
       <a
         href={NPM_URL}
